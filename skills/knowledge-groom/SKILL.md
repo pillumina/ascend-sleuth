@@ -5,8 +5,8 @@ description: >
   case 的语义（root cause / 机制 / 修复 / 证据），由确定性脚本校验并保守聚合，更新本地草稿评估状态；
   再批处理 postmortems/inbox/ 待审队列（预分诊 new/variant/covered 三分类），
   结构化升格到 Tier 2、校验 references 完整性、检测值重复、汇总条目使用记录并算分、
-  软退休过期 case、重建生成索引与本期读数；并行维护先验知识层（references/）——
-  审核 references/ 的 draft 草稿、校验引用、失效降级信号、引用发现建议。建议每周运行。
+  软退休过期 case、重建生成索引与本期读数；并行检查与维护先验知识层（references/）——
+  每轮检查 case 共性提炼缺口，维护词条草稿审核、引用校验、失效降级信号、引用发现建议。建议每周运行。
   产出**变更摘要 + 待审项**交领域 owner 审；提交由 owner 自己来（不自动开 PR）。
 disable-model-invocation: true
 ---
@@ -34,22 +34,21 @@ disable-model-invocation: true
 
 ## groom 成本预算与脚本先行（token 预算纪律：确定性环节脚本先行、agent 只读摘要）
 
-目标：单次 groom（含 inbox 段与 references 维护段）token 降至可读摘要量级（<30K），
+目标：单次 groom（含 inbox 段与先验层检查）token 降至可读摘要量级（<30K），
 功能不缺失。纪律：
 
 1. **确定性环节一律跑脚本、只读输出摘要，不读全量原文**：
    - 引用完整性/悬挂/role：`scripts/verify_references.py --check`（输出进摘要）；
    - 索引/容量：`scripts/index_counts.py`（条数与逐格容量，现算）+ `scripts/capacity_health.py`（溢出/健康）输出进摘要；
-   - 引用可观测性：`scripts/trace_metrics.py`（R6）；tag 聚类：读 `_index` tags 聚合（R8，零 token 机械）；
+   - 引用可观测性：`scripts/trace_metrics.py`（R6，维护项，有变更才跑）；tag 聚类：读 `_index` tags 聚合（R8，零 token 机械）；
    - 先验缺口：`scripts/ref_gap_index.py`（R8，按 case 的 `title` 与 `symptoms` 里的可检索键聚合，输出三种动作）；
-   - reference 规模/退化（R7）：按文件数/metrics 判断，不逐文件读。
+   - 先验层规模/退化（R7）：按文件数/metrics 判断，不逐文件读。
 2. **全量重扫默认关闭，改信号触发**：
    - R3（引用发现，需扫 case 正文）：**默认不跑**——仅当本轮 新升格 case ≥5 且 owner 要求时执行
      （R3 本就是可选项；防"每周全量扫 128 case 正文"常设成本）；
    - 汇总与算分（步骤 3.6 与 4）：汇总与算分都是脚本（`trace_entry_activity.py`、`score_entries.py`），
      只读它们的输出摘要；步骤 4 是全库一次算完，不做逐条判断（公式住在脚本里，见 docs/mechanism/diagnosis-observability.md 3.4）；
-   - references 维护段（R1/R5/R5.5/R6）：仅当 references/ 本轮有变更（新词条/修订/失效信号）才跑；
-     无变更 → 摘要一句"references 无变更，跳过维护段"。
+   - 先验层跳过规则：`references/` 本轮没有变更时，R1/R5/R5.5/R6 不跑，摘要写一句"references 无变更，跳过维护"；R7 索引触发检测、R8 缺口候选、R9 夹具候选、R10 流程留出检验每轮跑；R2 走主流程第 2 步，R4 走信号表，R3 默认不跑。
 3. **预分诊比对不全文重读**：先用 `scripts/groom_snapshot.py` 取到确定的远端 commit，再用
    `scripts/groom_candidates.py` 的**有界候选工作单**（默认 6 条、硬上限 8 条）把草稿交给子 agent；
    子 agent 只读工作单里的草稿与候选摘录，不读全库。没有候选工作单时，才退回**命中 (namespace × category)
@@ -259,7 +258,7 @@ python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --post-merge \
 1. **intake 队列处理（升格的前置）**：处理 `postmortems/inbox/`（`/skill:to-postmortem` / `/skill:issue-ingest` 的产出都落这里；**先解析一次**：`python3 scripts/shared_dir.py inbox` 给出主检出的绝对路径——草稿是锚在主检出的共享队列，在 worktree 里用相对 `postmortems/inbox/` 会读成一个空队列）：
    - **先读本轮评估状态**：`python3 scripts/groom_status.py` 一屏看草稿的 assessment / 候选 / 人决定 / 新鲜度。**没有本地评估状态文件（sidecar）的草稿先补跑上一节 Agent 语义比对**，不直接拿本地旧索引判、也不直接升格；`stale` 的草稿重跑，不用旧结论。
    - **节律**：单仓集中可周批；**分布式（成员本地 inbox，远程仓不存）在提交主仓时处理**——产出时已做 pre-triage（见下），groom 复核确认而非重判；
-   - 逐条**复核预分诊**（agent 判断，给证据；当前不引入 embedding，论证见 docs/adr/0002——可选论证层）：`new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 置信度。比对对象与候选来自 sidecar 的 `provenance.candidates`；需要复核时读候选全文核对 root_cause/fix（M5 成本预算 #3，不全文重读全库）。**draft 头注释已带 to-postmortem/issue-ingest 产出的分诊建议 → 一并核对证据是否成立**（建议与决定分离：判断在产出时做，groom 是审核者）；
+   - 逐条**复核预分诊**（agent 判断，给证据；当前不引入 embedding，论证见 docs/adr/0002——可选论证层）：`new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 置信度。比对对象与候选来自 sidecar 的 `provenance.candidates`；需要复核时读候选全文核对 root_cause/fix（成本预算第 3 条：不全文重读全库）。**draft 头注释已带 to-postmortem/issue-ingest 产出的分诊建议 → 一并核对证据是否成立**（建议与决定分离：判断在产出时做，groom 是审核者）；
    **先判后看（顺序纪律，改不了的自觉就别指望）**：复核候选前，先只读草稿与 sidecar 的 `evidence` 轴，自己写一句判断——症状签名（错误码/关键日志行/数值阈值）、根因假设、修复族方向；再打开候选全文**取证**（我这条假设能否被候选解释，还是只是"看起来像"）。先看候选再判断，判的是**像不像**而不是**对不对**：候选一旦在眼前，语义相近就会把判断拉过去（尤其是措辞相似但根因不同的 draft）。判断行写进批审清单：先写自己的判断，再写与 sidecar / 候选的对照结论；两者不一致时**以证据为准**，别用"候选里有类似的"当理由；
    - 产出**批审清单**交 owner 处理（像清 PR inbox，~30 秒/条）：
      - `covered_by` → 建议关闭升格；postmortem 转正 `postmortems/YYYY-QN/`（Tier 3 语料，**不是丢弃**）；开 PR，合入后再跑 `groom_close_draft.py` 把草稿移出队列
@@ -290,6 +289,10 @@ python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --post-merge \
    - **建议与决定分离**：预分诊只排序注意力，accept / adjust / reject 由人
 1.5. **case 分类校验（三分类强制，废弃 other）**：审核/升格 case 时校验 `category` ∈ {interrupt, precision, performance}——**不存在 other**。发现 other 的 case → 重新分类（按症状性质归入三分类：启动失败/崩溃/资源→interrupt，输出错误/乱码/数值异常→precision，吞吐/延迟→performance）；分不进去 → 标 `needs-human-review`，由 owner 定夺，不静默保留 other。reason：other 是分类残余，实践表明残余全部可归入三分类（曾重分类 5 条全部归入，无一条真属"其他"）；保留 other 会让路由层永远无法到达这些 case（triage-tree 无 other 分支）。
 2. **引用完整性校验**:扫所有 case 的 `references`,检查指向真实存在的文件和锚点。悬挂引用进变更摘要（自演化系统的“坏账”，不校验会静默累积）。
+2.5. **先验缺口检查（每轮必跑，只读脚本）**：跑 `python3 scripts/ref_gap_index.py` 与 `python3 scripts/tag_hygiene.py`。前者按 case 的 `title`/`symptoms` 聚合，给提炼、回链、复审三种动作；后者按 tag 聚类，标注机制、模型名、环境特性三类。两个脚本都不写文件，也不改知识库。
+
+   变更摘要固定一行：提炼 X 组 / 回链 Y 组 / 复审 Z 组（`ref_gap_index` 可处理 ≥3 的行）；本轮提炼 N 条，待 owner 定 M 组；tag 维度：机制族候选 K 组，模型名族与环境特性族合计 L 组（只计数，不进候选）。三档都没到阈值时写 0，不省略；脚本跑失败时写失败原因，不拿 0 顶替。
+   具体提炼什么由 owner 决定。owner 认可后，agent 在同一轮执行 `/skill:to-reference --ingest-cases "[id1, id2...]"`，候选只引用已升格的 case；判据与执行规则见「先验知识层」一节的 R8。
 3. **值重复检测**：框架 case 的 `expected`/`fix_on_mismatch` 是否硬编码了 `common/` 权威记录拥有的值？是 → 标 must-fix，要求改成引用。
 3.5. **现场回报结算**：跑 `python3 scripts/settle_trace_feedback.py`（游标默认落 gitignored 的共享运行时件 `.settle-state.json`，故本步**不进 git、也不该由单次诊断自己开 PR**——这里是现场回报入库的**唯一入口**，一次覆盖当期全部事件；`--state` 仅用于显式指定/测试）。它把 traces/ 里的 `feedback` 事件折成**条目使用记录**里的计数行（`metrics/entry-activity.d/<周>.yaml` 的 `kind: case`），**不改案例文件**（脚本默认 dry-run，确认 diff 后 `--apply`）。**幂等口径（按 session 逐事件记已落地）**：补一条新 feedback 只结算新增的那条，**不重放**已落地事件（重放会虚增）；事件对应的 case 还没落 knowledge/ 时**保持待结算**并在下次重跑时补上，游标不越过它前进；事件序列被改写（非追加）时脚本拒绝结算并告警，不猜。**只读复核**：`python3 scripts/settle_trace_feedback.py --audit` 交叉核对"游标说已结算"与"记录里看得见计数"，报出「已结算但无效果」的条目（这是发现证据静默丢失的唯一手段，出条目就删该 session 的游标条目后重跑）。**结算规则（owner 设计决策，未变）**：只有 `feedback.resolved` 才 `resolved += 1`——命中（hit 事件）是系统检索行为，不代表 case 有效；可信反馈（用户确认"诊断解决了问题"）才是有效性信号。`not_resolved`/`partial` → `misdiagnosed += 1`；来源 session 自己回报的 resolve 计 `self_resolved`、不计入 `resolved`。**无 feedback 事件时如实跳过**（反馈闭环未发生=现状，不编造）。
 
@@ -335,9 +338,9 @@ python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --post-merge \
 
    条目使用记录与本期读数是**两个粒度**：记录每次运行都追加（一行一条，3.5 / 3.6 写），期文件只在周界组装（这一步）。读端读的是生成物（`metrics/entry-activity/<部署>.yaml` 与 `metrics/timeline.yaml`），不读源。
 
-## reference 维护（先验知识层——与 case 流程并行；M5：本轮 references 无变更则整段跳过并在摘要说明）
+## 先验知识层（`references/`——与 case 流程并行）
 
-先验知识层（`references/`）是独立资产，维护动作与 case 平行：
+先验知识层是独立资产，维护动作与 case 平行。哪些条目每轮跑、哪些在本轮有变更时跑，见「groom 成本预算与脚本先行」第 2 条；本节写各条的动作细则。
 
 **R1. reference 词条审核（修订 3：to-reference 产出即 active，PR review 即审核闸门——合入即生效，无常规 draft→active 翻牌流程）**：
 - 新词条不再由 groom 翻牌：to-reference 产出 `status: active` 随 PR 提交，深审门槛（case-derived methodology ≥3 条 case 引用）由 PR CI 强制把关——产出时不达标直接红，不会以 active 合入未达门槛词条；
@@ -346,7 +349,7 @@ python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --post-merge \
 
 **R2. 引用完整性校验**：case 的 `ref_knowledge.ref` 必须真实存在于 `references/`（`verify_references.py` 已强校验悬挂引用与非法 role——groom 把结果带进变更摘要，不重复计算）。
 
-**R3. 引用发现（可选建议，不强制；M5 默认不跑，仅新升格 ≥5 且 owner 要求时）**：扫描 case 的 `diagnosis`/`fix` 内容，发现**隐式依赖**某 active reference（如 fix 提到"HCCL_BUFFSIZE 需重启生效"而该事实是独立词条）但未填 `ref_knowledge` → 变更摘要建议"该 case 可补 ref_knowledge"，由 owner 决定。**大多数 case 是自包含闭环（quickly_check/diagnosis/fix 都在体内），不需要连**——只有依赖命令副作用 / 平台硬事实 / 错误码含义等独立先验事实的少数 case 值得连；强制连接只会增加维护负担和脆弱引用。
+**R3. 引用发现（可选建议，不强制；默认不跑，仅新升格 ≥5 且 owner 要求时）**：扫描 case 的 `diagnosis`/`fix` 内容，发现**隐式依赖**某 active reference（如 fix 提到"HCCL_BUFFSIZE 需重启生效"而该事实是独立词条）但未填 `ref_knowledge` → 变更摘要建议"该 case 可补 ref_knowledge"，由 owner 决定。**大多数 case 是自包含闭环（quickly_check/diagnosis/fix 都在体内），不需要连**——只有依赖命令副作用 / 平台硬事实 / 错误码含义等独立先验事实的少数 case 值得连；强制连接只会增加维护负担和脆弱引用。
 
 **R4. 失效与降级信号**：见下方信号表新增行。
 
@@ -365,7 +368,7 @@ python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --post-merge \
 - `references/` 下文件数 >50，**或** metrics 显示 reference 检索退化（漏检增多 / 平台匹配耗时长）；
 - 达到 → 变更摘要**建议**按层建索引——背景类走 `scripts/build_ref_summary_index.py`（生成 `references/_summary-index.yaml`），流程类走 `scripts/build_procedure_index.py`（生成 `references/_procedure-index.yaml`）；两层都已有生成物与 `--check`（CI 先生成再校验），**case 层 `build_index.py` 与之同构**。**建议不自动改生成物**（生成物只由主干 job 或显式跑生成器的人写，建议与决定分离）；未达到 → 不提及（目录 + grep 足够，不为不存在的规模购置基础设施）。
 
-**R8. case 共性提炼候选（case-derived reference 触发信号）**：两个维度各跑一个脚本，先看可检索键，再看 tag。**建议与决定分离**：两个维度都只给候选，是否提炼由 owner 定；owner 认可后**在同一轮 groom 里由 agent 执行**（不再等下一次），产出的 reference 与本轮升格随同一个 PR 提交。**执行前提：case 已升格**——两个脚本读当前检出的 `knowledge/` 与 `references/`，不读 inbox 草稿；`references/**` 的 `sources[].cases` 也不得出现 `postmortems/inbox/` 里的草稿 id（CI 会红）。
+**R8. case 共性提炼候选（case-derived reference 触发信号；每轮在流程第 2.5 步跑）**：两个维度各跑一个脚本，先看可检索键，再看 tag。**建议与决定分离**：两个维度都只给候选，是否提炼由 owner 定；owner 认可后**在同一轮 groom 里由 agent 执行**（不再等下一次），产出的 reference 与本轮升格随同一个 PR 提交。**执行前提：case 已升格**——两个脚本读当前检出的 `knowledge/` 与 `references/`，不读 inbox 草稿；`references/**` 的 `sources[].cases` 也不得出现 `postmortems/inbox/` 里的草稿 id（CI 会红）。
 
 - **先看可检索键**：跑 `python3 scripts/ref_gap_index.py`。它按 case 的 `title` 与 `symptoms` 里出现的错误码、`0x` 十六进制码、环境变量名、算子名、异常类名聚合。
   - 键只从这两个字段抽：`diagnosis` / `quickly_check` 里的码常是判别句（"报 507014 还是 507057？"），算成实例会把建议指错词条。

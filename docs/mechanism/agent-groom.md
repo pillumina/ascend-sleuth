@@ -6,7 +6,7 @@
 
 本文说明 groom 如何在**确定的远端知识版本**上，用子 agent 比较本地草稿与现有 case，把评估写成本地状态，并在合入前检查评估是否过期。读者是维护知识库、会改 groom 流程或审这类 PR 的人；只跑诊断、不沉淀的人不必读。
 
-范围：`postmortems/inbox/` 到 `knowledge/` 升格之间的 intake 段，以及 PR 合入前的复核。不覆盖 diagnose 的候选检索、reference 维护段与发布流程。
+范围：`postmortems/inbox/` 到 `knowledge/` 升格之间的 intake 段，以及 PR 合入前的复核。不覆盖 diagnose 的候选检索、先验知识层（`references/`）那一节、发布流程。
 
 ## 1 解决什么问题
 
