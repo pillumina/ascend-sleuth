@@ -172,6 +172,14 @@ function createRenderer() {
       } finally {
         current = previous
       }
+      // 真实 React 在两次渲染的 hook 数量不一致时报错（rules of hooks）：提前 return 之后
+      // 调 hook 会让整块界面崩掉，而纯渲染断言看不出来。这里按组件实例记账，替真机兜住这类回归。
+      const hooksUsed = instance.cursor
+      if (instance.hookCount !== undefined && instance.hookCount !== hooksUsed) {
+        throw new Error('组件 ' + path + ' 的 hook 数量从 ' + instance.hookCount + ' 变成 ' + hooksUsed
+          + '（hook 必须在任何提前 return 之前、每次渲染同序同数量）')
+      }
+      instance.hookCount = hooksUsed
       return renderNode(rendered, path + '/')
     }
     const rendered = {
