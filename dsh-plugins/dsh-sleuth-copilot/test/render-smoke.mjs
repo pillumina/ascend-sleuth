@@ -1859,6 +1859,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   view = await t.settle()
   expect('只读：单条查合入回落生成指令', byClass(view, 'scp-modal').length === 1 && view.text.includes('查合入状态的指令'))
   expect('只读：单条查合入不写台账', t.rpcCalls.slice(before).every((item) => item.endpoint !== 'copilot-pr-target'))
+  expect('只读：指令弹层不重复流程句', (view.text.split('流程：按 skill 第 5 步执行').length - 1) === 1, view.text.slice(-300))
 }
 
 {
