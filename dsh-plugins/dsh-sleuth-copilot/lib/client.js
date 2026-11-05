@@ -20,10 +20,12 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.16.2'
+    const PLUGIN_VERSION = '0.16.3'
     const POLL_MS = 10000
     const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
     const FILTER_KEYS = ['all', 'open', 'pending', 'sediment']
+    // PR 台账允许的状态（与 scripts/pr_status.py 的 STATES 一致）。
+    const PR_STATE_KEYS = ['open', 'merged', 'closed', 'unknown']
     // 详情抬头默认收起成四行；「展开全文」优先看实际溢出（scrollHeight > clientHeight）。
     // 离线渲染没有布局引擎，拿不到尺寸时退回这个字数近似：四行在 400–510px 列宽下约 110–150 字，
     // 取小值，宁可多给一个入口也不把内容藏起来。
@@ -306,11 +308,25 @@ window.__ModuleLoader__.load({
       'sediment.prSource.ledger': '台账',
       'sediment.detail.lastChecked': '上次查证',
       'sediment.detail.closedDraft': '草稿不在 inbox；这条记录来自收尾日志（close-log）或 PR 台账。',
-      'sediment.checkFailed': '查合入没有全部成功；已查到的会显示在行里，其余可稍后重试。',
-      'sediment.checkFailedWith': '查合入没有全部成功（{reason}）；旧状态保留在行里。',
+      'sediment.checkFailed': '查合入没有全部成功；查不到的行记为「未确认」，也可以手动改状态。',
+      'sediment.checkFailedWith': '查合入没有全部成功；查不到的行记为「未确认」，也可以手动改状态（原因：{reason}）。',
+      'sediment.checkDoneOne': '查合入完成：{pr} · {state}',
+      'sediment.checkFailedOne': '查合入没成功；也可以手动改状态（原因：{reason}）。',
+      'sediment.checkDone': '查合入完成：{n} 条已更新',
+      'sediment.checkNone': '没有待查的 PR',
+      'sediment.manualState': '手动改状态',
+      'sediment.manualTitle': '手动改 PR 状态',
+      'sediment.prompt.sub': '预览将填入输入框的指令',
+      'sediment.manualSub': '平台查不到时按人工确认写 PR 台账，来源记为「手动确认」；下次查合入仍以平台结果为准。',
+      'sediment.manualDone': 'PR 状态已手动记为：{state}',
+      'sediment.primary.checkAll': '查全部合入状态',
+      'sediment.pushTarget': '推送目标 {label}',
       'sediment.checkError.E_NO_ADAPTER': '没有适配器',
       'sediment.checkError.E_NO_AUTH': '没配 token',
       'sediment.checkError.E_FETCH': '查询失败',
+      'sediment.checkError.E_PLATFORM': '平台适配器不可用',
+      'sediment.checkError.E_NOT_FOUND': '台账里没有这条 PR',
+      'sediment.checkError.E_LEDGER': '台账写入失败',
       'sediment.checkError.unknown': '未知原因',
       'sediment.history.archived': '已归档',
       'sediment.assessedUnknown': '未评估',
@@ -403,8 +419,9 @@ window.__ModuleLoader__.load({
       'sediment.stepper.unknown': '未记录',
       'sediment.stepper.pending': '待处理',
       'sediment.check': '查合入状态',
+      'sediment.check.readonly': '只读档位：生成查证指令',
       'sediment.markMerged': '标记已合入',
-      'sediment.noTarget': '还没有 PR 目标',
+      'sediment.noTarget': '推送目标未设置',
       'sediment.targetNote': '远端用途不做预设',
       'none': '未记录',
     }
@@ -684,11 +701,25 @@ window.__ModuleLoader__.load({
       'sediment.prSource.ledger': 'ledger',
       'sediment.detail.lastChecked': 'last checked',
       'sediment.detail.closedDraft': 'Draft is not in the inbox; this row comes from close-log or the PR ledger.',
-      'sediment.checkFailed': 'Merge check did not complete for every PR. Updated rows are shown; retry the rest later.',
-      'sediment.checkFailedWith': 'Merge check did not complete ({reason}); previous states are kept.',
+      'sediment.checkFailed': 'Merge check did not complete. Rows that could not be checked are marked unconfirmed; you can also set the state manually.',
+      'sediment.checkFailedWith': 'Merge check did not complete. Rows that could not be checked are marked unconfirmed; you can also set the state manually (reason: {reason}).',
+      'sediment.checkDoneOne': 'Merge check done: {pr} · {state}',
+      'sediment.checkFailedOne': 'Merge check failed; you can also set the state manually (reason: {reason}).',
+      'sediment.checkDone': 'Merge check done: {n} updated',
+      'sediment.checkNone': 'No PRs to check',
+      'sediment.manualState': 'Set state manually',
+      'sediment.manualTitle': 'Set PR state manually',
+      'sediment.prompt.sub': 'Preview of the prompt to fill the composer',
+      'sediment.manualSub': 'Records a human-confirmed state when the platform check fails. The source is stored as manual; the next check still uses the platform.',
+      'sediment.manualDone': 'PR state recorded manually as {state}',
+      'sediment.primary.checkAll': 'Check all merge states',
+      'sediment.pushTarget': 'Push target {label}',
       'sediment.checkError.E_NO_ADAPTER': 'no adapter',
       'sediment.checkError.E_NO_AUTH': 'no token',
       'sediment.checkError.E_FETCH': 'fetch failed',
+      'sediment.checkError.E_PLATFORM': 'platform adapter unavailable',
+      'sediment.checkError.E_NOT_FOUND': 'no PR ledger entry',
+      'sediment.checkError.E_LEDGER': 'ledger write failed',
       'sediment.checkError.unknown': 'unknown reason',
       'sediment.history.archived': 'archived',
       'sediment.assessedUnknown': 'not assessed',
@@ -781,8 +812,9 @@ window.__ModuleLoader__.load({
       'sediment.stepper.unknown': 'not recorded',
       'sediment.stepper.pending': 'to do',
       'sediment.check': 'Check merge',
+      'sediment.check.readonly': 'Read-only: generate a check prompt',
       'sediment.markMerged': 'Mark merged',
-      'sediment.noTarget': 'No PR target yet',
+      'sediment.noTarget': 'Push target not set',
       'sediment.targetNote': 'Remote roles are not assumed',
       'none': 'not recorded',
     }
@@ -952,7 +984,7 @@ window.__ModuleLoader__.load({
    间距集中在 4 / 8 / 12 / 16 / 20 / 24；圆角按控件、卡片、窗口分三档。
    状态条共用的 .scp-menu-note / .scp-case 仍是固定值；间距与圆角沿用既有档位，未逐项 token 化。 */
 .scp-pal{position:relative;display:flex;flex-direction:column;width:min(960px,94vw);max-height:78vh;overflow:hidden;border:1px solid var(--scp-border-strong);border-radius:18px;background:var(--scp-surface);color:var(--scp-text);box-shadow:var(--scp-shadow);outline:none;animation:scp-pop 190ms cubic-bezier(.2,.9,.3,1);
-  --scp-fs-cap:10.5px;--scp-fs-meta:11px;--scp-fs-label:11.5px;--scp-fs-sm:12px;--scp-fs-body:12.5px;--scp-fs-row:13px;--scp-fs-title:15px;--scp-fs-hero:16.5px;
+  --scp-fs-cap:10.5px;--scp-fs-meta:11px;--scp-fs-label:11.5px;--scp-fs-sm:12px;--scp-fs-body:12.5px;--scp-fs-row:13px;--scp-fs-title:15px;
   --scp-fw-regular:400;--scp-fw-medium:500;--scp-fw-semi:600;--scp-fw-bold:650;
   --scp-lh-tight:1.35;--scp-lh-base:1.55;--scp-lh-prose:1.75;
   --scp-sp-1:4px;--scp-sp-2:8px;--scp-sp-3:12px;--scp-sp-4:16px;--scp-sp-5:20px;--scp-sp-6:24px;
@@ -994,9 +1026,6 @@ window.__ModuleLoader__.load({
 .scp-pal-side{flex:1 1 auto;min-width:0;overflow:auto;padding:var(--scp-sp-5) var(--scp-side-pad-x) 0;display:flex;flex-direction:column;background:var(--scp-surface-2);}
 .scp-pal-side>*:not(.scp-pal-empty){flex:none;}
 .scp-pal-side>.scp-callout{margin-top:var(--scp-sp-3);}
-.scp-hero{display:flex;flex-direction:column;gap:var(--scp-sp-2);}
-.scp-hero-title{font-size:var(--scp-fs-hero);font-weight:var(--scp-fw-bold);line-height:1.45;letter-spacing:0;overflow-wrap:anywhere;}
-.scp-hero-meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px;}
 .scp-pal .scp-badge{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:6px;font-size:var(--scp-fs-label);font-weight:var(--scp-fw-semi);line-height:1;color:var(--scp-tone);background:color-mix(in srgb,var(--scp-tone) 12%,transparent);}
 .scp-pal .scp-chip{display:inline-flex;align-items:center;height:22px;padding:0 9px;border:1px solid var(--scp-border);border-radius:6px;font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);line-height:1;white-space:nowrap;color:var(--scp-muted);background:var(--scp-surface);}
 .scp-pal .scp-chip[data-tone="brand"]{color:var(--scp-accent);background:var(--scp-accent-soft);border-color:var(--scp-accent-line);}
@@ -1004,7 +1033,6 @@ window.__ModuleLoader__.load({
 .scp-pal .scp-chip[data-tone="success"]{color:var(--scp-ok);background:var(--scp-ok-soft);border-color:color-mix(in srgb,var(--scp-ok) 26%,var(--scp-border));}
 .scp-pal .scp-chip[data-tone="error"]{color:var(--scp-bad);background:var(--scp-bad-soft);border-color:color-mix(in srgb,var(--scp-bad) 26%,var(--scp-border));}
 .scp-pal .scp-step{font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);font-variant-numeric:tabular-nums;color:var(--scp-muted);}
-.scp-hero-meta>.scp-step,.scp-hero-meta>.scp-code{margin-left:auto;}
 /* 诊断详情抬头（识别行）：一行状态与身份 + 问题背景（可展开）。
    真机 trace 的 summary 首句常见一两百到七八百字，当标题放大加粗会占掉详情的大半屏；这里把它降到
    正文层级，只让错误码、路径、函数调用走等宽字，靠字符宽度差异而不是字重区分。 */
@@ -1050,7 +1078,6 @@ window.__ModuleLoader__.load({
 .scp-def{display:flex;flex-direction:column;gap:2px;min-width:0;}
 .scp-def dt{margin:0;font-size:var(--scp-fs-meta);font-weight:var(--scp-fw-medium);line-height:var(--scp-lh-base);color:var(--scp-muted);}
 .scp-def dd{margin:0;font-size:var(--scp-fs-body);font-weight:var(--scp-fw-regular);line-height:var(--scp-lh-base);color:var(--scp-text);overflow-wrap:anywhere;}
-.scp-code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-label);color:var(--scp-muted);overflow-wrap:anywhere;}
 .scp-tl-row{display:grid;grid-template-columns:56px 1fr;gap:2px 12px;padding:var(--scp-sp-2) 0;border-top:1px solid var(--scp-border);}
 .scp-tl-row:first-of-type{border-top:0;}
 .scp-tl-step{font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);line-height:var(--scp-lh-base);font-variant-numeric:tabular-nums;color:var(--scp-faint);}
@@ -1103,7 +1130,7 @@ window.__ModuleLoader__.load({
 .scp-version{font-size:var(--scp-fs-cap);color:var(--scp-faint);font-variant-numeric:tabular-nums;}
 .scp-pal-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--scp-sp-2);flex:1 1 auto;min-height:200px;padding:var(--scp-sp-6);color:var(--scp-muted);font-size:var(--scp-fs-body);line-height:var(--scp-lh-prose);text-align:center;}
 .scp-menu-note{margin-left:auto;max-width:52%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;line-height:1.6;color:var(--scp-warn);}
-.scp-toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);max-width:min(80%,520px);padding:7px 14px;border-radius:var(--scp-r-pill,999px);background:var(--scp-surface);border:1px solid var(--scp-border-strong);box-shadow:var(--scp-shadow);font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);color:var(--scp-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;animation:scp-toast 170ms ease-out;}
+.scp-toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);max-width:min(80%,520px);padding:7px 14px;border-radius:var(--scp-r-pill,999px);background:var(--scp-surface);border:1px solid var(--scp-border-strong);box-shadow:var(--scp-shadow);font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);color:var(--scp-text);white-space:normal;text-align:center;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;animation:scp-toast 170ms ease-out;}
 @keyframes scp-toast{from{opacity:0;transform:translate(-50%,6px)}to{opacity:1;transform:translate(-50%,0)}}
 .scp-skel{height:12px;border-radius:6px;background:linear-gradient(90deg,var(--scp-surface-2),color-mix(in srgb, var(--scp-surface-2) 30%, transparent),var(--scp-surface-2));background-size:200% 100%;animation:scp-shimmer 1.5s ease-in-out infinite;}
 @keyframes scp-shimmer{from{background-position:120% 0}to{background-position:-80% 0}}
@@ -3593,6 +3620,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const [searchText, setSearchText] = React.useState('')
       // 详情抬头「展开全文」按单号记：换单回到收起，不继承上一单的展开态。
       const [ledeOpenId, setLedeOpenId] = React.useState('')
+      const [sedLedeOpenKey, setSedLedeOpenKey] = React.useState('')
       const [menuOpen, setMenuOpen] = React.useState(false)
       const [menuForm, setMenuForm] = React.useState(null)
       const [cmdOpen, setCmdOpen] = React.useState(false)
@@ -3611,6 +3639,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       // 批量沉淀指令在弹层打开时冻结：后台每 10 秒刷新会重算 filtered，不能让名单在读者看的时候变。
       const [batchSed, setBatchSed] = React.useState(null)
       const [targetOpen, setTargetOpen] = React.useState(false)
+      const [manualOpen, setManualOpen] = React.useState(false)
       const [targetResume, setTargetResume] = React.useState('')
       const [targetRemote, setTargetRemote] = React.useState('')
       const [targetBase, setTargetBase] = React.useState('')
@@ -3643,6 +3672,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         ? [sedTarget.remote, sedTarget.base,
           sedTarget.platformName || (sedTargetDoc && sedTargetDoc.platformName) || sedTarget.platform].filter(Boolean).join(' · ')
         : ''
+      const sedTargetHint = sedTargetLabel
+        ? tr('sediment.pushTarget', { label: sedTargetLabel })
+        : tr('sediment.noTarget')
       const sedQuery = String(searchText || '').trim().toLowerCase()
       const sedFiltered = sedDrafts.filter((draft) => {
         if (!sedQuery) return true
@@ -3695,6 +3727,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         setMenuForm(null)
         setCmdOpen(false)
         setPromptKind('')
+        setManualOpen(false)
       }, [s.sessionId])
 
       React.useEffect(() => {
@@ -3702,6 +3735,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         setPromptKind('')
         setPromptDetailsOpen(false)
         setTargetOpen(false)
+        setManualOpen(false)
       }, [view, sedFilter])
 
       React.useEffect(() => {
@@ -3775,6 +3809,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         setPromptDetailsOpen(false)
         setTargetOpen(false)
         setTargetResume('')
+        setManualOpen(false)
         setCheckBusy('')
       }, [s.paletteOpen])
 
@@ -3939,6 +3974,13 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             }
             return
           }
+          if (manualOpen) {
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              setManualOpen(false)
+            }
+            return
+          }
           if (event.key === 'Escape') {
             event.preventDefault()
             setPaletteOpen(false)
@@ -3969,7 +4011,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         }
         window.addEventListener('keydown', onKey)
         return () => window.removeEventListener('keydown', onKey)
-      }, [s.paletteOpen, view, sedSorted.length, sedSel, promptKind, targetOpen, cmdOpen])
+      }, [s.paletteOpen, view, sedSorted.length, sedSel, promptKind, targetOpen, manualOpen, cmdOpen])
 
       // 详情抬头的三个钩子必须放在任何提前 return 之前：总览关着时 Palette 提前返回，打开后
       // 又多出这三个钩子，React 会报「hook 数量与上次渲染不一致」，整个 shell.overlay 槽位崩掉，
@@ -3987,6 +4029,22 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         }
         setLedeOverflow(ledeOpen || el.scrollHeight > el.clientHeight + 1)
       }, [ledeRow ? ledeRow.sessionId : '', ledeText, ledeOpen])
+
+      // 沉淀详情抬头同样按「识别行 + 正文背景」渲染：与诊断详情共用一套样式与展开逻辑，
+      // 只把正文换成草稿标题（标题就是来源 trace 的 summary 首句）。
+      const sedPickKey = sedPick ? String(sedPick.key || '') : ''
+      const sedPickTitle = sedPick ? String(sedPick.title || sedPick.key || '') : ''
+      const sedLedeOpen = Boolean(sedPickKey) && sedLedeOpenKey === sedPickKey
+      const sedLedeRef = React.useRef(null)
+      const [sedLedeOverflow, setSedLedeOverflow] = React.useState(false)
+      React.useEffect(() => {
+        const el = sedLedeRef.current
+        if (!el || typeof el.scrollHeight !== 'number' || !(el.clientHeight > 0)) {
+          setSedLedeOverflow(Boolean(sedPickTitle) && sedPickTitle.length > LEDE_TOGGLE_MIN)
+          return
+        }
+        setSedLedeOverflow(sedLedeOpen || el.scrollHeight > el.clientHeight + 1)
+      }, [view, sedPickKey, sedPickTitle, sedLedeOpen])
 
       if (!s.paletteOpen) return null
       if (s.data && s.data.ok === false && s.data.code === 'E_NO_ROOT') return null
@@ -4567,7 +4625,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           if (!result || result.ok === false) {
             const message = result && (result.message || (result.error && result.error.message))
             flash(message || tr('sediment.target.required'))
-            if (result && result.code === 'E_CAS') await refreshSediment(true)
+            if (failureCode(result) === 'E_CAS') await refreshSediment(true)
             return
           }
           setTargetOpen(false)
@@ -4605,11 +4663,17 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           })
           if (!result || result.ok === false) {
             const message = result && (result.message || (result.error && result.error.message))
-            flash(message || tr('sediment.error', { message: '' }))
-            if (result && result.code === 'E_CAS') await refreshSediment(true)
+            flash(tr('sediment.checkFailedOne', { reason: message || tr('sediment.checkError.unknown') }))
+            // 失败也可能已经写了台账（查不到时写 unknown + checked_at），刷新把行里的状态与时间对齐。
+            await refreshSediment(true)
             return
           }
           await refreshSediment(true)
+          const draft = sedDrafts.find((item) => item && item.key === key) || null
+          const prNo = draft && draft.pr && draft.pr.number ? '#' + draft.pr.number : key
+          const state = result && PR_STATE_KEYS.indexOf(String(result.state || '')) >= 0
+            ? String(result.state) : 'unknown'
+          flash(tr('sediment.checkDoneOne', { pr: prNo, state: tr('sediment.prState.' + state) }))
         } catch (error) {
           flash(String((error && error.message) || error))
         } finally {
@@ -4617,9 +4681,21 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         }
       }
 
+      // pr_status.py 的失败载荷把 code 放在 error.code（_fail 的形状）；个别调用给的是顶层 code。
+      // 两处都读，否则「没配 token」这类原因在生产会被丢掉（存储的失败形状见 host-smoke 的 resultCode）。
+      function failureCode(result) {
+        if (!result || typeof result !== 'object') return ''
+        if (typeof result.code === 'string' && result.code) return result.code
+        if (result.error && typeof result.error.code === 'string') return result.error.code
+        return ''
+      }
+
       function checkErrorText(code) {
-        const text = tr('sediment.checkError.' + String(code || 'unknown'))
-        return text === 'sediment.checkError.' + String(code || 'unknown') ? String(code || '') : text
+        const key = String(code || 'unknown')
+        const text = tr('sediment.checkError.' + key)
+        if (text !== 'sediment.checkError.' + key) return text
+        const generic = tr('sediment.checkError.unknown')
+        return key && key !== 'unknown' ? generic + '（' + key + '）' : generic
       }
 
       async function checkAllPrs() {
@@ -4632,7 +4708,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           })
           await refreshSediment(true)
           if (!result || result.ok === false) {
-            const partial = result && result.code === 'E_CHECK_PARTIAL'
+            const partial = failureCode(result) === 'E_CHECK_PARTIAL'
             const failed = result && Array.isArray(result.checked)
               ? result.checked.filter((item) => item && item.ok === false) : []
             const codes = Array.from(new Set(failed.map((item) => String(item.error || 'unknown'))))
@@ -4641,7 +4717,12 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             flash(partial
               ? (reason ? tr('sediment.checkFailedWith', { reason }) : tr('sediment.checkFailed'))
               : (message || tr('sediment.checkFailed')))
+            return
           }
+          const checked = result && Array.isArray(result.checked) ? result.checked : []
+          flash(checked.length
+            ? tr('sediment.checkDone', { n: checked.length })
+            : tr('sediment.checkNone'))
         } catch (error) {
           flash(String((error && error.message) || error))
         } finally {
@@ -4649,28 +4730,36 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         }
       }
 
-      async function markMerged(key) {
+      // 人工兜底：平台一直查不到时，按人确认写台账（source=manual）。只写本地台账，
+      // 下一次「查合入状态」仍以平台结果为准。
+      async function markState(key, state) {
+        const nextState = String(state || '')
         if (!canWrite) { flash(tr('write.disabled')); return }
-        if (!key || checkBusy) return
+        if (!key || checkBusy || PR_STATE_KEYS.indexOf(nextState) < 0) return
         setCheckBusy(key)
         try {
           const result = await rpcCall('copilot-pr-target', {
-            action: 'mark', cwd: s.cwd, sessionId: s.sessionId, key, state: 'merged',
+            action: 'mark', cwd: s.cwd, sessionId: s.sessionId, key, state: nextState,
             expectSha256: ledgerSha(),
           })
           if (!result || result.ok === false) {
             const message = result && (result.message || (result.error && result.error.message))
             flash(message || tr('sediment.error', { message: '' }))
-            if (result && result.code === 'E_CAS') await refreshSediment(true)
+            if (failureCode(result) === 'E_CAS') await refreshSediment(true)
             return
           }
           await refreshSediment(true)
-          flash(tr('sediment.markMerged'))
+          setManualOpen(false)
+          flash(tr('sediment.manualDone', { state: tr('sediment.prState.' + nextState) }))
         } catch (error) {
           flash(String((error && error.message) || error))
         } finally {
           setCheckBusy('')
         }
+      }
+
+      function markMerged(key) {
+        return markState(key, 'merged')
       }
 
       function runSedNext(draft) {
@@ -4697,9 +4786,12 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         return age > max ? age : max
       }, 0)
       const sedPrimaryKind = sedDoc && sedDoc.primary ? String(sedDoc.primary.kind || 'none') : 'none'
-      const sedPrimaryLabel = sedDoc && sedDoc.primary && sedDoc.primary.label
-        ? String(sedDoc.primary.label)
-        : tr('sediment.batch.none')
+      // 批次条的「查合入」查的是整批，详情里的查单条；两处标签分开写，免得读者分不清作用域。
+      const sedPrimaryLabel = sedPrimaryKind === 'check'
+        ? tr('sediment.primary.checkAll')
+        : (sedDoc && sedDoc.primary && sedDoc.primary.label
+          ? String(sedDoc.primary.label)
+          : tr('sediment.batch.none'))
       const sedUnassessed = Number(sedCounts.unassessed) || 0
       const sedNeedDecision = Number(sedCounts.needDecision) || 0
       const sedNeedRerun = Number(sedCounts.needRerun) || 0
@@ -4963,51 +5055,78 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('div', { className: 'scp-sed-kv-row' }, h('dt', {}, tr('sediment.detail.case')), h('dd', {}, landing)),
               h('div', { className: 'scp-sed-kv-row' }, h('dt', {}, tr('sediment.detail.pr')), h('dd', {}, prText)))))
 
+          const prRowBusy = checkBusy === sedPick.key || checkBusy === '__all__'
           const prActionButtons = sedPick.pr ? [
             h('button', {
               key: 'check', type: 'button', className: 'scp-btn',
-              disabled: checkBusy === sedPick.key || !canWrite,
-              title: canWrite ? undefined : writeDisabledReason(s.data),
-              onClick: () => checkPr(sedPick.key),
+              disabled: prRowBusy,
+              // 只读档位不写台账，但可以生成查证指令；与批次条和 Enter 的行为一致。
+              title: canWrite ? undefined : tr('sediment.check.readonly'),
+              onClick: () => { if (canWrite) checkPr(sedPick.key); else openPrompt('check') },
             }, checkBusy === sedPick.key ? tr('sediment.refreshing') : tr('sediment.check')),
             sedPick.pr.state !== 'merged'
               ? h('button', {
                 key: 'mark', type: 'button', className: 'scp-btn',
-                disabled: checkBusy === sedPick.key || !canWrite,
+                disabled: prRowBusy || !canWrite,
                 title: canWrite ? undefined : writeDisabledReason(s.data),
                 onClick: () => markMerged(sedPick.key),
               }, tr('sediment.markMerged'))
               : null,
-          ] : []
-          blocks.push(h('div', { className: 'scp-sed-actions' },
             h('button', {
+              key: 'manual', type: 'button', className: 'scp-btn scp-btn--ghost',
+              disabled: prRowBusy || !canWrite,
+              title: canWrite ? undefined : writeDisabledReason(s.data),
+              onClick: () => setManualOpen(true),
+            }, tr('sediment.manualState')),
+          ] : []
+          // 查合入这一个动作只给一个入口：next 是 check 时由上面 PR 行的「查合入状态」承担，
+          // 这里是整批动作，批次条另有一个「查全部合入状态」。
+          const showNextAction = !(sedNextKind === 'check' && sedPick.pr)
+          blocks.push(h('div', { className: 'scp-sed-actions' },
+            showNextAction ? h('button', {
               type: 'button', className: 'scp-btn', disabled: !sedNextKind,
               onClick: () => runSedNext(sedPick),
-            }, sedNextLabel),
+            }, sedNextLabel) : null,
             ...prActionButtons,
             h('button', { type: 'button', className: 'scp-btn', onClick: () => refreshSediment(true) }, tr('sediment.refresh')),
-            h('span', { className: 'scp-sed-hint' }, sedTargetLabel || tr('sediment.noTarget'))))
+            // 推送目标只在要开 PR 时才有意义；已有 PR 的行不再用「推送目标未设置」暗示没有 PR。
+            sedNextKind === 'pr'
+              ? h('span', { className: 'scp-sed-hint' }, sedTargetHint)
+              : null))
 
           const head = []
-          head.push(h('div', { key: 'hero', className: 'scp-hero' },
-            h('div', { className: 'scp-hero-title' }, sedPick.title || sedPick.key),
-            h('div', { className: 'scp-hero-meta' },
-              h('span', { className: 'scp-chip', 'data-tone': SED_CHIP_TONE[sedPick.stageTone] || 'none' }, sedPick.stage || sedPick.state),
-              sedPick.novelty ? h('span', { className: 'scp-chip' }, sedPick.novelty + (sedPick.confidence ? ' · ' + sedPick.confidence : '')) : null,
-              sedPick.source && sedPick.source.sessionId
-                ? h('button', {
-                  type: 'button', className: 'scp-link',
-                  onClick: () => {
-                    const promise = ctxOpenSession(sedPick.source.sessionId)
-                    if (promise && typeof promise.then === 'function') {
-                      promise.then((result) => {
-                        if (!result || result.ok === false) flash((result && result.reason) || tr('sediment.detail.openSource'))
-                      })
-                    }
-                  },
-                }, sedPick.source.sessionId + ' ↗')
-                : null,
-              h('span', { className: 'scp-code' }, sedAgeText(sedPick)))))
+          // 抬头与诊断详情一致：一行识别信息 + 正文层的问题背景，不把首句放大加粗。
+          head.push(h('div', { key: 'identity', className: 'scp-identity' },
+            h('span', { className: 'scp-badge', 'data-tone': SED_CHIP_TONE[sedPick.stageTone] || 'none' }, sedPick.stage || sedPick.state),
+            sedPick.novelty ? h('span', { className: 'scp-chip' }, sedPick.novelty + (sedPick.confidence ? ' · ' + sedPick.confidence : '')) : null,
+            sedPick.source && sedPick.source.sessionId
+              ? h('button', {
+                type: 'button', className: 'scp-link',
+                onClick: () => {
+                  const promise = ctxOpenSession(sedPick.source.sessionId)
+                  if (promise && typeof promise.then === 'function') {
+                    promise.then((result) => {
+                      if (!result || result.ok === false) flash((result && result.reason) || tr('sediment.detail.openSource'))
+                    })
+                  }
+                },
+              }, sedPick.source.sessionId + ' ↗')
+              : null,
+            h('span', { className: 'scp-identity-meta' }, sedAgeText(sedPick))))
+          head.push(h('p', {
+            key: 'lede',
+            className: 'scp-lede',
+            ref: sedLedeRef,
+            'data-open': sedLedeOpen ? 'true' : 'false',
+            title: sedPickTitle,
+          }, inlineTokens(sedPickTitle)))
+          if (sedLedeOverflow) {
+            head.push(h('button', {
+              type: 'button', className: 'scp-more',
+              'aria-expanded': sedLedeOpen ? 'true' : 'false',
+              onClick: () => setSedLedeOpenKey(sedLedeOpen ? '' : String(sedPick.key || '')),
+            }, sedLedeOpen ? tr('lede.collapse') : tr('lede.expand')))
+          }
           if (sedPick.ageDays !== null && sedPick.ageDays !== undefined && Number(sedPick.ageDays) > 14) {
             head.push(h('div', { key: 'overdue', className: 'scp-sed-hint' },
               tr('sediment.overdue') + ' · ' + tr('sediment.batch.oldest', { n: sedPick.ageDays })))
@@ -5029,7 +5148,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 onClick: () => fillDraft(sedPick.writeback),
               }, tr('sediment.detail.writeback')) : null))
           }
-          return h('div', { className: 'scp-pal-side scp-sed-side' }, head.concat(blocks))
+          return h('div', {
+            className: 'scp-pal-side scp-sed-side',
+            style: { '--scp-tone': SED_DOT[sedPick.stageTone] || SED_DOT.gray },
+          }, head.concat(blocks))
         })()
 
       const sedSide = view === 'sediment' ? sedSideInner : side
@@ -5060,7 +5182,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('div', { className: 'scp-modal-title' }, promptTitle[promptKind] || promptKind),
               h('div', { className: 'scp-modal-sub' }, isBatchPrompt
                 ? tr('diag.batch.sub', { n: batchSed.count || 0 })
-                : (promptKind === 'pr' ? (sedTargetLabel || tr('sediment.noTarget')) : tr('sediment.prompt.flow')))),
+                : (promptKind === 'pr' ? (sedTargetLabel || tr('sediment.noTarget')) : tr('sediment.prompt.sub')))),
             h('button', { type: 'button', className: 'scp-icon', 'aria-label': tr('sediment.prompt.cancel'), onClick: closePrompt }, IconClose())),
           h('div', { className: 'scp-modal-body' },
             promptKind === 'pr'
@@ -5163,6 +5285,44 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               onClick: saveTarget,
             }, targetBusy ? tr('sediment.refreshing') : tr('sediment.target.save'))))) : null
 
+      // 人工兜底：平台一直查不到时，按人确认把 PR 状态写进本地台账（source=manual）。
+      const manualModal = manualOpen && sedPick ? h('div', {
+        className: 'scp-veil',
+        onMouseDown: (event) => { if (event.target === event.currentTarget) setManualOpen(false) },
+      },
+        h('div', {
+          className: 'scp-modal', style: { width: 'min(520px, calc(100% - 40px))' },
+          role: 'dialog', 'aria-modal': 'true', 'aria-label': tr('sediment.manualTitle'), tabIndex: -1,
+        },
+          h('div', { className: 'scp-modal-top' },
+            h('div', { style: { flex: '1 1 auto', minWidth: 0 } },
+              h('div', { className: 'scp-modal-title' }, tr('sediment.manualTitle')),
+              h('div', { className: 'scp-modal-sub' }, tr('sediment.manualSub'))),
+            h('button', {
+              type: 'button', className: 'scp-icon', 'aria-label': tr('sediment.prompt.cancel'),
+              onClick: () => setManualOpen(false),
+            }, IconClose())),
+          h('div', { className: 'scp-modal-body' },
+            h('div', { className: 'scp-sed-hint' },
+              (sedPick.pr && sedPick.pr.number ? '#' + sedPick.pr.number + ' · ' : '') + String(sedPick.key || '')),
+            h('div', { className: 'scp-pick-list' }, PR_STATE_KEYS.map((state) => h('button', {
+              key: state,
+              type: 'button',
+              className: 'scp-pick',
+              'data-on': ((sedPick.pr && sedPick.pr.state) || 'unknown') === state ? 'true' : 'false',
+              disabled: checkBusy === sedPick.key || checkBusy === '__all__' || !canWrite,
+              onClick: () => markState(sedPick.key, state),
+            },
+              h('span', { className: 'scp-radio', 'aria-hidden': 'true' }),
+              h('span', { style: { flex: '1 1 auto', minWidth: 0 } },
+                h('span', { className: 'scp-pick-title' }, tr('sediment.prState.' + state))))))),
+          h('div', { className: 'scp-modal-foot' },
+            h('span', { className: 'scp-spacer' }),
+            h('button', {
+              type: 'button', className: 'scp-btn scp-btn--ghost',
+              onClick: () => setManualOpen(false),
+            }, tr('sediment.prompt.cancel'))))) : null
+
       const subParts = [tr('palette.count', { n: rows.length })]
       if (Number(counts.pendingFeedback) > 0) subParts.push(tr('queue.pending', { n: Number(counts.pendingFeedback) }))
 
@@ -5185,7 +5345,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             h('div', { className: 'scp-pal-heading' },
               h('span', { className: 'scp-pal-title' }, view === 'sediment' ? tr('palette.sedimentTitle') : tr('palette.title')),
               h('span', { className: 'scp-pal-sub' }, view === 'sediment'
-                ? [tr('sediment.batch.total', { n: sedDrafts.length }), sedTargetLabel || tr('sediment.noTarget')].join(' · ')
+                ? [tr('sediment.batch.total', { n: sedDrafts.length }), sedTargetHint].join(' · ')
                 : subParts.join(' · '))),
             h('div', { className: 'scp-views', role: 'tablist', 'aria-label': tr('palette.title') },
               h('button', {
@@ -5229,7 +5389,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               ' 关闭'),
             h('span', { className: 'scp-spacer' }),
             h('span', { className: 'scp-foot-note' }, view === 'sediment'
-              ? (sedTargetLabel || tr('sediment.noTarget'))
+              ? sedTargetHint
               : [
                 tr('queue.open', { n: Number(counts.open) || 0 }),
                 tr('queue.pending', { n: Number(counts.pendingFeedback) || 0 }),
@@ -5238,6 +5398,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             h('span', { className: 'scp-version' }, 'v' + PLUGIN_VERSION)),
           promptModal,
           targetModal,
+          manualModal,
           cmdOpen ? h('div', {
             className: 'scp-cmd-backdrop',
             onMouseDown: (event) => { if (event.target === event.currentTarget) setCmdOpen(false) },
@@ -5262,7 +5423,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   }, item.label))
                   : h('div', { className: 'scp-cmd-empty' }, tr('cmd.empty'))),
               h('div', { className: 'scp-pal-foot' }, h('span', {}, tr('cmd.hint'))))) : null,
-          toast ? h('span', { className: 'scp-toast', role: 'status' }, toast) : null))
+          toast ? h('span', { className: 'scp-toast', role: 'status', title: toast }, toast) : null))
     }
 
     // ── 打开其它会话（轨迹写了 harness_session 时可用）────────────────────

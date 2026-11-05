@@ -725,6 +725,23 @@ async function mount(mode, options) {
                 return { ok: true, value: opts.sediment || SEDIMENT }
               }
               if (endpoint === 'copilot-pr-target') {
+                const action = args && args.action
+                if (action === 'check') {
+                  return { ok: true, value: opts.prCheckResult || {
+                    ok: true, draft: args.key, platform: 'github', state: 'open',
+                    source: 'platform', checked_at: '2026-11-05T10:41:12+08:00',
+                  } }
+                }
+                if (action === 'check-all') {
+                  return { ok: true, value: opts.prCheckAllResult || {
+                    ok: true, checked: [{ draft: '2026-11-01-eplb-103900', ok: true, state: 'open' }],
+                  } }
+                }
+                if (action === 'mark') {
+                  return { ok: true, value: opts.prMarkResult || {
+                    ok: true, draft: args.key, pr: { state: args.state }, sha256: 'f'.repeat(64),
+                  } }
+                }
                 return { ok: true, value: { ok: true, target: (opts.sediment || SEDIMENT).target } }
               }
               throw new Error('unexpected endpoint ' + endpoint)
@@ -1566,7 +1583,12 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 }
 
 {
+  // 已提 PR 的草稿：详情抬头与诊断页同一套「识别行 + 正文背景」；查合入只有一个入口，
+  // 成功后给结果提示；已有 PR 的行不再出现「推送目标未设置」这种像在说没有 PR 的文案；
+  // 「手动改状态」是平台一直查不到时的人工兜底。
+  const prTitle = 'DSpark 投机解码首个请求即崩：vllm_ascend/spec_decode/dspark_proposer.py:437 set_inputs_first_pass 无条件调用可选模型 API get_draft_attn_causal()，legacy 非因果模型 DSparkDeepseekV4ForCausalLM 未实现（AttributeError）；≥ v0.26.0rc1 修复为缺失时回落 causal=False'
   const prDraft = Object.assign({}, SEDIMENT.drafts[1], {
+    title: prTitle,
     state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
     pr: { number: 417, url: 'https://gitcode.com/pillumina/ascend-sleuth/pulls/417', platform: 'gitcode', state: 'open', source: 'platform', checkedAt: '2026-11-04T09:00:00+08:00' },
     next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
@@ -1585,14 +1607,112 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   view = await t.settle()
   click(byClass(view, 'scp-sed-row')[0])
   view = await t.settle()
-  expect('PR 详情：显示中文状态与来源', view.text.includes('待合入') && view.text.includes('平台查询'), view.text.slice(-300))
-  expect('PR 详情：有查状态按钮', !!findButton(view, '查合入状态'))
+
+  const identity = byClass(view, 'scp-identity')
+  expect('PR 详情：抬头是识别行', identity.length === 1 && nodeText(identity[0]).includes('已提 PR · 合入未确认'), identity.length ? nodeText(identity[0]) : 'missing')
+  const ledes = byClass(view, 'scp-lede')
+  expect('PR 详情：标题按正文样式渲染', ledes.length === 1 && ledes[0].props['data-open'] === 'false', String(ledes.length))
+  expect('PR 详情：不再用放大标题放摘要', byClass(view, 'scp-hero-title').length === 0)
+  const codes = byClass(view, 'scp-icode').map((node) => nodeText(node))
+  expect('PR 详情：标题里的路径与调用走等宽', codes.some((text) => text.includes('dspark_proposer.py:437'))
+    && codes.includes('get_draft_attn_causal()') && codes.includes('AttributeError'), codes.join(' / '))
+  const expand = findButton(view, '展开全文')
+  expect('PR 详情：长标题给展开入口', !!expand)
+  if (expand) {
+    click(expand)
+    view = await t.settle()
+    expect('PR 详情：展开后给收起入口', byClass(view, 'scp-lede')[0].props['data-open'] === 'true'
+      && !!findButton(view, '收起全文'))
+  }
+
+  const actions = byClass(view, 'scp-sed-actions')[0]
+  const checkBtns = actions ? view.nodes.filter((node) => node.type === 'button'
+    && nodeText(node) === '查合入状态' && containsNode(actions, node)) : []
+  expect('PR 详情：查合入只给一个按钮', checkBtns.length === 1, String(checkBtns.length))
+  expect('PR 详情：已有 PR 时不再提示推送目标未设置', !!actions
+    && !nodeText(actions).includes('推送目标未设置') && !nodeText(actions).includes('还没有 PR 目标'), actions ? nodeText(actions) : 'missing')
+  expect('沉淀批次条：查合入标明作用域', !!findButton(view, '查全部合入状态'))
+
+  const beforeCheck = t.rpcCalls.length
+  click(checkBtns[0])
+  await t.settle()
+  view = await t.settle()
+  const checkCall = t.rpcCalls.slice(beforeCheck).filter((item) => item.endpoint === 'copilot-pr-target').pop()
+  expect('PR 详情：单条查合入走 check', checkCall && checkCall.args && checkCall.args.action === 'check', JSON.stringify(checkCall && checkCall.args))
+  expect('PR 详情：查合入成功给结果提示', view.text.includes('查合入完成：#417 · 待合入'), view.text.slice(-200))
+  const toastNode = byClass(view, 'scp-toast')[0]
+  expect('提示：长文案看得到（title 带全文）', toastNode && toastNode.props.title === nodeText(toastNode),
+    toastNode ? String(toastNode.props.title) : 'missing')
+
+  click(findButton(view, '手动改状态'))
+  view = await t.settle()
+  const manualPicks = byClass(view, 'scp-pick')
+  expect('PR 详情：手动改状态弹层', byClass(view, 'scp-modal').length === 1 && view.text.includes('手动改 PR 状态'))
+  expect('PR 详情：手动改状态写明改的是哪条', byClass(view, 'scp-modal')[0]
+    && nodeText(byClass(view, 'scp-modal')[0]).includes('#417'))
+  expect('PR 详情：手动状态列四档', manualPicks.length === 4
+    && ['待合入', '已合入', '已关闭', '未确认'].every((label) => manualPicks.some((pick) => nodeText(pick).includes(label))),
+  manualPicks.map((pick) => nodeText(pick)).join(' / '))
+  const closedPick = manualPicks.find((pick) => nodeText(pick).includes('已关闭'))
+  const beforeMark = t.rpcCalls.length
+  click(closedPick)
+  await t.settle()
+  view = await t.settle()
+  const markCall = t.rpcCalls.slice(beforeMark).filter((item) => item.endpoint === 'copilot-pr-target').pop()
+  expect('手动改状态：走 mark 且状态 closed', markCall && markCall.args && markCall.args.action === 'mark'
+    && markCall.args.state === 'closed', JSON.stringify(markCall && markCall.args))
+  expect('手动改状态：给成功提示并关弹层', view.text.includes('PR 状态已手动记为：已关闭')
+    && byClass(view, 'scp-modal').length === 0)
+
   const mark = findButton(view, '标记已合入')
   expect('PR 详情：有标记已合入按钮', !!mark)
   click(mark)
   await t.settle()
   const call = t.rpcCalls.filter((item) => item.endpoint === 'copilot-pr-target').pop()
   expect('PR 详情：标记已合入走 mark', call && call.args && call.args.action === 'mark' && call.args.state === 'merged', JSON.stringify(call && call.args))
+}
+
+{
+  // 查合入失败：批次条查询走 check-all 失败时给出原因，不是静默只改查证时间。
+  const failDraft = Object.assign({}, SEDIMENT.drafts[1], {
+    state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    pr: { number: 419, url: 'https://github.com/pillumina/ascend-sleuth/pull/419', platform: 'github', state: 'open', source: 'platform', checkedAt: '' },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const failQueue = Object.assign({}, SEDIMENT, {
+    drafts: [failDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 1, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+    history: [],
+  })
+  const t = await mount('recent', {
+    sediment: failQueue,
+    // 生产形状：code 在 error.code；每条 checked 的 error 是适配器错误码。
+    prCheckAllResult: {
+      ok: false,
+      error: { code: 'E_CHECK_PARTIAL', message: '有 PR 状态没查到（见 checked）' },
+      checked: [
+        { draft: '2026-11-01-eplb-103900', ok: false, state: 'unknown', error: 'E_NO_AUTH' },
+        { draft: '2026-10-26-glm53-moe-shuffle', ok: false, state: 'unknown', error: 'E_PLATFORM' },
+      ],
+    },
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  const before = t.rpcCalls.length
+  click(findButton(view, '查全部合入状态'))
+  await t.settle()
+  await t.settle()
+  const call = t.rpcCalls.slice(before).filter((item) => item.endpoint === 'copilot-pr-target').pop()
+  view = await t.settle()
+  expect('查合入失败：批次条走 check-all', call && call.args && call.args.action === 'check-all', JSON.stringify(call && call.args))
+  expect('查合入失败：给出原因', view.text.includes('查合入没有全部成功') && view.text.includes('没配 token'), view.text.slice(-300))
+  expect('查合入失败：未映射码不给裸枚举', view.text.includes('平台适配器不可用') && !view.text.includes('E_PLATFORM'), view.text.slice(-300))
 }
 
 {
@@ -1629,12 +1749,153 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const before = t.rpcCalls.length
   click(findNode(view, (node) => node.type === 'button'
     && String((node.props && node.props.className) || '').includes('scp-btn--primary')
-    && nodeText(node).includes('查合入状态')))
+    && nodeText(node).includes('查全部合入状态')))
   await t.settle()
   await t.settle()
   const checkCall = t.rpcCalls.slice(before).filter((call) => call.endpoint === 'copilot-pr-target').pop()
   expect('已出队行：批量查合入走 check-all', checkCall && checkCall.args && checkCall.args.action === 'check-all', JSON.stringify(checkCall && checkCall.args))
   expect('已出队行：查合入不弹指令层', byClass(t.view(), 'scp-modal').length === 0)
+  view = await t.settle()
+  expect('已出队行：批量查合入成功给提示', view.text.includes('查合入完成：1 条已更新'), view.text.slice(-200))
+}
+
+{
+  // 单条查合入失败：给失败原因（不是只改查证时间），并刷新行里的状态。
+  const failDraft = Object.assign({}, SEDIMENT.drafts[1], {
+    state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    pr: { number: 421, url: 'https://github.com/pillumina/ascend-sleuth/pull/421', platform: 'github', state: 'open', source: 'platform', checkedAt: '' },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const failQueue = Object.assign({}, SEDIMENT, {
+    drafts: [failDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 1, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+    history: [],
+  })
+  const t = await mount('recent', {
+    sediment: failQueue,
+    // 生产形状：pr_status.py 的 _fail 把 code 放在 error.code（顶层没有 code）。
+    prCheckResult: {
+      ok: false, state: 'unknown', checked_at: '2026-11-05T11:00:00+08:00',
+      error: { code: 'E_NO_AUTH', message: '未配置 token 环境变量 GITHUB_TOKEN' },
+    },
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-sed-row')[0])
+  view = await t.settle()
+  const before = t.rpcCalls.length
+  click(findButton(view, '查合入状态'))
+  await t.settle()
+  view = await t.settle()
+  const call = t.rpcCalls.slice(before).filter((item) => item.endpoint === 'copilot-pr-target').pop()
+  expect('单条查合入失败：走 check', call && call.args && call.args.action === 'check', JSON.stringify(call && call.args))
+  expect('单条查合入失败：给出原因与兜底', view.text.includes('查合入没成功') && view.text.includes('未配置 token')
+    && view.text.includes('也可以手动改状态'), view.text.slice(-300))
+  expect('单条查合入失败：刷新行里的状态', t.rpcCalls.slice(before).some((item) => item.endpoint === 'copilot-sediment'))
+}
+
+{
+  // 批次查合入成功但台账里没有可查的 PR（checked 为空）：给「没有待查的 PR」。
+  const emptyDraft = Object.assign({}, SEDIMENT.drafts[1], {
+    state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    pr: { number: 420, url: 'https://github.com/pillumina/ascend-sleuth/pull/420', platform: 'github', state: 'unknown', source: 'platform', checkedAt: '' },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const emptyQueue = Object.assign({}, SEDIMENT, {
+    drafts: [emptyDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 1, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+    history: [],
+  })
+  const t = await mount('recent', {
+    sediment: emptyQueue,
+    prCheckAllResult: { ok: true, checked: [] },
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  click(findButton(view, '查全部合入状态'))
+  view = await t.settle()
+  expect('批次查合入：没有待查 PR 也给提示', view.text.includes('没有待查的 PR'), view.text.slice(-200))
+}
+
+{
+  // 只读档位：单条查合入不写台账，回落成生成查证指令；按钮不能是禁用到底的死路。
+  const roDraft = Object.assign({}, SEDIMENT.drafts[1], {
+    state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    pr: { number: 418, url: 'https://github.com/pillumina/ascend-sleuth/pull/418', platform: 'github', state: 'open', source: 'platform', checkedAt: '' },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const roQueue = Object.assign({}, SEDIMENT, {
+    drafts: [roDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 1, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+    history: [],
+  })
+  const t = await mount('readonly', { sediment: roQueue, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-sed-row')[0])
+  view = await t.settle()
+  const checkBtn = findButton(view, '查合入状态')
+  expect('只读：单条查合入按钮可点且给原因', !!checkBtn && checkBtn.props.disabled === false
+    && checkBtn.props.title === '只读档位：生成查证指令', JSON.stringify(checkBtn && checkBtn.props))
+  const before = t.rpcCalls.length
+  click(checkBtn)
+  view = await t.settle()
+  expect('只读：单条查合入回落生成指令', byClass(view, 'scp-modal').length === 1 && view.text.includes('查合入状态的指令'))
+  expect('只读：单条查合入不写台账', t.rpcCalls.slice(before).every((item) => item.endpoint !== 'copilot-pr-target'))
+  expect('只读：指令弹层不重复流程句', (view.text.split('流程：按 skill 第 5 步执行').length - 1) === 1, view.text.slice(-300))
+}
+
+{
+  // 手动改状态遇到 CAS 冲突：刷新台账、弹层留着让读者重试，不静默。
+  const casDraft = Object.assign({}, SEDIMENT.drafts[1], {
+    state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    pr: { number: 422, url: 'https://github.com/pillumina/ascend-sleuth/pull/422', platform: 'github', state: 'open', source: 'platform', checkedAt: '' },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const casQueue = Object.assign({}, SEDIMENT, {
+    drafts: [casDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 1, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+    history: [],
+  })
+  const t = await mount('recent', {
+    sediment: casQueue,
+    prMarkResult: { ok: false, error: { code: 'E_CAS', message: '台账已变，请刷新后重试' } },
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-sed-row')[0])
+  view = await t.settle()
+  click(findButton(view, '手动改状态'))
+  view = await t.settle()
+  const before = t.rpcCalls.length
+  click(byClass(view, 'scp-pick').find((pick) => nodeText(pick).includes('已合入')))
+  view = await t.settle()
+  expect('手动改状态：CAS 冲突给原因', view.text.includes('台账已变'))
+  expect('手动改状态：CAS 后刷新台账', t.rpcCalls.slice(before).some((item) => item.endpoint === 'copilot-sediment'))
+  expect('手动改状态：CAS 后弹层留开', byClass(view, 'scp-modal').length === 1)
 }
 
 {
