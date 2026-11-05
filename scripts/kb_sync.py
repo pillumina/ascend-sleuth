@@ -11,8 +11,9 @@
      "target": {...}}
 
 配置文件缺失或读不出时用默认值（远端 origin、分支取当前分支上游（取不到则 main）、同步开），
-结果里 `config: "default"`。失败结果缓存在 `.local/kb-sync-state.json`：同一失败 10 分钟内不重试，
-避免每次开单都等满超时。
+结果里 `config: "default"`。失败结果缓存在 `.local/kb-sync-state.json`：自动同步在 10 分钟内
+不重试，避免每次开单都等满超时。手动同步加 `--force` 跳过窗口立即重试（面板「立即同步」走这条），
+否则刚失败过的网络在 10 分钟内点几次都只会拿回同一份缓存。
 
 自动合并只在这些条件同时成立时发生：当前分支 = 配置 `branch`、HEAD 是远端分支的祖先、
 `git status --porcelain -uno` 为空、无进行中 merge / rebase / cherry-pick。worktree 与
@@ -24,14 +25,16 @@ detached HEAD 不自动合并——合并会改当前检出的 HEAD，而 worktr
   python3 scripts/kb_sync.py --show          # 只读，不联网：配置、HEAD、本地远端 ref、上次核对
   python3 scripts/kb_sync.py --sync          # fetch；不合并
   python3 scripts/kb_sync.py --merge         # fetch，条件满足时试 ff-only
+  python3 scripts/kb_sync.py --merge --force # 跳过失败缓存立即重试（手动同步用）
   python3 scripts/kb_sync.py --show --json   # 所有子命令都可加 --json
   python3 scripts/kb_sync.py --sync --timeout 3 --root <检出>
 
 结果里的稳定取值（文档与测试可直接断言）：
   ok       true / false
-  reason   "" | timeout | no-remote | not-a-repo | lock | exit-<n> | offline | disabled |
-           dirty | branch-mismatch | not-ancestor | merge-in-progress | auto-merge-off |
-           not-ff | same-repo
+  reason   "" | timeout | network | no-remote | not-a-repo | lock | exit-<n> | offline |
+           disabled | dirty | branch-mismatch | not-ancestor | merge-in-progress |
+           auto-merge-off | not-ff | same-repo
+  fetch_error  fetch 失败时 git 原始输出的末行（已抹掉 URL 里的凭据）；成功时为空
   merge    ff-only | none
   config   file | default
   enabled  true / false（settings 的 sync.enabled；--show 也照实给）
@@ -62,6 +65,8 @@ SETTINGS_REL = Path(".local") / "settings.json"
 STATE_REL = Path(".local") / "kb-sync-state.json"
 DEFAULT_TIMEOUT = 10.0
 FAILURE_COOLDOWN_S = 600
+# fetch 失败时保留的 git 原始输出上限（字符）。状态文件与面板都读这一份。
+FETCH_ERROR_LIMIT = 300
 DEFAULT_REMOTE = "origin"
 DEFAULT_BRANCH = "main"
 SURFACE_KEYS = ("knowledge", "routing", "reference", "methodology", "other")
@@ -255,7 +260,7 @@ def save_settings(root: Path, data: dict, expect_sha=None) -> str:
 
 def load_state(root: Path) -> dict:
     empty = {"schema": SCHEMA_STATE, "last_ok_at": "", "attempted_at": "",
-             "reason": "", "remote": "", "branch": ""}
+             "reason": "", "remote": "", "branch": "", "fetch_error": ""}
     path = state_path(root)
     if not path.is_file():
         return empty
@@ -336,6 +341,63 @@ def run_git(args, cwd: Path, timeout: float):
         ["git", "-C", str(cwd), *args], capture_output=True, text=True,
         timeout=timeout, encoding="utf-8", errors="replace",
     )
+
+
+# fetch 失败要留给读者看的原始输出：git 的 fatal / error 行通常才带得上原因。
+_URL_USERINFO = re.compile(r"(https?://)[^/\s@]+@", re.I)
+_URL_QUERY_SECRET = re.compile(
+    r"([?&](?:token|access_token|private_token|password|key|secret|signature|sig)=)[^&\s'\"]+",
+    re.I)
+_FATAL_LINE = re.compile(r"^(?:fatal|error):", re.I)
+
+
+def redact_secrets(text: str) -> str:
+    """抹掉 URL 里的账号密码与查询串里的凭据。git 的报错会带远端地址。"""
+    out = _URL_USERINFO.sub(r"\1***@", str(text or ""))
+    return _URL_QUERY_SECRET.sub(r"\1***", out)
+
+
+def fetch_error_of(proc) -> str:
+    """git fetch 的失败输出 → 一行（脱敏、截断）。优先取最后一条 fatal / error 行。"""
+    lines = [line.strip()
+             for line in ((proc.stderr or "") + "\n" + (proc.stdout or "")).splitlines()
+             if line.strip()]
+    if not lines:
+        return ""
+    picked = lines[-1]
+    for line in reversed(lines):
+        if _FATAL_LINE.match(line):
+            picked = line
+            break
+    return redact_secrets(picked)[:FETCH_ERROR_LIMIT]
+
+
+_AUTH_ERROR = re.compile(
+    r"authentication failed|could not read username|terminal prompts disabled|"
+    r"permission denied \(publickey\)|returned error: 40[13]",
+    re.I)
+_NETWORK_ERROR = re.compile(
+    r"could not resolve|failed to connect|connection (?:refused|reset|timed out)|"
+    r"operation timed out|network is unreachable|no route to host|"
+    r"\bssl\b|\btls\b|gnutls|rpc failed|remote end hung up|early eof|"
+    r"recv failure|send failure|returned error: 5\d\d|proxy",
+    re.I)
+
+
+def fetch_failure_reason(proc) -> str:
+    """失败原因归类：ref 锁 → network → exit-<码>。
+
+    凭据类（401 / 403 / 认不出用户名）不归到 network：带读者往网络与代理上查会查错方向。
+    """
+    text = ((proc.stderr or "") + "\n" + (proc.stdout or "")).lower()
+    if "lock" in text:
+        return "lock"
+    code = proc.returncode if isinstance(proc.returncode, int) else 1
+    if _AUTH_ERROR.search(text):
+        return f"exit-{code}"
+    if _NETWORK_ERROR.search(text):
+        return "network"
+    return f"exit-{code}"
 
 
 def _git_text(root: Path, args, timeout: float):
@@ -451,6 +513,8 @@ def _empty_base(remote: str, branch: str, config: str, config_error: str = "") -
         "last_ok_at": "",
         "attempted_at": "",
         "last_reason": "",
+        "last_error": "",
+        "fetch_error": "",
         "config_error": config_error,
     }
 
@@ -479,6 +543,7 @@ def local_snapshot(root: Path, remote: str, branch: str, *, timeout: float = DEF
     result["last_ok_at"] = str(state.get("last_ok_at") or "")
     result["attempted_at"] = str(state.get("attempted_at") or "")
     result["last_reason"] = str(state.get("reason") or "")
+    result["last_error"] = str(state.get("fetch_error") or "")
     if _git_text(root, ["rev-parse", "--git-dir"], timeout) is None:
         result["reason"] = "not-a-repo"
         return finish(result)
@@ -512,8 +577,13 @@ def local_snapshot(root: Path, remote: str, branch: str, *, timeout: float = DEF
 # ---------------------------------------------------------------- 同步主流程
 
 def sync(root: Path, *, do_fetch: bool = True, do_merge: bool = False,
-         honor_auto_merge: bool = False, timeout: float = DEFAULT_TIMEOUT) -> dict:
-    """fetch（可选条件 ff-only 合并）→ 结果映射。任何失败都返回结果，不抛给调用方。"""
+         honor_auto_merge: bool = False, timeout: float = DEFAULT_TIMEOUT,
+         force: bool = False) -> dict:
+    """fetch（可选条件 ff-only 合并）→ 结果映射。任何失败都返回结果，不抛给调用方。
+
+    `force=True` 跳过失败缓存：手动同步要能立刻重试，否则刚失败过的网络在 10 分钟内
+    点几次都只会拿回同一份缓存。自动同步（建单、续接漂移检查）不加这个参数。
+    """
     root = Path(root)
     settings, config, config_error = load_settings(root)
     sync_cfg = settings["sync"]
@@ -523,10 +593,11 @@ def sync(root: Path, *, do_fetch: bool = True, do_merge: bool = False,
 
     if result["offline"] or not result["enabled"]:
         return result
-    if do_fetch and _cooling_down(load_state(root)):
+    if do_fetch and not force and _cooling_down(load_state(root)):
         state = load_state(root)
         result.update(ok=False, skipped=True, reason=str(state.get("reason") or "recent-failure"),
-                      attempted_at=str(state.get("attempted_at") or ""))
+                      attempted_at=str(state.get("attempted_at") or ""),
+                      fetch_error=str(state.get("fetch_error") or ""))
         return result
 
     if not do_fetch:
@@ -545,9 +616,8 @@ def sync(root: Path, *, do_fetch: bool = True, do_merge: bool = False,
     except (OSError, subprocess.SubprocessError):
         return _record_fetch_failure(root, result, "exit-1")
     if proc.returncode != 0:
-        err = ((proc.stderr or "") + (proc.stdout or "")).lower()
-        reason = "lock" if "lock" in err else f"exit-{proc.returncode}"
-        return _record_fetch_failure(root, result, reason)
+        return _record_fetch_failure(root, result,
+                                     fetch_failure_reason(proc), fetch_error_of(proc))
 
     _record_fetch_ok(root, remote, branch)
     fresh = local_snapshot(root, remote, branch, timeout=timeout, config=config,
@@ -633,13 +703,15 @@ def _merge_blocker(root: Path, branch: str, remote_ref: str, timeout: float) -> 
     return "" if proc.returncode == 0 else "not-ancestor"
 
 
-def _record_fetch_failure(root: Path, result: dict, reason: str) -> dict:
+def _record_fetch_failure(root: Path, result: dict, reason: str, error: str = "") -> dict:
     state = load_state(root)
     state.update({"schema": SCHEMA_STATE, "attempted_at": now_iso(), "reason": reason,
+                  "fetch_error": error,
                   "remote": result["remote"], "branch": result["branch"]})
     save_state(root, state)
     result.update(ok=False, reason=reason, skipped=False, last_reason=reason,
-                  attempted_at=state["attempted_at"], last_ok_at=str(state.get("last_ok_at") or ""))
+                  attempted_at=state["attempted_at"], last_ok_at=str(state.get("last_ok_at") or ""),
+                  fetch_error=error, last_error=error)
     return result
 
 
@@ -647,7 +719,7 @@ def _record_fetch_ok(root: Path, remote: str, branch: str) -> None:
     state = load_state(root)
     stamp = now_iso()
     state.update({"schema": SCHEMA_STATE, "attempted_at": stamp, "last_ok_at": stamp,
-                  "reason": "", "remote": remote, "branch": branch})
+                  "reason": "", "fetch_error": "", "remote": remote, "branch": branch})
     save_state(root, state)
 
 
@@ -655,6 +727,7 @@ def _record_fetch_ok(root: Path, remote: str, branch: str) -> None:
 
 FETCH_REASONS = {
     "timeout": "fetch 超时",
+    "network": "网络不通",
     "no-remote": "没有配置的远端",
     "not-a-repo": "不是 git 检出",
     "lock": "git 被锁",
@@ -721,6 +794,8 @@ def render_show(result: dict) -> str:
     last_reason = result.get("last_reason") or ""
     if attempted and last_reason:
         lines.append(f"  上次失败  {fetch_reason_text(last_reason)}（{attempted}）")
+        if result.get("last_error"):
+            lines.append(f"  git 原始输出  {result['last_error']}")
     return "\n".join(lines)
 
 
@@ -730,13 +805,19 @@ def render_sync(result: dict) -> str:
     if result.get("reason") == "disabled":
         return "sync.enabled 为 false，未联网。"
     if result.get("skipped"):
-        return (f"距上次失败不足 10 分钟，跳过本次 fetch"
+        text = (f"距上次失败不足 10 分钟，跳过本次 fetch"
                 f"（上次：{fetch_reason_text(result.get('reason'))}）。")
+        if result.get("fetch_error"):
+            text += f"\n  git 原始输出：{result['fetch_error']}"
+        return text + "\n  要立即重试：python3 scripts/kb_sync.py --merge --force"
     if result.get("reason") == "not-a-repo":
         return "不是 git 检出，未联网。"
     if not result.get("ok"):
-        return (f"同步未完成（{fetch_reason_text(result.get('reason'))}）："
+        text = (f"同步未完成（{fetch_reason_text(result.get('reason'))}）："
                 f"本机按 {result.get('local_rev')} 诊断。")
+        if result.get("fetch_error"):
+            text += f"\n  git 原始输出：{result['fetch_error']}"
+        return text
     remote_ref = f"{result['remote']}/{result['branch']}"
     lines = []
     if result.get("merge") == "ff-only":
@@ -776,6 +857,8 @@ def build_parser() -> argparse.ArgumentParser:
     mode.add_argument("--merge", action="store_const", const="merge", dest="mode",
                       help="fetch 后按条件试 ff-only")
     ap.add_argument("--json", action="store_true", help="输出 JSON")
+    ap.add_argument("--force", action="store_true",
+                    help="跳过失败缓存立即重试（手动同步用；自动同步仍按 10 分钟窗口）")
     ap.add_argument("--timeout", type=_positive_float, default=DEFAULT_TIMEOUT,
                     help=f"单条 git 命令的超时秒数（默认 {DEFAULT_TIMEOUT:g}）")
     ap.add_argument("--root", default=None, help="仓库根（默认脚本上一级）")
@@ -796,7 +879,8 @@ def main(argv=None) -> int:
                                 timeout=args.timeout, config=config,
                                 config_error=config_error, enabled=sync_cfg["enabled"])
     else:
-        result = sync(root, do_fetch=True, do_merge=(mode == "merge"), timeout=args.timeout)
+        result = sync(root, do_fetch=True, do_merge=(mode == "merge"), timeout=args.timeout,
+                      force=args.force)
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:

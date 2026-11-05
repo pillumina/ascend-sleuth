@@ -313,7 +313,7 @@ harness 侧的会话号（DSH 里是 `$DSH_SESSION_ID`）。**用途有两个**�
 | `kb_remote_rev` | 本机 `remote/branch` 引用的短 sha；fetch 未成功或本机没有这个引用时写 `unknown` |
 | `kb_behind` | `HEAD..远端分支` 的提交数，或 `unknown`；与 `kb_rev` 一起回答「读的哪版、差多少」 |
 | `kb_sync` | 同步结果：`ok` / `failed` / `off` / `skipped`（`ok` 只表示 fetch 成功，合没合看 `kb_merge`；`off` = 同步关闭、部署声明离线或建单时显式不联网；`skipped` = 失败缓存期内） |
-| `kb_sync_reason` | 没同步、同步失败或没合并的原因，如超时 / 无远端 / 非检出 / 撞 ref 锁（git fetch 并发更新引用时的锁冲突，按失败降级、不重试）/ 工作区有改动 / 分支不符；没有原因时留空 |
+| `kb_sync_reason` | 没同步、同步失败或没合并的原因，如超时 / 网络不通（含代理不可达）/ 无远端 / 非检出 / 撞 ref 锁（git fetch 并发更新引用时的锁冲突，按失败降级、不重试）/ 工作区有改动 / 分支不符；没有原因时留空 |
 | `kb_merge` | 这一单有没有动过检出：`ff-only`（做了快进合并）/ `none`（没有合并） |
 
 一次合并同时更新知识与流程：`knowledge/` 在运行时读取立即生效，`skills/` 要下一次会话才重新加载。自动合并只在这四条同时成立时发生：当前分支 = 配置 `branch`、HEAD 是远端分支的祖先、`git status --porcelain -uno` 为空、无进行中 merge / rebase / cherry-pick；worktree 与 detached HEAD 不自动合并。

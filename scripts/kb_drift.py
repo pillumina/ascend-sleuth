@@ -288,7 +288,7 @@ def main(argv=None) -> int:
         behind = fetch.get("behind")
         if not args.no_fetch and fetch.get("ok") and isinstance(behind, int) and behind > 0:
             print(f"  本机知识库落后 {behind} 个提交（未同步）；远端合入的 case 变化要同步后才会出现在上面。")
-            print("  同步：python3 scripts/kb_sync.py --merge")
+            print("  同步：python3 scripts/kb_sync.py --merge --force")
         if result["uncomparable"]:
             print(f"  不可比 {result['uncomparable']} 单（没有 kb_rev、版本不在本检出，"
                   f"或有 kb_remote_rev 但本机没有对应 ref）。")
