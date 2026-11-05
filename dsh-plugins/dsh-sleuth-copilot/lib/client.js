@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.16.1'
+    const PLUGIN_VERSION = '0.16.2'
     const POLL_MS = 10000
     const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
     const FILTER_KEYS = ['all', 'open', 'pending', 'sediment']
@@ -3971,6 +3971,23 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         return () => window.removeEventListener('keydown', onKey)
       }, [s.paletteOpen, view, sedSorted.length, sedSel, promptKind, targetOpen, cmdOpen])
 
+      // 详情抬头的三个钩子必须放在任何提前 return 之前：总览关着时 Palette 提前返回，打开后
+      // 又多出这三个钩子，React 会报「hook 数量与上次渲染不一致」，整个 shell.overlay 槽位崩掉，
+      // 表现就是点「诊断总览」没有反应。依赖值都从已声明的 state 现算，不依赖后面才赋值的局部变量。
+      const ledeRow = filtered[selected] || null
+      const ledeText = ledeRow ? (String(ledeRow.summary || '').trim() || caseTitle(ledeRow)) : ''
+      const ledeOpen = Boolean(ledeRow) && ledeOpenId === ledeRow.sessionId
+      const ledeRef = React.useRef(null)
+      const [ledeOverflow, setLedeOverflow] = React.useState(false)
+      React.useEffect(() => {
+        const el = ledeRef.current
+        if (!el || typeof el.scrollHeight !== 'number' || !(el.clientHeight > 0)) {
+          setLedeOverflow(Boolean(ledeText) && ledeText.length > LEDE_TOGGLE_MIN)
+          return
+        }
+        setLedeOverflow(ledeOpen || el.scrollHeight > el.clientHeight + 1)
+      }, [ledeRow ? ledeRow.sessionId : '', ledeText, ledeOpen])
+
       if (!s.paletteOpen) return null
       if (s.data && s.data.ok === false && s.data.code === 'E_NO_ROOT') return null
 
@@ -4272,23 +4289,6 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         }
         return h('div', { key: 'sediment-progress' }, children)
       })()
-
-      // 详情抬头的人读背景：整段 summary，超长时收起成四行。展开状态按单号记：
-      // 切到别单是收起，切回原单仍是展开；不把展开态带到别的单上。
-      const ledeText = row ? (String(row.summary || '').trim() || caseTitle(row)) : ''
-      const ledeOpen = Boolean(row) && ledeOpenId === row.sessionId
-      // 「展开全文」按实际溢出判断：读 scrollHeight / clientHeight。替身渲染没有布局引擎，
-      // 退回字数近似；展开后内容不再溢出，但按钮要留着才收得回去。
-      const ledeRef = React.useRef(null)
-      const [ledeOverflow, setLedeOverflow] = React.useState(false)
-      React.useEffect(() => {
-        const el = ledeRef.current
-        if (!el || typeof el.scrollHeight !== 'number' || !(el.clientHeight > 0)) {
-          setLedeOverflow(Boolean(ledeText) && ledeText.length > LEDE_TOGGLE_MIN)
-          return
-        }
-        setLedeOverflow(ledeOpen || el.scrollHeight > el.clientHeight + 1)
-      }, [row ? row.sessionId : '', ledeText, ledeOpen])
 
       const side = row
         ? menuOpen
