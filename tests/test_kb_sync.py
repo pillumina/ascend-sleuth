@@ -192,6 +192,7 @@ class FetchTest(ConfiguredCase):
         self.assertFalse(doc["ok"])
         self.assertEqual(doc["reason"], "timeout")
         self.assertFalse(doc["skipped"])
+        self.assertEqual(doc["fetch_error"], "")
         state = json.loads((self.repo / ".local" / "kb-sync-state.json").read_text(encoding="utf-8"))
         self.assertEqual(state["reason"], "timeout")
         self.assertTrue(state["attempted_at"])
@@ -448,6 +449,64 @@ class FetchFailureDetailTest(ConfiguredCase):
         _code, doc = self.run_cli("--show", "--json")
         self.assertEqual(doc["last_reason"], "network")
         self.assertIn("could not resolve host", doc["last_error"])
+
+    def test_proxy_and_tls_lines_count_as_network(self):
+        # 代理与 TLS 的常见文案：只认 "connection refused" 一类会漏掉这些。
+        samples = {
+            "tls": "fatal: unable to access 'https://github.com/org/repo.git/': "
+                   "OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to github.com:443",
+            "empty": "fatal: unable to access 'https://github.com/org/repo.git/': "
+                     "Empty reply from server",
+            "tunnel": "fatal: unable to access 'https://github.com/org/repo.git/': "
+                      "CONNECT tunnel failed, response 502",
+        }
+        for name, stderr in samples.items():
+            with self.subTest(name=name):
+                with self.fail_fetch(stderr):
+                    _code, doc = self.run_cli("--sync", "--json", "--force")
+                self.assertEqual(doc["reason"], "network", doc["fetch_error"])
+
+    def test_lock_needs_lock_wording(self):
+        # "blocked" 里的 lock 字样不是 ref 锁；真锁冲突仍归 lock。
+        with self.fail_fetch("fatal: request blocked by server policy\n"):
+            _code, doc = self.run_cli("--sync", "--json", "--force")
+        self.assertEqual(doc["reason"], "exit-128")
+        with self.fail_fetch("fatal: cannot lock ref 'refs/remotes/origin/main': "
+                             "Unable to create '.../main.lock': File exists.\n"):
+            _code, doc = self.run_cli("--sync", "--json", "--force")
+        self.assertEqual(doc["reason"], "lock")
+
+    def test_redaction_covers_ssh_and_oauth(self):
+        stderr = ("fatal: unable to access "
+                  "'ssh://git:token123@example.com/org/repo.git?oauth_token=zzz9': "
+                  "Could not resolve hostname\n")
+        with self.fail_fetch(stderr):
+            _code, doc = self.run_cli("--sync", "--json", "--force")
+        self.assertNotIn("token123", doc["fetch_error"])
+        self.assertNotIn("zzz9", doc["fetch_error"])
+        self.assertIn("***@", doc["fetch_error"])
+
+    def test_redaction_handles_at_in_password(self):
+        stderr = ("fatal: unable to access 'https://user:pa@ss@example.com/repo.git': "
+                  "Could not resolve host\n")
+        with self.fail_fetch(stderr):
+            _code, doc = self.run_cli("--sync", "--json", "--force")
+        self.assertNotIn("pa@ss", doc["fetch_error"])
+        self.assertIn("***@", doc["fetch_error"])
+
+    def test_timeout_keeps_partial_stderr(self):
+        real = kb_sync.run_git
+
+        def fake(args, cwd, timeout):
+            if "fetch" in args:
+                raise subprocess.TimeoutExpired("git", timeout,
+                                                stderr="warning: remote is slow\n")
+            return real(args, cwd, timeout)
+
+        with mock.patch.object(kb_sync, "run_git", side_effect=fake):
+            _code, doc = self.run_cli("--sync", "--json", "--force")
+        self.assertEqual(doc["reason"], "timeout")
+        self.assertIn("remote is slow", doc["fetch_error"])
 
 
 class MergeTest(ConfiguredCase):

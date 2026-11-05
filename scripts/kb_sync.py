@@ -34,7 +34,8 @@ detached HEAD 不自动合并——合并会改当前检出的 HEAD，而 worktr
   reason   "" | timeout | network | no-remote | not-a-repo | lock | exit-<n> | offline |
            disabled | dirty | branch-mismatch | not-ancestor | merge-in-progress |
            auto-merge-off | not-ff | same-repo
-  fetch_error  fetch 失败时 git 原始输出的末行（已抹掉 URL 里的凭据）；成功时为空
+  fetch_error  本次 fetch 失败时 git 原始输出的末行（已抹掉 URL 里的凭据）；成功与 --show 时为空
+  last_error   --show 时上次失败留下的同一条原文；没有失败记录时为空
   merge    ff-only | none
   config   file | default
   enabled  true / false（settings 的 sync.enabled；--show 也照实给）
@@ -344,9 +345,11 @@ def run_git(args, cwd: Path, timeout: float):
 
 
 # fetch 失败要留给读者看的原始输出：git 的 fatal / error 行通常才带得上原因。
-_URL_USERINFO = re.compile(r"(https?://)[^/\s@]+@", re.I)
+# 凭据覆盖：任意 scheme 的 URL userinfo（含密码里带 @）与常见 token 查询参数。
+_URL_USERINFO = re.compile(r"([A-Za-z][A-Za-z0-9+.-]*://)[^/\s]*@")
 _URL_QUERY_SECRET = re.compile(
-    r"([?&](?:token|access_token|private_token|password|key|secret|signature|sig)=)[^&\s'\"]+",
+    r"([?&](?:token|access_token|private_token|oauth_token|api_key|apikey|secret_key|"
+    r"password|key|secret|signature|sig)=)[^&\s'\"]+",
     re.I)
 _FATAL_LINE = re.compile(r"^(?:fatal|error):", re.I)
 
@@ -357,11 +360,9 @@ def redact_secrets(text: str) -> str:
     return _URL_QUERY_SECRET.sub(r"\1***", out)
 
 
-def fetch_error_of(proc) -> str:
-    """git fetch 的失败输出 → 一行（脱敏、截断）。优先取最后一条 fatal / error 行。"""
-    lines = [line.strip()
-             for line in ((proc.stderr or "") + "\n" + (proc.stdout or "")).splitlines()
-             if line.strip()]
+def _last_fatal_line(text: str) -> str:
+    """多行输出 → 一行：优先取最后一条 fatal / error 行，再脱敏与截断。"""
+    lines = [line.strip() for line in str(text or "").splitlines() if line.strip()]
     if not lines:
         return ""
     picked = lines[-1]
@@ -372,15 +373,36 @@ def fetch_error_of(proc) -> str:
     return redact_secrets(picked)[:FETCH_ERROR_LIMIT]
 
 
+def fetch_error_of(proc) -> str:
+    """git fetch 的失败输出 → 一行（脱敏、截断）。"""
+    return _last_fatal_line((proc.stderr or "") + "\n" + (proc.stdout or ""))
+
+
+def timeout_error_of(exc) -> str:
+    """超时被 kill 的 git 也可能已经吐出错误行；有就一起留存。"""
+    text = getattr(exc, "stderr", None) or getattr(exc, "output", None) or ""
+    if isinstance(text, bytes):
+        text = text.decode("utf-8", errors="replace")
+    return _last_fatal_line(text)
+
+
 _AUTH_ERROR = re.compile(
     r"authentication failed|could not read username|terminal prompts disabled|"
     r"permission denied \(publickey\)|returned error: 40[13]",
     re.I)
+# 网络/代理/TLS 一类：git 与 libcurl 的常见文案都收进来，别只认前三条。
 _NETWORK_ERROR = re.compile(
     r"could not resolve|failed to connect|connection (?:refused|reset|timed out)|"
     r"operation timed out|network is unreachable|no route to host|"
-    r"\bssl\b|\btls\b|gnutls|rpc failed|remote end hung up|early eof|"
+    r"ssl_connect|ssl_error|ssl routines|certificate (?:verify|problem)|"
+    r"self[- ]signed|handshake|gnutls|empty reply from server|tunnel failed|"
+    r"\bssl\b|\btls\b|rpc failed|remote end hung up|early eof|"
     r"recv failure|send failure|returned error: 5\d\d|proxy",
+    re.I)
+# ref 锁：只认 git 的锁冲突文案，别把 "blocked" 里的 lock 字样当成锁。
+_LOCK_ERROR = re.compile(
+    r"cannot lock|unable to (?:create|lock)|lock(?:ed|ing)? (?:ref|file)|\.lock\b|"
+    r"reference.*locked|ref lock",
     re.I)
 
 
@@ -389,8 +411,8 @@ def fetch_failure_reason(proc) -> str:
 
     凭据类（401 / 403 / 认不出用户名）不归到 network：带读者往网络与代理上查会查错方向。
     """
-    text = ((proc.stderr or "") + "\n" + (proc.stdout or "")).lower()
-    if "lock" in text:
+    text = (proc.stderr or "") + "\n" + (proc.stdout or "")
+    if _LOCK_ERROR.search(text):
         return "lock"
     code = proc.returncode if isinstance(proc.returncode, int) else 1
     if _AUTH_ERROR.search(text):
@@ -611,8 +633,8 @@ def sync(root: Path, *, do_fetch: bool = True, do_merge: bool = False,
 
     try:
         proc = run_git(["fetch", "--no-tags", remote, branch], root, timeout)
-    except subprocess.TimeoutExpired:
-        return _record_fetch_failure(root, result, "timeout")
+    except subprocess.TimeoutExpired as exc:
+        return _record_fetch_failure(root, result, "timeout", timeout_error_of(exc))
     except (OSError, subprocess.SubprocessError):
         return _record_fetch_failure(root, result, "exit-1")
     if proc.returncode != 0:
@@ -809,7 +831,7 @@ def render_sync(result: dict) -> str:
                 f"（上次：{fetch_reason_text(result.get('reason'))}）。")
         if result.get("fetch_error"):
             text += f"\n  git 原始输出：{result['fetch_error']}"
-        return text + "\n  要立即重试：python3 scripts/kb_sync.py --merge --force"
+        return text + "\n  要立即重试加 --force（例如：python3 scripts/kb_sync.py --merge --force）"
     if result.get("reason") == "not-a-repo":
         return "不是 git 检出，未联网。"
     if not result.get("ok"):

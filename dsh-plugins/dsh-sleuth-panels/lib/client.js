@@ -2,7 +2,7 @@
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
 //   dsh-plugins/ascend-panel/panel-client.js  (sha256:21ed5c64a37b)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:f684735469ce)
-//   dsh-plugins/sleuth-console/console-client.js  (sha256:22366a3aec13)
+//   dsh-plugins/sleuth-console/console-client.js  (sha256:19c89326eaac)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
 // 面板源码是动态插件方言（靠沙箱提供的 host 通信）；这里原文嵌入页面产物，并补一层适配：
@@ -6358,7 +6358,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       id: 'sleuth-console',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/sleuth-console/console-client.js (sha256:22366a3aec13) 原文开始 ----
+// ---- dsh-plugins/sleuth-console/console-client.js (sha256:19c89326eaac) 原文开始 ----
 // sleuth-console/console-client.js —— 常驻包里的整页「Ascend Sleuth」（client-only）
 //
 // 为什么单有这一页：指标与自演进读的是**全库**（`metrics/`、`proposals/`、`knowledge/`），
@@ -6547,7 +6547,7 @@ return {
       if (code === 'E_PYTHON') return '装好 Python 3，并确保在 PATH 里。'
       if (code === 'E_TIMEOUT') return '检查网络与 git 凭据后重试。'
       if (code === 'E_NETWORK') return '检查网络与代理；修好后点「立即同步」重试。'
-      if (code === 'E_FETCH') return '下方是 git 的原始输出；修好后点「立即同步」重试。'
+      if (code === 'E_FETCH') return '检查网络与 git 凭据；修好后点「立即同步」重试。'
       if (code === 'E_SKIPPED') return '过一会儿再点「立即同步」。'
       if (code === 'E_NO_REMOTE') return '在仓库根目录执行 git remote add <名字> <地址>，再刷新本页。'
       if (code === 'E_DIRTY') return '先提交或 git stash，再点「立即同步」。'

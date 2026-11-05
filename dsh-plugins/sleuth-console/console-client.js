@@ -186,7 +186,7 @@ return {
       if (code === 'E_PYTHON') return '装好 Python 3，并确保在 PATH 里。'
       if (code === 'E_TIMEOUT') return '检查网络与 git 凭据后重试。'
       if (code === 'E_NETWORK') return '检查网络与代理；修好后点「立即同步」重试。'
-      if (code === 'E_FETCH') return '下方是 git 的原始输出；修好后点「立即同步」重试。'
+      if (code === 'E_FETCH') return '检查网络与 git 凭据；修好后点「立即同步」重试。'
       if (code === 'E_SKIPPED') return '过一会儿再点「立即同步」。'
       if (code === 'E_NO_REMOTE') return '在仓库根目录执行 git remote add <名字> <地址>，再刷新本页。'
       if (code === 'E_DIRTY') return '先提交或 git stash，再点「立即同步」。'
