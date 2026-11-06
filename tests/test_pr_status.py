@@ -63,6 +63,18 @@ def run_cli(*args):
     return code, json.loads(out.getvalue())
 
 
+def run_cli_lines(*args):
+    """跑一次 CLI，返回原始 stdout（--json-lines 是多行输出，不能整份 json.loads）。"""
+    out = io.StringIO()
+    with redirect_stdout(out):
+        code = pr.main(list(args))
+    return code, out.getvalue()
+
+
+def parse_json_lines(text):
+    return [json.loads(line) for line in text.splitlines() if line.strip()]
+
+
 def clean_env(**overrides):
     env = {key: value for key, value in os.environ.items() if key != "GITCODE_TOKEN"}
     env.update(overrides)
@@ -742,6 +754,212 @@ class CheckAllParallelTest(RepoCase):
         self.assertEqual([item["draft"] for item in payload["checked"]], sorted(keys))
         # 顺序断言之外确认确实并发过，避免测试退化成串行也通过。
         self.assertGreater(state["peak"], 1)
+
+
+# ---------------------------------------------------------------- check-all 逐条进度
+
+class CheckAllJsonLinesTest(RepoCase):
+    """--json-lines 的契约：先 row 后 done；行序是完成序；done 与 --json 同形。"""
+
+    def _seed(self, drafts):
+        data = pr.load_ledger(self.repo)
+        data["prs"] = {
+            key: {"platform": "unknown", "repo": "o/r", "number": index + 1,
+                  "url": f"https://example.invalid/o/r/pulls/{index + 1}",
+                  "state": state, "source": "ledger",
+                  "created_at": "2026-11-01T10:00:00+08:00"}
+            for index, (key, state) in enumerate(drafts.items())
+        }
+        pr.save_ledger(self.repo, data)
+
+    def _rows_and_done(self, text):
+        lines = parse_json_lines(text)
+        self.assertTrue(lines, text)
+        rows = [line for line in lines if line.get("type") == "row"]
+        done = lines[-1]
+        self.assertEqual(done.get("type"), "done", lines)
+        self.assertEqual(lines[:-1], rows)  # row 全在前面，done 是最后一行
+        return rows, done
+
+    def test_emits_rows_then_done(self):
+        self._seed({"draft-a": "open", "draft-b": "unknown", "draft-c": "merged"})
+        code, text = run_cli_lines("--root", str(self.repo), "--check-all", "--json-lines")
+        self.assertEqual(code, 0, text)
+        rows, done = self._rows_and_done(text)
+        self.assertEqual([row["draft"] for row in rows], ["draft-a", "draft-b"])
+        self.assertFalse(done["ok"])
+        self.assertEqual(done["error"]["code"], "E_CHECK_PARTIAL")
+        # 失败行与 done.checked 一致：错误码、状态、draft 都对得上。
+        checked = {item["draft"]: item for item in done["checked"]}
+        self.assertEqual(set(checked), {"draft-a", "draft-b"})
+        for row in rows:
+            self.assertFalse(row["ok"])
+            self.assertEqual(row["error"], "E_NO_ADAPTER")
+            self.assertTrue(row["checked_at"])
+            self.assertTrue(row["message"])
+            self.assertEqual(checked[row["draft"]]["error"], row["error"])
+            self.assertEqual(checked[row["draft"]]["state"], row["state"])
+        # 终态（merged）不查。
+        self.assertNotIn("draft-c", checked)
+
+    def test_done_all_ok_carries_ledger_and_sha(self):
+        self._seed({"draft-a": "open"})
+
+        def fake_run_check(ledger, key, adapters):
+            entry = dict(ledger["prs"][key])
+            entry.update({"state": "open", "source": "platform",
+                          "checked_at": "2026-11-01T10:00:00+08:00"})
+            return entry, None, ""
+
+        with mock.patch.object(pr, "_run_check", side_effect=fake_run_check):
+            code, text = run_cli_lines("--root", str(self.repo), "--check-all", "--json-lines")
+        self.assertEqual(code, 0, text)
+        rows, done = self._rows_and_done(text)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0]["ok"])
+        self.assertNotIn("error", rows[0])
+        self.assertTrue(done["ok"])
+        self.assertRegex(done["sha256"], r"^[0-9a-f]{64}$")
+        self.assertEqual(done["ledger"]["prs"]["draft-a"]["state"], "open")
+
+    def test_rows_arrive_in_completion_order_checked_stays_sorted(self):
+        keys = ["draft-a", "draft-b", "draft-c", "draft-d"]
+        self._seed({key: "open" for key in keys})
+        # 提交序 = 台账键序，完成序相反：row 按完成序，done.checked 按键序。
+        delays = {"draft-a": 0.30, "draft-b": 0.20, "draft-c": 0.10, "draft-d": 0.0}
+
+        def fake_run_check(ledger, key, adapters):
+            time.sleep(delays[key])
+            entry = dict(ledger["prs"][key])
+            entry.update({"state": "open", "source": "platform",
+                          "checked_at": "2026-11-01T10:00:00+08:00"})
+            return entry, None, ""
+
+        with mock.patch.object(pr, "_run_check", side_effect=fake_run_check):
+            code, text = run_cli_lines("--root", str(self.repo), "--check-all", "--json-lines")
+        self.assertEqual(code, 0, text)
+        rows, done = self._rows_and_done(text)
+        self.assertEqual([row["draft"] for row in rows],
+                         ["draft-d", "draft-c", "draft-b", "draft-a"])
+        self.assertEqual([item["draft"] for item in done["checked"]], keys)
+
+    def test_rows_are_flushed_as_each_draft_finishes(self):
+        self._seed({"draft-a": "open", "draft-b": "open"})
+
+        class FlushRecorder(io.StringIO):
+            def __init__(self):
+                super().__init__()
+                self.flushes = 0
+
+            def flush(self):
+                self.flushes += 1
+                super().flush()
+
+        recorder = FlushRecorder()
+        with redirect_stdout(recorder):
+            code = pr.main(["--root", str(self.repo), "--check-all", "--json-lines"])
+        self.assertEqual(code, 0)
+        lines = parse_json_lines(recorder.getvalue())
+        self.assertGreaterEqual(recorder.flushes, len(lines))  # 每行打完都 flush 过
+
+    def test_rows_are_written_before_ledger_save(self):
+        # 逐条进度必须在落盘之前就写出去；若把 row 缓存到 save_ledger 之后统一打印，
+        # 面板仍然要等整批——这条用例在 save_ledger 调用的一刻检查 stdout。
+        self._seed({"draft-a": "open", "draft-b": "open"})
+        out = io.StringIO()
+        seen = {}
+        real_save = pr.save_ledger
+
+        def checking_save(root, data, expect_sha=None):
+            seen["stdout"] = out.getvalue()
+            return real_save(root, data, expect_sha=expect_sha)
+
+        with redirect_stdout(out), mock.patch.object(pr, "save_ledger", side_effect=checking_save):
+            code = pr.main(["--root", str(self.repo), "--check-all", "--json-lines"])
+        self.assertEqual(code, 0)
+        at_save = [json.loads(line) for line in seen.get("stdout", "").splitlines() if line.strip()]
+        self.assertEqual([line.get("type") for line in at_save], ["row", "row"],
+                         seen.get("stdout", ""))
+        self.assertEqual(sorted(line["draft"] for line in at_save), ["draft-a", "draft-b"])
+        self.assertNotIn("done", [line.get("type") for line in at_save])
+
+    def test_cas_failure_ends_with_single_done_line(self):
+        self._seed({"draft-a": "open"})
+        conflict = pr.CasConflict("a" * 64, "b" * 64)
+        with mock.patch.object(pr, "save_ledger", side_effect=conflict):
+            code, text = run_cli_lines("--root", str(self.repo), "--check-all", "--json-lines")
+        self.assertEqual(code, 0, text)
+        lines = parse_json_lines(text)
+        self.assertEqual(len(text.splitlines()), 2, text)  # 一行 row + 一行 done
+        rows, done = self._rows_and_done(text)
+        self.assertEqual([row["draft"] for row in rows], ["draft-a"])
+        self.assertFalse(done["ok"])
+        self.assertEqual(done["error"]["code"], "E_CAS")
+        self.assertTrue(done["error"]["message"])
+        self.assertEqual([item["draft"] for item in done["checked"]], ["draft-a"])
+
+    def test_ledger_failure_ends_with_single_done_line(self):
+        self._seed({"draft-a": "open"})
+        with mock.patch.object(pr, "save_ledger", side_effect=pr.LedgerError("写锁不可用")):
+            code, text = run_cli_lines("--root", str(self.repo), "--check-all", "--json-lines")
+        self.assertEqual(code, 0, text)
+        self.assertEqual(len(text.splitlines()), 2, text)
+        _rows, done = self._rows_and_done(text)
+        self.assertFalse(done["ok"])
+        self.assertEqual(done["error"]["code"], "E_LEDGER")
+        self.assertEqual(done["error"]["message"], "写锁不可用")
+        self.assertEqual([item["draft"] for item in done["checked"]], ["draft-a"])
+
+    def test_unexpected_error_after_rows_is_single_line_json(self):
+        # 已打 row 之后抛未预期异常：最后一行的错误 JSON 必须是一行 compact JSON，
+        # 不能是多行缩进 JSON（面板逐行扫不出来，会退化成 E_OUTPUT 并把裸 JSON 拼进提示）。
+        self._seed({"draft-a": "open", "draft-b": "open"})
+        row_printed = threading.Event()
+        real_print = pr._print_json_line
+        real_run = pr._run_check
+
+        def counting_print(payload):
+            if payload.get("type") == "row":
+                row_printed.set()
+            real_print(payload)
+
+        def flaky(ledger, key, adapters):
+            if key == "draft-b":
+                row_printed.wait(2)
+                raise RuntimeError("boom")
+            return real_run(ledger, key, adapters)
+
+        with mock.patch.object(pr, "_print_json_line", side_effect=counting_print), \
+                mock.patch.object(pr, "_run_check", side_effect=flaky):
+            code, text = run_cli_lines("--root", str(self.repo), "--check-all", "--json-lines")
+        self.assertEqual(code, 1, text)
+        lines = parse_json_lines(text)  # 每行都能单独解析
+        self.assertEqual(len(text.splitlines()), 2, text)
+        self.assertEqual(lines[0].get("type"), "row")
+        self.assertEqual(lines[0]["draft"], "draft-a")
+        last = lines[-1]
+        self.assertFalse(last["ok"])
+        self.assertEqual(last["error"]["code"], "E_INTERNAL")
+        self.assertIn("RuntimeError: boom", last["error"]["message"])
+
+    def test_json_lines_and_json_are_mutually_exclusive(self):
+        code, payload = run_cli("--root", str(self.repo), "--check-all",
+                                "--json", "--json-lines")
+        self.assertEqual(code, 2, payload)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error"]["code"], "E_ARGS")
+
+    def test_json_lines_requires_check_all(self):
+        code, payload = run_cli("--root", str(self.repo), "--json-lines")
+        self.assertEqual(code, 2, payload)
+        self.assertEqual(payload["error"]["code"], "E_ARGS")
+
+    def test_default_check_all_still_single_json_document(self):
+        self._seed({"draft-a": "open"})
+        code, payload = run_cli("--root", str(self.repo), "--check-all")
+        self.assertEqual(code, 0, payload)
+        self.assertNotIn("type", payload)
+        self.assertEqual([item["draft"] for item in payload["checked"]], ["draft-a"])
 
 
 if __name__ == "__main__":

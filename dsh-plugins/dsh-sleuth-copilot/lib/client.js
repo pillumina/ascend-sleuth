@@ -20,8 +20,12 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.16.5'
+    const PLUGIN_VERSION = '0.16.6'
     const POLL_MS = 10000
+    // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
+    // 不打断整批（最终结果仍以主 RPC 为准）。
+    const PR_PROGRESS_POLL_MS = 500
+    const PR_PROGRESS_MAX_FAILURES = 3
     const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
     const FILTER_KEYS = ['all', 'open', 'pending', 'sediment']
     // PR 台账允许的状态（与 scripts/pr_status.py 的 STATES 一致）。
@@ -321,6 +325,8 @@ window.__ModuleLoader__.load({
       'sediment.manualSub': '平台查不到时按人工确认写 PR 台账，来源记为「手动确认」；下次查合入仍以平台结果为准。',
       'sediment.manualDone': 'PR 状态已手动记为：{state}',
       'sediment.primary.checkAll': '查全部合入状态',
+      'sediment.checking': '查合入中',
+      'sediment.checkingProgress': '查合入中 {n}/{m}',
       'sediment.pushTarget': '推送目标 {label}',
       'sediment.checkError.E_NO_ADAPTER': '没有适配器',
       'sediment.checkError.E_NO_AUTH': '没配 token',
@@ -715,6 +721,8 @@ window.__ModuleLoader__.load({
       'sediment.manualSub': 'Records a human-confirmed state when the platform check fails. The source is stored as manual; the next check still uses the platform.',
       'sediment.manualDone': 'PR state recorded manually as {state}',
       'sediment.primary.checkAll': 'Check all merge states',
+      'sediment.checking': 'Checking',
+      'sediment.checkingProgress': 'Checking merge states {n}/{m}',
       'sediment.pushTarget': 'Push target {label}',
       'sediment.checkError.E_NO_ADAPTER': 'no adapter',
       'sediment.checkError.E_NO_AUTH': 'no token',
@@ -1346,6 +1354,11 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       sedimentSelectKey: '',
       sediment: { phase: 'idle', data: null, message: '', at: 0 },
       sedimentSeq: 0,
+      // 查合入的逐条进度：active 时把已到达的行就地写进 sediment.drafts；
+      // 整批结束 refreshSediment(true) 会覆盖为权威快照，然后清空。
+      checkRun: null,
+      // 这一轮查合入的停轮询句柄：切会话 / 插件卸载时要能打断在飞的轮询。
+      checkStop: null,
       version: 0,
       listeners: new Set(),
       timer: null,
@@ -1451,6 +1464,70 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       }
     }
 
+    // 查合入逐条进度：批次开始时建一条记录（记下本轮要查的草稿与总数），轮询到的 row
+    // 就地写进 sediment.drafts 对应草稿的 pr.state/pr.checkedAt，并 emit 让行立即重画。
+    // 整批结束会 refreshSediment(true) 覆盖为权威快照，所以这里只做乐观更新。
+    function beginCheckRun(drafts) {
+      const targets = {}
+      let total = 0
+      const list = Array.isArray(drafts) ? drafts : []
+      // 与 pr_status.py 的 CHECKABLE 一致：只有待合入 / 未确认会被查，终态不查。
+      list.forEach((draft) => {
+        if (!draft || !draft.key || !draft.pr) return
+        const state = String(draft.pr.state || '')
+        if (state !== 'open' && state !== 'unknown') return
+        targets[draft.key] = true
+        total += 1
+      })
+      store.checkRun = { active: true, seen: 0, total, targets, states: {} }
+      emit()
+    }
+
+    function applyCheckProgress(rows, run) {
+      // run 是本轮句柄：切会话 / 新一轮开始后，在飞的旧轮询不能再 patch 已刷新的快照。
+      if (!run || run !== store.checkRun || !run.active || !Array.isArray(rows) || !rows.length) return
+      const data = store.sediment && store.sediment.data
+      const drafts = data && Array.isArray(data.drafts) ? data.drafts : []
+      if (!drafts.length) return
+      let patched = false
+      const nextDrafts = drafts.map((draft) => {
+        if (!draft || !draft.key) return draft
+        const row = rows.find((item) => item && item.draft === draft.key)
+        if (!row) return draft
+        const known = run.states[draft.key]
+        if (known && known.state === String(row.state || '') && known.ok === (row.ok !== false)
+          && known.error === String(row.error || '')) return draft
+        // 分子只数本轮名单里的草稿，避免出现 n > m。
+        if (!known && run.targets && run.targets[draft.key] === true) run.seen += 1
+        run.states[draft.key] = {
+          ok: row.ok !== false,
+          state: String(row.state || 'unknown'),
+          error: row.error ? String(row.error) : '',
+          message: row.message ? String(row.message) : '',
+          checkedAt: String(row.checked_at || ''),
+        }
+        patched = true
+        const pr = draft.pr || {}
+        return Object.assign({}, draft, {
+          pr: Object.assign({}, pr, {
+            state: String(row.state || pr.state || 'unknown'),
+            checkedAt: String(row.checked_at || pr.checkedAt || ''),
+            ...(row.ok !== false ? { source: 'platform' } : {}),
+          }),
+        })
+      })
+      if (!patched) return
+      store.sediment = Object.assign({}, store.sediment, {
+        data: Object.assign({}, data, { drafts: nextDrafts }),
+      })
+      emit()
+    }
+
+    function endCheckRun() {
+      store.checkRun = null
+      emit()
+    }
+
     function setPaletteView(view) {
       const next = view === 'sediment' ? 'sediment' : 'diagnosis'
       if (store.paletteView === next) return
@@ -1485,6 +1562,11 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         window.removeEventListener('focus', store.onFocus)
         store.onFocus = null
       }
+      // 插件卸载时在飞的查合入轮询也要停，否则它还会继续发进度请求。
+      if (typeof store.checkStop === 'function') {
+        store.checkStop()
+        store.checkStop = null
+      }
     }
 
     function ensureSession(sessionId, cwd) {
@@ -1499,6 +1581,12 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         store.staleMessage = ''
         store.sediment = { phase: 'idle', data: null, message: '', at: 0 }
         store.sedimentSeq += 1
+        // 切会话：上一轮的轮询与进度都不属于这一单，先停再清。
+        if (typeof store.checkStop === 'function') {
+          store.checkStop()
+          store.checkStop = null
+        }
+        store.checkRun = null
         emit()
         refresh(true)
       } else if (!store.data && store.phase !== 'loading') {
@@ -3790,6 +3878,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const sedDoc = s.sediment && s.sediment.data && s.sediment.data.ok !== false ? s.sediment.data : null
       const sedPhase = s.sediment ? s.sediment.phase : 'idle'
       const sedDrafts = sedDoc && Array.isArray(sedDoc.drafts) ? sedDoc.drafts : []
+      // 查合入的逐条进度（见 beginCheckRun）：行内状态与批次条 n/m 都读这一份。
+      const checkRun = s.checkRun
       const sedCounts = sedDoc && sedDoc.counts ? sedDoc.counts : {}
       const sedTargetDoc = sedDoc && sedDoc.target ? sedDoc.target : null
       const sedTarget = sedTargetDoc && sedTargetDoc.target ? sedTargetDoc.target : sedTargetDoc
@@ -4830,10 +4920,66 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         if (!canWrite) { flash(tr('write.disabled')); return }
         if (checkBusy) return
         setCheckBusy('__all__')
+        beginCheckRun(sedDrafts)
+        const run = store.checkRun
+        const runSession = store.sessionId
+        const runCwd = store.cwd
+        let timer = 0
+        let stopped = false
+        let polling = false
+        let failures = 0
+        const stopPoll = () => {
+          if (stopped) return
+          stopped = true
+          if (timer) {
+            clearInterval(timer)
+            timer = 0
+          }
+          if (store.checkStop === stopPoll) store.checkStop = null
+        }
+        // 切会话 / 卸载时由 store.checkStop 打断在飞的轮询。
+        store.checkStop = stopPoll
+        // 轮询异常只降级：连续几次失败就安静停下，整批仍以主 RPC 为准。
+        const poll = async () => {
+          if (stopped || polling) return
+          polling = true
+          try {
+            const value = await rpcCall('copilot-pr-progress', {
+              cwd: runCwd, sessionId: runSession,
+            })
+            // await 期间主 RPC 可能已 settle、或已切会话：旧响应不能再 patch 新快照。
+            if (stopped || store.checkRun !== run) return
+            failures = 0
+            // present=false：本轮 check-all 还没落地（服务端慢 resolve 阶段），既不应用也不停。
+            if (!value || value.present !== true) return
+            if (Array.isArray(value.rows)) applyCheckProgress(value.rows, run)
+            if (value.done === true) stopPoll()
+          } catch {
+            failures += 1
+            if (failures >= PR_PROGRESS_MAX_FAILURES) stopPoll()
+          } finally {
+            polling = false
+          }
+        }
         try {
-          const result = await rpcCall('copilot-pr-target', {
-            action: 'check-all', cwd: s.cwd, sessionId: s.sessionId,
+          // 先把主 RPC 发出去，再起轮询：不 await 之后才开始轮询，否则进度永远晚一步。
+          const pending = rpcCall('copilot-pr-target', {
+            action: 'check-all', cwd: runCwd, sessionId: runSession,
           })
+          timer = setInterval(() => { poll() }, PR_PROGRESS_POLL_MS)
+          let result
+          try {
+            result = await pending
+          } catch (error) {
+            stopPoll()
+            if (store.sessionId !== runSession) return
+            await refreshSediment(true)
+            flash(String((error && error.message) || error))
+            return
+          }
+          // 先停轮询再刷新，避免刷新写回的行被后到的进度覆写、状态闪回。
+          stopPoll()
+          if (store.sessionId !== runSession) return
           await refreshSediment(true)
           if (!result || result.ok === false) {
             const partial = failureCode(result) === 'E_CHECK_PARTIAL'
@@ -4851,9 +4997,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           flash(checked.length
             ? tr('sediment.checkDone', { n: checked.length })
             : tr('sediment.checkNone'))
-        } catch (error) {
-          flash(String((error && error.message) || error))
         } finally {
+          stopPoll()
+          endCheckRun()
           setCheckBusy('')
         }
       }
@@ -4978,7 +5124,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           className: 'scp-btn scp-btn--primary',
           disabled: sedPrimaryKind === 'none' || checkBusy === '__all__',
           onClick: runSedPrimary,
-        }, checkBusy === '__all__' ? tr('sediment.refreshing') : sedPrimaryLabel)) : null
+        }, checkBusy === '__all__'
+          ? (checkRun && checkRun.active && checkRun.total > 0
+            ? tr('sediment.checkingProgress', {
+              n: Math.min(checkRun.seen, checkRun.total),
+              m: checkRun.total,
+            })
+            : tr('sediment.refreshing'))
+          : sedPrimaryLabel)) : null
 
       // 诊断视图的批量沉淀：只在「可沉淀」筛选下出现，范围就是当前筛选（含搜索词）。
       // 只生成指令、不写 trace 与知识库；单条动作仍在右列详情里。
@@ -5052,6 +5205,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   h('span', {}, String(grouped[group].length))),
                 grouped[group].map(({ draft, index }) => {
                   const age = draft.ageDays
+                  // 查合入进行中：已到的行显示状态或失败原因，还没到的标「查询中」。
+                  const runState = checkRun && checkRun.states ? checkRun.states[draft.key] : null
+                  const runPending = !runState && checkRun && checkRun.active
+                    && checkRun.targets && checkRun.targets[draft.key] === true
                   return h('button', {
                     key: draft.key,
                     type: 'button',
@@ -5072,10 +5229,24 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                         h('span', { className: 'scp-sed-title', title: draft.title || draft.key }, draft.title || draft.key),
                         h('span', { className: 'scp-sed-age', 'data-over': age !== null && age !== undefined && Number(age) > 14 ? 'true' : 'false' }, sedAgeText(draft))),
                       h('span', { className: 'scp-sed-meta' },
-                        h('span', { className: 'scp-chip', 'data-tone': SED_CHIP_TONE[draft.stageTone] || 'none' }, draft.stage || draft.state),
+                        // 有进度行时不再显示旧阶段 chip（否则「已提 PR · 合入未确认」与「已合入」并排）。
+                        runState
+                          ? null
+                          : h('span', { className: 'scp-chip', 'data-tone': SED_CHIP_TONE[draft.stageTone] || 'none' }, draft.stage || draft.state),
                         draft.pr && draft.pr.number
                           ? h('span', { className: 'scp-chip' }, '#' + draft.pr.number)
                           : null,
+                        runState
+                          ? h('span', {
+                            className: 'scp-chip',
+                            'data-tone': runState.ok ? 'ok' : 'bad',
+                            title: runState.ok ? (runState.checkedAt || '') : (runState.message || ''),
+                          }, runState.ok
+                            ? tr('sediment.prState.' + runState.state)
+                            : checkErrorText(runState.error))
+                          : (runPending
+                            ? h('span', { className: 'scp-chip', 'data-tone': 'accent' }, tr('sediment.checking'))
+                            : null),
                         draft.decision
                           ? h('span', {}, draft.decision)
                           : (draft.novelty ? h('span', {}, draft.novelty + (draft.confidence ? ' · ' + draft.confidence : '')) : null),

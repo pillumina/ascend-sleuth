@@ -31,6 +31,10 @@ const PY_NEGATIVE_TTL_MS = 30000
 const UPSTREAM_OK_TTL_MS = 5 * 60 * 1000
 const UPSTREAM_BAD_TTL_MS = 30 * 1000
 const MAX_REPORT_BYTES = 512 * 1024
+// 查合入的逐条进度：脚本每查完一条打一行 JSON，这里把句柄的增量输出读出来存进 Map。
+// 读得比轮询稍快一点，面板 500 ms 一问就能看到已到的行；done 后保留 30 秒再删，给客户端收尾一次。
+const PR_PROGRESS_READ_MS = 120
+const PR_PROGRESS_TTL_MS = 30 * 1000
 
 export const name = 'dsh-sleuth-copilot'
 export const inject = ['connection']
@@ -102,11 +106,20 @@ export function apply(ctx) {
   const cache = new Map()
   const inflight = new Map()
   const upstreamCache = new Map()
+  // 查合入的进度：键是 sessionId + cwd。宿主对请求是并发的，180 秒的 check-all 跑着时
+  // copilot-pr-progress 仍要能应答，所以进度不能挂在某个请求的上下文里。
+  const prProgressRuns = new Map()
 
   ctx.effect(() => () => {
     cache.clear()
     inflight.clear()
     upstreamCache.clear()
+    for (const entry of prProgressRuns.values()) {
+      if (entry.timer) clearTimeout(entry.timer)
+      // 120ms 的增量读 interval 也挂在这一条上：dispose 时不能留它在后台读句柄。
+      if (entry.readTimer) clearInterval(entry.readTimer)
+    }
+    prProgressRuns.clear()
   }, 'dsh-sleuth-copilot: state cache')
 
   function shellService() {
@@ -121,6 +134,29 @@ export function apply(ctx) {
     if (typeof shell.execute === 'function') {
       const execution = await shell.execute(spec)
       return typeof execution.result === 'function' ? await execution.result() : execution
+    }
+    throw new Error('shell 服务既没有 run 也没有 execute')
+  }
+
+  // 保留句柄：check-all 要在 result() 完成之前增量读 stdout。句柄有 readOutput 才读增量；
+  // 旧形态的 run 与没有 readOutput 的句柄都退化为「只等 result()」，最终结果不依赖增量。
+  async function startShell(spec) {
+    const shell = shellService()
+    if (shell === undefined) throw new Error('shell 服务不可用')
+    if (typeof shell.run === 'function') {
+      return { readOutput: null, result: () => shell.run(spec) }
+    }
+    if (typeof shell.execute === 'function') {
+      const execution = await shell.execute(spec)
+      const readOutput = execution !== null && typeof execution === 'object'
+        && typeof execution.readOutput === 'function'
+        ? () => execution.readOutput()
+        : null
+      const result = execution !== null && typeof execution === 'object'
+        && typeof execution.result === 'function'
+        ? () => execution.result()
+        : () => Promise.resolve(execution)
+      return { readOutput, result }
     }
     throw new Error('shell 服务既没有 run 也没有 execute')
   }
@@ -815,6 +851,274 @@ export function apply(ctx) {
     }
   }
 
+  // ── 查合入的逐条进度（--json-lines）：Map 键 sessionId + cwd，只服务 UI ─────
+  // 最终结果一律以 result() 的完整 stdout 解析；这里只把脚本已经打出来的 row 行交给面板，
+  // 让它不等整批。同 key 新 run 覆盖旧 run；done 后保留 30 秒再删。
+  function prProgressKey(sessionId, cwd) {
+    return String(sessionId || '') + '\u0000' + String(cwd || '')
+  }
+
+  function readPrProgress(payload) {
+    const entry = prProgressRuns.get(prProgressKey(
+      payload && payload.sessionId, payload && payload.cwd))
+    // 没有 run 时不能报 done：面板第一次轮询可能早于 check-all 的慢 resolve 落地，
+    // 把它当成「整批已完成」会永久停掉轮询。present=false 表示「本轮还没开始」。
+    if (!entry) return { present: false, rows: [], done: false }
+    return {
+      present: true,
+      rows: entry.rows.map((row) => Object.assign({}, row)),
+      done: entry.done === true,
+    }
+  }
+
+  function clearPrProgress(key) {
+    const previous = prProgressRuns.get(key)
+    if (!previous) return
+    if (previous.timer) clearTimeout(previous.timer)
+    if (previous.readTimer) clearInterval(previous.readTimer)
+    prProgressRuns.delete(key)
+  }
+
+  function beginPrProgress(key) {
+    clearPrProgress(key)
+    const entry = { rows: [], done: false, timer: 0, readTimer: 0 }
+    prProgressRuns.set(key, entry)
+    return entry
+  }
+
+  function finishPrProgress(key, entry) {
+    entry.done = true
+    if (entry.timer) clearTimeout(entry.timer)
+    if (entry.readTimer) {
+      clearInterval(entry.readTimer)
+      entry.readTimer = 0
+    }
+    entry.timer = setTimeout(() => {
+      if (prProgressRuns.get(key) === entry) prProgressRuns.delete(key)
+    }, PR_PROGRESS_TTL_MS)
+    if (entry.timer && typeof entry.timer.unref === 'function') entry.timer.unref()
+  }
+
+  // 增量读是按行 JSON：缓存半行；跳过空行与非 `{` 开头行（readOutput 会把 stderr
+  // 以 `[stderr]` 前缀混进 delta）；lossy 说明有字节被丢，残缺的半行不能再用。
+  function makePrRowReader(entry) {
+    let buffer = ''
+    const accept = (line) => {
+      const text = String(line || '').trim()
+      if (!text.startsWith('{')) return
+      let doc
+      try {
+        doc = JSON.parse(text)
+      } catch {
+        return
+      }
+      if (!doc || doc.type !== 'row' || typeof doc.draft !== 'string' || doc.draft === '') return
+      const row = {
+        draft: doc.draft,
+        ok: doc.ok !== false,
+        state: String(doc.state || 'unknown'),
+        checked_at: String(doc.checked_at || ''),
+      }
+      if (doc.error) row.error = String(doc.error)
+      if (doc.message) row.message = String(doc.message)
+      const index = entry.rows.findIndex((item) => item.draft === row.draft)
+      if (index >= 0) entry.rows[index] = row
+      else entry.rows.push(row)
+    }
+    return {
+      feed(delta) {
+        if (typeof delta !== 'string' || delta === '') return
+        buffer += delta
+        const parts = buffer.split(/\r?\n/)
+        buffer = parts.pop()
+        parts.forEach(accept)
+      },
+      reset() {
+        buffer = ''
+      },
+      flush() {
+        if (buffer.trim() !== '') accept(buffer)
+        buffer = ''
+      },
+    }
+  }
+
+  // readOutput 的真实形状：stderr 以 `\n[stderr]\n…` 接在当前 stdout 文本之后。缓冲区里若
+  // 正好有个未完成的 row 行，这个换行会把它截成坏行；所以先按标记截掉 stderr 部分，
+  // 只把 stdout 前缀交给行解析（stderr 对进度没用，最终结果另有 result() 的 stderr）。
+  function stdoutDelta(chunk) {
+    const delta = typeof chunk.delta === 'string' ? chunk.delta : ''
+    const marker = delta.indexOf('\n[stderr]\n')
+    return marker >= 0 ? delta.slice(0, marker) : delta
+  }
+
+  async function pumpPrProgress(handle, reader) {
+    if (typeof handle.readOutput !== 'function') return false
+    let chunk
+    try {
+      chunk = await handle.readOutput()
+    } catch {
+      return false
+    }
+    if (!chunk || typeof chunk !== 'object') return false
+    if (chunk.lossy === true) reader.reset()
+    const delta = stdoutDelta(chunk)
+    if (delta) reader.feed(delta)
+    return true
+  }
+
+  // 进程退出后再把缓冲里的行读完；readOutput 若一直不返回，用上限兜住，不拖住整次 RPC。
+  async function drainPrProgress(handle, reader) {
+    if (typeof handle.readOutput !== 'function') return
+    const drain = (async () => {
+      for (let index = 0; index < 1000; index += 1) {
+        let chunk
+        try {
+          chunk = await handle.readOutput()
+        } catch {
+          break
+        }
+        if (!chunk || typeof chunk !== 'object') break
+        if (chunk.lossy === true) reader.reset()
+        const raw = typeof chunk.delta === 'string' ? chunk.delta : ''
+        if (!raw) break
+        const delta = stdoutDelta(chunk)
+        // 只有 stderr 的增量（delta 截完为空）不代表读完了，继续读下一段 stdout。
+        if (delta) reader.feed(delta)
+      }
+      reader.flush()
+    })()
+    let guardTimer = 0
+    const guard = new Promise((resolve) => {
+      guardTimer = setTimeout(resolve, 200)
+    })
+    try {
+      await Promise.race([drain, guard])
+    } finally {
+      clearTimeout(guardTimer)
+    }
+  }
+
+  // 最终载荷 = done 行去掉 type；参数错误与未预期异常是单份 JSON（没有 type），原样返回。
+  function pickCheckAllPayload(doc) {
+    if (!doc || typeof doc !== 'object' || Array.isArray(doc)) return null
+    if (doc.type === 'row') return null
+    if (doc.type === 'done') {
+      const payload = Object.assign({}, doc)
+      delete payload.type
+      return payload
+    }
+    return typeof doc.ok === 'boolean' ? doc : null
+  }
+
+  function parseCheckAllStdout(stdout) {
+    const text = String(stdout || '').trim()
+    if (text === '') return null
+    try {
+      const payload = pickCheckAllPayload(JSON.parse(text))
+      if (payload) return payload
+    } catch {
+      // 多行输出：逐行从后往前找最终载荷
+    }
+    const lines = text.split(/\r?\n/)
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      const line = lines[index].trim()
+      if (!line.startsWith('{')) continue
+      let doc
+      try {
+        doc = JSON.parse(line)
+      } catch {
+        continue
+      }
+      const payload = pickCheckAllPayload(doc)
+      if (payload) return payload
+    }
+    // 兜底：异常折叠若被旧版本 / 别的路径写成多行 JSON，从最后一个行首 `{` 到末尾整段再解析。
+    let start = -1
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      if (lines[index].trim().startsWith('{')) {
+        start = index
+        break
+      }
+    }
+    if (start >= 0) {
+      try {
+        const payload = pickCheckAllPayload(JSON.parse(lines.slice(start).join('\n')))
+        if (payload) return payload
+      } catch {
+        // 拼起来也不是合法 JSON：交给上层折 E_OUTPUT
+      }
+    }
+    return null
+  }
+
+  async function runCheckAll(root, python, script, argv, timeoutMs, policy, payload) {
+    const key = prProgressKey(payload && payload.sessionId, payload && payload.cwd)
+    const entry = beginPrProgress(key)
+    const reader = makePrRowReader(entry)
+    let handle
+    try {
+      handle = await startShell(resolveSpec({
+        command: [python, shq(script), ...argv].join(' '),
+        workdir: root,
+        timeoutMs,
+        stdoutMaxBytes: 2 * 1024 * 1024,
+        env: { PYTHONIOENCODING: 'utf-8' },
+        ...(policy ? { sandboxPolicy: policy } : {}),
+      }))
+    } catch (error) {
+      finishPrProgress(key, entry)
+      return { ok: false, code: 'E_SPAWN', message: '数据脚本执行失败：' + errorText(error) }
+    }
+    let timer = 0
+    let pumping = false
+    const incremental = typeof handle.readOutput === 'function'
+    const pump = () => {
+      if (pumping || !incremental) return
+      pumping = true
+      pumpPrProgress(handle, reader).catch(() => {}).finally(() => { pumping = false })
+    }
+    let result
+    try {
+      if (incremental) {
+        pump()
+        timer = setInterval(pump, PR_PROGRESS_READ_MS)
+        // 挂到进度条目上：插件 dispose 时按 Map 里的句柄一起清掉。
+        entry.readTimer = timer
+        if (timer && typeof timer.unref === 'function') timer.unref()
+      }
+      result = await handle.result()
+      if (timer) {
+        clearInterval(timer)
+        timer = 0
+      }
+      entry.readTimer = timer
+      if (incremental) await drainPrProgress(handle, reader)
+    } catch (error) {
+      return { ok: false, code: 'E_SPAWN', message: '数据脚本执行失败：' + errorText(error) }
+    } finally {
+      if (timer) {
+        clearInterval(timer)
+        timer = 0
+        entry.readTimer = 0
+      }
+      finishPrProgress(key, entry)
+    }
+    const failure = resultFailure(result)
+    if (failure) return { ok: false, code: failure.code, message: failure.message }
+    const stdout = result && result.stdout && typeof result.stdout.text === 'string' ? result.stdout.text : ''
+    const stderr = result && result.stderr && typeof result.stderr.text === 'string' ? result.stderr.text : ''
+    const doc = parseCheckAllStdout(stdout)
+    if (doc) return doc
+    const tail = tailLines(stderr || stdout, 4)
+    return {
+      ok: false,
+      code: 'E_OUTPUT',
+      message: '查合入脚本没有返回最终结果（exit ' + String(result ? result.exitCode : '?') + '）'
+        + (tail ? '：' + tail : ''),
+    }
+  }
+
   async function computeSediment(cwd, sessionId) {
     const root = await resolveRepoRoot(cwd)
     if (root === null) return { ok: false, code: 'E_NO_ROOT', message: '当前工作区不是 ascend-sleuth 检出' }
@@ -836,6 +1140,12 @@ export function apply(ctx) {
   // PR 台账写在共享 inbox（主检出侧），写动作的沙箱根取主检出。
   async function prTarget(payload) {
     const cwd = typeof payload.cwd === 'string' ? payload.cwd : ''
+    const action = String(payload.action || 'list')
+    // check-all：在任何慢 resolve 之前先清同 key 的旧进度。否则面板第一次轮询可能拿到
+    // 上一轮保留 30 秒内的旧 rows，或者把「本轮还没开始」误读成整批已完成。
+    if (action === 'check-all') {
+      clearPrProgress(prProgressKey(payload.sessionId, cwd))
+    }
     const root = await resolveRepoRoot(cwd)
     if (root === null) return { ok: false, code: 'E_NO_ROOT', message: '当前工作区不是 ascend-sleuth 检出' }
     const policy = await resolvePolicy(payload.sessionId)
@@ -843,7 +1153,6 @@ export function apply(ctx) {
     if (python === null) return { ok: false, code: 'E_NO_PYTHON', message: noPythonMessage() }
     const script = join(root, 'scripts', 'pr_status.py')
     if (!(await isFile(script))) return { ok: false, code: 'E_NO_HELPER', message: '检出里缺少 scripts/pr_status.py' }
-    const action = String(payload.action || 'list')
     const rootArgs = ['--root', shq(root)]
     if (action === 'list') {
       // 一次调用就带出台账指纹（pr_status.py 的 list-targets 返回 sha256，台账不存在为 null）：
@@ -873,7 +1182,8 @@ export function apply(ctx) {
       argv.push('--mark', '--draft', shq(String(payload.key)), '--state', shq(String(payload.state)), ...casArgs)
     } else if (action === 'check-all') {
       // 一次查完所有 open/unknown；脚本自己按台账做 CAS，写回 state/checked_at/source。
-      argv.push('--check-all', '--json')
+      // 逐行模式只服务进度，最终结果仍以 stdout 里最后一行 done 为准（见 runCheckAll）。
+      argv.push('--check-all', '--json-lines')
     } else if (action === 'set-target') {
       const remote = String(payload.remote || '')
       const base = String(payload.base || '')
@@ -888,6 +1198,9 @@ export function apply(ctx) {
     }
     // 批量查最多等 180 秒：GitHub 适配器单次最多 20 秒，队列长时 120 秒会截断。
     const timeoutMs = action === 'check-all' ? 180000 : 30000
+    if (action === 'check-all') {
+      return runCheckAll(root, python, script, argv, timeoutMs, writePolicy, payload)
+    }
     return runJsonHelper(root, python, script, argv, timeoutMs, writePolicy)
   }
 
@@ -949,7 +1262,8 @@ export function apply(ctx) {
         const payload = body !== undefined && body.payload !== undefined ? body.payload : {}
         let result
         if (endpoint !== 'copilot-state' && endpoint !== 'copilot-transition' && endpoint !== 'copilot-report'
-          && endpoint !== 'copilot-timeline' && endpoint !== 'copilot-sediment' && endpoint !== 'copilot-pr-target') {
+          && endpoint !== 'copilot-timeline' && endpoint !== 'copilot-sediment' && endpoint !== 'copilot-pr-target'
+          && endpoint !== 'copilot-pr-progress') {
           result = { ok: false, error: { code: 'not-found', message: '未知的 RPC 端点: ' + endpoint, details: {} } }
         } else {
           try {
@@ -970,6 +1284,9 @@ export function apply(ctx) {
                   typeof payload.sessionId === 'string' ? payload.sessionId : '',
                 ),
               }
+            } else if (endpoint === 'copilot-pr-progress') {
+              // 同步读 Map，不排队：check-all 跑着时也要即时应答。
+              result = { ok: true, value: readPrProgress(payload) }
             } else if (endpoint === 'copilot-pr-target') {
               result = { ok: true, value: await prTarget(payload) }
             } else {

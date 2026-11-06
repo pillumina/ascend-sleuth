@@ -138,9 +138,11 @@ function runCommand(spec) {
 
 function makeShell() {
   const calls = []
+  const handles = []
   const specs = []
   return {
     calls,
+    handles,
     specs,
     resolve(request) {
       return request
@@ -148,7 +150,46 @@ function makeShell() {
     async execute(spec) {
       calls.push(String(spec.command || ''))
       specs.push(spec)
-      return { result: () => runCommand(spec) }
+      // 故意不提供 readOutput：这就是旧宿主 / 旧 run 形态的退化路径（只等 result()）。
+      const handle = { command: String(spec.command || ''), result: () => runCommand(spec) }
+      handles.push(handle)
+      return handle
+    },
+  }
+}
+
+// 带 readOutput 的假句柄：模拟「进程还在跑、stdout 一行行到」。只在 --check-all 命令上
+// 返回增量；其他命令（git / 解释器探测）照常真跑，否则工作区解析走不通。
+function makeIncrementalShell(chunks, fullStdout) {
+  const calls = []
+  return {
+    calls,
+    resolve(request) {
+      return request
+    },
+    async execute(spec) {
+      const command = String(spec.command || '')
+      calls.push(command)
+      if (!command.includes('--check-all')) return { result: () => runCommand(spec) }
+      const pending = chunks.slice()
+      let reads = 0
+      return {
+        readOutput() {
+          reads += 1
+          if (pending.length) return Promise.resolve({ delta: pending.shift(), lossy: false })
+          return Promise.resolve({ delta: '', lossy: false })
+        },
+        async result() {
+          // 等增量被读走再返回完整 stdout，模拟「进程运行到一半就有行可读」。
+          while (pending.length && reads < 20) {
+            await new Promise((resolve) => setTimeout(resolve, 20))
+          }
+          return {
+            exitCode: 0, timedOut: false, aborted: false,
+            stdout: { text: fullStdout }, stderr: { text: '' },
+          }
+        },
+      }
     },
   }
 }
@@ -266,6 +307,12 @@ async function prTarget(harness, payload, rpcId) {
   }, '/sleuth-copilot/copilot-pr-target')
 }
 
+async function prProgress(harness, payload, rpcId) {
+  return request(harness, {
+    type: 'client-request', rpcId: rpcId || 'progress', method: 'copilot-pr-progress', payload,
+  }, '/sleuth-copilot/copilot-pr-progress')
+}
+
 async function request(harness, body, url) {
   const response = makeResponse()
   await harness.getRoute().handler(makeRequest(body, url), response)
@@ -305,6 +352,9 @@ process.stdout.write('诊断状态条 · Host 冒烟\n')
 // shell 记下每次子进程命令：用来确认 pr-target 的 list 一次就带回台账指纹。
 const rwShell = makeShell()
 const rw = makeHarness({ shell: rwShell })
+// 逐条进度的假句柄单独装一份 harness；没 git 时那段跳过，这里留 null 给收尾清理。
+let incHarness = null
+let internalHarness = null
 mod.apply(rw.ctx)
 expect('路由注册成功', !!rw.getRoute())
 
@@ -332,6 +382,14 @@ expect('读：summary 已给的硬件 / 量化档不列为缺口', row
 expect('读：普通硬件缺口不被过滤', row && row.extra.missingMaterials.includes('硬件侧 plog 与 die 温度'), JSON.stringify(row && row.extra.missingMaterials))
 expect('读：按顶层 report_file 识别报告', row && row.extra.hasReport === true && row.reportFile === 'traces/alt-smoke.md')
 const originalSha = row.contentSha256
+
+// 进度端点：还没有 check-all 在跑时 present=false、不报 done（面板不能据此永久停轮询）。
+const noRunProgress = await prProgress(rw, { cwd: SANDBOX, sessionId: 'smoke-session' }, 'progress-none')
+const noRunProgressValue = noRunProgress.envelope && noRunProgress.envelope.result && noRunProgress.envelope.result.value
+expect('进度：没有 run 时 present=false、rows 为空、不报 done', noRunProgressValue
+  && noRunProgressValue.present === false
+  && Array.isArray(noRunProgressValue.rows) && noRunProgressValue.rows.length === 0
+  && noRunProgressValue.done === false, JSON.stringify(noRunProgressValue))
 
 // 会话归属：顶层 harness_session 是原始会话；resume 事件带接手会话
 const resumedState = await request(rw, {
@@ -471,7 +529,7 @@ if (hasGit) {
   expect('目标：check 当前指纹放行（走到查询，没有适配器）', checkCurrentValue && checkCurrentValue.ok === false
     && resultCode(checkCurrentValue) === 'E_NO_ADAPTER' && /适配器/.test(checkCurrentMessage)
     && typeof checkCurrentValue.sha256 === 'string', JSON.stringify(checkCurrentValue))
-  // 批量查合入：动作走 --check-all；没有适配器时逐条记 unknown，返回部分失败而不是抛错。
+  // 批量查合入：动作走 --check-all --json-lines；没有适配器时逐条记 unknown，返回部分失败而不是抛错。
   const checkAll = await prTarget(rw, {
     cwd: SANDBOX, sessionId: 'smoke-session', action: 'check-all',
   }, 'pr-check-all')
@@ -480,6 +538,114 @@ if (hasGit) {
     && resultCode(checkAllValue) === 'E_CHECK_PARTIAL'
     && Array.isArray(checkAllValue.checked) && checkAllValue.checked.length === 1
     && checkAllValue.checked[0].draft === 'demo-draft', JSON.stringify(checkAllValue))
+  const checkAllCommand = rwShell.calls.filter((command) => command.includes('--check-all')).pop() || ''
+  expect('目标：check-all 用 --json-lines 取逐条输出', /--check-all/.test(checkAllCommand) && /--json-lines/.test(checkAllCommand), checkAllCommand)
+  // fake shell 的句柄没有 readOutput：这条路径必须退化成只等 result()，且不产出增量行。
+  const checkAllHandle = rwShell.handles.filter((handle) => String(handle.command || '').includes('--check-all')).pop()
+  expect('进度：无 readOutput 的句柄走退化路径', checkAllHandle && typeof checkAllHandle.readOutput !== 'function',
+    JSON.stringify(checkAllHandle && Object.keys(checkAllHandle)))
+  const degradedProgress = await prProgress(rw, { cwd: SANDBOX, sessionId: 'smoke-session' }, 'progress-degraded')
+  const degradedProgressValue = degradedProgress.envelope.result.value
+  expect('进度：退化路径 done 后 present=true 且没有增量行', degradedProgressValue
+    && degradedProgressValue.present === true
+    && degradedProgressValue.done === true
+    && Array.isArray(degradedProgressValue.rows) && degradedProgressValue.rows.length === 0,
+  JSON.stringify(degradedProgressValue))
+
+  // ── 逐条进度：句柄有 readOutput 时，row 行不等整批就进进度端点 ──────────────
+  const incRows = [
+    { type: 'row', draft: 'demo-draft', ok: true, state: 'merged', checked_at: '2026-11-05T10:41:12+08:00' },
+    { type: 'row', draft: 'other-draft', ok: false, state: 'unknown', checked_at: '2026-11-05T10:41:13+08:00', error: 'E_NO_AUTH', message: '没配 token' },
+  ]
+  const incDone = {
+    type: 'done', ok: false,
+    error: { code: 'E_CHECK_PARTIAL', message: '有 PR 状态没查到（见 checked）' },
+    checked: [
+      { draft: 'demo-draft', ok: true, state: 'merged' },
+      { draft: 'other-draft', ok: false, state: 'unknown', error: 'E_NO_AUTH' },
+    ],
+    ledger: { schema: 'groom-pr-state/v1', prs: {} },
+    sha256: 'b'.repeat(64),
+  }
+  // 真实形状：stderr 以 `\n[stderr]\n…` 直接接在当前 stdout 文本之后。这里故意接在一条
+  // 未完成的 row 半行之后——不截掉 stderr 段就会把这条 row 截坏。
+  const secondLine = JSON.stringify(incRows[1])
+  const incChunks = [
+    JSON.stringify(incRows[0]) + '\n',
+    secondLine.slice(0, 12) + '\n[stderr]\n适配器日志混进来也不该打断解析\n',
+    secondLine.slice(12) + '\n',
+  ]
+  const incStdout = JSON.stringify(incRows[0]) + '\n' + secondLine + '\n'
+    + JSON.stringify(incDone) + '\n'
+  const incShell = makeIncrementalShell(incChunks, incStdout)
+  const inc = makeHarness({ shell: incShell })
+  incHarness = inc
+  mod.apply(inc.ctx)
+  const incPending = prTarget(inc, {
+    cwd: SANDBOX, sessionId: 'smoke-incremental', action: 'check-all',
+  }, 'pr-check-all-inc')
+  // 主 RPC 还没返回时进度端点就该有行；done 之前的 done 是 false（轮询到出现行为止，防机器慢时 flaky）。
+  let incMidValue = null
+  const incMidDeadline = Date.now() + 3000
+  while (Date.now() < incMidDeadline) {
+    const incMid = await prProgress(inc, { cwd: SANDBOX, sessionId: 'smoke-incremental' }, 'progress-mid')
+    incMidValue = incMid.envelope.result.value
+    if (incMidValue && incMidValue.done === false
+      && Array.isArray(incMidValue.rows) && incMidValue.rows.length >= 1) break
+    await new Promise((resolve) => setTimeout(resolve, 20))
+  }
+  expect('进度：check-all 跑着时能应答且已有行', incMidValue
+    && incMidValue.present === true
+    && incMidValue.done === false
+    && Array.isArray(incMidValue.rows) && incMidValue.rows.length >= 1, JSON.stringify(incMidValue))
+  const incAll = await incPending
+  const incAllValue = incAll.envelope.result.value
+  expect('逐条进度：最终结果仍取 done 行', incAllValue && incAllValue.ok === false
+    && resultCode(incAllValue) === 'E_CHECK_PARTIAL'
+    && Array.isArray(incAllValue.checked) && incAllValue.checked.length === 2
+    && incAllValue.sha256 === 'b'.repeat(64), JSON.stringify(incAllValue))
+  const incAfter = await prProgress(inc, { cwd: SANDBOX, sessionId: 'smoke-incremental' }, 'progress-after')
+  const incAfterValue = incAfter.envelope.result.value
+  // stderr 接在半行之后：截掉 stderr 段后这条 row 仍能拼回；就算极端情况下少一条，
+  // done 与最终结果（上面那条断言）也不能受影响。
+  expect('进度：done 后 present=true、已有行正确（stderr 截断最多少一条 row）', incAfterValue
+    && incAfterValue.present === true
+    && incAfterValue.done === true
+    && Array.isArray(incAfterValue.rows)
+    && incAfterValue.rows.length >= 1 && incAfterValue.rows.length <= 2
+    && incAfterValue.rows[0].draft === 'demo-draft'
+    && incAfterValue.rows.every((item) => typeof item.draft === 'string' && item.draft !== ''),
+  JSON.stringify(incAfterValue))
+  // 同 key 再跑一次：新 run 覆盖旧 run，行数不累加。
+  const incAgain = await prTarget(inc, {
+    cwd: SANDBOX, sessionId: 'smoke-incremental', action: 'check-all',
+  }, 'pr-check-all-inc-2')
+  expect('进度：同 key 新 run 结果正常', incAgain.envelope.result.value
+    && incAgain.envelope.result.value.ok === false, JSON.stringify(incAgain.envelope.result.value))
+  const incAgainProgress = await prProgress(inc, { cwd: SANDBOX, sessionId: 'smoke-incremental' }, 'progress-again')
+  const incAgainValue = incAgainProgress.envelope.result.value
+  expect('进度：同 key 新 run 覆盖旧 run（行数不累加）', incAgainValue
+    && incAgainValue.present === true
+    && incAgainValue.done === true
+    && incAgainValue.rows.length >= 1 && incAgainValue.rows.length <= 2,
+  JSON.stringify(incAgainValue))
+
+  // 未预期异常（E_INTERNAL）出现在已打 row 之后：脚本折成一行 compact JSON 时逐行可取；
+  // 旧版本 / 别的路径如果是多行缩进 JSON，服务端要从最后一段行首 `{` 整段解析，不能退化成 E_OUTPUT。
+  const internalStdout = JSON.stringify(incRows[0]) + '\n'
+    + '{\n  "ok": false,\n  "error": {\n    "code": "E_INTERNAL",\n    "message": "RuntimeError: boom"\n  }\n}\n'
+  const internalShell = makeIncrementalShell([], internalStdout)
+  internalHarness = makeHarness({ shell: internalShell })
+  mod.apply(internalHarness.ctx)
+  const internal = await prTarget(internalHarness, {
+    cwd: SANDBOX, sessionId: 'smoke-internal', action: 'check-all',
+  }, 'pr-check-all-internal')
+  const internalValue = internal.envelope.result.value
+  expect('逐条进度：多行错误 JSON 兜底解析（不退化 E_OUTPUT）', internalValue
+    && internalValue.ok === false
+    && resultCode(internalValue) === 'E_INTERNAL'
+    && /RuntimeError: boom/.test(String(internalValue.error && internalValue.error.message)),
+  JSON.stringify(internalValue))
 }
 
 const reportMissing = await readReport(rw, { cwd: SANDBOX, tracesDir: TRACES, traceSessionId: '2026-01-01-no-such' }, 'report-2')
@@ -852,7 +1018,7 @@ const wrongResponse = makeResponse()
 await rw.getRoute().handler(wrongMethod, wrongResponse)
 expect('非 POST：405', wrongResponse.captured.status === 405)
 
-for (const harness of [rw, ro, timeoutHarness, abortHarness, deniedHarness, truncatedHarness, noPolicyHarness]) {
+for (const harness of [rw, incHarness, internalHarness, ro, timeoutHarness, abortHarness, deniedHarness, truncatedHarness, noPolicyHarness].filter(Boolean)) {
   for (const cleanup of harness.effects) {
     try {
       cleanup()
