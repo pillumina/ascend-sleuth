@@ -482,6 +482,22 @@ def _writeback(mismatch: str, session: str, case_id: str, draft_key: str = "") -
             f"--state knowledge --case-id {_q(case_id)} --json")
 
 
+def _undo_prompt(key: str, decision: str) -> str:
+    """撤销沉淀的指令。只给命令与边界，判断由执行的人做（先看计划、再加 --apply）。"""
+    lines = [
+        f"撤销这次沉淀：{key}。",
+        "先看计划（只读）：",
+        f"python3 scripts/sediment_undo.py --draft-key {_q(key)}",
+        "确认后执行：",
+        f"python3 scripts/sediment_undo.py --draft-key {_q(key)} --apply",
+    ]
+    if decision:
+        lines.append(f"注意：这份草稿已有人决定（{decision}），撤销会连同评估记录与决定历史一起清掉。")
+    lines.append("脚本把草稿移进 postmortems/inbox/.undone/（移回即复活）、删掉评估记录、"
+                 "把来源 trace 的 sedimented 改回 none；不动 knowledge/。")
+    return "\n".join(lines)
+
+
 # ---------------------------------------------------------------- 四条批次 prompt 与明细
 
 def _inbox_rel(root: Path, inbox: Path) -> str:
@@ -913,6 +929,10 @@ def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
     source = _source(trace, done, promotion, kb_ids, draft_in_inbox)
     kind = NEXT_KIND.get(state, "none")
     pr = _pr_view(pr_entry)
+    # 撤销只在「草稿还在 inbox、还没提 PR、trace 也没说升格」时给：已出队的草稿走恢复流程，
+    # 已提 PR 的要先处理 PR，已升格的要动知识库与 PR——都不该由一次本地撤销带走。
+    undo_ok = bool(draft_in_inbox and not done and pr_entry is None
+                   and trace_state not in ("knowledge", "archived"))
     return {
         "key": key,
         "title": _title_of(gm, draft, key),
@@ -947,6 +967,10 @@ def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
         "next": {"kind": kind, "label": ("重新评估（继续 groom）" if state == "pr_closed" else ACTION_LABEL.get(kind, "")), "prompt": ""},
         "writeback": _writeback(source["mismatch"], source["sessionId"],
                                 promotion["caseId"], key),
+        "undo": {
+            "available": undo_ok,
+            "prompt": _undo_prompt(key, str(human.get("decision") or "")) if undo_ok else "",
+        },
     }
 
 
@@ -1031,6 +1055,7 @@ def _closed_record(root: Path, gm, key: str, close_entry: dict, draft, inbox: Pa
                  "prompt": ""},
         "writeback": _writeback(source["mismatch"], source["sessionId"],
                                 promotion["caseId"], key),
+        "undo": {"available": False, "prompt": ""},
     }
 
 

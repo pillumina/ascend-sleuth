@@ -157,6 +157,11 @@ DSH 会话里的一个独立交互层插件。它把诊断的状态、下一步�
 - 队列跟到合入：草稿移进 `.done/` 之后，只要台账里 PR 还没走完，就仍以一行留在「待合入与收尾」。
   标题与决定从 `.done/` 与 close-log 读，PR 从台账读；已出队的行在详情里注明来源。PR 合入并收尾后
   进「最近完成」，历史行带 PR 链接。PR 被关闭时主按钮是「恢复草稿」，点击把移动命令填进输入框。
+- 撤销沉淀：草稿还在 inbox、台账里没有 PR 记录时，详情动作行给「撤销沉淀」。点开先看一条指令：
+  `scripts/sediment_undo.py --draft-key <key>` 打印计划，加 `--apply` 才执行。面板不删草稿，读者点
+  「填入输入框」交给会话里的 agent。脚本把草稿移进 `postmortems/inbox/.undone/`（移回即复活）、删掉
+  评估记录、把来源 trace 的 `sedimented` 改回 `none`，并写一行 `.groom/undo-log.jsonl`（评估 id、
+  人决定、草稿去向）。有 PR 记录或 trace 已说升格的草稿拒绝撤销；已出队的用「恢复草稿」。
 - 平台适配器：`scripts/platforms/` 下一个 YAML（标准 REST）或一个 Python（CLI/特殊认证）；新增平台
   只加一个文件，核心与界面不改。doctor 从清单里查 token 与命令，缺项降级，不代装。
 - 指令：默认短指令（目标、批次、边界、台账写点），命令细节折叠；流程在
@@ -226,7 +231,7 @@ plugin_manager remove_bundle(target: 'dsh-sleuth-copilot')
 ## 验证
 
 ```
-node dsh-plugins/dsh-sleuth-copilot/test/render-smoke.mjs   # 浏览器半：四个面、折叠、点外部 / Esc 收起、常驻偏好、静置淡出（含 reduced-motion）、菜单点击不误收起、菜单语义、收尾表单默认值与必填、改 / 补收尾方式、收尾清单 / 历史 / 报告、材料 / 时间线、无候选沉淀入口、总览取数失败与不换单、沉淀队列 / 指令 / 目标选择、来源诊断跳会话、批量沉淀、查合入逐条进度、快捷键平台文案、搜索与命令面板
+node dsh-plugins/dsh-sleuth-copilot/test/render-smoke.mjs   # 浏览器半：四个面、折叠、点外部 / Esc 收起、常驻偏好、静置淡出（含 reduced-motion）、菜单点击不误收起、菜单语义、收尾表单默认值与必填、改 / 补收尾方式、收尾清单 / 历史 / 报告、材料 / 时间线、无候选沉淀入口、总览取数失败与不换单、沉淀队列 / 指令 / 目标选择、来源诊断跳会话、批量沉淀、撤销沉淀、查合入逐条进度、快捷键平台文案、搜索与命令面板
 node dsh-plugins/dsh-sleuth-copilot/test/host-smoke.mjs     # Host 半：取数、证据 / 候选 / 材料、报告与时间线、沉淀 / 目标端点、查合入逐条进度、traces 越界与主检出落点、沙箱档位、子进程失败专码、PR 台账 CAS、工作区门禁、会话绑定、真实写入（临时副本）、CAS、归档缺收尾方式的回执、改 / 补收尾方式、错误码
 ```
 

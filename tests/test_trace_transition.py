@@ -395,6 +395,20 @@ class WriterTest(unittest.TestCase):
         self.assertEqual(doc["status"], "in_progress")
         self.assertNotIn("transitions", doc)
 
+    def test_field_sedimented_none_clears_target(self):
+        # 撤回到「未沉淀」时，上一次的 case_id / inbox_path 必须一起清掉：留着它们，
+        # 下游会把这份 trace 算成沉淀过那条 case（`trace_entry_activity.py` 的强度读数）。
+        self.make()
+        tt.apply_transition(ROOT, self.traces, "s1",
+                            args(field="sedimented", state="submitted",
+                                 case_id="VLLM-ASC-1", inbox_path="postmortems/inbox/x.case.yaml"))
+        tt.apply_transition(ROOT, self.traces, "s1",
+                            args(field="sedimented", state="none"))
+        doc = self.load()
+        self.assertEqual(doc["sedimented"]["state"], "none")
+        self.assertEqual(doc["sedimented"]["case_id"], "")
+        self.assertEqual(doc["sedimented"]["inbox_path"], "")
+
 
 if __name__ == "__main__":
     unittest.main()

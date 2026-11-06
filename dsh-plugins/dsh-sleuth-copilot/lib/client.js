@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.16.7'
+    const PLUGIN_VERSION = '0.17.0'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。
@@ -319,6 +319,10 @@ window.__ModuleLoader__.load({
       'sediment.checkFailedOne': '查合入没成功；也可以手动改状态（原因：{reason}）。',
       'sediment.checkDone': '查合入完成：{n} 条已更新',
       'sediment.checkNone': '没有待查的 PR',
+      'sediment.undo.action': '撤销沉淀',
+      'sediment.undo.title': '撤销这次沉淀',
+      'sediment.undo.sub': '面板不直接删草稿；这条指令填进输入框后由会话里的 agent 先看计划、再执行。',
+      'sediment.undo.hint': '草稿还在 inbox、没有 PR 记录时才能撤销',
       'sediment.manualState': '手动改状态',
       'sediment.manualTitle': '手动改 PR 状态',
       'sediment.prompt.sub': '预览将填入输入框的指令',
@@ -736,6 +740,10 @@ window.__ModuleLoader__.load({
       'sediment.checkFailedOne': 'Merge check failed; you can also set the state manually (reason: {reason}).',
       'sediment.checkDone': 'Merge check done: {n} updated',
       'sediment.checkNone': 'No PRs to check',
+      'sediment.undo.action': 'Undo sediment',
+      'sediment.undo.title': 'Undo this sediment',
+      'sediment.undo.sub': 'The panel does not delete drafts; fill this instruction into the composer so the agent in this session can review the plan and run it.',
+      'sediment.undo.hint': 'Only available while the draft is still in the inbox and has no PR',
       'sediment.manualState': 'Set state manually',
       'sediment.manualTitle': 'Set PR state manually',
       'sediment.prompt.sub': 'Preview of the prompt to fill the composer',
@@ -4834,9 +4842,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
       // 写台账被系统拒绝时的指令弹层：复用指令预览这一个面（复制 / 填入输入框），
       // 正文由失败上下文生成。点了才填进输入框，不自动发送，也不覆盖读者正在写的内容。
-      function openPromptFallback(head, text) {
+      function openPromptFallback(head, text, sub) {
         if (!text) return
-        setPromptFallback({ head: String(head || ''), text: String(text) })
+        setPromptFallback({ head: String(head || ''), text: String(text), sub: String(sub || '') })
         setPromptKind('fallback')
         setPromptDetailsOpen(false)
         setBatchSed(null)
@@ -5556,6 +5564,15 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             }, sedNextLabel) : null,
             ...prActionButtons,
             h('button', { type: 'button', className: 'scp-btn', onClick: () => refreshSediment(true) }, tr('sediment.refresh')),
+            // 撤销只生成指令、面板不删草稿：点开先看计划，读者点了才填进输入框。
+            sedPick.undo && sedPick.undo.available && sedPick.undo.prompt
+              ? h('button', {
+                type: 'button', className: 'scp-btn scp-btn--ghost',
+                title: tr('sediment.undo.hint'),
+                onClick: () => openPromptFallback(
+                  tr('sediment.undo.title'), sedPick.undo.prompt, tr('sediment.undo.sub')),
+              }, tr('sediment.undo.action'))
+              : null,
             // 推送目标只在要开 PR 时才有意义；已有 PR 的行不再用「推送目标未设置」暗示没有 PR。
             sedNextKind === 'pr'
               ? h('span', { className: 'scp-sed-hint' }, sedTargetHint)
@@ -5666,7 +5683,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('div', { className: 'scp-modal-sub' }, isBatchPrompt
                 ? tr('diag.batch.sub', { n: batchSed.count || 0 })
                 : (isFallbackPrompt
-                  ? tr('sediment.fallback.sub')
+                  ? ((promptFallback && promptFallback.sub) || tr('sediment.fallback.sub'))
                   : (promptKind === 'pr' ? (sedTargetLabel || tr('sediment.noTarget')) : tr('sediment.prompt.sub'))))),
             h('button', { type: 'button', className: 'scp-icon', 'aria-label': tr('sediment.prompt.cancel'), onClick: closePrompt }, IconClose())),
           h('div', { className: 'scp-modal-body' },
