@@ -18,9 +18,20 @@
 #   - 可执行：`scripts/platforms/<id>.py`，暴露 ID/NAME/HOSTS/REQUIRES/check()/create_hint()/
 #     可选 selftest()。本文件用 importlib 加载，**import 时不跑子进程**——只有 check() 跑 CLI。
 #
-# 输出纪律：每条命令都往 stdout 写一份 UTF-8 JSON（末尾一个换行）。业务失败（无适配器、
-# 无 token、网络错、CAS 冲突）`ok:false` 且退出 0（调用方只看 ok）；参数错误退出 2。
-# **任何路径都不打印 token**：HTTP 错误信息里的 query 值一律打码。
+# 输出纪律：每条命令都往 stdout 写一份 UTF-8 JSON（--json-lines 除外；末尾一个换行）。
+# 业务失败（无适配器、无 token、网络错、CAS 冲突）`ok:false` 且退出 0（调用方只看 ok）；
+# 参数错误退出 2。**任何路径都不打印 token**：HTTP 错误信息里的 query 值一律打码。
+#
+# --json-lines 契约（只给 --check-all 用，与 --json 互斥；默认输出不变）：
+#   1. 每查完一条立刻打一行并 flush：
+#      {"type":"row","draft":…,"ok":bool,"state":…,"checked_at":…,"error"?:<code>,"message"?:<失败原文>}
+#   2. 全部查完并落盘后打最后一行，与 --json 的最终载荷同形、只多一个 type：
+#      {"type":"done","ok":bool,"checked":[…],"ledger"?:{…},"sha256"?:"…","error"?:{"code","message"}}
+#      成功时 sha256 是字符串；E_CHECK_PARTIAL / E_CAS / E_LEDGER 都在 error 里给 code 与 message。
+#   3. row 的行序是查询完成序；done 里 checked[] 仍是台账键序（与 --json 相同），面板以 done 为准。
+#   4. 未预期异常（E_INTERNAL）与参数错误（E_ARGS）不在 done 行里。E_ARGS 出现在任何 row 之前；
+#      E_INTERNAL 可能出现在已打出的 row 之后。两者都是**一行 compact JSON**（不含 type，退出码不变），
+#      读端按「最后一段行首 { 到末尾」整体解析一次即可还原 error.code / message。
 #
 # 用法：
 #   python3 scripts/pr_status.py --root <repo> --json
@@ -1145,7 +1156,44 @@ def cmd_check(root, args) -> int:
                 "checked_at": entry["checked_at"], "detail": detail, "sha256": digest})
 
 
+def _print_json_line(payload: dict) -> None:
+    """--json-lines 的一行：单行 JSON + 立即 flush，面板要边收边显示。"""
+    sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    sys.stdout.flush()
+
+
+def _done_line(*, ok: bool, checked: list, ledger: dict = None, sha256: str = None,
+               error_code: str = None, message: str = None) -> dict:
+    """done 行：与 --json 的最终载荷同形，只多一个 type（见文件头的契约）。"""
+    payload = {"type": "done", "ok": ok, "checked": checked}
+    if error_code:
+        payload["error"] = {"code": error_code, "message": message or ""}
+    if ledger is not None:
+        payload["ledger"] = ledger
+    if sha256 is not None:
+        payload["sha256"] = sha256
+    return payload
+
+
+def _row_line(draft: str, result) -> dict:
+    """row 行：一条查完就发。失败原文放 message，面板直接显示原因，不等整批。"""
+    entry, error, detail = result
+    row = {"type": "row", "draft": draft, "ok": error is None,
+           "state": "unknown", "checked_at": now_iso()}
+    if entry is not None:
+        row["state"] = entry.get("state") or "unknown"
+        row["checked_at"] = entry.get("checked_at") or row["checked_at"]
+    if error:
+        row["ok"] = False
+        row["error"] = error["code"]
+        message = error.get("message") or detail
+        if message:
+            row["message"] = message
+    return row
+
+
 def cmd_check_all(root, args) -> int:
+    json_lines = bool(getattr(args, "json_lines", False))
     adapters = load_adapters()
     data = load_ledger(root)
     before = ledger_sha256(root)
@@ -1162,7 +1210,11 @@ def cmd_check_all(root, args) -> int:
                        for draft in drafts}
             for future in as_completed(futures):
                 # _run_check 已把适配器异常归一成 unknown；这里仍不吞异常，交给 main 折 JSON。
-                results[futures[future]] = future.result()
+                draft = futures[future]
+                results[draft] = future.result()
+                # 行序是完成序（面板按 draft 覆盖，不看顺序）；checked[] 仍是台账键序。
+                if json_lines:
+                    _print_json_line(_row_line(draft, results[draft]))
     checked = []
     all_ok = True
     for draft in drafts:  # 按台账键排序输出，与并发完成顺序无关
@@ -1181,9 +1233,26 @@ def cmd_check_all(root, args) -> int:
     try:
         digest = save_ledger(root, data, expect_sha=before)
     except CasConflict as exc:
+        if json_lines:
+            _print_json_line(_done_line(ok=False, checked=checked,
+                                        error_code="E_CAS", message=str(exc)))
+            return EXIT_OK
         return _fail("E_CAS", str(exc), extra={"checked": checked})
     except LedgerError as exc:
+        if json_lines:
+            _print_json_line(_done_line(ok=False, checked=checked,
+                                        error_code="E_LEDGER", message=str(exc)))
+            return EXIT_OK
         return _fail("E_LEDGER", str(exc), extra={"checked": checked})
+    if json_lines:
+        if all_ok:
+            _print_json_line(_done_line(ok=True, checked=checked,
+                                        ledger=data, sha256=digest))
+            return EXIT_OK
+        _print_json_line(_done_line(ok=False, checked=checked, ledger=data, sha256=digest,
+                                    error_code="E_CHECK_PARTIAL",
+                                    message="有 PR 状态没查到（见 checked）"))
+        return EXIT_OK
     return _ok({"checked": checked, "ledger": data, "sha256": digest}, code=EXIT_OK) \
         if all_ok else _fail("E_CHECK_PARTIAL", "有 PR 状态没查到（见 checked）",
                              extra={"checked": checked, "ledger": data, "sha256": digest})
@@ -1223,6 +1292,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="提 PR 目标与 PR 状态台账（只写本地台账）")
     ap.add_argument("--root", default=None, help="ascend-sleuth 检出根；默认当前目录")
     ap.add_argument("--json", action="store_true", help="输出 JSON（所有命令都输出 JSON，保留兼容）")
+    ap.add_argument("--json-lines", action="store_true", dest="json_lines",
+                    help="配合 --check-all：每查完一条输出一行 JSON，最后输出汇总行（契约见文件头）")
     ap.add_argument("--expect-sha256", default=None,
                     help="写前 CAS 令牌：--set-target / --set / --mark / --check 用台账 sha256，"
                          "--migrate / --set-sync 用 settings 的 sha256")
@@ -1264,6 +1335,10 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv=None) -> int:
     pin_utf8_stdio()
     args = build_parser().parse_args(argv)
+    if args.json and args.json_lines:
+        return _arg_fail("--json 与 --json-lines 互斥")
+    if args.json_lines and not args.check_all:
+        return _arg_fail("--json-lines 只配合 --check-all 使用")
     try:
         root = _resolve_root(args.root)
     except NotADirectoryError as exc:
@@ -1291,9 +1366,18 @@ def main(argv=None) -> int:
             return cmd_check_all(root, args)
         return cmd_status(root)
     except LedgerError as exc:
+        if args.json_lines:
+            # 台账读坏发生在任何 row 之前；仍折成一行 compact JSON，与 E_INTERNAL 同形。
+            _print_json_line({"ok": False, "error": {"code": "E_LEDGER", "message": str(exc)}})
+            return EXIT_OK
         return _fail("E_LEDGER", str(exc))
     except Exception as exc:  # 未预期异常也走 JSON，调用方不用解析 traceback
-        return _fail("E_INTERNAL", f"{type(exc).__name__}: {exc}", exit_code=EXIT_ERROR)
+        message = f"{type(exc).__name__}: {exc}"
+        if args.json_lines:
+            # 可能已经打过若干 row：这里必须是一行 compact JSON，面板才能从行尾整段还原。
+            _print_json_line({"ok": False, "error": {"code": "E_INTERNAL", "message": message}})
+            return EXIT_ERROR
+        return _fail("E_INTERNAL", message, exit_code=EXIT_ERROR)
 
 
 if __name__ == "__main__":

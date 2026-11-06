@@ -69,8 +69,17 @@ Object.defineProperty(globalThis, 'navigator', {
     },
   },
 })
-// 不让轮询计时器把测试进程挂住
-globalThis.setInterval = () => 0
+// 计时器替身：不自动触发（否则 10 秒轮询会把测试进程挂住），用例手动 fireInterval 来推进。
+const intervalHandlers = new Map()
+let intervalSeq = 0
+globalThis.setInterval = (fn, ms) => {
+  intervalSeq += 1
+  intervalHandlers.set(intervalSeq, { fn, ms })
+  return intervalSeq
+}
+globalThis.clearInterval = (id) => {
+  intervalHandlers.delete(id)
+}
 
 function pressKey(key, extra) {
   for (const fn of Array.from(keyHandlers)) {
@@ -681,6 +690,12 @@ async function mount(mode, options) {
   const rpcCalls = []
   const drafts = []
   const openedSessions = []
+  // 进度端点的调用序号与 check-all 的挂起门：用例要验「主 RPC 还没回来时轮询已能拿到行」。
+  let progressIndex = 0
+  let releaseCheckAllGate = null
+  const checkAllGate = opts.prCheckAllGate
+    ? new Promise((resolve) => { releaseCheckAllGate = resolve })
+    : null
   const payload = makeState(mode)
   payload.upstream = opts.upstream === false
     ? { ready: false, reason: 'gh 未登录（gh auth login）' }
@@ -725,6 +740,15 @@ async function mount(mode, options) {
                 if (opts.sedimentError) return { ok: true, value: { ok: false, code: 'E_OUTPUT', message: '沉淀脚本没有产出 JSON' } }
                 return { ok: true, value: opts.sediment || SEDIMENT }
               }
+              if (endpoint === 'copilot-pr-progress') {
+                if (opts.prProgressError) throw new Error('进度端点不可用')
+                const steps = Array.isArray(opts.prProgress) ? opts.prProgress : []
+                const value = steps.length
+                  ? steps[Math.min(progressIndex, steps.length - 1)]
+                  : { present: false, rows: [], done: false }
+                progressIndex += 1
+                return { ok: true, value }
+              }
               if (endpoint === 'copilot-pr-target') {
                 const action = args && args.action
                 if (action === 'check') {
@@ -734,6 +758,7 @@ async function mount(mode, options) {
                   } }
                 }
                 if (action === 'check-all') {
+                  if (checkAllGate) await checkAllGate
                   return { ok: true, value: opts.prCheckAllResult || {
                     ok: true, checked: [{ draft: '2026-11-01-eplb-103900', ok: true, state: 'open' }],
                   } }
@@ -812,6 +837,19 @@ async function mount(mode, options) {
       fireDocument('mousedown', target)
     },
     pressKey,
+    // 手动推进指定周期的计时器（轮询替身不会自己跑）。
+    async fireInterval(ms) {
+      const targets = Array.from(intervalHandlers.values()).filter((item) => item.ms === ms)
+      for (const item of targets) item.fn()
+      await new Promise((resolve) => setTimeout(resolve, 0))
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    },
+    releaseCheckAll() {
+      if (!releaseCheckAllGate) return
+      const release = releaseCheckAllGate
+      releaseCheckAllGate = null
+      release()
+    },
     lastTransition() {
       const calls = rpcCalls.filter((call) => call.endpoint === 'copilot-transition')
       return calls.length ? calls[calls.length - 1].args : null
@@ -1809,6 +1847,144 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('已出队行：查合入不弹指令层', byClass(t.view(), 'scp-modal').length === 0)
   view = await t.settle()
   expect('已出队行：批量查合入成功给提示', view.text.includes('查合入完成：1 条已更新'), view.text.slice(-200))
+}
+
+// 查合入逐条进度的公共夹具：两份已提 PR、待确认合入的草稿。
+function makeCheckQueue() {
+  const first = Object.assign({}, SEDIMENT.drafts[1], {
+    key: '2026-11-01-eplb-103900', state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    pr: {
+      number: 419, url: 'https://github.com/pillumina/ascend-sleuth/pull/419',
+      platform: 'github', state: 'open', source: 'platform', checkedAt: '',
+    },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const second = Object.assign({}, SEDIMENT.drafts[2], {
+    key: '2026-10-26-glm53-moe-shuffle', state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    pr: {
+      number: 420, url: 'https://github.com/pillumina/ascend-sleuth/pull/420',
+      platform: 'github', state: 'unknown', source: 'ledger', checkedAt: '',
+    },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  return Object.assign({}, SEDIMENT, {
+    drafts: [first, second],
+    counts: { total: 2, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 2, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+    history: [],
+  })
+}
+
+async function openSedimentView(t) {
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  return t.settle()
+}
+
+async function settleTimes(t, times) {
+  let view = null
+  for (let index = 0; index < times; index += 1) view = await t.settle()
+  return view
+}
+
+// 只取某一行（按 PR 号定位）的文本：避免把右列详情的阶段文案算进行内断言。
+function rowText(view, prNumber) {
+  const row = byClass(view, 'scp-sed-row').find((node) => nodeText(node).includes('#' + prNumber))
+  return row ? nodeText(row) : ''
+}
+
+{
+  // 主 RPC 还挂着时轮询已能把行写进队列；present=false 不能当 done；done 后停止轮询，整批结束只刷新一次。
+  const queue = makeCheckQueue()
+  const keys = queue.drafts.map((draft) => draft.key)
+  const firstRow = { draft: keys[0], ok: true, state: 'merged', checked_at: '2026-11-05T10:41:12+08:00' }
+  const secondRow = { draft: keys[1], ok: false, state: 'unknown', checked_at: '2026-11-05T10:41:13+08:00', error: 'E_NO_AUTH', message: '未配置 token' }
+  const progressSteps = [
+    // 第一次轮询早于服务端 beginPrProgress（慢 resolve）：present=false 表示「还没开始」。
+    { present: false, rows: [], done: false },
+    { present: true, rows: [firstRow], done: false },
+    { present: true, rows: [firstRow, secondRow], done: true },
+  ]
+  const t = await mount('recent', {
+    sediment: queue, prCheckAllGate: true, prProgress: progressSteps,
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  const view = await openSedimentView(t)
+  const before = t.rpcCalls.length
+  click(findButton(view, '查全部合入状态'))
+  let current = await t.settle()
+  expect('逐条进度：批次按钮先显示 0/2', !!findButton(current, '查合入中 0/2'), current.text.slice(-300))
+  const dispatched = t.rpcCalls.slice(before).filter((item) => item.endpoint === 'copilot-pr-target').pop()
+  expect('逐条进度：主 RPC 先发出', dispatched && dispatched.args && dispatched.args.action === 'check-all', JSON.stringify(dispatched && dispatched.args))
+  const progressCalls = () => t.rpcCalls.filter((item) => item.endpoint === 'copilot-pr-progress').length
+  // 第一次轮询 present=false：不应用行、不停轮询。还没到达的行显示旧阶段 chip + 「查合入中」。
+  await t.fireInterval(500)
+  current = await t.settle()
+  expect('逐条进度：present=false 不应用行也不停轮询', progressCalls() === 1
+    && !!findButton(current, '查合入中 0/2')
+    && !rowText(current, 419).includes('已合入'),
+  JSON.stringify({ calls: progressCalls(), row: rowText(current, 419) }))
+  expect('逐条进度：未到的行是旧阶段 chip + 查合入中',
+    rowText(current, 419).includes('已提 PR · 合入未确认') && rowText(current, 419).includes('查合入中'),
+  rowText(current, 419))
+  const progressCallsAfterPending = progressCalls()
+  // 第二次轮询 present=true 且有一条 row：行内立刻出现状态，没到的行仍标「查合入中」。
+  await t.fireInterval(500)
+  current = await t.settle()
+  expect('逐条进度：轮询到 row 后行内出现状态', rowText(current, 419).includes('已合入'), rowText(current, 419))
+  // 用行文本判定，避免被右列详情按钮「标记已合入」命中；同时反向确认旧阶段 chip 已撤掉。
+  expect('逐条进度：已到的行只显示新状态，不与旧阶段 chip 并存',
+    rowText(current, 419).includes('已合入')
+    && !rowText(current, 419).includes('已提 PR · 合入未确认')
+    && !rowText(current, 419).includes('标记已合入'),
+    rowText(current, 419))
+  expect('逐条进度：没到的行标查合入中',
+    rowText(current, 420).includes('查合入中') && rowText(current, 420).includes('已提 PR · 合入未确认'),
+  rowText(current, 420))
+  expect('逐条进度：按钮显示具体 1/2', !!findButton(current, '查合入中 1/2'), current.text.slice(-400))
+  expect('逐条进度：轮询走 copilot-pr-progress', progressCalls() === progressCallsAfterPending + 1, String(progressCalls()))
+  // 第三次轮询 present=true + done=true：失败原因可见，随后不再请求。
+  await t.fireInterval(500)
+  current = await t.settle()
+  expect('逐条进度：失败原因在行内可见', rowText(current, 420).includes('没配 token'), rowText(current, 420))
+  expect('逐条进度：done 后行内不再标查合入中', !rowText(current, 420).includes('查合入中'), rowText(current, 420))
+  const callsAtDone = progressCalls()
+  expect('逐条进度：三次轮询后 done', callsAtDone === 3, String(callsAtDone))
+  await t.fireInterval(500)
+  expect('逐条进度：done 后停止轮询', progressCalls() === callsAtDone, String(progressCalls()))
+  const beforeRelease = t.rpcCalls.filter((item) => item.endpoint === 'copilot-sediment').length
+  t.releaseCheckAll()
+  current = await settleTimes(t, 4)
+  const afterRelease = t.rpcCalls.filter((item) => item.endpoint === 'copilot-sediment').length
+  expect('逐条进度：整批结束只刷新一次', afterRelease === beforeRelease + 1,
+    JSON.stringify({ before: beforeRelease, after: afterRelease }))
+  expect('逐条进度：结束仍给原成功提示', current.text.includes('查合入完成：1 条已更新'), current.text.slice(-300))
+  expect('逐条进度：结束后不再显示进度标签', !current.text.includes('查合入中'), current.text.slice(-300))
+}
+
+{
+  // 进度端点异常：静默降级，连续失败后停轮询，整批仍按主 RPC 的结果收尾。
+  const queue = makeCheckQueue()
+  const t = await mount('recent', {
+    sediment: queue, prCheckAllGate: true, prProgressError: true,
+    prCheckAllResult: { ok: true, checked: [{ draft: queue.drafts[0].key, ok: true, state: 'open' }] },
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  const view = await openSedimentView(t)
+  click(findButton(view, '查全部合入状态'))
+  await t.settle()
+  const progressCalls = () => t.rpcCalls.filter((item) => item.endpoint === 'copilot-pr-progress').length
+  for (let index = 0; index < 3; index += 1) await t.fireInterval(500)
+  expect('轮询异常：连续 3 次失败后停轮询', progressCalls() === 3, String(progressCalls()))
+  await t.fireInterval(500)
+  expect('轮询异常：停下后不再请求', progressCalls() === 3, String(progressCalls()))
+  t.releaseCheckAll()
+  const current = await settleTimes(t, 4)
+  expect('轮询异常：整批仍成功', current.text.includes('查合入完成：1 条已更新'), current.text.slice(-300))
+  expect('轮询异常：不把进度错误弹给读者', !current.text.includes('进度端点不可用'), current.text.slice(-300))
 }
 
 {
