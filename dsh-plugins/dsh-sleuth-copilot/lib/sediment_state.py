@@ -494,11 +494,11 @@ def _undo_prompt(key: str, decision: str) -> str:
         f"python3 scripts/sediment_undo.py --draft-key {_q(key)} --apply",
     ]
     if decision:
-        lines.append(f"注意：这份草稿已有人决定（{decision}）。撤销会清掉评估记录与该草稿的决定记录，"
+        lines.append(f"注意：这份草稿已有人决定（{decision}）。撤销会清掉评估状态文件与该草稿的决定记录，"
                      "评估 id 与决定摘要会写进 undo-log。")
     lines.append("脚本的动作：")
     lines.append("- 草稿移进 postmortems/inbox/.undone/（移回即复活）")
-    lines.append("- 删掉评估记录")
+    lines.append("- 删掉它的评估状态文件")
     lines.append("- 来源 trace 的 sedimented 改回 none（trace 缺失或外部来源时跳过）")
     lines.append("不动 knowledge/。")
     return "\n".join(lines)
@@ -941,7 +941,7 @@ def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
     # 来源 session 有歧义、或 PR 台账读坏时也不给：脚本在这两种情况下会拒绝，
     # 按钮先承诺「能撤」没有意义。
     ambiguous_source = False
-    if draft_in_inbox and session_of is not None and not ledger_error:
+    if draft_in_inbox and not done and pr_entry is None and not ledger_error and session_of is not None:
         try:
             _session, _reason, ambiguous_source = session_of(draft)
         except Exception:

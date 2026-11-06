@@ -656,7 +656,7 @@ const SEDIMENT = {
         prompt: '撤销这次沉淀：2026-10-28-pd-prefill-hang。\n'
           + '先看计划（只读）：\npython3 scripts/sediment_undo.py --draft-key 2026-10-28-pd-prefill-hang\n'
           + '确认后执行：\npython3 scripts/sediment_undo.py --draft-key 2026-10-28-pd-prefill-hang --apply\n'
-          + '脚本把草稿移进 postmortems/inbox/.undone/（移回即复活）、删掉评估记录、'
+          + '脚本把草稿移进 postmortems/inbox/.undone/（移回即复活）、删掉评估状态文件、'
           + '把来源 trace 的 sedimented 改回 none；不动 knowledge/。',
       },
     },
@@ -1880,7 +1880,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('已出队行：详情提示来源', view.text.includes('草稿不在 inbox'), view.text.slice(-300))
   expect('已出队行：显示 PR 地址', view.text.includes('github.com/pillumina/ascend-sleuth/pull/429'))
   expect('已出队行：落点写合入后落库', view.text.includes('合入后落库'), view.text.slice(-300))
-  expect('已出队行：评估记录已清理', view.text.includes('评估记录已清理'), view.text.slice(-300))
+  expect('已出队行：评估状态文件已清理', view.text.includes('评估状态文件已清理'), view.text.slice(-300))
   const before = t.rpcCalls.length
   click(findNode(view, (node) => node.type === 'button'
     && String((node.props && node.props.className) || '').includes('scp-btn--primary')

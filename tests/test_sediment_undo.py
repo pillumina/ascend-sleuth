@@ -12,6 +12,7 @@
 import contextlib
 import io
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -206,18 +207,30 @@ class SedimentUndoTest(unittest.TestCase):
         self.assertEqual(payload.get("code"), "E_PR_EXISTS")
         self.assertTrue(draft.is_file())
 
-    def test_assessment_changed_after_plan_is_refused(self):
-        # 模拟「计划之后、拿到锁之前另一个 groom 写了新评估」：脚本要在写任何东西之前重读并拦下。
+    def test_undone_path_taken_by_file_is_refused(self):
         key = "draft-a"
         draft = write_flat_draft(self.repo, key)
-        sidecar = write_sidecar(self.repo, key, assessment_id="assess-1")
+        (self.inbox / ".undone").write_text("占位\n", encoding="utf-8")
+        proc, payload = self.run_undo("--draft-key", key, "--apply", "--json")
+        self.assertEqual(proc.returncode, 2, proc.stdout)
+        self.assertEqual(payload.get("code"), "E_MOVE")
+        self.assertIn("可以直接重试", payload.get("message", ""))
+        self.assertTrue(draft.is_file())
+        self.assertTrue((self.inbox / ".undone").is_file())
+
+    def test_assessment_changed_after_plan_is_refused(self):
+        # 模拟「计划之后、拿到锁之前另一个 groom 改了人决定」：assessment_id 不变，
+        # 只改 decision，脚本要按字节比对拦下（只比 id 会漏掉这种真实形状）。
+        key = "draft-a"
+        draft = write_flat_draft(self.repo, key)
+        sidecar = write_sidecar(self.repo, key, decision="new_pattern", assessment_id="assess-1")
         trace = write_trace(self.repo, "2026-11-01-demo")
         before = trace.read_bytes()
         real_plan = su.build_plan
 
         def plan_then_race(*args, **kwargs):
             plan = real_plan(*args, **kwargs)
-            write_sidecar(self.repo, key, assessment_id="assess-2")
+            write_sidecar(self.repo, key, decision="variant", assessment_id="assess-1")
             return plan
 
         buf = io.StringIO()
@@ -233,21 +246,22 @@ class SedimentUndoTest(unittest.TestCase):
         self.assertEqual(trace.read_bytes(), before)
 
     def test_partial_move_rolls_back(self):
-        # 平铺草稿有两个文件：第二个移失败时，第一个要移回 inbox，草稿保持完整可重试。
+        # 平铺草稿有两个文件：第二个改名失败时，第一个要改回 inbox，草稿保持完整可重试。
+        # 移动走 os.rename（原子），所以这里 mock 掉 rename 的失败形状，不经过复制回退。
         key = "draft-a"
         draft = write_flat_draft(self.repo, key)
         md = self.inbox / f"{key}.md"
-        real_move = su.shutil.move
+        real_rename = os.rename
         calls = {"n": 0}
 
         def flaky(src, dst):
             calls["n"] += 1
             if calls["n"] == 2:
                 raise OSError("mock: file is busy")
-            return real_move(src, dst)
+            return real_rename(src, dst)
 
         buf = io.StringIO()
-        with mock.patch.object(su.shutil, "move", side_effect=flaky):
+        with mock.patch.object(su.os, "rename", side_effect=flaky):
             with contextlib.redirect_stdout(buf):
                 code = su.run(["--draft-key", key, "--apply", "--json",
                                "--root", str(self.repo)])

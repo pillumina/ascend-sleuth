@@ -160,9 +160,9 @@ DSH 会话里的一个独立交互层插件。它把诊断的状态、下一步�
 - 撤销沉淀：草稿还在 inbox、台账里没有 PR 记录、来源 trace 也没说升格时，详情动作行给「撤销沉淀」。
   点开是一条指令：`scripts/sediment_undo.py --draft-key <key>` 先打印计划，加 `--apply` 才执行。
   面板不删草稿；点「填入输入框」交给会话里的 agent。
-- 撤销脚本的三件事：草稿移进 `postmortems/inbox/.undone/`（移回即复活）；删掉评估记录；把来源
-  trace 的 `sedimented` 改回 `none`（trace 缺失或外部来源时跳过）。另写一行
-  `.groom/undo-log.jsonl`（评估 id、人决定、草稿去向）。
+- 撤销脚本的三件事：草稿移进 `postmortems/inbox/.undone/`（移回即复活）；删掉评估状态文件
+  （`.groom/assessments/<key>.yaml`）；把来源 trace 的 `sedimented` 改回 `none`（trace 缺失或外部
+  来源时跳过）。另写一行 `.groom/undo-log.jsonl`（评估 id、人决定、草稿去向）。
 - 有 PR 记录或 trace 已说升格的草稿拒绝撤销；已出队的用「恢复草稿」。`.undone/` 没有保留期，
   确认不再需要后手工删。
 - 平台适配器：`scripts/platforms/` 下一个 YAML（标准 REST）或一个 Python（CLI/特殊认证）；新增平台

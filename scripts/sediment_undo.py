@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-# sediment_undo.py —— 撤销一次沉淀动作：草稿出队、评估记录清除、来源 trace 回「未沉淀」
+# sediment_undo.py —— 撤销一次沉淀动作：草稿出队、评估状态文件清除、来源 trace 回「未沉淀」
 #
 # 为什么需要：沉淀一次写三处——草稿落 `postmortems/inbox/`、来源 trace 的 `sedimented`
 # 置 `submitted`、groom 评估落 sidecar。草稿选错了（重复、来源认错、结论不成立）时，
 # 界面只能逐个手改：删草稿、删 sidecar、改 trace。漏一步都不报错，队列会停在
-# 「trace 说已交草稿、inbox 里没有」或「草稿没了、评估记录还在」这类不一致状态。
+# 「trace 说已交草稿、inbox 里没有」或「草稿没了、评估状态文件还在」这类不一致状态。
 # 本脚本把这三步按顺序做完，每步都写进报告。
 #
 # 与 `groom_close_draft.py` 的分工：那个是「沉淀成立之后的收尾」（升格 / 覆盖 / 归档，
 # 草稿移进 `.done/`，trace 改成 `knowledge` / `archived`）；本脚本是「沉淀不成立，
-# 撤回这次提交」（草稿移进 `.undone/`，trace 回 `none`，评估记录删除）。
+# 撤回这次提交」（草稿移进 `.undone/`，trace 回 `none`，评估状态文件删除）。
 #
 # 为什么 trace 可以回 `none`：`groom_close_draft.py` 里那条纪律说 reject / defer 不改
 # trace——因为草稿确实提交过、只是没转正，改回 `none` 等于抹掉事实。撤销不同：草稿与
-# 评估记录一起撤回，重新沉淀会从头开始，`submitted` 已不成立，`none` 才是撤完的真实
+# 评估状态文件一起撤回，重新沉淀会从头开始，`submitted` 已不成立，`none` 才是撤完的真实
 # 状态。撤掉的东西在 `.groom/undo-log.jsonl` 留一行（评估 id、人决定、草稿去向）。
 #
 # 边界：
@@ -25,7 +25,7 @@
 #     PR，走知识库变更流程；这里只处理提交阶段（`submitted`）的草稿。
 #   - 草稿移进 `postmortems/inbox/.undone/`（移动不删除，移回即复活）。`find_drafts`
 #     不扫点目录，所以移走后不再进队列。
-#   - 来源 trace 缺失或没记来源（外部 issue 来源）时只出队 + 删评估记录，回写跳过并写明。
+#   - 来源 trace 缺失或没记来源（外部 issue 来源）时只出队 + 删评估状态文件，回写跳过并写明。
 #   - 撤销后草稿留在 `.undone/`，没有保留期；确认不再需要后手工删。
 #   - 默认只打印计划；`--apply` 才写。
 #
@@ -41,7 +41,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import shutil
+import os
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -120,41 +120,65 @@ def _write_trace_none(root: Path, traces: Path, session: str, sha: str, by: str)
 
 
 def _move_draft(root: Path, inbox: Path, draft, stamp: str, meta: dict) -> Path:
-    """把草稿移进 `.undone/<时间>-<key>/`。先写 `.undo.json`，再逐个移文件。
+    """把草稿移进 `.undone/<时间>-<key>/`。
 
-    逐个移是为了失败时能回滚：平铺草稿有 case 文件与可选 `.md` 两个文件，Windows 上
-    第二个文件被占用时只移走第一个。回滚把已移走的放回原位，草稿完整留在 inbox，
-    下次可以直接重试；回滚也失败时报告里指出目标目录，由人手工恢复。
+    移动用 `os.rename`：`inbox` 与 `.undone` 在同一文件系统，改名是原子的，不会在失败时
+    留下复制出的一半。平铺草稿有 case 文件与可选 `.md`，任一失败就回滚已经改名的文件，
+    草稿完整留在 inbox，可以直接重试。目录形态整目录改名，只有写 `.undo.json` 这一步
+    在改名之后。
     """
     target = inbox / UNDONE_DIR / f"{stamp}-{sanitize_key(draft.key)}"
-    target.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise Refused("E_MOVE", f"建回收目录失败（{exc}），本次没有移动草稿，可以直接重试") from exc
     if target.exists():
         raise Refused("E_EXISTS", f"回收位置已经存在，先处理它再撤销：{_rel(root, target)}")
-    target.mkdir(parents=True)
-    (target / ".undo.json").write_text(
-        json.dumps(meta, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    source_dir = Path(draft.case_path).parent if draft.layout == "directory" else None
-    sources = list(source_dir.iterdir()) if source_dir is not None else [Path(draft.case_path)]
-    if source_dir is None and draft.postmortem_path is not None and Path(draft.postmortem_path).exists():
+    meta_text = json.dumps(meta, ensure_ascii=False, indent=2) + "\n"
+
+    if draft.layout == "directory":
+        source_dir = Path(draft.case_path).parent
+        try:
+            os.rename(str(source_dir), str(target))
+        except OSError as exc:
+            raise Refused("E_MOVE", f"移草稿失败，草稿仍在 inbox，可以直接重试：{exc}") from exc
+        try:
+            (target / ".undo.json").write_text(meta_text, encoding="utf-8")
+        except OSError as exc:
+            try:
+                os.rename(str(target), str(source_dir))
+            except OSError as rollback_exc:
+                raise Refused(
+                    "E_MOVE",
+                    f"草稿已移到 {_rel(root, target)}，写 undo 元数据失败（{exc}），"
+                    f"移回也失败（{rollback_exc}）：先手工移回 inbox 再重试") from exc
+            raise Refused("E_MOVE", f"写 undo 元数据失败（{exc}），草稿已移回 inbox，可以直接重试") from exc
+        return target
+
+    try:
+        target.mkdir(parents=True)
+    except OSError as exc:
+        raise Refused("E_MOVE", f"建回收目录失败（{exc}），本次没有移动草稿，可以直接重试") from exc
+    sources = [Path(draft.case_path)]
+    if draft.postmortem_path is not None and Path(draft.postmortem_path).exists():
         sources.append(Path(draft.postmortem_path))
     moved = []
     try:
+        (target / ".undo.json").write_text(meta_text, encoding="utf-8")
         for src in sources:
-            shutil.move(str(src), str(target / src.name))
+            os.rename(str(src), str(target / src.name))
             moved.append(src)
-        if source_dir is not None:
-            source_dir.rmdir()
-    except Exception as exc:
+    except OSError as exc:
         try:
             for src in moved:
-                shutil.move(str(target / src.name), str(src))
+                os.rename(str(target / src.name), str(src))
             (target / ".undo.json").unlink(missing_ok=True)
             target.rmdir()
-        except Exception as rollback_exc:
+        except OSError as rollback_exc:
             raise Refused(
                 "E_MOVE",
-                f"移草稿失败（{exc}），回滚也失败（{rollback_exc}）。草稿可能有一部分在 "
-                f"{_rel(root, target)}，先手工移回 inbox 再重试") from exc
+                f"移草稿失败（{exc}），回滚也失败（{rollback_exc}）。先看 "
+                f"{_rel(root, target)} 与 inbox，把草稿凑齐再重试") from exc
         raise Refused("E_MOVE", f"移草稿失败，已回滚、草稿仍在 inbox，可以直接重试：{exc}") from exc
     return target
 
@@ -199,10 +223,13 @@ def build_plan(root: Path, inbox: Path, traces: Path, key: str, keep_trace: bool
                       f"这份草稿在 PR 台账里有记录（{detail}）。"
                       "PR 是外部事实，先在平台上处理它，再撤销本地草稿。")
     sidecar = assessment_path(inbox, key)
+    sidecar_sha = ""
     try:
+        if sidecar.exists():
+            sidecar_sha = hashlib.sha256(sidecar.read_bytes()).hexdigest()
         side_doc = load_assessment(inbox, key) if sidecar.exists() else {}
     except Exception as exc:
-        raise Refused("E_ASSESSMENT", f"评估记录读不了，先确认它没坏再撤销：{exc}") from exc
+        raise Refused("E_ASSESSMENT", f"评估状态文件读不了，先确认它没坏再撤销：{exc}") from exc
     human = side_doc.get("human_decision") if isinstance(side_doc.get("human_decision"), dict) else {}
     trace = {"session": "", "from": "none", "to": "none", "action": "skip",
              "sha256": "", "path": "", "warnings": []}
@@ -216,13 +243,13 @@ def build_plan(root: Path, inbox: Path, traces: Path, key: str, keep_trace: bool
     elif ambiguous:
         raise Refused("E_SESSION_AMBIGUOUS", reason or "来源 session 有多个，先修草稿头注释只留一个")
     elif not session:
-        trace["warnings"].append("来源 trace 未记录（外部来源）：只出队并清评估记录，不回写沉淀状态")
+        trace["warnings"].append("来源 trace 未记录（外部来源）：只出队并清评估状态文件，不回写沉淀状态")
     else:
         path = traces / (session + ".yaml")
         trace["session"] = session
         trace["path"] = _rel(root, path)
         if not path.is_file():
-            trace["warnings"].append(f"来源 trace 不存在（{session}）：只出队并清评估记录，不回写沉淀状态")
+            trace["warnings"].append(f"来源 trace 不存在（{session}）：只出队并清评估状态文件，不回写沉淀状态")
         else:
             try:
                 current = _trace_state(path)
@@ -242,7 +269,7 @@ def build_plan(root: Path, inbox: Path, traces: Path, key: str, keep_trace: bool
     return {
         "root": root, "inbox": inbox, "traces": traces, "key": key,
         "draft": draft, "sidecar": sidecar, "side_doc": side_doc, "human": human,
-        "trace": trace,
+        "sidecarSha256": sidecar_sha, "trace": trace,
     }
 
 
@@ -253,10 +280,10 @@ def describe_plan(root: Path, plan: dict, stamp: str, apply: bool) -> str:
     lines.append(f"- 草稿：{_rel(root, draft.case_path)}（{draft.layout}）")
     if plan["sidecar"].exists():
         decision = str((plan["human"] or {}).get("decision") or "")
-        lines.append(f"- 评估记录：{_rel(root, plan['sidecar'])}"
+        lines.append(f"- 评估状态文件：{_rel(root, plan['sidecar'])}"
                      + (f"（人决定 {decision}，一并清除）" if decision else ""))
     else:
-        lines.append("- 评估记录：没有")
+        lines.append("- 评估状态文件：没有")
     trace = plan["trace"]
     if trace["session"]:
         if trace["action"] == "write":
@@ -273,7 +300,7 @@ def describe_plan(root: Path, plan: dict, stamp: str, apply: bool) -> str:
 
 def run(argv=None) -> int:
     ap = argparse.ArgumentParser(
-        description="撤销一次沉淀：草稿出队、评估记录清除、来源 trace 回未沉淀")
+        description="撤销一次沉淀：草稿出队、评估状态文件清除、来源 trace 回未沉淀")
     ap.add_argument("--draft-key", required=True, help="inbox 草稿的 key（与队列里显示的一致）")
     ap.add_argument("--root", default=None, help="仓库根（默认本脚本上一级）")
     ap.add_argument("--inbox", default=None, help="共享 inbox（默认由主检出解析）")
@@ -333,25 +360,27 @@ def run(argv=None) -> int:
                     "to": plan["trace"]["from"], "written": False}
     try:
         # 目录级锁包住整段：计划与执行之间可能另一个 groom 写了新评估，或另一个
-        # 撤销/收尾把草稿移走。拿到锁后先重验草稿还在，再按 trace → 草稿 → 评估记录
+        # 撤销/收尾把草稿移走。拿到锁后先重验草稿还在，再按 trace → 草稿 → 评估状态文件
         # 的顺序写；每完成一步就记进 done，失败报告据此说清现状。
         with log_lock(assessment_guard(inbox)) as held:
             if not held:
-                raise Refused("E_LOCK", "评估记录的目录锁不可用（本平台没有锁原语），本次没有写入")
+                raise Refused("E_LOCK", "评估状态文件的目录锁不可用（本平台没有锁原语），本次没有写入")
             if not Path(plan["draft"].case_path).exists():
                 raise Refused("E_NO_DRAFT", "草稿在计划之后被移走（可能另一个撤销或收尾在跑），刷新后重试")
-            # 计划之后若有人写进了新评估（另一个 groom），不能直接删：它的评估结论与
-            # 人决定没进计划，删掉就丢了。在写任何东西之前重读并比对 assessment_id。
-            if sidecar.exists():
-                try:
-                    current = load_assessment(inbox, plan["key"]) if sidecar.exists() else {}
-                except Exception as exc:
-                    raise Refused("E_ASSESSMENT", f"评估记录读不了，先确认它没坏：{exc}") from exc
-                current_id = str(current.get("assessment_id") or "") if isinstance(current, dict) else ""
-                planned_id = str(plan["side_doc"].get("assessment_id") or "")
-                if current_id != planned_id:
+            # 计划之后若有人改写了评估状态文件（另一个 groom 重评估、或只改了人决定），
+            # 不能直接删：它的结论与决定没进计划，删掉就丢了。在写任何东西之前按字节比对。
+            # 只比 assessment_id 不够：`groom_decide.py` 改人决定时不换 id。
+            if plan["sidecarSha256"]:
+                if not sidecar.exists():
                     raise Refused("E_ASSESSMENT_CHANGED",
-                                  "评估记录在计划之后被改过（可能有另一个 groom 在写），先重新跑一次计划")
+                                  "评估状态文件在计划之后被移走了，先重新跑一次计划")
+                try:
+                    current_sha = hashlib.sha256(sidecar.read_bytes()).hexdigest()
+                except OSError as exc:
+                    raise Refused("E_ASSESSMENT", f"评估状态文件读不了，先确认它没坏：{exc}") from exc
+                if current_sha != plan["sidecarSha256"]:
+                    raise Refused("E_ASSESSMENT_CHANGED",
+                                  "评估状态文件在计划之后被改过（可能有另一个 groom 在写），先重新跑一次计划")
 
             if plan["trace"]["action"] == "write":
                 _write_trace_none(root, traces, plan["trace"]["session"],
@@ -376,10 +405,10 @@ def run(argv=None) -> int:
             if sidecar.exists():
                 with log_lock(assessment_path(inbox, plan["key"])) as file_held:
                     if not file_held:
-                        raise Refused("E_LOCK", "评估记录的文件锁不可用（本平台没有锁原语）", done)
+                        raise Refused("E_LOCK", "评估状态文件的文件锁不可用（本平台没有锁原语）", done)
                     sidecar.unlink()
                 assessment_deleted = True
-                done.append("评估记录已删除")
+                done.append("评估状态文件已删除")
 
             human = plan["human"] or {}
             log_entry = {
@@ -424,7 +453,7 @@ def run(argv=None) -> int:
         print(f"- 来源 trace：{trace_result['session'] or '未记录'}"
               + (f" 的 sedimented {trace_result['from']} → none" if trace_result["written"]
                  else "（未回写）"))
-        print("- 评估记录：" + ("已删除" if assessment_deleted else "没有"))
+        print("- 评估状态文件：" + ("已删除" if assessment_deleted else "没有"))
         print(f"- undo-log：{result['undoLog']}")
         for warning in result["warnings"]:
             print("- 注意：" + warning)
