@@ -669,7 +669,11 @@ const SEDIMENT = {
       state: 'decided', stage: '待提 PR', stageTone: 'accent', ageDays: 11, ageSource: 'created_at',
       createdAt: '2026-10-26T09:00:00+08:00', assessedShort: '4823d40',
       novelty: 'variant', confidence: 'medium', candidate: 'VLLM-ASC-10122', rationale: '', reviewReasons: [],
-      stale: false, staleReasons: [], decision: 'variant', decisionValid: true, decisionBy: '张工', decisionAt: '2026-11-03',
+      stale: true, staleReasons: ['目标 4823d40 落后于评估基准 8f1d2c 的 1 个知识文件'],
+      targetRef: 'refs/remotes/mirror/main', targetShort: '4823d40',
+      targetState: 'target_behind', targetSource: 'assessment',
+      targetWarnings: ['当前配置目标 refs/remotes/origin/main 解析不到（先 fetch 或确认远端）'],
+      decision: 'variant', decisionValid: true, decisionBy: '张工', decisionAt: '2026-11-03',
       source: { sessionId: '2026-10-26-glm53-moe-shuffle', mismatch: 'none', sedimented: 'submitted' },
       promotion: { caseId: 'VLLM-ASC-10122', casePath: 'knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10122.yaml', postmortemPath: '' }, pr: null,
       next: { kind: 'pr', label: '生成提 PR 指令', prompt: '提 PR 的批次指令' }, writeback: '',
@@ -1575,6 +1579,8 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   view = await t.settle()
   expect('沉淀详情：五步进度', view.text.includes('草稿已交') && view.text.includes('已评估') && view.text.includes('已提 PR'))
   expect('沉淀详情：显示人决定', view.text.includes('张工'))
+  expect('沉淀详情：显示比较基准与目标状态', view.text.includes('比较基准') && view.text.includes('refs/remotes/mirror/main') && view.text.includes('目标落后'))
+  expect('沉淀详情：显示目标提示', view.text.includes('目标提示') && view.text.includes('解析不到'))
   expect('沉淀详情：显示提 PR 按钮', !!findButtonContains(view, '生成提 PR 指令'))
   const steps = byClass(view, 'scp-sed-step')
   const promotedStep = steps.find((node) => nodeText(node).includes('已升格'))
