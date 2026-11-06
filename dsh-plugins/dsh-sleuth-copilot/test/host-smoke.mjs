@@ -138,13 +138,16 @@ function runCommand(spec) {
 
 function makeShell() {
   const calls = []
+  const specs = []
   return {
     calls,
+    specs,
     resolve(request) {
       return request
     },
     async execute(spec) {
       calls.push(String(spec.command || ''))
+      specs.push(spec)
       return { result: () => runCommand(spec) }
     },
   }
@@ -677,6 +680,60 @@ const wtWrite = await transition(rw, {
 const wtWriteValue = wtWrite.envelope.result.value
 expect('worktree：写落到主检出的 traces（reopen ok）', wtWriteValue && wtWriteValue.ok === true, JSON.stringify(wtWriteValue))
 rmSync(WT, { recursive: true, force: true })
+
+// ── 写子进程的沙箱档位：跟随会话，不把完全权限降级 ──────────────────────────
+// 旧写法把写子进程的档位写死成 workspace-write：完全权限的会话在 Windows 上写不进去
+// （读子进程跟随会话档位、写子进程反而被降级），报出来却只有一句「没有写权限」。
+{
+  const wsShell = makeShell()
+  const ws = makeHarness({
+    shell: wsShell,
+    sandboxPolicy: { resolve: () => ({ mode: 'workspace-write', workspaceRoot: SANDBOX, sessionId: 'ws-session' }) },
+  })
+  mod.apply(ws.ctx)
+  const wsSha = createHash('sha256').update(readFileSync(join(TRACES, TRACE_FILE))).digest('hex')
+  const wsWrite = await transition(ws, {
+    sessionId: 'ws-session', cwd: SANDBOX, traceSessionId: TRACE_ID,
+    tracesDir: TRACES, expectSha256: wsSha, kind: 'reopen',
+  }, 'write-workspace-policy')
+  const wsWriteValue = wsWrite.envelope.result.value
+  expect('写：工作区写会话照常写入', wsWriteValue && wsWriteValue.ok === true, JSON.stringify(wsWriteValue))
+  const wsSpec = wsShell.specs.find((spec) => /trace_transition\.py/.test(String(spec.command || '')))
+  expect('写：工作区写会话的写子进程收窄到写落点并带上会话号', !!wsSpec && wsSpec.sandboxPolicy
+    && wsSpec.sandboxPolicy.mode === 'workspace-write'
+    && wsSpec.sandboxPolicy.workspaceRoot === dirname(TRACES)
+    && wsSpec.sandboxPolicy.sessionId === 'ws-session', JSON.stringify(wsSpec && wsSpec.sandboxPolicy))
+
+  const fullShell = makeShell()
+  const full = makeHarness({
+    shell: fullShell,
+    sessions: { get: () => ({ header: {} }) },
+    sandboxPolicy: { resolve: () => ({ mode: 'danger-full-access', sessionId: 'full-access-session' }) },
+  })
+  mod.apply(full.ctx)
+  const fullSha = createHash('sha256').update(readFileSync(join(TRACES, TRACE_FILE))).digest('hex')
+  const fullWrite = await transition(full, {
+    sessionId: 'full-access-session', cwd: SANDBOX, traceSessionId: TRACE_ID,
+    tracesDir: TRACES, expectSha256: fullSha, kind: 'close', to: 'resolved', endingKind: 'root_cause',
+  }, 'write-full-access')
+  const fullWriteValue = fullWrite.envelope.result.value
+  expect('写：完全权限会话照常写入', fullWriteValue && fullWriteValue.ok === true, JSON.stringify(fullWriteValue))
+  const writeSpec = fullShell.specs.find((spec) => /trace_transition\.py/.test(String(spec.command || '')))
+  expect('写：完全权限会话的写子进程不降级沙箱档位', !!writeSpec && writeSpec.sandboxPolicy
+    && writeSpec.sandboxPolicy.mode === 'danger-full-access'
+    && writeSpec.sandboxPolicy.sessionId === 'full-access-session',
+  JSON.stringify(writeSpec && writeSpec.sandboxPolicy))
+
+  // 台账写入（mark）只改本地台账，不查平台：用它看写子进程拿到的档位。
+  const prBefore = fullShell.specs.length
+  await prTarget(full, {
+    sessionId: 'full-access-session', cwd: SANDBOX, action: 'mark',
+    key: 'demo-draft', state: 'merged',
+  }, 'pr-mark-full-access')
+  const prSpec = fullShell.specs.slice(prBefore).find((spec) => /pr_status\.py/.test(String(spec.command || '')))
+  expect('目标：完全权限会话写台账的沙箱档位不降级', !!prSpec && prSpec.sandboxPolicy
+    && prSpec.sandboxPolicy.mode === 'danger-full-access', JSON.stringify(prSpec && prSpec.sandboxPolicy))
+}
 
 // 参数文件无论成功、失败都清掉，且只有本进程这一份命名前缀。
 const leftovers = readdirSync(tmpdir()).filter((name) => name.startsWith('sleuth-copilot-' + process.pid + '-'))

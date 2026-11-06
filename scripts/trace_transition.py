@@ -25,8 +25,8 @@ transition 事件；面板、skill、终端都调它。
 `sediment_batch.py` 那套「默认打印、`--apply` 才写」。
 
 退出码：0 成功；2 参数/必填/转移不合法（E_SCHEMA）；3 状态已变（E_STATE_CHANGED）；
-4 写入后校验失败，已回滚（E_IO）；5 主检出不可写（E_PERM）；6 trace 不存在（E_NOT_FOUND）；
-7 脚本版本与词表不匹配（E_SCHEMA_VERSION）。
+4 写入后校验失败，已回滚（E_IO）；5 文件操作被系统拒绝（E_PERM，带路径与系统原因）；
+6 trace 不存在（E_NOT_FOUND）；7 脚本版本与词表不匹配（E_SCHEMA_VERSION）。
 """
 
 from __future__ import annotations
@@ -697,12 +697,19 @@ def main(argv=None) -> int:
         else:
             print(exc.message, file=sys.stderr)
         return CODE_EXIT.get(exc.code, 2)
-    except PermissionError:
-        payload = {"ok": False, "code": "E_PERM", "message": "当前会话没有写权限"}
+    except PermissionError as exc:
+        # 文件级 PermissionError 不只来自「写不进去」：读 trace、开锁文件失败也走这里。
+        # 消息说清是文件操作被拒，并带出路径与系统原因，读者才知道该修哪一处；
+        # 面板再按 E_PERM 给「生成指令」兜底（会话里的 shell 可能仍能写）。
+        where = str(exc.filename) if exc.filename else ""
+        reason = exc.strerror or str(exc)
+        message = ("文件操作被系统拒绝：" + where + "（" + reason + "）") if where \
+            else ("文件操作被系统拒绝（" + reason + "）")
+        payload = {"ok": False, "code": "E_PERM", "message": message}
         if args.json:
             print(json.dumps(payload, ensure_ascii=False))
         else:
-            print(payload["message"], file=sys.stderr)
+            print(message, file=sys.stderr)
         return CODE_EXIT["E_PERM"]
     except Exception as exc:  # 未预期错误也要给稳定 code，面板才有一句人话
         payload = {"ok": False, "code": "E_IO", "message": str(exc)}
