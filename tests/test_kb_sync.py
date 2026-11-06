@@ -116,6 +116,24 @@ class ConfigTest(RepoCase):
         self.assertEqual(code, 0)
         self.assertEqual(doc["config"], "default")
 
+    def test_save_settings_folds_file_refusal(self):
+        # 配置写失败（开锁文件被系统拒绝）折成 SettingsError：面板按 E_SETTINGS 显示路径与原因，
+        # 不落成 E_INTERNAL 的裸 PermissionError。
+        class RefusedLock:
+            def __enter__(self):
+                raise PermissionError(13, "Permission denied", "/tmp/r/.local/settings.json.lock")
+
+            def __exit__(self, *exc):
+                return False
+
+        with mock.patch.object(kb_sync, "log_lock", return_value=RefusedLock()):
+            with self.assertRaises(kb_sync.SettingsError) as ctx:
+                kb_sync.save_settings(self.repo, {})
+        message = str(ctx.exception)
+        self.assertIn("配置写不进去", message)
+        self.assertIn("settings.json.lock", message)
+        self.assertIn("Permission denied", message)
+
     def test_missing_settings_syncs_with_defaults(self):
         real = kb_sync.run_git
         calls = []

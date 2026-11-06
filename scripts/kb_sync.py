@@ -58,7 +58,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from exec_log_path import log_lock, main_checkout  # noqa: E402
+from exec_log_path import log_lock, main_checkout, write_refused_message  # noqa: E402
 
 SCHEMA_SETTINGS = "ascend-sleuth-settings/1"
 SCHEMA_STATE = "ascend-sleuth-kb-sync-state/1"
@@ -238,20 +238,27 @@ def _write_json(path: Path, data: dict) -> str:
 
 
 def save_settings(root: Path, data: dict, expect_sha=None) -> str:
-    """原子写 settings；`expect_sha` 给了就做文件字节 CAS。返回新 sha256。"""
+    """原子写 settings；`expect_sha` 给了就做文件字节 CAS。返回新 sha256。
+
+    文件层失败（开锁文件、建目录、替换配置被系统拒绝）折成 SettingsError：
+    调用方按 E_SETTINGS 显示路径与原因，不落成 E_INTERNAL 的裸异常。
+    """
     path = settings_path(root)
     data = dict(data)
     data["schema"] = SCHEMA_SETTINGS
     data["sync"] = normalize_sync(data.get("sync"))
     data["target"] = normalize_target(data.get("target"))
     text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
-    with log_lock(path) as locked:
-        if not locked:
-            raise SettingsError(f"配置写锁不可用：{path}")
-        actual = settings_sha256(root)
-        if expect_sha is not None and actual != expect_sha:
-            raise SettingsCasConflict(expect_sha, actual or "")
-        written_text = _write_json(path, data)
+    try:
+        with log_lock(path) as locked:
+            if not locked:
+                raise SettingsError(f"配置写锁不可用：{path}")
+            actual = settings_sha256(root)
+            if expect_sha is not None and actual != expect_sha:
+                raise SettingsCasConflict(expect_sha, actual or "")
+            written_text = _write_json(path, data)
+    except OSError as exc:
+        raise SettingsError(write_refused_message("配置", path, exc)) from exc
     if written_text != text:  # 同一份序列化，防写后漂移
         raise SettingsError("配置写后校验失败（磁盘内容与本次序列化不一致）")
     return settings_sha256(root)

@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.16.6'
+    const PLUGIN_VERSION = '0.16.7'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。
@@ -335,6 +335,21 @@ window.__ModuleLoader__.load({
       'sediment.checkError.E_NOT_FOUND': '台账里没有这条 PR',
       'sediment.checkError.E_LEDGER': '台账写入失败',
       'sediment.checkError.unknown': '未知原因',
+      'sediment.prompt.fallbackTitle': '写不进台账时的指令',
+      'sediment.fallback.targetTitle': '写推送目标时的指令',
+      'sediment.fallback.sub': '面板写不进本地文件；这条指令填进输入框后交给会话里的 agent 执行，不会自动发送。',
+      'sediment.fallback.checked': '平台已经查到：{state}；这次没写进 PR 台账。',
+      'sediment.fallback.checkedMany': '平台已经查到 {n} 条：{list}；这次没写进 PR 台账。',
+      'sediment.fallback.ledgerLede': '面板没把结果写进 PR 台账。',
+      'sediment.fallback.settingsLede': '面板没把推送目标写进本地配置。',
+      'sediment.fallback.policyLede': '面板的子进程被拒绝。',
+      'sediment.fallback.reason': '原因：{reason}',
+      'sediment.fallback.command': '请在仓库根目录执行：',
+      'sediment.fallback.ledger': 'PR 台账：{path}',
+      'sediment.fallback.settings': '配置文件：{path}',
+      'sediment.fallback.repairFile': '这条命令也报权限错误时，先确认没有残留的 python 进程，再删掉该文件旁的 .lock 文件重试。',
+      'sediment.fallback.repairFileAcl': '仍不行就看它的只读属性与访问控制列表（ACL）。',
+      'sediment.fallback.repairPolicy': '这是会话权限模式或沙箱允许写的范围，不是文件本身；同样的命令在可写的会话 shell 里通常能过，若也报权限错误再按文件权限排查。',
       'sediment.history.archived': '已归档',
       'sediment.assessedUnknown': '未评估',
       'sediment.detail.assessmentCleared': '评估记录已清理',
@@ -731,6 +746,21 @@ window.__ModuleLoader__.load({
       'sediment.checkError.E_NOT_FOUND': 'no PR ledger entry',
       'sediment.checkError.E_LEDGER': 'ledger write failed',
       'sediment.checkError.unknown': 'unknown reason',
+      'sediment.prompt.fallbackTitle': 'Command for a refused ledger write',
+      'sediment.fallback.targetTitle': 'Command for a refused target write',
+      'sediment.fallback.sub': 'The panel cannot write the local file; fill this command into the composer so the agent in this session can run it. Nothing is sent automatically.',
+      'sediment.fallback.checked': 'The platform reported: {state}; this check was not written to the PR ledger.',
+      'sediment.fallback.checkedMany': 'The platform reported {n} states: {list}; this check was not written to the PR ledger.',
+      'sediment.fallback.ledgerLede': 'The panel did not write the result to the PR ledger.',
+      'sediment.fallback.settingsLede': 'The panel did not write the push target to the local config.',
+      'sediment.fallback.policyLede': 'The panel write subprocess was refused.',
+      'sediment.fallback.reason': 'Reason: {reason}',
+      'sediment.fallback.command': 'Run this from the repo root:',
+      'sediment.fallback.ledger': 'PR ledger: {path}',
+      'sediment.fallback.settings': 'Config file: {path}',
+      'sediment.fallback.repairFile': 'If the command also reports a permission error, first check for a leftover python process, then delete the .lock file next to it and retry.',
+      'sediment.fallback.repairFileAcl': 'If it still fails, inspect its read-only attribute and access control list (ACL).',
+      'sediment.fallback.repairPolicy': 'This is a session permission mode or sandbox writable-range decision, not the file itself; the same command usually works in a writable session shell. If it also reports a permission error, then inspect the file permissions.',
       'sediment.history.archived': 'archived',
       'sediment.assessedUnknown': 'not assessed',
       'sediment.detail.assessmentCleared': 'assessment record cleared',
@@ -3852,6 +3882,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const [sedFilter, setSedFilter] = React.useState('all')
       const [promptKind, setPromptKind] = React.useState('')
       const [promptDetailsOpen, setPromptDetailsOpen] = React.useState(false)
+      // 写台账失败时的兜底指令：与普通指令预览同一个弹层，正文由失败上下文生成。
+      const [promptFallback, setPromptFallback] = React.useState(null)
       // 批量沉淀指令在弹层打开时冻结：后台每 10 秒刷新会重算 filtered，不能让名单在读者看的时候变。
       const [batchSed, setBatchSed] = React.useState(null)
       const [targetOpen, setTargetOpen] = React.useState(false)
@@ -3945,12 +3977,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         setMenuForm(null)
         setCmdOpen(false)
         setPromptKind('')
+        setPromptFallback(null)
         setManualOpen(false)
       }, [s.sessionId])
 
       React.useEffect(() => {
         setSedSel(0)
         setPromptKind('')
+        setPromptFallback(null)
         setPromptDetailsOpen(false)
         setTargetOpen(false)
         setManualOpen(false)
@@ -4023,6 +4057,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         setSearchText('')
         setMenuOpen(false)
         setPromptKind('')
+        setPromptFallback(null)
         setBatchSed(null)
         setPromptDetailsOpen(false)
         setTargetOpen(false)
@@ -4779,6 +4814,18 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           return
         }
         setPromptKind(k)
+        setPromptFallback(null)
+        setPromptDetailsOpen(false)
+        setBatchSed(null)
+        setMenuOpen(false)
+      }
+
+      // 写台账被系统拒绝时的指令弹层：复用指令预览这一个面（复制 / 填入输入框），
+      // 正文由失败上下文生成。点了才填进输入框，不自动发送，也不覆盖读者正在写的内容。
+      function openPromptFallback(head, text) {
+        if (!text) return
+        setPromptFallback({ head: String(head || ''), text: String(text) })
+        setPromptKind('fallback')
         setPromptDetailsOpen(false)
         setBatchSed(null)
         setMenuOpen(false)
@@ -4786,6 +4833,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
       function closePrompt() {
         setPromptKind('')
+        setPromptFallback(null)
         setBatchSed(null)
       }
 
@@ -4842,6 +4890,18 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           })
           if (!result || result.ok === false) {
             const message = result && (result.message || (result.error && result.error.message))
+            const writeKind = prWriteFailureKind(result)
+            if (writeKind) {
+              // 台账没写进去时带 CAS 令牌；写配置失败时台账已经写过，旧令牌只会先撞 E_CAS。
+              const target = failureCode(result) === 'E_SETTINGS' ? 'settings' : 'ledger'
+              setTargetOpen(false)
+              openPromptFallback(tr('sediment.fallback.targetTitle'), prWriteFallbackText(
+                message,
+                'python3 scripts/pr_status.py --root . --set-target --remote ' + targetRemote
+                + ' --base ' + targetBase + (target === 'ledger' ? ledgerCasArg() : ''),
+                { kind: writeKind, target }))
+              return
+            }
             flash(message || tr('sediment.target.required'))
             if (failureCode(result) === 'E_CAS') await refreshSediment(true)
             return
@@ -4874,6 +4934,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       async function checkPr(key) {
         if (!canWrite) { flash(tr('write.disabled')); return }
         if (!key || checkBusy) return
+        const runSession = store.sessionId
         setCheckBusy(key)
         try {
           const result = await rpcCall('copilot-pr-target', {
@@ -4881,9 +4942,22 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           })
           if (!result || result.ok === false) {
             const message = result && (result.message || (result.error && result.error.message))
-            flash(tr('sediment.checkFailedOne', { reason: message || tr('sediment.checkError.unknown') }))
             // 失败也可能已经写了台账（查不到时写 unknown + checked_at），刷新把行里的状态与时间对齐。
             await refreshSediment(true)
+            // 刷新期间切了会话：旧 key 的兜底弹层不能弹在新会话上。
+            if (store.sessionId !== runSession) return
+            const writeKind = prWriteFailureKind(result)
+            if (writeKind) {
+              // 平台结果拿到了、台账没写进去：给一条能填进输入框的指令交给会话 agent 写。
+              const state = result && PR_STATE_KEYS.indexOf(String(result.state || '')) >= 0
+                ? tr('sediment.prState.' + String(result.state)) : ''
+              openPromptFallback(tr('sediment.primary.check'), prWriteFallbackText(
+                message,
+                'python3 scripts/pr_status.py --root . --check --draft ' + key + ledgerCasArg(),
+                { kind: writeKind, checkedStates: state ? [state] : [] }))
+              return
+            }
+            flash(tr('sediment.checkFailedOne', { reason: message || tr('sediment.checkError.unknown') }))
             return
           }
           await refreshSediment(true)
@@ -4906,6 +4980,64 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         if (typeof result.code === 'string' && result.code) return result.code
         if (result.error && typeof result.error.code === 'string') return result.error.code
         return ''
+      }
+
+      // 写本地文件被拒绝时该给哪一层指令：'file' = 文件/权限层拒绝（写台账、写配置），
+      // 'policy' = 会话档位或沙箱可写面的判断（命令在会话 shell 里通常能过）。
+      // 读坏台账也是 E_LEDGER，不能当作写失败去生成写指令。
+      function prWriteFailureKind(result) {
+        const code = failureCode(result)
+        if (code === 'E_PERM') return 'policy'
+        if (code === 'E_SETTINGS') return 'file'
+        const message = String((result && (result.message || (result.error && result.error.message))) || '')
+        if (code === 'E_LEDGER') {
+          if (result && result.write_failed === true) return 'file'
+          // 旧版脚本没有 write_failed 标记，按它当时的两句写失败原文认。
+          return /台账写不进去|配置写不进去|写锁不可用/.test(message) ? 'file' : ''
+        }
+        if (code !== 'E_INTERNAL') return ''
+        // 面板与脚本版本错配：旧脚本把系统拒绝落成 E_INTERNAL 的裸异常。
+        return /PermissionError|WinError (5|32)\b|Errno (13|1)\b|Access is denied|Operation not permitted|拒绝访问/.test(message) ? 'file' : ''
+      }
+
+      // 兜底指令正文：查到的状态、写的是哪份文件、哪条命令、命令也失败时查什么。
+      // 参数 opts：kind（file / policy）、target（ledger / settings）、checkedStates（人读的状态名）。
+      function prWriteFallbackText(message, command, opts) {
+        const options = opts || {}
+        const lines = []
+        const checked = Array.isArray(options.checkedStates) ? options.checkedStates.filter(Boolean) : []
+        if (checked.length === 1) lines.push(tr('sediment.fallback.checked', { state: checked[0] }))
+        else if (checked.length > 1) {
+          // 大批次不把整串状态塞进弹层：最多列 5 条，其余用省略号。
+          const list = checked.slice(0, 5).join('、') + (checked.length > 5 ? '…' : '')
+          lines.push(tr('sediment.fallback.checkedMany', { n: checked.length, list }))
+        }
+        if (options.kind === 'policy') lines.push(tr('sediment.fallback.policyLede'))
+        else if (options.target === 'settings') lines.push(tr('sediment.fallback.settingsLede'))
+        else lines.push(tr('sediment.fallback.ledgerLede'))
+        lines.push(tr('sediment.fallback.reason', {
+          reason: String(message || tr('sediment.checkError.unknown')),
+        }))
+        lines.push(tr('sediment.fallback.command'))
+        lines.push(String(command || ''))
+        if (options.target === 'settings') {
+          lines.push(tr('sediment.fallback.settings', { path: '.local/settings.json' }))
+        } else {
+          lines.push(tr('sediment.fallback.ledger', { path: 'postmortems/inbox/.groom/pr-state.json' }))
+        }
+        if (options.kind === 'policy') lines.push(tr('sediment.fallback.repairPolicy'))
+        else {
+          lines.push(tr('sediment.fallback.repairFile'))
+          lines.push(tr('sediment.fallback.repairFileAcl'))
+        }
+        return lines.join('\n')
+      }
+
+      // 台账 CAS 令牌跟着兜底命令走：面板手里有 sha 时带上，恢复动作不绕开 CAS。
+      // 写配置失败不带：那一路台账已经写过，旧令牌会先撞 E_CAS。
+      function ledgerCasArg() {
+        const sha = ledgerSha()
+        return sha ? ' --expect-sha256 ' + sha : ''
       }
 
       function checkErrorText(code) {
@@ -4988,6 +5120,19 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             const codes = Array.from(new Set(failed.map((item) => String(item.error || 'unknown'))))
             const reason = codes.map(checkErrorText).filter(Boolean).join('、')
             const message = result && (result.message || (result.error && result.error.message))
+            // 部分失败是查询类问题、台账已经写进去了；整体写失败才给指令。
+            if (store.sessionId !== runSession) return
+            const writeKind = !partial ? prWriteFailureKind(result) : ''
+            if (writeKind) {
+              const states = (Array.isArray(result.checked) ? result.checked : [])
+                .filter((item) => item && item.ok !== false
+                  && PR_STATE_KEYS.indexOf(String(item.state || '')) >= 0)
+                .map((item) => String(item.draft || '') + ' ' + tr('sediment.prState.' + String(item.state)))
+              openPromptFallback(tr('sediment.primary.checkAll'), prWriteFallbackText(
+                message, 'python3 scripts/pr_status.py --root . --check-all',
+                { kind: writeKind, checkedStates: states }))
+              return
+            }
             flash(partial
               ? (reason ? tr('sediment.checkFailedWith', { reason }) : tr('sediment.checkFailed'))
               : (message || tr('sediment.checkFailed')))
@@ -5018,6 +5163,17 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           })
           if (!result || result.ok === false) {
             const message = result && (result.message || (result.error && result.error.message))
+            const writeKind = prWriteFailureKind(result)
+            if (writeKind) {
+              // 手动改状态与查合入写同一份台账：写不进时也给指令，不让读者对着不可写的文件重试。
+              setManualOpen(false)
+              openPromptFallback(tr('sediment.manualState'), prWriteFallbackText(
+                message,
+                'python3 scripts/pr_status.py --root . --mark --draft ' + key + ' --state '
+                + nextState + ledgerCasArg(),
+                { kind: writeKind }))
+              return
+            }
             flash(message || tr('sediment.error', { message: '' }))
             if (failureCode(result) === 'E_CAS') await refreshSediment(true)
             return
@@ -5461,12 +5617,16 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         check: tr('sediment.primary.check'),
         close: tr('sediment.primary.close'),
         sedimentBatch: tr('diag.batch.fill'),
+        fallback: (promptFallback && promptFallback.head) || tr('sediment.prompt.fallbackTitle'),
       }
       const isBatchPrompt = promptKind === 'sedimentBatch' && !!batchSed
+      const isFallbackPrompt = promptKind === 'fallback' && !!promptFallback
       const promptText = isBatchPrompt
         ? String(batchSed.text || '')
-        : (promptKind && sedDoc && sedDoc.prompts ? String(sedDoc.prompts[promptKind] || '') : '')
-      const promptDetail = isBatchPrompt
+        : (isFallbackPrompt
+          ? String(promptFallback.text || '')
+          : (promptKind && sedDoc && sedDoc.prompts ? String(sedDoc.prompts[promptKind] || '') : ''))
+      const promptDetail = isBatchPrompt || isFallbackPrompt
         ? ''
         : (promptKind && sedDoc && sedDoc.prompts ? String(sedDoc.prompts[promptKind + 'Detail'] || '') : '')
       const promptDecided = sedDrafts.filter((draft) => draft.state === 'decided')
@@ -5480,7 +5640,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('div', { className: 'scp-modal-title' }, promptTitle[promptKind] || promptKind),
               h('div', { className: 'scp-modal-sub' }, isBatchPrompt
                 ? tr('diag.batch.sub', { n: batchSed.count || 0 })
-                : (promptKind === 'pr' ? (sedTargetLabel || tr('sediment.noTarget')) : tr('sediment.prompt.sub')))),
+                : (isFallbackPrompt
+                  ? tr('sediment.fallback.sub')
+                  : (promptKind === 'pr' ? (sedTargetLabel || tr('sediment.noTarget')) : tr('sediment.prompt.sub'))))),
             h('button', { type: 'button', className: 'scp-icon', 'aria-label': tr('sediment.prompt.cancel'), onClick: closePrompt }, IconClose())),
           h('div', { className: 'scp-modal-body' },
             promptKind === 'pr'
@@ -5498,13 +5660,16 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   h('td', {}, draft.decision || '-'),
                   h('td', {}, (draft.promotion && (draft.promotion.caseId || draft.promotion.casePath)) || '-')))))
               : null,
-            h('div', { className: 'scp-warn-list' },
-              isBatchPrompt ? h('div', {}, tr('diag.batch.flow')) : h('div', {}, tr('sediment.prompt.flow')),
-              isBatchPrompt ? h('div', {}, tr('diag.batch.boundary')) : h('div', {}, tr('sediment.prompt.boundary'))),
+            isFallbackPrompt
+              ? null
+              : h('div', { className: 'scp-warn-list' },
+                isBatchPrompt ? h('div', {}, tr('diag.batch.flow')) : h('div', {}, tr('sediment.prompt.flow')),
+                isBatchPrompt ? h('div', {}, tr('diag.batch.boundary')) : h('div', {}, tr('sediment.prompt.boundary'))),
             promptText
               ? h('div', { className: 'scp-prompt' }, promptText)
               : h('div', { className: 'scp-sed-hint' }, tr('sediment.prompt.empty')),
-            promptText && !isBatchPrompt ? h('div', { className: 'scp-prompt-cap' }, tr('sediment.prompt.default')) : null,
+            promptText && !isBatchPrompt && !isFallbackPrompt
+              ? h('div', { className: 'scp-prompt-cap' }, tr('sediment.prompt.default')) : null,
             promptDetail
               ? h('button', { type: 'button', className: 'scp-details-toggle', onClick: () => setPromptDetailsOpen((value) => !value) },
                 promptDetailsOpen ? tr('sediment.prompt.collapse') : tr('sediment.prompt.details'))

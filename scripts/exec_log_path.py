@@ -267,5 +267,18 @@ def log_lock(path: Path):
                 msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
 
 
+def write_refused_message(what: str, path: Path, exc: OSError) -> str:
+    """文件层拒绝的一句话：带真实路径与系统原因。
+
+    开锁文件、建目录、替换文件都会被系统拒绝（Windows 上是 `[Errno 13]`）。
+    这类错误不能只报成「写失败」：面板要据此给可复制指令，终端要据此查属性与 ACL
+    （`exec_log_path` 管共享运行件的落点与锁，措辞也放在这里，避免各写一份）。
+    路径取异常自带的 filename（真正失败的那一个），取不到才退回传入路径。
+    """
+    failed = getattr(exc, "filename", None) or str(path)
+    reason = getattr(exc, "strerror", None) or exc.__class__.__name__
+    return f"{what}写不进去：{failed}（{reason}）"
+
+
 def describe(path: Path, where: str) -> str:
     return f"{path}（{WHERE_LABEL.get(where, where)}）"

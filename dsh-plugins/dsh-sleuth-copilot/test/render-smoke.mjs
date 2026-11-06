@@ -768,7 +768,9 @@ async function mount(mode, options) {
                     ok: true, draft: args.key, pr: { state: args.state }, sha256: 'f'.repeat(64),
                   } }
                 }
-                return { ok: true, value: { ok: true, target: (opts.sediment || SEDIMENT).target } }
+                return { ok: true, value: opts.prSetTargetResult || {
+                  ok: true, target: (opts.sediment || SEDIMENT).target,
+                } }
               }
               throw new Error('unexpected endpoint ' + endpoint)
             },
@@ -2029,6 +2031,171 @@ function rowText(view, prNumber) {
 }
 
 {
+  // 单条查合入写台账被系统拒绝：平台结果拿到了、台账没写进去。给指令弹层（复制 / 填入输入框），
+  // 点之前不填、不自动发送；指令要交代原因、已查到的状态、命令与台账路径。
+  const writeFailDraft = Object.assign({}, SEDIMENT.drafts[1], {
+    state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    pr: { number: 423, url: 'https://github.com/pillumina/ascend-sleuth/pull/423', platform: 'github', state: 'open', source: 'platform', checkedAt: '' },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const writeFailQueue = Object.assign({}, SEDIMENT, {
+    drafts: [writeFailDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 1, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+    history: [],
+  })
+  const reason = '台账写不进去：D:/repos/ascend-sleuth/postmortems/inbox/.groom/pr-state.json.lock（拒绝访问）'
+  const CAS = 'a'.repeat(64)
+  const t = await mount('recent', {
+    sediment: Object.assign({}, writeFailQueue, {
+      target: Object.assign({}, writeFailQueue.target, { sha256: CAS }),
+    }),
+    // 生产形状：脚本写失败折成 E_LEDGER，并把已经查到的 state 一起带出来。
+    prCheckResult: {
+      ok: false, draft: writeFailDraft.key, state: 'merged', checked_at: '2026-11-05T11:00:00+08:00',
+      write_failed: true,
+      error: { code: 'E_LEDGER', message: reason },
+    },
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-sed-row')[0])
+  view = await t.settle()
+  click(findButton(view, '查合入状态'))
+  await t.settle()
+  view = await t.settle()
+  expect('查合入写失败：给指令弹层', view.text.includes(reason), view.text.slice(-400))
+  expect('查合入写失败：说明写的是台账', view.text.includes('面板没把结果写进 PR 台账'), view.text.slice(-400))
+  expect('查合入写失败：带已查到的状态', view.text.includes('平台已经查到：已合入'), view.text.slice(-400))
+  expect('查合入写失败：给可执行命令', view.text.includes('python3 scripts/pr_status.py --root . --check --draft ' + writeFailDraft.key), view.text.slice(-600))
+  expect('查合入写失败：命令带台账 CAS 令牌', view.text.includes('--expect-sha256 ' + CAS), view.text.slice(-600))
+  expect('查合入写失败：给台账路径', view.text.includes('postmortems/inbox/.groom/pr-state.json'), view.text.slice(-600))
+  expect('查合入写失败：不自动填指令', t.drafts.length === 0, String(t.drafts.length))
+  click(findButton(view, '填入输入框'))
+  const draft = t.lastDraft()
+  expect('查合入写失败：填入输入框带命令', draft.includes('--check --draft ' + writeFailDraft.key), draft.slice(0, 300))
+  expect('查合入写失败：填入输入框带修复提示', draft.includes('.lock'), draft.slice(0, 500))
+}
+
+{
+  // 旧版脚本还没把系统拒绝折成 E_LEDGER：E_INTERNAL 带 PermissionError 时也按写失败给指令，
+  // 面板与脚本版本错配（新面板 + 旧检出）不能退化成一句裸 traceback。
+  const legacyDraft = Object.assign({}, SEDIMENT.drafts[1], {
+    state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    pr: { number: 424, url: 'https://github.com/pillumina/ascend-sleuth/pull/424', platform: 'github', state: 'open', source: 'platform', checkedAt: '' },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const legacyQueue = Object.assign({}, SEDIMENT, {
+    drafts: [legacyDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 1, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+    history: [],
+  })
+  const t = await mount('recent', {
+    sediment: legacyQueue,
+    prCheckResult: {
+      ok: false,
+      error: {
+        code: 'E_INTERNAL',
+        message: "PermissionError: [Errno 13] Permission denied: 'D:/repos/ascend-sleuth/postmortems/inbox/.groom/pr-state.json.lock'",
+      },
+    },
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-sed-row')[0])
+  view = await t.settle()
+  click(findButton(view, '查合入状态'))
+  await t.settle()
+  view = await t.settle()
+  expect('旧脚本 PermissionError：也给指令弹层', view.text.includes('python3 scripts/pr_status.py --root . --check --draft ' + legacyDraft.key), view.text.slice(-500))
+  expect('旧脚本 PermissionError：不显示裸 traceback 提示', !view.text.includes('查合入没成功'), view.text.slice(-400))
+}
+
+{
+  // 批次查合入写失败：整批指令（--check-all），不是「部分失败」提示。
+  const batchDraft = Object.assign({}, SEDIMENT.drafts[1], {
+    state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    pr: { number: 425, url: 'https://github.com/pillumina/ascend-sleuth/pull/425', platform: 'github', state: 'open', source: 'platform', checkedAt: '' },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const batchQueue = Object.assign({}, SEDIMENT, {
+    drafts: [batchDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 1, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'check', label: '查全部合入状态', prompt: '查合入状态的指令' },
+    history: [],
+  })
+  const t = await mount('recent', {
+    sediment: batchQueue,
+    prCheckAllResult: {
+      ok: false,
+      write_failed: true,
+      // 真实 done 行形状：查询本身成功，checked[] 里带的是平台状态，只是没落盘。
+      checked: [{ draft: batchDraft.key, ok: true, state: 'merged' }],
+      error: { code: 'E_LEDGER', message: '台账写不进去：D:/repo/postmortems/inbox/.groom/pr-state.json.lock（拒绝访问）' },
+    },
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  click(findButton(view, '查全部合入状态'))
+  view = await t.settle()
+  expect('批次查合入写失败：给整批指令', view.text.includes('python3 scripts/pr_status.py --root . --check-all'), view.text.slice(-500))
+  expect('批次查合入写失败：不当部分失败提示', !view.text.includes('查合入没有全部成功'), view.text.slice(-400))
+  expect('批次查合入写失败：带已查到的状态', view.text.includes('平台已经查到：' + batchDraft.key + ' 已合入'), view.text.slice(-500))
+}
+
+{
+  // 读坏台账也是 E_LEDGER，但不是写失败：不给写指令，仍按查询失败提示原因。
+  const brokenDraft = Object.assign({}, SEDIMENT.drafts[1], {
+    state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    pr: { number: 426, url: 'https://github.com/pillumina/ascend-sleuth/pull/426', platform: 'github', state: 'open', source: 'platform', checkedAt: '' },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const brokenQueue = Object.assign({}, SEDIMENT, {
+    drafts: [brokenDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 1, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+    history: [],
+  })
+  const t = await mount('recent', {
+    sediment: brokenQueue,
+    prCheckResult: {
+      ok: false,
+      error: { code: 'E_LEDGER', message: '台账不是合法 JSON（/repo/postmortems/inbox/.groom/pr-state.json）' },
+    },
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-sed-row')[0])
+  view = await t.settle()
+  click(findButton(view, '查合入状态'))
+  await t.settle()
+  view = await t.settle()
+  expect('读坏台账：不进写指令弹层', !view.text.includes('python3 scripts/pr_status.py --root . --check'), view.text.slice(-400))
+  expect('读坏台账：仍给原因', view.text.includes('查合入没成功') && view.text.includes('台账不是合法 JSON'), view.text.slice(-400))
+}
+
+{
   // 批次查合入成功但台账里没有可查的 PR（checked 为空）：给「没有待查的 PR」。
   const emptyDraft = Object.assign({}, SEDIMENT.drafts[1], {
     state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
@@ -2458,6 +2625,114 @@ function rowText(view, prNumber) {
   const metaNode = byClass(view, 'scp-meta')[0]
   expect('第二行：平台段悬停看全文', !!metaNode && typeof metaNode.props.title === 'string'
     && metaNode.props.title.includes('A3-910C') && metaNode.props.title.includes('·'), metaNode && metaNode.props.title)
+}
+
+{
+  // 手动改状态写台账失败：与查合入同一份台账，给 --mark 指令，不让人对着不可写的文件重试。
+  const markDraft = Object.assign({}, SEDIMENT.drafts[1], {
+    state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    pr: { number: 427, url: 'https://github.com/pillumina/ascend-sleuth/pull/427', platform: 'github', state: 'open', source: 'platform', checkedAt: '' },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const markQueue = Object.assign({}, SEDIMENT, {
+    drafts: [markDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 1, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+    history: [],
+  })
+  const CAS = 'b'.repeat(64)
+  const t = await mount('recent', {
+    sediment: Object.assign({}, markQueue, {
+      target: Object.assign({}, markQueue.target, { sha256: CAS }),
+    }),
+    prMarkResult: {
+      ok: false, write_failed: true,
+      error: { code: 'E_LEDGER', message: '台账写不进去：D:/repo/postmortems/inbox/.groom/pr-state.json.lock（拒绝访问）' },
+    },
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-sed-row')[0])
+  view = await t.settle()
+  click(findButton(view, '手动改状态'))
+  view = await t.settle()
+  const mergedPick = byClass(view, 'scp-pick').find((pick) => nodeText(pick).includes('已合入'))
+  click(mergedPick)
+  await t.settle()
+  view = await t.settle()
+  expect('手动改状态写失败：给 --mark 指令', view.text.includes('--mark --draft ' + markDraft.key + ' --state merged'), view.text.slice(-500))
+  expect('手动改状态写失败：说明台账路径', view.text.includes('PR 台账：postmortems/inbox/.groom/pr-state.json'), view.text.slice(-500))
+  expect('手动改状态写失败：命令带台账 CAS 令牌', view.text.includes('--expect-sha256 ' + CAS), view.text.slice(-600))
+}
+
+{
+  // 写推送目标失败落在本地配置（settings.json），兜底要指配置文件，不能指 PR 台账。
+  const t = await mount('recent', {
+    prSetTargetResult: {
+      ok: false, write_failed: true,
+      error: { code: 'E_SETTINGS', message: '配置写不进去：/repo/.local/settings.json.lock（拒绝访问）' },
+    },
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  click(findButtonContains(view, '提 PR（2）'))
+  view = await t.settle()
+  click(findButton(view, '换'))
+  view = await t.settle()
+  click(findButton(view, '保存并生成指令'))
+  await t.settle()
+  view = await t.settle()
+  expect('写目标失败：说明写的是本地配置', view.text.includes('面板没把推送目标写进本地配置'), view.text.slice(-500))
+  expect('写目标失败：指配置文件而不是台账', view.text.includes('配置文件：.local/settings.json')
+    && !view.text.includes('PR 台账：postmortems/inbox/.groom/pr-state.json'), view.text.slice(-600))
+  expect('写目标失败：给 --set-target 指令', view.text.includes('--set-target --remote origin --base main'), view.text.slice(-600))
+  expect('写目标失败：写配置那一路不带台账 CAS 令牌', !view.text.includes('--expect-sha256'), view.text.slice(-600))
+}
+
+{
+  // E_PERM 是会话档位 / 沙箱可写面的判断，不是文件本身：提示不能说成删 .lock / 查 ACL。
+  const permDraft = Object.assign({}, SEDIMENT.drafts[1], {
+    state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    pr: { number: 428, url: 'https://github.com/pillumina/ascend-sleuth/pull/428', platform: 'github', state: 'open', source: 'platform', checkedAt: '' },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const permQueue = Object.assign({}, SEDIMENT, {
+    drafts: [permDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 1, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+    history: [],
+  })
+  const t = await mount('recent', {
+    sediment: permQueue,
+    prCheckResult: {
+      ok: false,
+      error: { code: 'E_PERM', message: '沙箱拒绝了这次调用（mode=workspace-write）：会话档位或可写根不覆盖这次读写。' },
+    },
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-sed-row')[0])
+  view = await t.settle()
+  click(findButton(view, '查合入状态'))
+  await t.settle()
+  view = await t.settle()
+  expect('沙箱拒绝：按权限模式给提示', view.text.includes('面板的子进程被拒绝'), view.text.slice(-500))
+  expect('沙箱拒绝：不让人删 .lock', !view.text.includes('.lock') && !view.text.includes('访问控制列表'), view.text.slice(-500))
 }
 
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')

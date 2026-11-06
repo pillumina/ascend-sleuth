@@ -95,6 +95,19 @@ class FakeResponse:
         return False
 
 
+class RefusedLock:
+    """模拟开锁文件被系统拒绝（Windows 上是 `[Errno 13]`）：一进上下文就抛。"""
+
+    def __init__(self, filename):
+        self.filename = filename
+
+    def __enter__(self):
+        raise PermissionError(13, "Permission denied", self.filename)
+
+    def __exit__(self, *exc):
+        return False
+
+
 class RepoCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix="pr-status-")
@@ -126,6 +139,18 @@ class LedgerTest(RepoCase):
         loaded = pr.load_ledger(self.repo)
         self.assertEqual(loaded["target"]["remote"], "origin")
         self.assertTrue(loaded["updated_at"])
+
+    def test_save_ledger_folds_file_refusal(self):
+        # 开锁文件被拒绝不是「写失败」：必须折成 LedgerError（调用方给 E_LEDGER），
+        # 消息带真实路径与系统原因，不能落成 E_INTERNAL 的裸 PermissionError。
+        refused = RefusedLock("/tmp/r/.groom/pr-state.json.lock")
+        with mock.patch.object(pr, "log_lock", return_value=refused):
+            with self.assertRaises(pr.LedgerError) as ctx:
+                pr.save_ledger(self.repo, pr.empty_ledger())
+        message = str(ctx.exception)
+        self.assertIn("台账写不进去", message)
+        self.assertIn("pr-state.json.lock", message)
+        self.assertIn("Permission denied", message)
 
     def test_cas_rejects_stale_writer(self):
         pr.save_ledger(self.repo, pr.empty_ledger())
@@ -654,6 +679,54 @@ class FlowTest(RepoCase):
         self.assertTrue(payload["ok"], payload)
         self.assertEqual(payload["checked"], [])
 
+    def test_check_write_refused_reports_ledger_error_with_checked_state(self):
+        # 平台结果已经查到、只是没写进台账：失败载荷要带上 state 与 checked_at，
+        # 面板才能说「查到 X，但没写进台账」，而不是让读者白查一遍。
+        self._set_pr(url="https://example.com/o/r/pulls/1", platform="unknown")
+        refused = RefusedLock("/tmp/r/.groom/pr-state.json.lock")
+        with mock.patch.object(pr, "log_lock", return_value=refused):
+            code, payload = run_cli("--root", str(self.repo), "--check", "--draft", "draft-a")
+        self.assertEqual(code, 0, payload)
+        self.assertFalse(payload["ok"], payload)
+        self.assertEqual(payload["error"]["code"], "E_LEDGER")
+        self.assertIn("台账写不进去", payload["error"]["message"])
+        self.assertIn("pr-state.json.lock", payload["error"]["message"])
+        self.assertEqual(payload["draft"], "draft-a")
+        self.assertEqual(payload["state"], "unknown")
+        self.assertTrue(payload["checked_at"])
+        self.assertTrue(payload["write_failed"])
+
+    def test_check_write_refused_keeps_real_platform_state(self):
+        # 平台确实查到 merged、只是没写进台账：带回的必须是平台状态，不是 _unknown_entry 的占位值。
+        # 这条走真实 http_check + 假 urlopen，而不是手工喂 state。
+        self._set_pr(url="https://gitcode.com/o/r/pulls/1", platform="gitcode")
+        refused = RefusedLock("/tmp/r/.groom/pr-state.json.lock")
+
+        def fake_urlopen(request, timeout=None):
+            return FakeResponse({"state": "closed", "merged": True})
+
+        with mock.patch.dict(os.environ, clean_env(GITCODE_TOKEN="tok-secret"), clear=True), \
+                mock.patch("urllib.request.urlopen", side_effect=fake_urlopen), \
+                mock.patch.object(pr, "log_lock", return_value=refused):
+            code, payload = run_cli("--root", str(self.repo), "--check", "--draft", "draft-a")
+        self.assertEqual(code, 0, payload)
+        self.assertEqual(payload["error"]["code"], "E_LEDGER")
+        self.assertEqual(payload["state"], "merged")
+        self.assertTrue(payload["checked_at"])
+        self.assertTrue(payload["write_failed"])
+
+    def test_mark_write_refused_is_ledger_error_not_internal(self):
+        self._set_pr()
+        refused = RefusedLock("/tmp/r/.groom/pr-state.json.lock")
+        with mock.patch.object(pr, "log_lock", return_value=refused):
+            code, payload = run_cli("--root", str(self.repo), "--mark", "--draft", "draft-a",
+                                    "--state", "merged")
+        self.assertEqual(code, 0, payload)
+        self.assertFalse(payload["ok"], payload)
+        self.assertEqual(payload["error"]["code"], "E_LEDGER")
+        self.assertIn("台账写不进去", payload["error"]["message"])
+        self.assertTrue(payload["write_failed"])
+
     def test_default_read_lists_ledger(self):
         code, payload = run_cli("--root", str(self.repo), "--json")
         self.assertEqual(code, 0)
@@ -908,7 +981,30 @@ class CheckAllJsonLinesTest(RepoCase):
         self.assertFalse(done["ok"])
         self.assertEqual(done["error"]["code"], "E_LEDGER")
         self.assertEqual(done["error"]["message"], "写锁不可用")
+        self.assertTrue(done["write_failed"])
         self.assertEqual([item["draft"] for item in done["checked"]], ["draft-a"])
+
+    def test_done_line_carries_write_failed_with_queried_state(self):
+        # 查询成功、落盘被拒：done 行要带 write_failed，checked[] 保留平台查到的状态。
+        # 与上面的「查询失败 + 落盘失败」分开：这里 checked[].ok 是 true。
+        self._seed({"draft-a": "open"})
+        entry = {"platform": "github", "repo": "o/r", "number": 1,
+                 "url": "https://github.com/o/r/pull/1", "state": "merged",
+                 "source": "platform", "checked_at": "2026-11-06T10:00:00+08:00"}
+
+        def fake_run_check(ledger, key, adapters):
+            return dict(entry), None, ""
+
+        with mock.patch.object(pr, "_run_check", side_effect=fake_run_check), \
+                mock.patch.object(pr, "save_ledger",
+                                  side_effect=pr.LedgerError("台账写不进去：x（拒绝访问）")):
+            code, text = run_cli_lines("--root", str(self.repo), "--check-all", "--json-lines")
+        self.assertEqual(code, 0, text)
+        _rows, done = self._rows_and_done(text)
+        self.assertFalse(done["ok"])
+        self.assertTrue(done["write_failed"])
+        self.assertEqual(done["error"]["code"], "E_LEDGER")
+        self.assertEqual(done["checked"], [{"draft": "draft-a", "ok": True, "state": "merged"}])
 
     def test_unexpected_error_after_rows_is_single_line_json(self):
         # 已打 row 之后抛未预期异常：最后一行的错误 JSON 必须是一行 compact JSON，
