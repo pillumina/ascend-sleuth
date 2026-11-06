@@ -89,6 +89,13 @@ class RecheckTest(unittest.TestCase):
         findings, _ = check(marker(self.m0, self.b_sha), self.repo, self.m0, self.head_b, enforce_marker=True)
         self.assertEqual(findings, [])
 
+    def test_optional_target_ref_in_marker_is_accepted(self):
+        # groom_record --pr-marker 现在会带 target_ref；它是可选的，不能变成必填字段。
+        body = marker(self.m0, self.b_sha).replace(
+            "assessed_commit:", "target_ref: refs/remotes/mirror/main\nassessed_commit:")
+        findings, _ = check(body, self.repo, self.m0, self.head_b, enforce_marker=True)
+        self.assertEqual(findings, [])
+
     def test_assessment_against_old_main_is_stale(self):
         findings, ctx = check(marker(self.m0, self.b_sha), self.repo, self.m1, self.head_b, enforce_marker=True)
         codes = [f["code"] for f in findings]
@@ -170,6 +177,31 @@ class RecheckTest(unittest.TestCase):
         p = run_py(self.repo, "scripts/groom_recheck.py", "--pr-body-file", str(body),
                    "--base", self.m1, "--head", self.head_b)
         self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+
+    def test_default_base_uses_settings_target(self):
+        # ⑧ 未传 --base：用 settings 的提 PR 目标 origin/integration，而不是 origin/main。
+        git(self.repo, "update-ref", "refs/remotes/origin/main", self.m1)
+        git(self.repo, "update-ref", "refs/remotes/origin/integration", self.m0)
+        settings = self.repo / ".local" / "settings.json"
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        settings.write_text(json.dumps({
+            "schema": "ascend-sleuth-settings/1",
+            "target": {"remote": "origin", "base": "integration", "platform": "",
+                       "source": "user", "chosen_at": "2026-11-05T10:00:00+08:00"},
+        }, ensure_ascii=False), encoding="utf-8")
+        body = self.base / "pr.md"
+        body.write_text(marker(self.m0, self.b_sha), encoding="utf-8")
+        p = run_py(self.repo, "scripts/groom_recheck.py", "--repo", str(self.repo),
+                   "--pr-body-file", str(body), "--head", self.head_b, "--json")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        out = json.loads(p.stdout)
+        self.assertEqual(out["base"], self.m0)
+        # 对照：显式用兜底的 origin/main（m1）会判 stale，证明默认值真的换了基准。
+        p2 = run_py(self.repo, "scripts/groom_recheck.py", "--repo", str(self.repo),
+                    "--pr-body-file", str(body), "--base", "origin/main",
+                    "--head", self.head_b, "--json")
+        self.assertEqual(p2.returncode, 2, p2.stdout + p2.stderr)
+        self.assertIn("assessment-stale", [f["code"] for f in json.loads(p2.stdout)["findings"]])
 
     def test_cli_json_success_exposes_parsed_marker(self):
         body = self.base / "pr.md"

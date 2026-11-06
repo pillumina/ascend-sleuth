@@ -653,10 +653,16 @@ def print_report(doc, path):
         print("  可做: 整篇替换候选（先合并进草稿再评估）/ 保留独立 / 延后")
 
 
-def pr_marker(doc, submitted_case_id=None):
+def pr_marker(doc, submitted_case_id=None, target_ref=None):
+    """PR body 里的 provenance marker。
+
+    `target_ref` 是这次评估对着的目标 ref（快照 meta 的 `ref`）；没给就用 sidecar 里
+    已记录的 provenance.target_ref。meta 没有这个字段时不输出该行。
+    """
     a = doc.get("assessment") or {}
     human = doc.get("human_decision") or {}
     binding = doc.get("content_binding") or {}
+    target_ref = target_ref or (doc.get("provenance") or {}).get("target_ref")
     human_valid = bool(
         doc.get("human_decision_valid")
         and human.get("assessment_id")
@@ -665,6 +671,7 @@ def pr_marker(doc, submitted_case_id=None):
     )
     decision = human.get("decision") if human_valid else "pending"
     candidate = human.get("candidate_case") if human_valid else a.get("candidate_case")
+    ref_line = f"target_ref: {target_ref}\n" if target_ref else ""
     return (
         "<!-- groom-assessment\n"
         "schema: groom-pr/v2\n"
@@ -673,6 +680,7 @@ def pr_marker(doc, submitted_case_id=None):
         f"submitted_case_id: {submitted_case_id or doc.get('draft_case_id') or ''}\n"
         f"category: {doc.get('draft_category') or ''}\n"
         f"assessed_commit: {doc.get('provenance', {}).get('compared_against_commit')}\n"
+        f"{ref_line}"
         f"assessment_id: {doc.get('assessment_id') or ''}\n"
         f"assessed_content_sha256: {binding.get('sha256') or ''}\n"
         f"proposed_novelty: {a.get('proposed_novelty')}\n"
@@ -714,7 +722,8 @@ def main():
         if not doc:
             print(f"没有找到 {args.draft_key} 的评估状态", file=sys.stderr)
             return 3
-        print(pr_marker(doc, submitted_case_id=args.submitted_case_id), end="")
+        print(pr_marker(doc, submitted_case_id=args.submitted_case_id,
+                        target_ref=meta.get("ref")), end="")
         return 0
 
     if not (args.snapshot and args.work_orders and args.results_dir):

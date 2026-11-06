@@ -189,6 +189,7 @@ human_decision_valid: true | false
 human_decision_history: [...]
 provenance:
   compared_against_commit: <sha>
+  target_ref: refs/remotes/<remote>/<branch>
   snapshot_fresh: true | false
   snapshot_authoritative: true | false
   work_order_id: <工作单哈希>
@@ -208,7 +209,8 @@ history: [...]
   `assessment_id` 与 `content_binding.sha256` 都对得上时 `human_decision_valid` 才为 true。对不上时
   标 `approval-stale` 并阻塞升格，等人重新确认；旧批准进 `human_decision_history`。
 - **草稿字节不变**：评估写本地评估状态文件（sidecar），不写回 `case.yaml`；永久 Case ID 只在升格时由人确认。
-- **过期检测**：`groom_status.py` 比较 `compared_against_commit` 与当前目标 commit，并检查 `knowledge/` 是否变化、草稿指纹是否变化；任一变化标 `STALE`。
+- **过期检测**：`groom_status.py` 按每份评估的 `provenance.target_ref` 解析当前目标 commit，再检查 `knowledge/` 是否前进、草稿指纹是否变化。评估是目标祖先且知识确有前进时，报「知识库在评估后前进了 N 个文件」。
+- **目标问题也标 STALE，但原因分开**：ref 不可用、评估 ref 与当前配置目标不一致、目标落后于评估基准、两边无法比较，都会阻塞升格，报告分别写原因。目标未配置或 ref 不可用时显式说明，不用 `origin/main` 静默替换。`groom_recheck.py` 仍用 PR 的实际 base 做合入前门禁。
 
 ### 3.6 PR provenance 与合入前复核
 
@@ -224,6 +226,7 @@ case_id: DRAFT-A
 submitted_case_id: CASE-001
 category: interrupt
 assessed_commit: <sha>
+target_ref: refs/remotes/<remote>/<branch>
 assessment_id: <sha>
 assessed_content_sha256: <sha>
 proposed_novelty: covered
@@ -248,6 +251,8 @@ approval_stale: false
 5. PR 新增 case 与 base 前进期间新增 case 是否有共同字面量；有就报 `possible-duplicate-after-merge`，要求人复核。它不判重复，只拦"看都没看"。
 
 退出码：0 通过；2 需要重跑/复核；3 参数或 git 不可用。`--advisory` 只报告、不改变退出码，供人工试跑。
+
+`--base` 省略时读主检出 `.local/settings.json` 的 `target`，与提 PR 目标一致；没有配置目标时退回 `origin/main` 并说明。marker 里可选带 `target_ref`，用于回溯这次评估对着哪条 ref。
 
 ### 3.7 收尾：回写沉淀状态与草稿出队（PR 合入后）
 

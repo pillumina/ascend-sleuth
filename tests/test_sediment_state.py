@@ -9,7 +9,8 @@ sidecar 按 `groom_record` / `groom_decide` 写下的字段构造；新鲜度、
 
 覆盖：空态、无 sidecar、stale、需重批、有效决定、defer/reject、PR open/merged/closed、
 孤儿、done（trace 已升格但草稿还在队列）、trace 匹配三种键、四类批次 prompt 与明细字段、
-计数（含 oldestDays）、history、`--only`、CLI 的 ok:false 协议。
+计数（含 oldestDays）、history、`--only`、目标 ref 解析（settings target / 评估记录的
+target_ref 压过 origin/main 兜底）、CLI 的 ok:false 协议。
 """
 
 import json
@@ -96,10 +97,18 @@ def fresh_commit(repo: Path) -> str:
 
 def write_assessment(repo: Path, key: str, commit: str, decision: str = "new_pattern",
                      candidate=None, human_valid: bool = True, authoritative: bool = True,
-                     assessment_id: str = "assess-1", proposed: str = "") -> Path:
+                     assessment_id: str = "assess-1", proposed: str = "",
+                     target_ref: str = "") -> Path:
     draft_path = inbox(repo) / f"{key}.case.yaml"
     doc = yaml.safe_load(draft_path.read_text(encoding="utf-8"))
     case = (doc.get("cases") or [{}])[0]
+    provenance = {
+        "compared_against_commit": commit,
+        "compared_against_short": commit[:12],
+        "snapshot_authoritative": authoritative,
+    }
+    if target_ref:
+        provenance["target_ref"] = target_ref
     sidecar = {
         "assessment": {
             "proposed_novelty": proposed or decision,
@@ -108,11 +117,7 @@ def write_assessment(repo: Path, key: str, commit: str, decision: str = "new_pat
             "rationale": "与已有 case 根因不同",
             "review_required": False,
         },
-        "provenance": {
-            "compared_against_commit": commit,
-            "compared_against_short": commit[:12],
-            "snapshot_authoritative": authoritative,
-        },
+        "provenance": provenance,
         "assessment_id": assessment_id,
         "draft_sha256": gm.case_fingerprint(case),
         "human_decision": ({
@@ -161,6 +166,15 @@ def write_ledger(repo: Path, target=None, prs=None) -> str:
     data["target"] = target
     data["prs"] = prs or {}
     return pr.save_ledger(repo, data)
+
+
+def write_settings_target(repo: Path, remote: str, base: str = "main") -> None:
+    """写 `.local/settings.json` 的 target；这是面板与命令行共用的目标配置。"""
+    pr.kb_sync.save_settings(repo, {
+        "sync": {"remote": "origin", "branch": "main"},
+        "target": {"remote": remote, "base": base, "platform": "",
+                   "source": "user", "chosen_at": "2026-11-05T10:00:00+08:00"},
+    })
 
 
 GITHUB_TARGET = {
@@ -233,6 +247,12 @@ class StateTest(SedimentCase):
         self.assertEqual(payload["primary"]["kind"], "groom")
         self.assertEqual(row["path"], "postmortems/inbox/2026-10-20-draft-a.case.yaml")
         self.assertEqual(row["title"], "PD 分离 prefill 卡死：AscendStore 异步 load 从不完成")
+        # 没有评估就没有目标可比：新字段给空值，面板不显示假的基准。
+        self.assertEqual(row["targetRef"], "")
+        self.assertEqual(row["targetShort"], "")
+        self.assertIsNone(row["targetState"])
+        self.assertIsNone(row["targetSource"])
+        self.assertEqual(row["targetWarnings"], [])
 
     def test_age_falls_back_to_mtime(self):
         path = write_draft(self.repo)
@@ -330,6 +350,55 @@ class StateTest(SedimentCase):
             "# 从 postmortem 标题取\n正文\n", encoding="utf-8")
         row = self.draft(self.collect())
         self.assertEqual(row["title"], "从 postmortem 标题取")
+
+
+# ---------------------------------------------------------------- 目标 ref 解析
+
+class TargetResolutionTest(SedimentCase):
+    """目标解析不能再默认 origin/main：settings target 与评估记录的 target_ref 都优先。"""
+
+    def _second_remote_ahead(self):
+        """origin/main 停在旧的 C0，第二个远端 mirror/main 前进到 C1（带新 knowledge）。"""
+        old = fresh_commit(self.repo)
+        write_case(self.repo, "knowledge/inference/vllm-ascend/interrupt/CASE-B.yaml",
+                   "CASE-B", title="新 case")
+        new = commit_all(self.repo, "add B")
+        git(self.repo, "update-ref", "refs/remotes/mirror/main", new)
+        self.assertNotEqual(old, new)
+        return old, new
+
+    def test_settings_target_beats_origin_main(self):
+        write_draft(self.repo)
+        _old, new = self._second_remote_ahead()
+        # 旧 sidecar：没有 provenance.target_ref，只能靠配置目标解析。
+        write_assessment(self.repo, "2026-10-20-draft-a", new)
+        write_ledger(self.repo, target=None)
+        write_settings_target(self.repo, "mirror", "main")
+        payload = self.collect()
+        row = self.draft(payload)
+        self.assertEqual(payload["targetCommit"], new)
+        self.assertFalse(row["stale"], row["staleReasons"])
+        self.assertEqual(row["state"], "decided")
+        self.assertEqual(row["targetState"], "ok")
+        self.assertEqual(row["targetRef"], "refs/remotes/mirror/main")
+        self.assertEqual(row["targetSource"], "configured")
+
+    def test_assessment_target_ref_beats_stale_origin_main(self):
+        # 本 issue 的核心：没有配置目标，评估用的是非 origin 的远端分支。
+        write_draft(self.repo)
+        old, new = self._second_remote_ahead()
+        write_assessment(self.repo, "2026-10-20-draft-a", new,
+                         target_ref="refs/remotes/mirror/main")
+        write_ledger(self.repo, target=None)
+        payload = self.collect()
+        row = self.draft(payload)
+        # 面板兜底目标仍是落后的 origin/main，但这一行按评估自己的 ref 判新鲜度。
+        self.assertEqual(payload["targetCommit"], old)
+        self.assertFalse(row["stale"], row["staleReasons"])
+        self.assertEqual(row["state"], "decided")
+        self.assertEqual(row["targetState"], "ok")
+        self.assertEqual(row["targetRef"], "refs/remotes/mirror/main")
+        self.assertEqual(row["targetSource"], "assessment")
 
 
 # ---------------------------------------------------------------- PR 覆盖与 done

@@ -105,6 +105,20 @@ python3 scripts/groom_snapshot.py --remote <用户选择的远端名> --require-
   `ambiguous` / 待复核，`groom_record` 会把升格标成 `stale-snapshot`，**不得据此升格**。
 - 源工作区有未提交改动是正常的：快照不碰它，报告里会如实显示。
 
+### 0.2 确定提 PR 目标（与同步源分开）
+
+同步源决定读哪份知识（`sync.remote` / `sync.branch`），提 PR 目标决定草稿落到哪条分支（主检出 `.local/settings.json` 的 `target.remote` / `target.base`），两者不是一回事。
+
+新鲜度按**评估记录里的目标 ref** 判：`groom_record` 会把快照用的 ref 写进评估状态文件（sidecar）的 `provenance.target_ref`，读侧按它解析当前 commit。配置目标与评估 ref 不一致、ref 不可用或已改写时，`groom_status.py` 报对应原因，不用 `origin/main` 静默替换。
+
+提 PR 前确认目标已配置；没有就选一次，写进主检出的 settings：
+
+```bash
+python3 scripts/pr_status.py --set-target --remote <远端名> --base <分支名>
+```
+
+面板的「保存目标」走同一条写入。没有配置目标时，`groom_status.py` 会显式打印实际使用的兜底基准；不要把它当成评估基准。
+
 ### 1. 生成有界候选工作单（脚本，不读全库）
 
 ```bash
@@ -178,7 +192,7 @@ python3 scripts/groom_decide.py --draft-key <key> --decision <choice> \
 - `duplicate` / `covered` / `variant` 必须由人确认；agent 建议不等于决定。
 - 不要只甩一段“下一步 1. python... 2. 升格...”的命令列表；先问清楚选项。
 - `new_pattern` 且 high 置信度、无复核项、快照权威 → 可进入**既有升格闸门**（仍按第 1 步人审批审）。
-- 评估后知识前进或草稿被改 → `groom_status.py` 标 `STALE`；重跑本轮，**不得拿旧结论升格**。
+- 评估后知识前进或草稿被改 → `groom_status.py` 标 `STALE`；重跑本轮，**不得拿旧结论升格**。评估是目标祖先且 `knowledge/` 真有前进才报「前进」；目标 ref 不可用、与当前目标不一致、目标落后或无法比较也会标 `STALE`，原因分别写明，先修目标或基准再决定是否重跑。
 - 旧批准失效但评估本身未过期（`revalidation-needed`）→ 仍用 `--decision-prompt` 重新确认；只有评估过期才重跑 groom。
 - 决定被记录为绑定 `applies_to_commit`；新评估与人决定冲突时保留人决定并标 `revalidation-needed`。
 
@@ -193,8 +207,11 @@ python3 scripts/groom_record.py --pr-marker --draft-key <key>
 合入前 / CI 里：
 
 ```bash
-python3 scripts/groom_recheck.py --pr-body-file <pr-body.md> --base origin/main --head <head>
+python3 scripts/groom_recheck.py --pr-body-file <pr-body.md> \
+  --base <目标远端>/<目标分支> --head <head>
 ```
+
+`--base` 省略时读主检出 `.local/settings.json` 的 `target`，与提 PR 目标一致；没有配置目标时仍退回 `origin/main` 并说明。
 
 `groom_recheck.py` 是确定性检查，不需要问用户；直接跑，失败时按原因重跑 groom、重做批准或补 marker。
 
@@ -256,7 +273,8 @@ python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --post-merge \
 ## 流程（一次 groom 产出一个变更摘要）
 
 1. **intake 队列处理（升格的前置）**：处理 `postmortems/inbox/`（`/skill:to-postmortem` / `/skill:issue-ingest` 的产出都落这里；**先解析一次**：`python3 scripts/shared_dir.py inbox` 给出主检出的绝对路径——草稿是锚在主检出的共享队列，在 worktree 里用相对 `postmortems/inbox/` 会读成一个空队列）：
-   - **先读本轮评估状态**：`python3 scripts/groom_status.py` 一屏看草稿的 assessment / 候选 / 人决定 / 新鲜度。**没有本地评估状态文件（sidecar）的草稿先补跑上一节 Agent 语义比对**，不直接拿本地旧索引判、也不直接升格；`stale` 的草稿重跑，不用旧结论。
+   - **先读本轮评估状态**：先按 0.2 确认提 PR 目标，再跑 `python3 scripts/groom_status.py` 看 assessment / 候选 / 人决定 / 新鲜度与实际比较的目标 ref。没有本地评估状态文件（sidecar）的草稿先补跑上一节语义比对，不拿旧索引判、也不直接升格。
+   - **stale 的草稿**：先看原因是知识前进、草稿改动，还是目标缺失/不一致。目标类原因先修目标，不要直接重跑；只有评估真的过期才重跑，且不用旧结论。
    - **节律**：单仓集中可周批；**分布式（成员本地 inbox，远程仓不存）在提交主仓时处理**——产出时已做 pre-triage（见下），groom 复核确认而非重判；
    - 逐条**复核预分诊**（agent 判断，给证据；当前不引入 embedding，论证见 docs/adr/0002——可选论证层）：`new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 置信度。比对对象与候选来自 sidecar 的 `provenance.candidates`；需要复核时读候选全文核对 root_cause/fix（成本预算第 3 条：不全文重读全库）。**draft 头注释已带 to-postmortem/issue-ingest 产出的分诊建议 → 一并核对证据是否成立**（建议与决定分离：判断在产出时做，groom 是审核者）；
    **先判后看（顺序纪律，改不了的自觉就别指望）**：复核候选前，先只读草稿与 sidecar 的 `evidence` 轴，自己写一句判断——症状签名（错误码/关键日志行/数值阈值）、根因假设、修复族方向；再打开候选全文**取证**（我这条假设能否被候选解释，还是只是"看起来像"）。先看候选再判断，判的是**像不像**而不是**对不对**：候选一旦在眼前，语义相近就会把判断拉过去（尤其是措辞相似但根因不同的 draft）。判断行写进批审清单：先写自己的判断，再写与 sidecar / 候选的对照结论；两者不一致时**以证据为准**，别用"候选里有类似的"当理由；

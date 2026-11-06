@@ -402,6 +402,12 @@ window.__ModuleLoader__.load({
       'sediment.table.decision': '决定',
       'sediment.detail.postmortem': 'postmortem',
       'sediment.detail.stale': '需重跑：{reason}',
+      'sediment.detail.target': '比较基准',
+      'sediment.detail.targetWarnings': '目标提示',
+      'sediment.targetState.ref_missing': '目标基准不可用',
+      'sediment.targetState.target_behind': '目标落后',
+      'sediment.targetState.not_comparable': '无法比较',
+      'sediment.targetState.ref_changed': '目标已变',
       'sediment.detail.mismatch.stale_trace': 'trace 停在已交草稿，但知识库已有 case；生成回写指令。',
       'sediment.detail.mismatch.missing_draft': 'trace 说已交草稿，但 inbox 与 .done 都找不到。',
       'sediment.detail.mismatch.missing_case': 'trace 说已升格，但知识库里没有这条 case。',
@@ -798,6 +804,12 @@ window.__ModuleLoader__.load({
       'sediment.table.decision': 'Decision',
       'sediment.detail.postmortem': 'postmortem',
       'sediment.detail.stale': 'Rerun needed: {reason}',
+      'sediment.detail.target': 'Compare target',
+      'sediment.detail.targetWarnings': 'Target hints',
+      'sediment.targetState.ref_missing': 'target ref unavailable',
+      'sediment.targetState.target_behind': 'target behind',
+      'sediment.targetState.not_comparable': 'not comparable',
+      'sediment.targetState.ref_changed': 'target changed',
       'sediment.detail.mismatch.stale_trace': 'The trace still says draft submitted, but the case is in the knowledge base. Generate a writeback prompt.',
       'sediment.detail.mismatch.missing_draft': 'The trace says a draft was submitted, but it is not in inbox or .done.',
       'sediment.detail.mismatch.missing_case': 'The trace says promoted, but the case is not in the knowledge base.',
@@ -5431,6 +5443,19 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           }
           if (sedPick.closedDraft) {
             head.push(h('div', { key: 'closed', className: 'scp-sed-hint' }, tr('sediment.detail.closedDraft')))
+          }
+          const sedTargetState = sedPick.targetState && sedPick.targetState !== 'ok'
+            ? tr('sediment.targetState.' + sedPick.targetState) : ''
+          const sedTargetRef = String(sedPick.targetRef || sedPick.targetShort || '')
+          if (sedTargetRef || sedTargetState) {
+            head.push(h('div', { key: 'target', className: 'scp-sed-hint' },
+              tr('sediment.detail.target') + '：' + (sedTargetRef || '—')
+              + (sedTargetState ? ' · ' + sedTargetState : '')))
+          }
+          if ((sedPick.targetWarnings || []).length) {
+            head.push(h('div', { key: 'targetWarnings', className: 'scp-callout', style: { background: 'var(--scp-warn-soft)', borderColor: 'color-mix(in srgb, var(--scp-warn) 26%, var(--scp-border))' } },
+              h('span', { className: 'scp-callout-label' }, tr('sediment.detail.targetWarnings')),
+              h('span', { className: 'scp-callout-text' }, sedPick.targetWarnings.join('；'))))
           }
           if (sedPick.stale) {
             head.push(h('div', { key: 'stale', className: 'scp-callout', style: { background: 'var(--scp-bad-soft)', borderColor: 'color-mix(in srgb, var(--scp-bad) 26%, var(--scp-border))' } },
