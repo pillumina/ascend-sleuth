@@ -26,8 +26,10 @@
 #   1. 每查完一条立刻打一行并 flush：
 #      {"type":"row","draft":…,"ok":bool,"state":…,"checked_at":…,"error"?:<code>,"message"?:<失败原文>}
 #   2. 全部查完并落盘后打最后一行，与 --json 的最终载荷同形、只多一个 type：
-#      {"type":"done","ok":bool,"checked":[…],"ledger"?:{…},"sha256"?:"…","error"?:{"code","message"}}
-#      成功时 sha256 是字符串；E_CHECK_PARTIAL / E_CAS / E_LEDGER 都在 error 里给 code 与 message。
+#      {"type":"done","ok":bool,"checked":[…],"ledger"?:{…},"sha256"?:"…","error"?:{"code","message"},
+#       "write_failed"?:true}
+#      成功时 sha256 是字符串；E_CHECK_PARTIAL / E_CAS / E_LEDGER 都在 error 里给 code 与 message；
+#      write_failed 只在落盘被系统拒绝（E_LEDGER）时出现，面板据此给可复制指令。
 #   3. row 的行序是查询完成序；done 里 checked[] 仍是台账键序（与 --json 相同），面板以 done 为准。
 #   4. 未预期异常（E_INTERNAL）与参数错误（E_ARGS）不在 done 行里。E_ARGS 出现在任何 row 之前；
 #      E_INTERNAL 可能出现在已打出的 row 之后。两者都是**一行 compact JSON**（不含 type，退出码不变），
@@ -66,7 +68,7 @@ import yaml
 
 import kb_sync
 from _stdio import pin_utf8_stdio
-from exec_log_path import log_lock
+from exec_log_path import log_lock, write_refused_message
 from groom_common import (
     atomic_write_text, dump_json, load_json, now_iso, run_git, shared_inbox,
 )
@@ -166,21 +168,27 @@ def save_ledger(root, data: dict, expect_sha=None) -> str:
     CAS 语义：`expect_sha` 给了就必须等于写前读到的那一版字节哈希，否则抛 CasConflict
     （两个 agent 同时写台账时，后写者不能静默覆盖先写者）。写后重新读一遍字节校验，
     确认落盘的就是本次序列化的内容。返回新文件哈希，供下一次 CAS 用。
+
+    文件层失败（开锁文件、建目录、替换台账被系统拒绝）一律折成 LedgerError：
+    调用方按 E_LEDGER 显示路径与原因，不落成 E_INTERNAL 的裸异常。
     """
     import hashlib
     path = ledger_path(root)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    data["schema"] = SCHEMA
-    data["updated_at"] = now_iso()
-    text = dump_json(data)
-    with log_lock(path) as locked:
-        if not locked:
-            raise LedgerError(f"台账写锁不可用：{path}")
-        actual = file_sha256(path)
-        if expect_sha is not None and actual != expect_sha:
-            raise CasConflict(expect_sha, actual or "")
-        atomic_write_text(path, text)
-        written = hashlib.sha256(path.read_bytes()).hexdigest()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data["schema"] = SCHEMA
+        data["updated_at"] = now_iso()
+        text = dump_json(data)
+        with log_lock(path) as locked:
+            if not locked:
+                raise LedgerError(f"台账写锁不可用：{path}")
+            actual = file_sha256(path)
+            if expect_sha is not None and actual != expect_sha:
+                raise CasConflict(expect_sha, actual or "")
+            atomic_write_text(path, text)
+            written = hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError as exc:
+        raise LedgerError(write_refused_message("台账", path, exc)) from exc
     expected = hashlib.sha256(text.encode("utf-8")).hexdigest()
     if written != expected:
         raise LedgerError("台账写后校验失败（磁盘内容与本次序列化不一致）")
@@ -988,7 +996,7 @@ def cmd_set_sync(root, args) -> int:
     except kb_sync.SettingsCasConflict as exc:
         return _fail("E_CAS", str(exc))
     except kb_sync.SettingsError as exc:
-        return _fail("E_SETTINGS", str(exc))
+        return _fail("E_SETTINGS", str(exc), extra={"write_failed": True})
     return _ok({"sync": kb_sync.normalize_sync(sync), "config": source,
                 "config_problem": problem,
                 "settings": str(kb_sync.settings_path(root)),
@@ -1038,7 +1046,7 @@ def cmd_set_target(root, args) -> int:
     except CasConflict as exc:
         return _fail("E_CAS", str(exc))
     except LedgerError as exc:
-        return _fail("E_LEDGER", str(exc))
+        return _fail("E_LEDGER", str(exc), extra={"write_failed": True})
     # target 的读侧已迁到 settings；台账里仍写一份，旧版本面板与 --migrate 都能读到。
     settings["target"] = target
     try:
@@ -1046,7 +1054,8 @@ def cmd_set_target(root, args) -> int:
     except kb_sync.SettingsCasConflict as exc:
         return _fail("E_CAS", str(exc), extra={"target": target, "sha256": digest})
     except kb_sync.SettingsError as exc:
-        return _fail("E_SETTINGS", str(exc), extra={"target": target, "sha256": digest})
+        return _fail("E_SETTINGS", str(exc),
+                     extra={"target": target, "sha256": digest, "write_failed": True})
     return _ok({"target": target,
                 "platformName": adapter.get("name", "") if adapter else "",
                 "sha256": digest,
@@ -1098,7 +1107,7 @@ def cmd_set(root, args) -> int:
     except CasConflict as exc:
         return _fail("E_CAS", str(exc))
     except LedgerError as exc:
-        return _fail("E_LEDGER", str(exc))
+        return _fail("E_LEDGER", str(exc), extra={"write_failed": True})
     return _ok({"draft": values["draft"], "pr": entry, "sha256": digest})
 
 
@@ -1121,7 +1130,7 @@ def cmd_mark(root, args) -> int:
     except CasConflict as exc:
         return _fail("E_CAS", str(exc))
     except LedgerError as exc:
-        return _fail("E_LEDGER", str(exc))
+        return _fail("E_LEDGER", str(exc), extra={"write_failed": True})
     return _ok({"draft": draft, "pr": entry, "sha256": digest})
 
 
@@ -1146,7 +1155,12 @@ def cmd_check(root, args) -> int:
     except CasConflict as exc:
         return _fail("E_CAS", str(exc))
     except LedgerError as exc:
-        return _fail("E_LEDGER", str(exc))
+        # 平台结果已经拿到，只是没写进台账：把 state / checked_at 一起带出去，
+        # 面板能说「查到 X，但没写进台账」，读者不必白查一遍。
+        return _fail("E_LEDGER", str(exc), extra={"draft": draft,
+                                                  "state": entry["state"],
+                                                  "checked_at": entry["checked_at"],
+                                                  "write_failed": True})
     if error:
         return _fail(error["code"], error["message"],
                      extra={"draft": draft, "state": entry["state"],
@@ -1163,11 +1177,13 @@ def _print_json_line(payload: dict) -> None:
 
 
 def _done_line(*, ok: bool, checked: list, ledger: dict = None, sha256: str = None,
-               error_code: str = None, message: str = None) -> dict:
+               error_code: str = None, message: str = None, write_failed: bool = False) -> dict:
     """done 行：与 --json 的最终载荷同形，只多一个 type（见文件头的契约）。"""
     payload = {"type": "done", "ok": ok, "checked": checked}
     if error_code:
         payload["error"] = {"code": error_code, "message": message or ""}
+    if write_failed:
+        payload["write_failed"] = True
     if ledger is not None:
         payload["ledger"] = ledger
     if sha256 is not None:
@@ -1241,9 +1257,10 @@ def cmd_check_all(root, args) -> int:
     except LedgerError as exc:
         if json_lines:
             _print_json_line(_done_line(ok=False, checked=checked,
-                                        error_code="E_LEDGER", message=str(exc)))
+                                        error_code="E_LEDGER", message=str(exc),
+                                        write_failed=True))
             return EXIT_OK
-        return _fail("E_LEDGER", str(exc), extra={"checked": checked})
+        return _fail("E_LEDGER", str(exc), extra={"checked": checked, "write_failed": True})
     if json_lines:
         if all_ok:
             _print_json_line(_done_line(ok=True, checked=checked,
