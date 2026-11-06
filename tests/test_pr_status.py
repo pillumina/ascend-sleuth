@@ -19,6 +19,8 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -646,6 +648,100 @@ class FlowTest(RepoCase):
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["ledger"]["schema"], pr.SCHEMA)
         self.assertIn("sha256", payload)
+
+
+# ---------------------------------------------------------------- check-all 并发查询
+
+class CheckAllParallelTest(RepoCase):
+    """--check-all 查询阶段并发：并发度、checked[] 顺序、落盘次数。"""
+
+    SLEEP_S = 0.2
+
+    def _seed_ledger(self, drafts):
+        data = pr.load_ledger(self.repo)
+        data["prs"] = {
+            key: {"platform": "fake", "repo": "o/r", "number": index + 1,
+                  "url": f"https://example.com/o/r/pulls/{index + 1}",
+                  "state": state, "source": "ledger",
+                  "created_at": "2026-11-01T10:00:00+08:00"}
+            for index, (key, state) in enumerate(drafts.items())
+        }
+        pr.save_ledger(self.repo, data)
+
+    @staticmethod
+    def _fake_check(lock, state, delay_for_key, sleep_s=None):
+        def fake_run_check(ledger, key, adapters):
+            with lock:
+                state["calls"] = state.get("calls", 0) + 1
+                state["active"] += 1
+                state["peak"] = max(state["peak"], state["active"])
+            try:
+                time.sleep(sleep_s if sleep_s is not None else delay_for_key(key))
+            finally:
+                with lock:
+                    state["active"] -= 1
+            entry = dict(ledger["prs"][key])
+            entry.update({"state": "open", "source": "platform",
+                          "checked_at": "2026-11-01T10:00:00+08:00"})
+            return entry, None, ""
+        return fake_run_check
+
+    def test_check_all_runs_queries_concurrently(self):
+        # 插入顺序与排序顺序不同，确保断言的是台账键排序而不是提交顺序。
+        drafts = {"draft-h": "open", "draft-a": "open", "draft-c": "open",
+                  "draft-b": "open", "draft-g": "open", "draft-e": "open",
+                  "draft-d": "open", "draft-f": "open", "draft-z": "merged"}
+        self._seed_ledger(drafts)
+        lock = threading.Lock()
+        state = {"calls": 0, "active": 0, "peak": 0}
+        fake_run_check = self._fake_check(lock, state, lambda key: self.SLEEP_S)
+
+        saves = []
+        real_save = pr.save_ledger
+
+        def counting_save(root, data, expect_sha=None):
+            saves.append(expect_sha)
+            return real_save(root, data, expect_sha=expect_sha)
+
+        started = time.monotonic()
+        with mock.patch.object(pr, "_run_check", side_effect=fake_run_check), \
+                mock.patch.object(pr, "save_ledger", side_effect=counting_save):
+            code, payload = run_cli("--root", str(self.repo), "--check-all")
+        elapsed = time.monotonic() - started
+
+        self.assertEqual(code, 0, payload)
+        self.assertTrue(payload["ok"], payload)
+        # 主断言 1：峰值并发达到并发度；merged 那条终态不查。
+        self.assertEqual(pr.CHECK_ALL_WORKERS, 4)
+        self.assertEqual(state["peak"], pr.CHECK_ALL_WORKERS)
+        self.assertEqual(state["calls"], 8)
+        # 主断言 2：checked[] 按台账键排序，终态跳过。
+        expected = sorted(key for key, value in drafts.items() if value in pr.CHECKABLE)
+        self.assertEqual([item["draft"] for item in payload["checked"]], expected)
+        for draft in expected:
+            self.assertEqual(payload["ledger"]["prs"][draft]["source"], "platform")
+        # 主断言 3：全部查完只落盘一次。
+        self.assertEqual(len(saves), 1)
+        # 耗时只作宽松上界（8 条 × 0.2s，串行 1.6s，恒为 2 波 0.4s）；留 3 倍余量防慢 runner，
+        # 仍低于串行理论值，不作主断言。
+        self.assertLess(elapsed, len(expected) * self.SLEEP_S * 3 / 4)
+
+    def test_check_all_output_order_ignores_completion_order(self):
+        # 先提交的查得慢、后提交的查得快：完成顺序与台账键顺序相反，输出仍须按键排序。
+        keys = ["draft-a", "draft-b", "draft-c", "draft-d", "draft-e", "draft-f"]
+        self._seed_ledger({key: "open" for key in keys})
+        delays = {key: 0.02 * (len(keys) - index) for index, key in enumerate(keys)}
+        lock = threading.Lock()
+        state = {"calls": 0, "active": 0, "peak": 0}
+        fake_run_check = self._fake_check(lock, state, lambda key: delays[key])
+
+        with mock.patch.object(pr, "_run_check", side_effect=fake_run_check):
+            code, payload = run_cli("--root", str(self.repo), "--check-all")
+
+        self.assertEqual(code, 0, payload)
+        self.assertEqual([item["draft"] for item in payload["checked"]], sorted(keys))
+        # 顺序断言之外确认确实并发过，避免测试退化成串行也通过。
+        self.assertGreater(state["peak"], 1)
 
 
 if __name__ == "__main__":

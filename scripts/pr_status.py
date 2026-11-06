@@ -48,6 +48,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 import yaml
@@ -65,6 +66,11 @@ PLATFORMS_DIR = Path(__file__).resolve().parent / "platforms"
 STATES = ("open", "merged", "closed", "unknown")
 #: 只有这两个状态需要去平台查；merged/closed 是终态，不重复查。
 CHECKABLE = ("open", "unknown")
+
+#: --check-all 查询阶段的并发度。取 4 而不是更大：一个批次是 N 次独立的平台请求，
+#: 并发太高会撞平台速率限制，也把本机连接与请求日志放大到难排查；4 路已能把 N 次
+#: 请求压到 N/4 波。落盘仍是全部查完后的一次 CAS 写，不并发写台账。
+CHECK_ALL_WORKERS = 4
 
 DEFAULT_BASE = "main"
 HTTP_TIMEOUT_S = 10
@@ -1143,13 +1149,24 @@ def cmd_check_all(root, args) -> int:
     adapters = load_adapters()
     data = load_ledger(root)
     before = ledger_sha256(root)
+    # 查询走只读快照：worker 只返回结果，不改台账；写回统一在主线程按台账键顺序做。
+    snapshot = {"prs": {key: dict(value) if isinstance(value, dict) else value
+                        for key, value in (data.get("prs") or {}).items()}}
+    drafts = [draft for draft in sorted(snapshot["prs"].keys())
+              if isinstance(snapshot["prs"].get(draft), dict)
+              and str(snapshot["prs"][draft].get("state") or "") in CHECKABLE]
+    results = {}
+    if drafts:
+        with ThreadPoolExecutor(max_workers=CHECK_ALL_WORKERS) as pool:
+            futures = {pool.submit(_run_check, snapshot, draft, adapters): draft
+                       for draft in drafts}
+            for future in as_completed(futures):
+                # _run_check 已把适配器异常归一成 unknown；这里仍不吞异常，交给 main 折 JSON。
+                results[futures[future]] = future.result()
     checked = []
     all_ok = True
-    for draft in sorted((data.get("prs") or {}).keys()):
-        pr = data["prs"].get(draft)
-        if not isinstance(pr, dict) or str(pr.get("state") or "") not in CHECKABLE:
-            continue
-        entry, error, detail = _run_check(data, draft, adapters)
+    for draft in drafts:  # 按台账键排序输出，与并发完成顺序无关
+        entry, error, detail = results[draft]
         if entry is None:
             checked.append({"draft": draft, "ok": False, "state": "unknown",
                             "error": error["code"]})
