@@ -506,6 +506,57 @@ section('[知识库 · 客户端] 同步结果：成功 / 未自动合并 / 失�
   check(failText.indexOf('未知错误') < 0, '同步失败不写「未知错误」')
 }
 
+section('[知识库 · 客户端] 失败态：网络原因与 git 原始输出')
+{
+  const failed = await bootClient({
+    'ascend-kb-sync-show': () => showPayload(),
+    'ascend-kb-sync-merge': () => ({
+      ok: false, code: 'E_NETWORK', message: '连不上远端（网络或代理）',
+      detail: "fatal: unable to access 'https://github.com/org/repo.git/': "
+        + 'Failed to connect to 127.0.0.1 port 7897: Connection refused',
+    }),
+  })
+  let tree = await failed.runtime.render(failed.main.component, { view: 'knowledge', sessionId: 's1' })
+  clickButton(tree, '立即同步')
+  tree = await failed.runtime.render(failed.main.component, { view: 'knowledge', sessionId: 's1' })
+  const text = textOf(tree)
+  check(text.indexOf('同步失败：连不上远端') >= 0, '网络失败按原因给中文', text.slice(0, 240))
+  check(text.indexOf('Failed to connect to 127.0.0.1 port 7897') >= 0,
+    '网络失败显示 git 原始输出', text.slice(0, 360))
+  check(text.indexOf('检查网络与代理') >= 0, '网络失败给可执行动作', text.slice(0, 360))
+
+  // 旧脚本被失败缓存挡下：没重试，不是同步失败。
+  const cached = await bootClient({
+    'ascend-kb-sync-show': () => showPayload(),
+    'ascend-kb-sync-merge': () => ({
+      ok: false, code: 'E_SKIPPED', message: '10 分钟内的失败还在缓存里，本次没有重试',
+      detail: 'fatal: 上一次的失败',
+    }),
+  })
+  let cachedTree = await cached.runtime.render(cached.main.component, { view: 'knowledge', sessionId: 's1' })
+  clickButton(cachedTree, '立即同步')
+  cachedTree = await cached.runtime.render(cached.main.component, { view: 'knowledge', sessionId: 's1' })
+  const cachedText = textOf(cachedTree)
+  check(cachedText.indexOf('本次没有重试') >= 0, '缓存跳过时说明本次没有重试', cachedText.slice(0, 240))
+  check(cachedText.indexOf('同步失败：') < 0, '缓存跳过不报同步失败', cachedText.slice(0, 240))
+  check(cachedText.indexOf('fatal: 上一次的失败') >= 0, '缓存跳过仍带上次的原始输出', cachedText.slice(0, 360))
+}
+
+section('[知识库 · 客户端] 上次同步失败：重新打开本页仍显示原因')
+{
+  const payload = showPayload()
+  payload.sync.data.last_reason = 'network'
+  payload.sync.data.last_error = "fatal: unable to access 'https://github.com/org/repo.git/': "
+    + 'Failed to connect to 127.0.0.1 port 7897: Connection refused'
+  payload.sync.data.last_failure = { code: 'E_NETWORK', message: '连不上远端（网络或代理）' }
+  const { runtime, main } = await bootClient({ 'ascend-kb-sync-show': () => payload })
+  const tree = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
+  const text = textOf(tree)
+  check(text.indexOf('上次同步失败：连不上远端') >= 0, '失败原因重新打开也显示', text.slice(0, 260))
+  check(text.indexOf('Failed to connect to 127.0.0.1 port 7897') >= 0,
+    '失败 banner 带 git 原始输出', text.slice(0, 400))
+}
+
 // ── 宿主半：用假 ctx 装 lib/index.js，直接走 RPC ────────────────────────────
 function makeShell(plan) {
   const commands = []
@@ -673,6 +724,22 @@ section('[知识库 · host] 正常读取')
   check(!!mergedValue && mergedValue.ok === true && mergedValue.merged === true
     && mergedValue.merged_rev === '9f8e7d' && mergedValue.previous_rev === '1a2b3c' && mergedValue.behind === 12,
     'merge：成功结果带目标版本、原版本与差数', JSON.stringify(mergedValue))
+  const mergeCmd = host.shell.commands.filter(c => /kb_sync\.py --merge/.test(c)).pop() || ''
+  check(mergeCmd.indexOf('--force') >= 0, 'merge：手动同步带 --force（失败缓存只挡自动同步）', mergeCmd)
+
+  // 上一次 fetch 失败过：重新打开本页也要带出原因与 git 原始输出（不能只靠点击那一下的 flash）。
+  const prevFailedShow = Object.assign({}, showDoc, {
+    last_reason: 'network',
+    last_error: "fatal: unable to access 'https://github.com/org/repo.git/': Connection refused",
+  })
+  const prevFailedHost = await bootHost(defaultPlan({ 'kb_sync --show': () => okStdout(JSON.stringify(prevFailedShow)) }))
+  const prevFailedValue = valueOf(await prevFailedHost.call('ascend-kb-sync-show', { sessionId: 's1' }))
+  check(!!prevFailedValue && prevFailedValue.sync.ok === true
+    && prevFailedValue.sync.data.last_failure
+    && prevFailedValue.sync.data.last_failure.code === 'E_NETWORK',
+    'show：上次失败带上原因码', JSON.stringify(prevFailedValue && prevFailedValue.sync.data).slice(0, 240))
+  check(!!prevFailedValue && String(prevFailedValue.sync.data.last_error || '').indexOf('Connection refused') >= 0,
+    'show：上次失败带上 git 原始输出', JSON.stringify(prevFailedValue && prevFailedValue.sync.data).slice(0, 240))
 
   const saved = await host.call('ascend-kb-sync-save', {
     sessionId: 's1', remote: 'origin', branch: 'main', autoCheck: false, autoMerge: true,
@@ -805,6 +872,74 @@ section('[知识库 · host] 状态与失败分类')
   const messages = [dirtyValue, unsupportedValue, badValue && badValue.sync]
     .map(v => String((v && (v.message || v.code)) || ''))
   check(messages.every(m => m.indexOf('未知错误') < 0), '失败文案里没有「未知错误」', JSON.stringify(messages))
+}
+
+section('[知识库 · host] 合并失败：网络原因 / 缓存跳过 / 旧脚本兼容')
+{
+  const netFail = {
+    ok: false, reason: 'network', skipped: false,
+    fetch_error: "fatal: unable to access 'https://github.com/org/repo.git/': "
+      + 'Failed to connect to 127.0.0.1 port 7897: Connection refused',
+  }
+  const failedHost = await bootHost(defaultPlan({ 'kb_sync --merge': () => okStdout(JSON.stringify(netFail)) }))
+  const failedValue = valueOf(await failedHost.call('ascend-kb-sync-merge', { sessionId: 's1' }))
+  check(!!failedValue && failedValue.ok === false && failedValue.code === 'E_NETWORK',
+    '网络失败归到 E_NETWORK', JSON.stringify(failedValue))
+  check(!!failedValue && String(failedValue.detail || '').indexOf('Failed to connect') >= 0,
+    '网络失败把 git 原始输出带到面板', JSON.stringify(failedValue))
+
+  const cached = { ok: false, skipped: true, reason: 'network', fetch_error: 'fatal: 旧失败' }
+  const cachedHost = await bootHost(defaultPlan({ 'kb_sync --merge': () => okStdout(JSON.stringify(cached)) }))
+  const cachedValue = valueOf(await cachedHost.call('ascend-kb-sync-merge', { sessionId: 's1' }))
+  check(!!cachedValue && cachedValue.ok === false && cachedValue.code === 'E_SKIPPED',
+    '被缓存挡下时说「本次没有重试」，不报同步失败', JSON.stringify(cachedValue))
+
+  // 旧检出的脚本不认 --force：退回不带它再跑一次，不把版本错位当同步失败。
+  let mergeCalls = 0
+  const legacyPlan = defaultPlan()
+  const legacyHost = await bootHost((command) => {
+    if (/kb_sync\.py --merge/.test(command)) {
+      mergeCalls += 1
+      if (mergeCalls === 1) return failStdout(2, 'error: unrecognized arguments: --force')
+      return okStdout(JSON.stringify({
+        ok: true, merge: 'ff-only', local_rev: '9f8e7d', local_rev_before: '1a2b3c',
+        behind_before: 12, behind: 0, reason: '',
+      }))
+    }
+    return legacyPlan(command)
+  })
+  const legacyValue = valueOf(await legacyHost.call('ascend-kb-sync-merge', { sessionId: 's1' }))
+  check(!!legacyValue && legacyValue.ok === true && legacyValue.merged === true,
+    '旧脚本不认 --force：退回不带它再跑，结果仍算成功', JSON.stringify(legacyValue))
+  const legacyCmds = legacyHost.shell.commands.filter(c => /kb_sync\.py --merge/.test(c))
+  check(legacyCmds.length === 2 && legacyCmds[1].indexOf('--force') < 0,
+    '兼容退回只补一次不带 --force 的重试', JSON.stringify(legacyCmds))
+
+  // 退回后仍然失败 / 仍被缓存挡下：结局照样要正确，不当成功。
+  // 旧脚本（b92b199）失败时只有 reason `exit-<n>`、没有 fetch_error，这里照它的真实形状构造。
+  const legacyFailHost = await bootHost((command) => {
+    if (/kb_sync\.py --merge/.test(command)) {
+      if (command.indexOf('--force') >= 0) return failStdout(2, 'error: unrecognized arguments: --force')
+      return okStdout(JSON.stringify({ ok: false, reason: 'exit-128', skipped: false }))
+    }
+    return defaultPlan()(command)
+  })
+  const legacyFailValue = valueOf(await legacyFailHost.call('ascend-kb-sync-merge', { sessionId: 's1' }))
+  check(!!legacyFailValue && legacyFailValue.ok === false && legacyFailValue.code === 'E_FETCH'
+    && !legacyFailValue.detail,
+    '旧脚本退回后仍失败：按 E_FETCH 报，不编造原文', JSON.stringify(legacyFailValue))
+
+  const legacySkipHost = await bootHost((command) => {
+    if (/kb_sync\.py --merge/.test(command)) {
+      if (command.indexOf('--force') >= 0) return failStdout(2, 'error: unrecognized arguments: --force')
+      return okStdout(JSON.stringify({ ok: false, skipped: true, reason: 'exit-128' }))
+    }
+    return defaultPlan()(command)
+  })
+  const legacySkipValue = valueOf(await legacySkipHost.call('ascend-kb-sync-merge', { sessionId: 's1' }))
+  check(!!legacySkipValue && legacySkipValue.ok === false && legacySkipValue.code === 'E_SKIPPED'
+    && !legacySkipValue.detail,
+    '旧脚本退回后仍被缓存挡下：归到 E_SKIPPED，但不编造原文', JSON.stringify(legacySkipValue))
 }
 
 // ── 收尾 ────────────────────────────────────────────────────────────────────

@@ -1,8 +1,8 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:7e6593740c0c)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:21ed5c64a37b)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:f684735469ce)
-//   dsh-plugins/sleuth-console/console-client.js  (sha256:0b84ce5f38e9)
+//   dsh-plugins/sleuth-console/console-client.js  (sha256:19c89326eaac)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
 // 面板源码是动态插件方言（靠沙箱提供的 host 通信）；这里原文嵌入页面产物，并补一层适配：
@@ -70,7 +70,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:7e6593740c0c) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:21ed5c64a37b) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -474,7 +474,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.9.0'
+    const PANEL_VERSION = '0.9.1'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -6358,7 +6358,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       id: 'sleuth-console',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/sleuth-console/console-client.js (sha256:0b84ce5f38e9) 原文开始 ----
+// ---- dsh-plugins/sleuth-console/console-client.js (sha256:19c89326eaac) 原文开始 ----
 // sleuth-console/console-client.js —— 常驻包里的整页「Ascend Sleuth」（client-only）
 //
 // 为什么单有这一页：指标与自演进读的是**全库**（`metrics/`、`proposals/`、`knowledge/`），
@@ -6528,7 +6528,7 @@ return {
       E_MERGE_IN_PROGRESS: '上一次合并还没结束',
       E_AUTO_MERGE_OFF: '自动合并已关闭',
       E_SAME_REPO: '配置远端与 origin 不同源',
-      E_FETCH: 'fetch 失败',
+      E_FETCH: '拉取失败',
       E_CAS: '设置文件刚被改过，刷新后重试',
       E_SCRIPT: '本机脚本报错',
     }
@@ -6545,7 +6545,10 @@ return {
       if (code === 'E_NO_SCRIPT') return '先更新检出；脚本到位后重开本页。'
       if (code === 'E_NOT_GIT') return '在仓库根目录打开面板。'
       if (code === 'E_PYTHON') return '装好 Python 3，并确保在 PATH 里。'
-      if (code === 'E_TIMEOUT' || code === 'E_NETWORK') return '检查网络与 git 凭据后重试。'
+      if (code === 'E_TIMEOUT') return '检查网络与 git 凭据后重试。'
+      if (code === 'E_NETWORK') return '检查网络与代理；修好后点「立即同步」重试。'
+      if (code === 'E_FETCH') return '检查网络与 git 凭据；修好后点「立即同步」重试。'
+      if (code === 'E_SKIPPED') return '过一会儿再点「立即同步」。'
       if (code === 'E_NO_REMOTE') return '在仓库根目录执行 git remote add <名字> <地址>，再刷新本页。'
       if (code === 'E_DIRTY') return '先提交或 git stash，再点「立即同步」。'
       if (code === 'E_NOT_FF') return '本地提交不能快进；处理后再同步。'
@@ -6607,6 +6610,11 @@ return {
     }
     // 合并/保存的结果 → 一条提示。成功要给到"到了哪一版、从哪一版来、差多少"。
     function kbMergeFlash(r) {
+      // 旧脚本被失败缓存挡下：这次没有 fetch，不是同步失败，用提示而不是错误。
+      if (r && r.ok !== true && r.code === 'E_SKIPPED') {
+        return { kind: 'warn', text: '上次失败还在 10 分钟缓存里，本次没有重试。',
+          hint: kbHintFor('E_SKIPPED'), detail: r.detail ? String(r.detail) : '' }
+      }
       if (!r || r.ok !== true) {
         return { kind: 'err', text: '同步失败：' + kbReasonOf(r) + '。', hint: kbHintFor(r && r.code),
           detail: r && r.detail ? String(r.detail) : '' }
@@ -6825,9 +6833,10 @@ return {
       } else if (syncState === 'unfetched') {
         banner = { kind: 'muted', text: '远端分支还没拉取过（' + (data.remote || '?') + '/' + (data.branch || '?') + '）。',
           hint: '点「立即同步」拉一次远端，再按配置合并。' }
-      } else if (data.skipped) {
-        banner = { kind: 'warn', text: '上次同步失败，本次按 10 分钟窗口跳过。',
-          hint: data.last_reason ? '上次失败原因：' + data.last_reason : '' }
+      } else if (data.last_failure) {
+        // 上一次 fetch 失败过（脚本从状态文件读出）：重新打开本页也显示原因与 git 原始输出。
+        banner = { kind: 'warn', text: '上次同步失败：' + kbReasonOf(data.last_failure) + '。',
+          hint: '点「立即同步」重试。', detail: data.last_error ? String(data.last_error) : '' }
       } else if (!targetsPart || targetsPart.ok !== true) {
         banner = { kind: 'err', text: '读不到远端列表：' + kbReasonOf(targets || {}) + '。',
           hint: kbHintFor(targetsPart && targetsPart.code), detail: targetsPart && targetsPart.detail ? String(targetsPart.detail) : '' }

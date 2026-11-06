@@ -192,6 +192,7 @@ class FetchTest(ConfiguredCase):
         self.assertFalse(doc["ok"])
         self.assertEqual(doc["reason"], "timeout")
         self.assertFalse(doc["skipped"])
+        self.assertEqual(doc["fetch_error"], "")
         state = json.loads((self.repo / ".local" / "kb-sync-state.json").read_text(encoding="utf-8"))
         self.assertEqual(state["reason"], "timeout")
         self.assertTrue(state["attempted_at"])
@@ -321,6 +322,212 @@ class FetchTest(ConfiguredCase):
         self.write_settings({"remote": "mirror"})
         _code, doc = self.run_cli("--show", "--json")
         self.assertFalse(doc["same_repo"])
+
+
+class FetchFailureDetailTest(ConfiguredCase):
+    """fetch 失败：原因归类、git 原始输出留存、URL 凭据抹除、手动 --force 绕过失败缓存。
+
+    动机是面板上的「同步失败：fetch 失败」：读者看不出是网络、凭据还是别的；而失败缓存
+    10 分钟内会挡住手动重试，刚修好网络再点几次也只会拿回同一份缓存。
+    """
+
+    def seed_failure(self, reason="network", error="fatal: could not resolve host: github.com",
+                     attempted=None):
+        state = {"schema": "ascend-sleuth-kb-sync-state/1", "last_ok_at": "",
+                 "attempted_at": attempted or kb_sync.now_iso(), "reason": reason,
+                 "remote": "origin", "branch": "main", "fetch_error": error}
+        path = self.repo / ".local" / "kb-sync-state.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state), encoding="utf-8")
+
+    def fail_fetch(self, stderr, code=128):
+        """把 fetch 换成指定退出码与 stderr；其余 git 命令照跑。"""
+        real = kb_sync.run_git
+
+        def fake(args, cwd, timeout):
+            if "fetch" in args:
+                return subprocess.CompletedProcess(args=["git", *args], returncode=code,
+                                                   stdout="", stderr=stderr)
+            return real(args, cwd, timeout)
+
+        return mock.patch.object(kb_sync, "run_git", side_effect=fake)
+
+    def test_network_failure_keeps_git_line(self):
+        stderr = ("fatal: unable to access 'https://github.com/org/repo.git/': "
+                  "Failed to connect to 127.0.0.1 port 7897: Connection refused\n")
+        with self.fail_fetch(stderr):
+            code, doc = self.run_cli("--sync", "--json")
+        self.assertEqual(code, 0)
+        self.assertFalse(doc["ok"])
+        self.assertEqual(doc["reason"], "network")
+        self.assertIn("Failed to connect", doc["fetch_error"])
+        state = json.loads((self.repo / ".local" / "kb-sync-state.json").read_text(encoding="utf-8"))
+        self.assertEqual(state["reason"], "network")
+        self.assertIn("Connection refused", state["fetch_error"])
+
+    def test_auth_failure_stays_exit_code(self):
+        # 凭据问题不归到 network：那条提示会把读者带去查网络与代理。
+        stderr = ("remote: Invalid username or password.\n"
+                  "fatal: Authentication failed for 'https://github.com/org/repo.git/'\n")
+        with self.fail_fetch(stderr):
+            _code, doc = self.run_cli("--sync", "--json")
+        self.assertEqual(doc["reason"], "exit-128")
+        self.assertIn("Authentication failed", doc["fetch_error"])
+
+    def test_other_failure_keeps_exit_code_and_line(self):
+        stderr = "fatal: couldn't find remote ref main\n"
+        with self.fail_fetch(stderr):
+            _code, doc = self.run_cli("--sync", "--json")
+        self.assertEqual(doc["reason"], "exit-128")
+        self.assertIn("couldn't find remote ref", doc["fetch_error"])
+
+    def test_credentials_in_url_are_redacted(self):
+        stderr = ("fatal: unable to access 'https://user:secret@example.com/org/repo.git/"
+                  "?private_token=abc123': SSL certificate problem\n")
+        with self.fail_fetch(stderr):
+            _code, doc = self.run_cli("--sync", "--json")
+        self.assertNotIn("secret", doc["fetch_error"])
+        self.assertNotIn("abc123", doc["fetch_error"])
+        self.assertIn("***", doc["fetch_error"])
+
+    def test_human_sync_prints_git_line(self):
+        stderr = "fatal: unable to access 'https://github.com/org/repo.git/': " \
+                 "Failed to connect to 127.0.0.1 port 7897: Connection refused\n"
+        out = io.StringIO()
+        with self.fail_fetch(stderr):
+            with contextlib.redirect_stdout(out):
+                kb_sync.main(["--root", str(self.repo), "--sync"])
+        text = out.getvalue()
+        self.assertIn("git 原始输出", text)
+        self.assertIn("Failed to connect", text)
+
+    def test_skip_message_points_to_force(self):
+        self.seed_failure()
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            kb_sync.main(["--root", str(self.repo), "--sync"])
+        text = out.getvalue()
+        self.assertIn("跳过本次 fetch", text)
+        self.assertIn("--force", text)
+
+    def test_force_retries_within_window(self):
+        self.seed_failure()
+        upstream = self.upstream({"knowledge/a.yaml": "cases: []\n"})
+        code, doc = self.run_cli("--sync", "--json", "--force")
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["ok"])
+        self.assertFalse(doc["skipped"])
+        self.assertEqual(doc["remote_rev"], upstream)
+        self.assertEqual(doc["fetch_error"], "")
+        state = json.loads((self.repo / ".local" / "kb-sync-state.json").read_text(encoding="utf-8"))
+        self.assertEqual(state["reason"], "")
+        self.assertEqual(state["fetch_error"], "")
+
+    def test_force_merge_ignores_window(self):
+        # 面板「立即同步」走的就是这条：失败窗口还在，也要真的 fetch 并合并。
+        self.seed_failure()
+        upstream = self.upstream({"knowledge/a.yaml": "cases: []\n"})
+        code, doc = self.run_cli("--merge", "--json", "--force")
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["ok"])
+        self.assertEqual(doc["merge"], "ff-only")
+        self.assertEqual(doc["local_rev"], upstream)
+
+    def test_force_failure_still_records(self):
+        self.seed_failure(error="旧错误")
+        with self.fail_fetch("fatal: unable to access 'https://github.com/org/repo.git/': "
+                             "Connection reset by peer\n"):
+            _code, doc = self.run_cli("--sync", "--json", "--force")
+        self.assertFalse(doc["skipped"])
+        self.assertEqual(doc["reason"], "network")
+        self.assertIn("Connection reset", doc["fetch_error"])
+        state = json.loads((self.repo / ".local" / "kb-sync-state.json").read_text(encoding="utf-8"))
+        self.assertIn("Connection reset", state["fetch_error"])
+
+    def test_show_reports_last_error(self):
+        self.seed_failure(reason="network", error="fatal: could not resolve host: github.com")
+        _code, doc = self.run_cli("--show", "--json")
+        self.assertEqual(doc["last_reason"], "network")
+        self.assertIn("could not resolve host", doc["last_error"])
+
+    def test_proxy_and_tls_lines_count_as_network(self):
+        # 代理与 TLS 的常见文案：只认 "connection refused" 一类会漏掉这些。
+        samples = {
+            "tls": "fatal: unable to access 'https://github.com/org/repo.git/': "
+                   "OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to github.com:443",
+            "empty": "fatal: unable to access 'https://github.com/org/repo.git/': "
+                     "Empty reply from server",
+            "tunnel": "fatal: unable to access 'https://github.com/org/repo.git/': "
+                      "CONNECT tunnel failed, response 502",
+        }
+        for name, stderr in samples.items():
+            with self.subTest(name=name):
+                with self.fail_fetch(stderr):
+                    _code, doc = self.run_cli("--sync", "--json", "--force")
+                self.assertEqual(doc["reason"], "network", doc["fetch_error"])
+
+    def test_lock_needs_lock_wording(self):
+        # "blocked" 里的 lock 字样不是 ref 锁；临时文件创建失败也不是；真锁冲突仍归 lock。
+        samples = {
+            "blocked": "fatal: request blocked by server policy\n",
+            "no-space": "fatal: unable to create temporary file: No space left on device\n",
+        }
+        for name, stderr in samples.items():
+            with self.subTest(name=name):
+                with self.fail_fetch(stderr):
+                    _code, doc = self.run_cli("--sync", "--json", "--force")
+                self.assertEqual(doc["reason"], "exit-128", doc["fetch_error"])
+        with self.fail_fetch("fatal: cannot lock ref 'refs/remotes/origin/main': "
+                             "Unable to create '.../main.lock': File exists.\n"):
+            _code, doc = self.run_cli("--sync", "--json", "--force")
+        self.assertEqual(doc["reason"], "lock")
+
+    def test_ssl_words_in_host_or_path_are_not_network(self):
+        # 主机名 / 路径里带 ssl 字样不等于 TLS 失败：404 仍按退出码报，别把读者带去查网络。
+        stderr = "fatal: unable to access 'https://ssl-git.corp.example/org/repo.git/': " \
+                 "The requested URL returned error: 404\n"
+        with self.fail_fetch(stderr):
+            _code, doc = self.run_cli("--sync", "--json", "--force")
+        self.assertEqual(doc["reason"], "exit-128")
+
+    def test_certificate_failures_count_as_network(self):
+        stderr = "fatal: unable to access 'https://github.com/org/repo.git/': " \
+                 "server certificate verification failed. CAfile: none CRLfile: none\n"
+        with self.fail_fetch(stderr):
+            _code, doc = self.run_cli("--sync", "--json", "--force")
+        self.assertEqual(doc["reason"], "network")
+
+    def test_redaction_covers_ssh_and_oauth(self):
+        stderr = ("fatal: unable to access "
+                  "'ssh://git:token123@example.com/org/repo.git?oauth_token=zzz9': "
+                  "Could not resolve hostname\n")
+        with self.fail_fetch(stderr):
+            _code, doc = self.run_cli("--sync", "--json", "--force")
+        self.assertNotIn("token123", doc["fetch_error"])
+        self.assertNotIn("zzz9", doc["fetch_error"])
+        self.assertIn("***@", doc["fetch_error"])
+
+    def test_redaction_handles_at_in_password(self):
+        stderr = ("fatal: unable to access 'https://user:pa@ss@example.com/repo.git': "
+                  "Could not resolve host\n")
+        with self.fail_fetch(stderr):
+            _code, doc = self.run_cli("--sync", "--json", "--force")
+        self.assertNotIn("pa@ss", doc["fetch_error"])
+        self.assertIn("***@", doc["fetch_error"])
+
+    def test_timeout_keeps_partial_stderr(self):
+        real = kb_sync.run_git
+
+        def fake(args, cwd, timeout):
+            if "fetch" in args:
+                raise subprocess.TimeoutExpired("git", timeout,
+                                                stderr="warning: remote is slow\n")
+            return real(args, cwd, timeout)
+
+        with mock.patch.object(kb_sync, "run_git", side_effect=fake):
+            _code, doc = self.run_cli("--sync", "--json", "--force")
+        self.assertEqual(doc["reason"], "timeout")
+        self.assertIn("remote is slow", doc["fetch_error"])
 
 
 class MergeTest(ConfiguredCase):

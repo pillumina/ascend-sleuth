@@ -1,7 +1,7 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
 //   dsh-plugins/ascend-panel/panel-host.js  (sha256:f1fa8ffbec6a)
-//   dsh-plugins/ev-panel/panel-host.js  (sha256:e46743080d75)
+//   dsh-plugins/ev-panel/panel-host.js  (sha256:a17169748b08)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
 // 面板源码是动态插件方言（文件是函数体，靠沙箱提供的 harness 通信）；这里原文嵌入常驻
@@ -3012,7 +3012,7 @@ return {
     id: 'ev-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ev-panel/panel-host.js (sha256:e46743080d75) 原文开始 ----
+// ---- dsh-plugins/ev-panel/panel-host.js (sha256:a17169748b08) 原文开始 ----
 // ev-panel host —— 自演进看板数据服务（EV 卡 / 容量 / 归因聚合 / timeline）
 // 用法：cordis_define kind:new → code.host 用本文件全文；code.client 用 panel-client.js 全文。
 // host 侧通过 shell 跑 scripts/ev_board_data.py 汇总 JSON（确定性逻辑在脚本，遵循原则二）。
@@ -3398,6 +3398,7 @@ return {
       const r = String(reason || '')
       if (!r) return null
       if (r === 'timeout') return { code: 'E_TIMEOUT', message: 'fetch 超时' }
+      if (r === 'network') return { code: 'E_NETWORK', message: '连不上远端（网络或代理）' }
       if (r === 'lock') return { code: 'E_LOCK', message: '远端的引用锁被占用' }
       if (r === 'no-remote') return { code: 'E_NO_REMOTE', message: '配置的远端不存在' }
       if (r === 'not-a-repo') return { code: 'E_NOT_GIT', message: '当前目录不是 git 检出' }
@@ -3454,6 +3455,8 @@ return {
         skipped: doc.skipped === true,
         last_checked: syncStr(doc.last_checked) || syncStr(doc.last_ok_at) || syncStr(doc.attempted_at) || null,
         last_reason: syncStr(doc.last_reason) || reason,
+        last_error: syncStr(doc.last_error),
+        last_failure: null,
         enabled: enabled,
         offline: offline,
         offline_source: offlineSource,
@@ -3461,6 +3464,11 @@ return {
         same_repo: sameRepo,
         config: null,
       }
+      // 上一次 fetch 的失败（脚本从状态文件读出 last_reason / last_error）：页面重新打开后
+      // 也要能看到失败原因，不能只靠点击那一下的 flash。
+      data.last_failure = data.last_reason
+        ? (syncReasonOf(data.last_reason) || { code: 'E_SCRIPT', message: '同步失败' })
+        : null
       if (offline) {
         return { ok: true, data: data, state: 'offline',
           error: { code: 'E_OFFLINE', message: '离线部署（deployment.yaml）' } }
@@ -3606,17 +3614,31 @@ return {
     })
 
     // 「立即同步」：只有这一个动作会碰远端（fetch + 条件合并都在脚本里，面板不拼 git）。
+    // 手动同步要能立刻重试：失败缓存只该挡自动同步，所以这里带 `--force`。
+    // 旧检出里的脚本不认 `--force`（argparse 报 unrecognized arguments → E_UNSUPPORTED），
+    // 退回不带它再跑一次，不把版本错位当成同步失败。
+    async function runMergeSync(sessionId) {
+      const first = await runSyncScript(sessionId, KB_SYNC_SCRIPT, '--merge --json --force', 180000)
+      if (first.ok || first.code !== 'E_UNSUPPORTED') return first
+      return runSyncScript(sessionId, KB_SYNC_SCRIPT, '--merge --json', 180000)
+    }
+
     const kbMergeDisposer = harness.handle('ascend-kb-sync-merge', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
-      const r = await runSyncScript(sessionId, KB_SYNC_SCRIPT, '--merge --json', 180000)
+      const r = await runMergeSync(sessionId)
       if (!r.ok) return { ok: false, code: r.code, message: r.message, cwd: r.cwd || null, detail: r.detail || '' }
       const doc = syncDocOf(r) || {}
       const env = syncEnvelopeError(doc)
       if (env) return { ok: false, code: env.code, message: env.message, cwd: r.cwd || null, detail: '' }
+      // 旧脚本被失败缓存挡下时没有真的 fetch：这不是同步失败，要说清本次没有重试。
+      if (doc.skipped === true) {
+        return { ok: false, code: 'E_SKIPPED', message: '10 分钟内的失败还在缓存里，本次没有重试',
+          cwd: r.cwd || null, detail: syncStr(doc.fetch_error) }
+      }
       if (doc.ok === false) {
         const why = syncReasonOf(doc.reason) || { code: 'E_SCRIPT', message: '同步失败' }
         return { ok: false, code: why.code, message: why.message, cwd: r.cwd || null,
-          offline: why.code === 'E_OFFLINE', detail: '' }
+          offline: why.code === 'E_OFFLINE', detail: syncStr(doc.fetch_error) }
       }
       const merged = String(doc.merge || '') === 'ff-only'
       const blocked = merged ? null : syncReasonOf(doc.reason)

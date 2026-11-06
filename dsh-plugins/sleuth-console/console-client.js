@@ -167,7 +167,7 @@ return {
       E_MERGE_IN_PROGRESS: '上一次合并还没结束',
       E_AUTO_MERGE_OFF: '自动合并已关闭',
       E_SAME_REPO: '配置远端与 origin 不同源',
-      E_FETCH: 'fetch 失败',
+      E_FETCH: '拉取失败',
       E_CAS: '设置文件刚被改过，刷新后重试',
       E_SCRIPT: '本机脚本报错',
     }
@@ -184,7 +184,10 @@ return {
       if (code === 'E_NO_SCRIPT') return '先更新检出；脚本到位后重开本页。'
       if (code === 'E_NOT_GIT') return '在仓库根目录打开面板。'
       if (code === 'E_PYTHON') return '装好 Python 3，并确保在 PATH 里。'
-      if (code === 'E_TIMEOUT' || code === 'E_NETWORK') return '检查网络与 git 凭据后重试。'
+      if (code === 'E_TIMEOUT') return '检查网络与 git 凭据后重试。'
+      if (code === 'E_NETWORK') return '检查网络与代理；修好后点「立即同步」重试。'
+      if (code === 'E_FETCH') return '检查网络与 git 凭据；修好后点「立即同步」重试。'
+      if (code === 'E_SKIPPED') return '过一会儿再点「立即同步」。'
       if (code === 'E_NO_REMOTE') return '在仓库根目录执行 git remote add <名字> <地址>，再刷新本页。'
       if (code === 'E_DIRTY') return '先提交或 git stash，再点「立即同步」。'
       if (code === 'E_NOT_FF') return '本地提交不能快进；处理后再同步。'
@@ -246,6 +249,11 @@ return {
     }
     // 合并/保存的结果 → 一条提示。成功要给到"到了哪一版、从哪一版来、差多少"。
     function kbMergeFlash(r) {
+      // 旧脚本被失败缓存挡下：这次没有 fetch，不是同步失败，用提示而不是错误。
+      if (r && r.ok !== true && r.code === 'E_SKIPPED') {
+        return { kind: 'warn', text: '上次失败还在 10 分钟缓存里，本次没有重试。',
+          hint: kbHintFor('E_SKIPPED'), detail: r.detail ? String(r.detail) : '' }
+      }
       if (!r || r.ok !== true) {
         return { kind: 'err', text: '同步失败：' + kbReasonOf(r) + '。', hint: kbHintFor(r && r.code),
           detail: r && r.detail ? String(r.detail) : '' }
@@ -464,9 +472,10 @@ return {
       } else if (syncState === 'unfetched') {
         banner = { kind: 'muted', text: '远端分支还没拉取过（' + (data.remote || '?') + '/' + (data.branch || '?') + '）。',
           hint: '点「立即同步」拉一次远端，再按配置合并。' }
-      } else if (data.skipped) {
-        banner = { kind: 'warn', text: '上次同步失败，本次按 10 分钟窗口跳过。',
-          hint: data.last_reason ? '上次失败原因：' + data.last_reason : '' }
+      } else if (data.last_failure) {
+        // 上一次 fetch 失败过（脚本从状态文件读出）：重新打开本页也显示原因与 git 原始输出。
+        banner = { kind: 'warn', text: '上次同步失败：' + kbReasonOf(data.last_failure) + '。',
+          hint: '点「立即同步」重试。', detail: data.last_error ? String(data.last_error) : '' }
       } else if (!targetsPart || targetsPart.ok !== true) {
         banner = { kind: 'err', text: '读不到远端列表：' + kbReasonOf(targets || {}) + '。',
           hint: kbHintFor(targetsPart && targetsPart.code), detail: targetsPart && targetsPart.detail ? String(targetsPart.detail) : '' }

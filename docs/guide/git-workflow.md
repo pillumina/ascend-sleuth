@@ -64,7 +64,13 @@ worktree 与 detached HEAD 不自动合并。worktree 里通常在做提 PR 的�
 
 `sync.enabled` 与 `sync.auto_merge` 只管诊断读侧的自动检查与自动合并。groom 是显式动作，不受这两个开关影响——关掉自动检查后周批仍会 fetch。要让整机不联网，用 `deployment.yaml` 的 `sync.mode: "offline"`。
 
-fetch 失败时标 `kb_sync: failed`，原因写进 `kb_sync_reason`。失败结果缓存在 `.local/kb-sync-state.json`，10 分钟内同一失败不重试。离线部署在 `deployment.yaml` 声明 `sync.mode: "offline"`：`--sync` 与 `--merge` 都不联网，`--show` 仍可读本地状态。
+fetch 失败时标 `kb_sync: failed`，原因写进 `kb_sync_reason`。
+
+失败时脚本把 git 原始输出收成一行（`fetch_error`）。取最后一条 fatal / error 行，抹掉 URL 里的账号、密码与查询串里的 token。人读输出与面板都显示这一行。
+
+失败结果缓存在 `.local/kb-sync-state.json`：自动同步在 10 分钟内不重试，避免每次开单都等满 10 秒超时。手动同步（`--force`，面板「立即同步」走这条）跳过窗口立即重试。
+
+离线部署在 `deployment.yaml` 声明 `sync.mode: "offline"`：`--sync` 与 `--merge` 都不联网，`--show` 仍可读本地状态。
 
 ### 部署形态
 
