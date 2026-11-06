@@ -1,8 +1,8 @@
 """sediment_undo 的边界回归。
 
-护的是「撤销一次沉淀」这条写路径：草稿出队、评估记录删除、来源 trace 回写，三处都做过
+护的是「撤销一次沉淀」这条写路径：草稿出队、评估状态文件删除、来源 trace 回写，三处都做过
 才叫撤干净；只做一半不会报错，只会留下「trace 说已交草稿、inbox 里没有」或「草稿没了、
-评估记录还挂着」的半截状态。另外两条边界也必须拦住：台账里已有 PR 的草稿不能撤，
+评估状态文件还挂着」的不一致状态。另外两条边界也必须拦住：台账里已有 PR 的草稿不能撤，
 痕迹（评估 id、人决定、草稿去向）必须留在 undo-log 里。
 
 做法：真实临时 git 仓库 + 真实共享 inbox（`groom_common.shared_inbox` 解析到该仓库），
@@ -206,6 +206,32 @@ class SedimentUndoTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 2, proc.stdout)
         self.assertEqual(payload.get("code"), "E_PR_EXISTS")
         self.assertTrue(draft.is_file())
+
+    def test_assessment_appears_after_plan_is_refused(self):
+        # 计划时没有评估状态文件、拿锁前另一个 groom 写进一份：也不能删（undo-log 里不会记它）。
+        key = "draft-a"
+        draft = write_flat_draft(self.repo, key)
+        trace = write_trace(self.repo, "2026-11-01-demo", state="submitted")
+        before = trace.read_bytes()
+        real_plan = su.build_plan
+
+        def plan_then_add(*args, **kwargs):
+            plan = real_plan(*args, **kwargs)
+            write_sidecar(self.repo, key, assessment_id="assess-race")
+            return plan
+
+        buf = io.StringIO()
+        with mock.patch.object(su, "build_plan", side_effect=plan_then_add):
+            with contextlib.redirect_stdout(buf):
+                code = su.run(["--draft-key", key, "--apply", "--json",
+                               "--root", str(self.repo)])
+        payload = json.loads(buf.getvalue())
+        self.assertEqual(code, 2, buf.getvalue())
+        self.assertEqual(payload.get("code"), "E_ASSESSMENT_CHANGED")
+        self.assertTrue(draft.is_file())
+        self.assertTrue((self.inbox / ".groom" / "assessments"
+                         / (sanitize_key(key) + ".yaml")).is_file())
+        self.assertEqual(trace.read_bytes(), before)
 
     def test_undone_path_taken_by_file_is_refused(self):
         key = "draft-a"

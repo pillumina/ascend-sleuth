@@ -146,6 +146,10 @@ def _move_draft(root: Path, inbox: Path, draft, stamp: str, meta: dict) -> Path:
             (target / ".undo.json").write_text(meta_text, encoding="utf-8")
         except OSError as exc:
             try:
+                (target / ".undo.json").unlink(missing_ok=True)
+            except OSError:
+                pass
+            try:
                 os.rename(str(target), str(source_dir))
             except OSError as rollback_exc:
                 raise Refused(
@@ -162,9 +166,16 @@ def _move_draft(root: Path, inbox: Path, draft, stamp: str, meta: dict) -> Path:
     sources = [Path(draft.case_path)]
     if draft.postmortem_path is not None and Path(draft.postmortem_path).exists():
         sources.append(Path(draft.postmortem_path))
-    moved = []
     try:
         (target / ".undo.json").write_text(meta_text, encoding="utf-8")
+    except OSError as exc:
+        try:
+            target.rmdir()
+        except OSError:
+            pass
+        raise Refused("E_MOVE", f"写 undo 元数据失败（{exc}），草稿没有移动，可以直接重试") from exc
+    moved = []
+    try:
         for src in sources:
             os.rename(str(src), str(target / src.name))
             moved.append(src)
@@ -370,17 +381,15 @@ def run(argv=None) -> int:
             # 计划之后若有人改写了评估状态文件（另一个 groom 重评估、或只改了人决定），
             # 不能直接删：它的结论与决定没进计划，删掉就丢了。在写任何东西之前按字节比对。
             # 只比 assessment_id 不够：`groom_decide.py` 改人决定时不换 id。
-            if plan["sidecarSha256"]:
-                if not sidecar.exists():
-                    raise Refused("E_ASSESSMENT_CHANGED",
-                                  "评估状态文件在计划之后被移走了，先重新跑一次计划")
-                try:
-                    current_sha = hashlib.sha256(sidecar.read_bytes()).hexdigest()
-                except OSError as exc:
-                    raise Refused("E_ASSESSMENT", f"评估状态文件读不了，先确认它没坏：{exc}") from exc
-                if current_sha != plan["sidecarSha256"]:
-                    raise Refused("E_ASSESSMENT_CHANGED",
-                                  "评估状态文件在计划之后被改过（可能有另一个 groom 在写），先重新跑一次计划")
+            try:
+                current_sha = (hashlib.sha256(sidecar.read_bytes()).hexdigest()
+                               if sidecar.exists() else "")
+            except OSError as exc:
+                raise Refused("E_ASSESSMENT", f"评估状态文件读不了，先确认它没坏：{exc}") from exc
+            if current_sha != plan["sidecarSha256"]:
+                raise Refused("E_ASSESSMENT_CHANGED",
+                              "评估状态文件在计划之后出现或被改过（可能有另一个 groom 在写），"
+                              "先重新跑一次计划")
 
             if plan["trace"]["action"] == "write":
                 _write_trace_none(root, traces, plan["trace"]["session"],
