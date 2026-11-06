@@ -2082,6 +2082,69 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 }
 
 {
+  // 面板被文件权限拒绝：给「生成指令」兜底。指令要交代 trace 文件、目标状态、CAS 指纹与
+  // 要填的字段，并给一条可直接执行的命令（positional 是单号 stem，不是带 .yaml 的文件名）。
+  // 点之前不填、点之后才进输入框，不自动发送。
+  const denied = '文件操作被系统拒绝：/repo/traces/' + ID + '.yaml（拒绝访问）'
+  const t = await mount('recent', {
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+    transitionResult: { ok: false, code: 'E_PERM', message: denied },
+  })
+  let view = t.view()
+  click(findAria(view, '更多操作'))
+  view = await t.settle()
+  click(findButton(view, '不再跟进'))
+  view = await t.settle()
+  const form = findNode(view, (node) => node.type === 'form')
+  form.props.onSubmit({ preventDefault() {} })
+  view = await t.settle()
+  expect('权限失败：错误里带脚本给的路径与原因', view.text.includes(denied), view.text.slice(-400))
+  // 脚本给的拒绝原因不再套一层「写入失败：」，避免同一句里两个前缀。
+  expect('权限失败：错误行不叠「写入失败：」前缀', !view.text.includes('写入失败：文件操作被系统拒绝'), view.text.slice(-400))
+  expect('权限失败：不自动填指令', t.drafts.length === 0, String(t.drafts.length))
+  const fallbackButton = findButton(view, '生成指令（填入输入框）')
+  expect('权限失败：给「生成指令」兜底', !!fallbackButton, view.text.slice(-400))
+  click(fallbackButton)
+  const draft = t.lastDraft()
+  expect('权限失败：指令带 trace 文件', draft.includes('trace 文件：traces/' + ID + '.yaml'), draft.slice(0, 200))
+  expect('权限失败：指令带目标状态', draft.includes('目标状态：不再跟进（archived）'), draft.slice(0, 300))
+  expect('权限失败：指令带 CAS 指纹', draft.includes('--expect-sha256：' + SHA), draft.slice(0, 400))
+  expect('权限失败：指令带要填的字段', draft.includes('要填的字段：') && draft.includes('ending.kind="not_reproducible"') && draft.includes('summary='), draft)
+  expect('权限失败：指令说明面板写不进', draft.includes('面板写不进这一单') && draft.includes(denied), draft)
+  const commandLine = draft.split('\n').find((line) => line.startsWith('python3 scripts/trace_transition.py '))
+  expect('权限失败：指令 positional 用 trace 单号 stem', !!commandLine
+    && commandLine.startsWith('python3 scripts/trace_transition.py ' + ID + ' '), commandLine)
+  expect('权限失败：指令 positional 不带 .yaml', !!commandLine && !commandLine.includes(ID + '.yaml'), commandLine)
+  expect('权限失败：命令行带 CAS 指纹', !!commandLine && commandLine.includes('--expect-sha256 ' + SHA), commandLine)
+  const tokenMatch = commandLine ? commandLine.match(/--payload-base64 ([A-Za-z0-9+/=]+)/) : null
+  let commandBody = null
+  try {
+    commandBody = tokenMatch ? JSON.parse(Buffer.from(tokenMatch[1], 'base64').toString('utf8')) : null
+  } catch {
+    commandBody = null
+  }
+  expect('权限失败：base64 payload 是脚本认识的字段', !!commandBody
+    && commandBody.to === 'archived' && commandBody.kind === 'not_reproducible'
+    && typeof commandBody.summary === 'string', JSON.stringify(commandBody))
+}
+
+{
+  // 非权限类失败不给这个兜底：E_SCHEMA 之类的错要读者改输入，不是换条路写。
+  const t = await mount('recent', {
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+    transitionResult: { ok: false, code: 'E_SCHEMA', message: '目标状态不合法' },
+  })
+  let view = t.view()
+  click(findAria(view, '更多操作'))
+  view = await t.settle()
+  click(findButton(view, '不再跟进'))
+  view = await t.settle()
+  findNode(view, (node) => node.type === 'form').props.onSubmit({ preventDefault() {} })
+  view = await t.settle()
+  expect('非权限失败：不给生成指令兜底', !findButton(view, '生成指令（填入输入框）'), view.text.slice(-300))
+}
+
+{
   // 沉淀入口按「还没沉淀、有内容」判，不按 agent 有没有标候选：没有候选的单也要能起草。
   const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
   let view = t.view()

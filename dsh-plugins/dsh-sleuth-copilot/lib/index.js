@@ -8,8 +8,9 @@
 // 路径与沙箱的两条边界都在这一层收口：
 //   · traces 目录只认「本会话检出的 traces/」与「主检出的 traces/」两种，realpath 后比对；
 //     客户端带回的路径只是候选，不因为它是绝对路径就当写沙箱根。
-//   · 子进程都带会话档位（sandboxPolicy.resolve）：只读脚本跟随会话档位，写脚本用
-//     workspace-write + 落点所在的检出根；解析不到档位时按只读处理，不假装可写。
+//   · 子进程都带会话档位（sandboxPolicy.resolve）：只读脚本跟随会话档位；写脚本同样跟随
+//     会话档位，完全权限时原样下传，其余档位收窄成 workspace-write + 落点所在的检出根；
+//     解析不到档位时按只读处理，不假装可写。
 
 import { fileURLToPath } from 'node:url'
 import { dirname, join, sep } from 'node:path'
@@ -194,6 +195,18 @@ export function apply(ctx) {
       return { canWrite: false, policy, reasonCode: 'E_PERM', reason: '当前会话是只读档位，不能写 traces/' }
     }
     return { canWrite: true, policy, reasonCode: '', reason: '' }
+  }
+
+  // 写子进程的沙箱档位：会话已是完全权限时原样下传，不再包一层 workspace-write。
+  // 降级写不进去——改状态时会话自己的 shell 能写，面板写子进程反而被拒；Windows 的
+  // ACL 沙箱在策略不带 sessionId 时按 agentless 处理，是这条失败链的第二个原因。
+  // 其余档位按写落点收成 workspace-write，并带上会话号让沙箱认得出是哪个会话在写；
+  // 解析不出会话号时照旧只给落点（沙箱按策略本身的根判）。
+  function writeSandboxPolicy(policy, writeRoot) {
+    if (policy && policy.mode === 'danger-full-access') return policy
+    const scoped = { mode: 'workspace-write', workspaceRoot: writeRoot }
+    if (policy && typeof policy.sessionId === 'string' && policy.sessionId) scoped.sessionId = policy.sessionId
+    return scoped
   }
 
   // ── 上游查证就绪：gh CLI 与登录态 ─────────────────────────────────────────
@@ -738,7 +751,7 @@ export function apply(ctx) {
           timeoutMs: 60000,
           stdoutMaxBytes: 262144,
           env: { PYTHONIOENCODING: 'utf-8' },
-          sandboxPolicy: { mode: 'workspace-write', workspaceRoot: writeRoot },
+          sandboxPolicy: writeSandboxPolicy(caps.policy, writeRoot),
         }))
       } catch (error) {
         return transitionFailure('E_IO', '写状态脚本执行失败：' + errorText(error))
@@ -840,7 +853,8 @@ export function apply(ctx) {
     const caps = await writeCaps(payload.sessionId)
     if (!caps.canWrite) return { ok: false, code: caps.reasonCode || 'E_PERM', message: caps.reason }
     const mainRoot = await mainRootOf(root)
-    const writePolicy = { mode: 'workspace-write', workspaceRoot: mainRoot }
+    // 台账写在共享 inbox（主检出侧），与状态写入同一类失败：完全权限会话不降级。
+    const writePolicy = writeSandboxPolicy(caps.policy, mainRoot)
     const expectSha = typeof payload.expectSha256 === 'string' ? payload.expectSha256.trim() : ''
     if (expectSha && !/^[0-9a-f]{64}$/.test(expectSha)) {
       return { ok: false, code: 'E_SCHEMA', message: '台账内容指纹格式不对，请刷新沉淀队列后重试' }

@@ -190,6 +190,79 @@ class WriterTest(unittest.TestCase):
         self.assertIn("写锁不可用", ctx.exception.message)
         self.assertEqual(path.read_bytes(), before)
 
+    def test_permission_error_message_carries_path_and_system_reason(self):
+        # 面板把这一支说成「当前会话没有写权限」会把人引去查会话档位：文件级拒绝（ACL /
+        # 只读 / 占用）与档位是两回事。这里钉住 message 带路径与系统原因，退出码与 JSON 形状不变。
+        path = str(self.traces / "s1.yaml")
+
+        def deny(*_args, **_kwargs):
+            raise PermissionError(13, "Permission denied", path)
+
+        with mock.patch.object(tt, "apply_transition", deny):
+            rc, out = self.run_main(["s1", "--root", str(ROOT), "--traces", str(self.traces), "--json"])
+        self.assertEqual(rc, 5, out)
+        payload = json.loads(out)
+        self.assertEqual(set(payload), {"ok", "code", "message"}, out)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["code"], "E_PERM")
+        self.assertIn(path, payload["message"])
+        self.assertIn("Permission denied", payload["message"])
+        self.assertIn("文件操作被系统拒绝", payload["message"])
+
+    def test_permission_error_without_filename_keeps_system_reason(self):
+        # 有的平台抛 PermissionError 时 filename 为空：不能因此退回一句「没有写权限」，
+        # 系统原因仍要带出来。
+        def deny(*_args, **_kwargs):
+            raise PermissionError(13, "Access is denied")
+
+        with mock.patch.object(tt, "apply_transition", deny):
+            rc, out = self.run_main(["s1", "--root", str(ROOT), "--traces", str(self.traces), "--json"])
+        self.assertEqual(rc, 5, out)
+        self.assertEqual(json.loads(out)["message"], "文件操作被系统拒绝（Access is denied）")
+
+    def test_fallback_command_shapes_apply(self):
+        # 面板「生成指令」兜底生成的是可直接执行的命令：字段走 --payload-base64，会改变
+        # 校验路径的标志留在命令行。形状错了，读者照抄会得到 E_SCHEMA 或写错字段。
+        def run(payload, flags, sid="s1"):
+            token = base64.b64encode(json.dumps(payload, ensure_ascii=False).encode("utf-8")).decode("ascii")
+            return self.run_main([sid, "--root", str(ROOT), "--traces", str(self.traces),
+                                  "--by", "user", "--source", "panel", "--json",
+                                  "--payload-base64=" + token, *flags])
+
+        self.make()
+        rc, out = run({"to": "resolved", "kind": "root_cause", "summary": "中文摘要 $var 'single'",
+                       "severity": "service-affecting", "fix_emitted": True}, [])
+        self.assertEqual(rc, 0, out)
+        doc = self.load()
+        self.assertEqual(doc["status"], "resolved")
+        self.assertEqual(doc["severity"], "service-affecting")
+        self.assertTrue(doc["fix_emitted"])
+
+        rc, out = run({"reopen": True}, [])
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.load()["status"], "in_progress")
+
+        rc, out = run({"to": "escalated", "kind": "handed_off", "handed_to": "张工 · CANN 组"}, [])
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.load()["status"], "escalated")
+
+        rc, out = run({"to": "resolved", "kind": "root_cause"}, ["--correct-ending"])
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.load()["status"], "resolved")
+        self.assertEqual(self.load()["ending"]["kind"], "root_cause")
+
+        # 补记收尾方式：老单已 resolved 但没有 ending，命令行带 --backfill-ending。
+        self.make("old", status="resolved")
+        rc, out = run({"kind": "root_cause"}, ["--backfill-ending"], sid="old")
+        self.assertEqual(rc, 0, out)
+        old = yaml.safe_load((self.traces / "old.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(old["ending"]["kind"], "root_cause")
+
+        # 沉淀状态：状态由命令行给，payload 是空对象（面板的 sedimented 写就是这样）。
+        rc, out = run({}, ["--field", "sedimented", "--state", "submitted"])
+        self.assertEqual(rc, 0, out)
+        self.assertEqual(self.load()["sedimented"]["state"], "submitted")
+
     def test_cas_token_is_single_use(self):
         path = self.make()
         sha = hashlib.sha256(path.read_bytes()).hexdigest()

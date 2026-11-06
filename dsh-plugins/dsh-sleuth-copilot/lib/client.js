@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.16.4'
+    const PLUGIN_VERSION = '0.16.5'
     const POLL_MS = 10000
     const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
     const FILTER_KEYS = ['all', 'open', 'pending', 'sediment']
@@ -272,6 +272,8 @@ window.__ModuleLoader__.load({
       'write.stateChanged': '这单在别处被改过，已刷新，请重试。',
       'write.failed': '写入失败：{message}',
       'write.requirements': '（缺：{fields}）',
+      'write.permissionHint': '面板写不进这一单（沙箱或文件权限拒绝）。可以生成一条指令，交给会话里的 agent 用脚本写；不会自动发送。',
+      'write.permissionRetry': '生成指令（填入输入框）',
       'palette.title': '诊断总览',
       'palette.filterLabel': '筛选',
       'palette.filter.all': '全部',
@@ -664,6 +666,8 @@ window.__ModuleLoader__.load({
       'write.stateChanged': 'The trace changed elsewhere; refreshed, try again.',
       'write.failed': 'Write failed: {message}',
       'write.requirements': ' (missing: {fields})',
+      'write.permissionHint': 'The panel cannot write this trace (refused by the sandbox or file permissions). Generate a command so the agent in this session can write it with the script; nothing is sent automatically.',
+      'write.permissionRetry': 'Generate a command (fill input)',
       'palette.title': 'Diagnosis overview',
       'palette.filterLabel': 'Filter',
       'palette.filter.all': 'All',
@@ -2242,6 +2246,97 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       }, extra || {})
     }
 
+    // trace_transition.py 的 positional 是**单号 stem**（脚本自己按 `<单号>.yaml` 拼路径），
+    // 不是文件名：把 `x.yaml` 当 positional 传进去，脚本会去找 `x.yaml.yaml` 并报 E_NOT_FOUND。
+    function traceStemOf(row) {
+      const name = String((row && row.file) || (row && row.sessionId) || '')
+      const base = name.replace(/\\/g, '/').split('/').pop() || ''
+      return base.replace(/\.ya?ml$/i, '')
+    }
+
+    // UTF-8 文本 → base64 单行 ASCII。给 `--payload-base64` 用：换行、引号与中文都不经过
+    // shell 的引号规则，bash / zsh / PowerShell / cmd 粘贴结果一致。
+    function base64Utf8(text) {
+      const bytes = new TextEncoder().encode(String(text))
+      let binary = ''
+      for (const byte of bytes) binary += String.fromCharCode(byte)
+      return btoa(binary)
+    }
+
+    // 面板写不进这一单（沙箱或文件权限拒绝）时，会话里的 shell 往往仍能写。生成一条
+    // 可直接执行的指令：写哪份 trace、改成什么、CAS 指纹、要填的字段一次交代全。
+    // 字段走 --payload-base64（脚本为「复制到任意终端」留的通道），会改变校验路径的
+    // 标志留在命令行。只填进输入框，不自动发送。
+    function writeFallbackDraft(row, payload, message) {
+      const p = payload || {}
+      const target = String(p.to || '')
+      let statusText
+      if (p.kind === 'reopen') statusText = '进行中（in_progress）'
+      else if (p.kind === 'sedimented') statusText = '不改状态，只改沉淀状态'
+      else if (p.kind === 'backfill-ending') statusText = '不改状态，只补记收尾方式'
+      else statusText = (STATUS_LABEL[target] || target || '未指定') + '（' + target + '）'
+      const fields = []
+      const addField = (name, value) => {
+        if (value === undefined || value === null || value === '') return
+        fields.push(name + '=' + (typeof value === 'string' ? JSON.stringify(value) : String(value)))
+      }
+      addField('summary', p.summary)
+      addField('severity', p.severity)
+      if (p.fix_emitted === true || p.fix_emitted === false) addField('fix_emitted', p.fix_emitted ? 'true' : 'false')
+      addField('ending.kind', p.endingKind)
+      addField('ending.handed_to', p.handedTo)
+      addField('ending.duplicate_of', p.duplicateOf)
+      if (p.kind === 'sedimented') {
+        addField('sedimented.state', p.state)
+        addField('sedimented.case_id', p.caseId)
+      }
+      // payload 的键名按 trace_transition.py 的 --payload-base64 映射来：`kind` 是收尾方式，
+      // 动作类型由命令行标志表达。`handed_to` / `duplicate_of` 是脚本认识的写法。
+      const body = {}
+      const flags = []
+      const addEnding = () => {
+        if (p.endingKind) body.kind = String(p.endingKind)
+        if (p.handedTo) body.handed_to = String(p.handedTo)
+        if (p.duplicateOf) body.duplicate_of = String(p.duplicateOf)
+      }
+      if (p.kind === 'reopen') {
+        body.reopen = true
+      } else if (p.kind === 'sedimented') {
+        flags.push('--field sedimented')
+        if (p.state) flags.push('--state ' + String(p.state))
+        if (p.caseId) flags.push('--case-id ' + String(p.caseId))
+      } else if (p.kind === 'backfill-ending') {
+        flags.push('--backfill-ending')
+        addEnding()
+      } else {
+        if (p.kind === 'correct-ending') flags.push('--correct-ending')
+        body.to = target
+        addEnding()
+        if (p.summary !== undefined) body.summary = String(p.summary)
+        if (p.severity !== undefined) body.severity = String(p.severity)
+        if (p.fix_emitted === true || p.fix_emitted === false) body.fix_emitted = p.fix_emitted
+      }
+      const sha = String(row.contentSha256 || '')
+      const stem = traceStemOf(row)
+      const token = base64Utf8(JSON.stringify(body))
+      const lines = [
+        '面板写不进这一单（文件操作被系统拒绝）。请代我把它写进 trace。',
+        'trace 文件：' + traceSource(row),
+        '目标状态：' + statusText,
+        '--expect-sha256：' + sha,
+      ]
+      if (fields.length) lines.push('要填的字段：' + fields.join('；'))
+      lines.push('面板记录的原因：' + String(message || ''))
+      lines.push('复制到工作区根目录执行：')
+      lines.push('python3 scripts/trace_transition.py ' + stem
+        + ' --by user --source panel --json --payload-base64 ' + token
+        + ' --expect-sha256 ' + sha
+        + (flags.length ? ' ' + flags.join(' ') : ''))
+      lines.push('--payload-base64 是脚本给「复制到任意终端」用的参数：单行 ASCII，bash / zsh / PowerShell / cmd 都能粘。')
+      lines.push('旧指纹会被 CAS 拦下：先刷新这一单再重填。')
+      return lines.join('\n')
+    }
+
     function WriteForm(props) {
       const { form, row, onSubmit, onCancel, busy, error } = props
       const [values, setValues] = React.useState(() => {
@@ -2350,6 +2445,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       // 用提交那一刻的新指纹做 CAS 会把屏幕上的旧值直接盖上去；用打开时的指纹，
       // 冲突会返回 E_STATE_CHANGED，读者刷新后重填。
       const expectAtOpen = React.useRef(row.contentSha256)
+      // 上一次提交的写入参数：权限类失败时据此生成兜底指令（不靠回读表单状态）。
+      const attemptRef = React.useRef(null)
+      const [fallback, setFallback] = React.useState('')
 
       function feedbackForm() {
         return {
@@ -2474,6 +2572,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
       function finish(result, successText) {
         setBusy(false)
+        setFallback('')
         if (result && result.ok) {
           if (successText) onFlash(successText)
           else if (result.from || result.to) {
@@ -2491,6 +2590,17 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           refresh(true)
           return
         }
+        // 权限类失败：面板写不进去，但会话里的 shell 可能仍能写。给「生成指令」入口，
+        // 不自动发送、不把错误当成不可修复。
+        if (code === 'E_PERM') {
+          setFallback(writeFallbackDraft(row, attemptRef.current, result && result.message))
+        }
+        const scriptMessage = String((result && result.message) || '')
+        // 脚本的文件级拒绝已经带路径与系统原因：直接显示，避免「写入失败：文件操作被系统拒绝：」叠加。
+        if (code === 'E_PERM' && scriptMessage.indexOf('文件操作被系统拒绝') === 0) {
+          setError(scriptMessage)
+          return
+        }
         const requirements = result && Array.isArray(result.requirements) && result.requirements.length
           ? tr('write.requirements', { fields: result.requirements.join('、') })
           : ''
@@ -2500,6 +2610,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       function run(extraPayload, successText) {
         setBusy(true)
         setError('')
+        setFallback('')
+        attemptRef.current = extraPayload || null
         const payload = Object.assign({}, extraPayload || {})
         if (form && expectAtOpen.current) payload.expectSha256 = expectAtOpen.current
         const promise = rpcCall('copilot-transition', transitionPayload(row, data, payload))
@@ -2520,7 +2632,23 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
       function openForm(next) {
         setError('')
+        setFallback('')
         setForm(next)
+      }
+
+      // 权限类失败后的兜底：指令先填进输入框，读者自己按 Enter 发送。
+      function fallbackBlock() {
+        if (!fallback) return null
+        return h('div', {
+          className: 'scp-fallback',
+          style: { display: 'flex', flexDirection: 'column', gap: '6px', padding: '6px' },
+        },
+          h('div', { className: 'scp-form-hint' }, tr('write.permissionHint')),
+          h('button', {
+            type: 'button',
+            className: 'scp-btn scp-btn--ghost',
+            onClick: () => fillAndClose(fallback),
+          }, tr('write.permissionRetry')))
       }
 
       if (form) {
@@ -2575,7 +2703,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   tr('write.doneSediment', { state: tr('sediment.' + values.state) }))
               }
             },
-          }))
+          }),
+          fallbackBlock())
       }
 
       const groups = []
@@ -2826,7 +2955,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             title: item.disabled ? disabledReason : undefined,
             onClick: item.onSelect,
           }, item.label, item.note ? h('span', { className: 'scp-menu-note' }, item.note) : null)))),
-        error ? h('div', { className: 'scp-form-error', style: { padding: '4px 6px' } }, error) : null)
+        error ? h('div', { className: 'scp-form-error', style: { padding: '4px 6px' } }, error) : null,
+        fallbackBlock())
     }
 
     // ── 面 1：状态条 ───────────────────────────────────────────────────────
