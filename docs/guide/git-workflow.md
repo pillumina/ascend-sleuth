@@ -54,6 +54,8 @@ worktree 与 detached HEAD 不自动合并。worktree 里通常在做提 PR 的�
 
 同源校验不一致时不自动合并：`git remote get-url <sync.remote>` 的 host 与 path 要与 `origin` 一致，`--show` 打出「与 origin 同源：是 / 否」。不同源时按提示核对 `sync.remote` 后再用，脚本会拦住合并。写目标（提 PR）不做这项校验。
 
+同步源与提 PR 目标是两件事：`sync` 决定诊断与 groom 读哪份知识，`target` 决定草稿 PR 提到哪个远端分支。groom 的新鲜度按评估记录的目标 ref 判；目标未配置时会显式提示，并用 `origin/main` 兜底（不再静默替换）。配置目标用 `python3 scripts/pr_status.py --set-target --remote <名字> --base <分支>`，面板的目标选择走同一条写入。
+
 同步只补读侧，不替代提交纪律：开工与提交前仍由提交者跑 `git fetch origin`（见「多 agent 并行」第 5 条），保证分支从最新 `main` 开、提交基于最新树。
 
 诊断侧这次 fetch 只保证候选集来自较新的知识库；它不改提交、不推送，也不处理与本地未提交改动的冲突。一次合并同时更新知识与流程：`knowledge/` 在运行时读取立即生效，`skills/` 要下一次会话才重新加载。

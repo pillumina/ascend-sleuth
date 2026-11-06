@@ -12,6 +12,7 @@ from tests.groom_fixtures import (  # noqa: E402
     init_repo, make_index, run_py, snapshot_meta, write_case, write_draft, write_json,
 )
 from groom_common import assessment_path, sanitize_key, work_order_id  # noqa: E402
+from groom_record import pr_marker  # noqa: E402
 
 
 class RecordTest(unittest.TestCase):
@@ -428,6 +429,21 @@ class RecordTest(unittest.TestCase):
         self.assertIn(self.meta_doc["commit"], p.stdout)
         self.assertIn("proposed_novelty: covered", p.stdout)
         self.assertIn("human_decision: pending", p.stdout)
+
+    def test_pr_marker_includes_target_ref_from_sidecar(self):
+        doc = {
+            "draft": "draft-a",
+            "assessment": {"proposed_novelty": "covered", "review_required": False},
+            "human_decision": {},
+            "content_binding": {"sha256": "c" * 64},
+            "assessment_id": "a" * 64,
+            "provenance": {"compared_against_commit": "b" * 40,
+                           "target_ref": "refs/remotes/mirror/main"},
+        }
+        out = pr_marker(doc)
+        self.assertIn("target_ref: refs/remotes/mirror/main\n", out)
+        doc["provenance"].pop("target_ref")
+        self.assertNotIn("target_ref:", pr_marker(doc))
 
 
 if __name__ == "__main__":

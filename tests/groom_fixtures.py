@@ -97,11 +97,20 @@ def make_index(repo: Path):
     git(repo, "commit", "-qm", "index")
 
 
-def snapshot_meta(repo: Path, commit=None, authoritative=True, fresh=True):
+def snapshot_meta(repo: Path, commit=None, authoritative=True, fresh=True, ref=None):
+    """快照 meta。`ref` 默认取仓库里真实存在的 origin/main；没有就不写。
+
+    旧夹具不管仓库有没有远端都写 `refs/remotes/origin/main`，等于让评估记录声称一个
+    解析不到的 ref；现在新鲜度会按评估记录的目标 ref 判，这种夹具会让所有草稿假 stale。
+    """
     commit = commit or git(repo, "rev-parse", "HEAD").stdout.strip()
+    if ref is None:
+        candidate = "refs/remotes/origin/main"
+        probe = git(repo, "rev-parse", "--verify", f"{candidate}^{{commit}}", check=False)
+        ref = candidate if probe.returncode == 0 else None
     return {
         "schema": "groom-snapshot/v1", "ok": True, "repo": str(repo),
-        "branch": "main", "remote": "origin", "ref": "refs/remotes/origin/main",
+        "branch": "main", "remote": "origin", "ref": ref,
         "commit": commit, "short": commit[:12], "fresh": fresh,
         "authoritative": authoritative, "worktree": str(repo),
         "index": {"state": "verified", "detail": None},

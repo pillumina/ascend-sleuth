@@ -165,18 +165,42 @@ def _q(value) -> str:
 
 # ---------------------------------------------------------------- 目标 commit / 轨迹 / 知识库
 
-def _target_commit(gm, root: Path, ledger: dict) -> str:
-    """目标知识版本：优先台账 target 的 remote/base，其次 origin/main，最后 HEAD。"""
+def _target_commit(gm, root: Path, ledger: dict, target=None) -> str:
+    """目标知识版本：settings target 优先，其次旧台账 target，再 origin/main，最后 HEAD。
+
+    `target` 是 `.local/settings.json` 的目标（`prs.list_targets` 已把旧台账 target 迁过来）；
+    它只在本地能解析时才算数——配置指向一个还没 fetch 的远端时，退回旧台账/origin/main
+    比让整份队列取不到目标好。逐份评估记录自己的目标 ref 由 `status_rows` 另行判断，
+    这里的返回值只是没有可用 ref 时的兜底。
+    """
     refs = []
-    target = ledger.get("target") if isinstance(ledger, dict) else None
-    if isinstance(target, dict) and target.get("remote") and target.get("base"):
-        refs.append(f"refs/remotes/{target['remote']}/{target['base']}")
-    refs += ["refs/remotes/origin/main", "HEAD"]
+    seen = set()
+    for candidate in (target, ledger.get("target") if isinstance(ledger, dict) else None):
+        if not isinstance(candidate, dict) or not candidate.get("remote") or not candidate.get("base"):
+            continue
+        ref = f"refs/remotes/{candidate['remote']}/{candidate['base']}"
+        if ref not in seen:
+            seen.add(ref)
+            refs.append(ref)
+    for ref in ["refs/remotes/origin/main", "HEAD"]:
+        if ref not in seen:
+            refs.append(ref)
     for ref in refs:
         commit = gm.normalize_commit(root, ref)
         if commit:
             return commit
     raise SedimentError("E_GIT", "取不到目标 commit（git 仓库不可用，或还没有任何提交）")
+
+
+def _configured_ref(target: dict):
+    """settings target → `refs/remotes/<remote>/<base>`；remote 或 base 缺一个就不给。
+
+    不在这里校验能否解析：解析不了时 `status_rows` 会把它标成 `ref_missing`，比静默换成
+    另一个 ref 比较更容易看见。
+    """
+    if not isinstance(target, dict) or not target.get("remote") or not target.get("base"):
+        return None
+    return f"refs/remotes/{target['remote']}/{target['base']}"
 
 
 def _trace_index(ts, traces: Path) -> list:
@@ -814,6 +838,26 @@ def _history(inbox: Path, done_drafts: dict, ledger: dict, gm) -> list:
     return out
 
 
+def _target_fields(row: dict) -> dict:
+    """把 status_rows 每份评估的目标解析结果透传成面板字段。
+
+    旧版 status_rows 不返回这些键、没有评估的老行也没有目标可比：统一给空值，payload
+    形状不变。`targetState` / `targetSource` 没有可信值时是 None，不是空串——面板按
+    "未知"显示。
+    """
+    source = row if isinstance(row, dict) else {}
+    if not source.get("assessed") or source.get("orphan"):
+        return {"targetRef": "", "targetShort": "", "targetState": None,
+                "targetSource": None, "targetWarnings": []}
+    return {
+        "targetRef": str(source.get("target_ref") or ""),
+        "targetShort": str(source.get("target_short") or ""),
+        "targetState": source.get("target_state") or None,
+        "targetSource": source.get("target_source") or None,
+        "targetWarnings": list(source.get("target_warnings") or []),
+    }
+
+
 def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
                   ledger: dict, trace_rows: list, kb_ids: set) -> dict:
     key = str(row.get("draft") or "")
@@ -886,6 +930,7 @@ def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
         "reviewReasons": list(row.get("review_reasons") or []),
         "stale": bool(row.get("stale")),
         "staleReasons": list(row.get("stale_reasons") or []),
+        **_target_fields(row),
         "decision": str(row.get("human_decision") or ""),
         "decisionValid": bool(row.get("human_decision_valid")),
         "decisionBy": str(human.get("by") or ""),
@@ -965,6 +1010,7 @@ def _closed_record(root: Path, gm, key: str, close_entry: dict, draft, inbox: Pa
         "reviewReasons": [],
         "stale": False,
         "staleReasons": [],
+        **_target_fields({}),
         "decision": decision if assessed else "",
         "decisionValid": assessed,
         "decisionBy": "",
@@ -1057,9 +1103,14 @@ def collect(root, only: str = "") -> dict:
         # 已出队的条目用「未确认」占一行，避免在途事项整条消失。
         ledger = prs.empty_ledger()
         ledger_error = str(exc)
-    target_commit = _target_commit(gm, root, ledger)
+    target_info = prs.list_targets(root)
+    adapters = prs.load_adapters()
+    target = _target_target(target_info)
+    configured_ref = _configured_ref(target)
+    target_commit = _target_commit(gm, root, ledger, target)
     try:
-        rows = gs.status_rows(root, target_commit, inbox)
+        rows = gs.status_rows(root, target_commit, inbox,
+                              configured_target_ref=configured_ref)
     except Exception as exc:
         raise SedimentError("E_GROOM", f"groom 状态计算失败：{exc}") from exc
     traces = Path(deps["el"].resolve_traces(root))
@@ -1073,9 +1124,6 @@ def collect(root, only: str = "") -> dict:
     # orphan 行的 key 来自评估状态文件名（sanitize_key 加了哈希），要能对回 close-log 的原始 key。
     close_by_sanitized = {gm.sanitize_key(key): key for key in close_index}
     done_drafts = {key: _done_draft(inbox, key, gm) for key in close_index}
-    target_info = prs.list_targets(root)
-    adapters = prs.load_adapters()
-    target = _target_target(target_info)
     platform_id = str(target.get("platform") or "")
     target_info["platformName"] = _platform_name(adapters, platform_id) if platform_id else ""
     ledger_prs = ledger.get("prs") if isinstance(ledger.get("prs"), dict) else {}
