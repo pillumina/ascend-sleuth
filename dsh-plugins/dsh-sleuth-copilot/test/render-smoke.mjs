@@ -1581,7 +1581,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   view = await t.settle()
   const undoBtn = findButtonContains(view, '撤销沉淀')
   expect('撤销沉淀：没有 PR 的草稿给入口', !!undoBtn, view.text.slice(-200))
-  expect('撤销沉淀：入口带条件说明', !!undoBtn && undoBtn.props.title === '草稿还在 inbox、没有 PR 记录时才能撤销',
+  expect('撤销沉淀：入口带条件说明', !!undoBtn && undoBtn.props.title === '草稿还在 inbox、没有 PR 记录、来源 trace 没升格时才能撤销',
     undoBtn ? String(undoBtn.props.title) : 'missing')
   click(undoBtn)
   view = await t.settle()

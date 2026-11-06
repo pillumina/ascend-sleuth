@@ -370,6 +370,25 @@ class StateTest(SedimentCase):
         self.assertFalse(row["undo"]["available"])
         self.assertEqual(row["undo"]["prompt"], "")
 
+    def test_undo_hidden_when_source_ambiguous(self):
+        write_draft(self.repo)
+        (inbox(self.repo) / "2026-10-20-draft-a.md").write_text(
+            "来源：traces/2026-11-01-a.yaml 与 traces/2026-11-02-b.yaml\n", encoding="utf-8")
+        write_trace(self.repo, "2026-11-01-a", state="submitted",
+                    inbox_path="postmortems/inbox/2026-10-20-draft-a.case.yaml")
+        row = self.draft(self.collect())
+        self.assertFalse(row["undo"]["available"])
+        self.assertEqual(row["undo"]["prompt"], "")
+
+    def test_undo_hidden_when_ledger_unreadable(self):
+        write_draft(self.repo)
+        path = inbox(self.repo) / ".groom" / "pr-state.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{not json", encoding="utf-8")
+        row = self.draft(self.collect())
+        self.assertFalse(row["undo"]["available"])
+        self.assertEqual(row["undo"]["prompt"], "")
+
     def test_orphan_sidecar_without_draft(self):
         write_draft(self.repo)
         write_assessment(self.repo, "2026-10-20-draft-a", fresh_commit(self.repo))

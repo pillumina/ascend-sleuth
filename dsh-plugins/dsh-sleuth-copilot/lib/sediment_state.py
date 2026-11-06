@@ -105,6 +105,8 @@ def _scripts(root: Path):
             "pr": importlib.import_module("pr_status"),
             "ts": importlib.import_module("_trace_state"),
             "el": importlib.import_module("exec_log_path"),
+            # 撤销要与脚本读同一个来源 trace 判定：source_session_of 是唯一一份。
+            "gcd": importlib.import_module("groom_close_draft"),
         }
     except Exception as exc:
         raise SedimentError("E_SCRIPTS", f"读不到 scripts/ 下的判据脚本：{exc}") from exc
@@ -492,9 +494,13 @@ def _undo_prompt(key: str, decision: str) -> str:
         f"python3 scripts/sediment_undo.py --draft-key {_q(key)} --apply",
     ]
     if decision:
-        lines.append(f"注意：这份草稿已有人决定（{decision}），撤销会连同评估记录与决定历史一起清掉。")
-    lines.append("脚本把草稿移进 postmortems/inbox/.undone/（移回即复活）、删掉评估记录、"
-                 "把来源 trace 的 sedimented 改回 none；不动 knowledge/。")
+        lines.append(f"注意：这份草稿已有人决定（{decision}）。撤销会清掉评估记录与该草稿的决定记录，"
+                     "评估 id 与决定摘要会写进 undo-log。")
+    lines.append("脚本的动作：")
+    lines.append("- 草稿移进 postmortems/inbox/.undone/（移回即复活）")
+    lines.append("- 删掉评估记录")
+    lines.append("- 来源 trace 的 sedimented 改回 none（trace 缺失或外部来源时跳过）")
+    lines.append("不动 knowledge/。")
     return "\n".join(lines)
 
 
@@ -875,7 +881,8 @@ def _target_fields(row: dict) -> dict:
 
 
 def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
-                  ledger: dict, trace_rows: list, kb_ids: set) -> dict:
+                  ledger: dict, trace_rows: list, kb_ids: set,
+                  session_of=None, ledger_error: str = "") -> dict:
     key = str(row.get("draft") or "")
     orphan = bool(row.get("orphan"))
     cases = []
@@ -931,7 +938,16 @@ def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
     pr = _pr_view(pr_entry)
     # 撤销只在「草稿还在 inbox、还没提 PR、trace 也没说升格」时给：已出队的草稿走恢复流程，
     # 已提 PR 的要先处理 PR，已升格的要动知识库与 PR——都不该由一次本地撤销带走。
+    # 来源 session 有歧义、或 PR 台账读坏时也不给：脚本在这两种情况下会拒绝，
+    # 按钮先承诺「能撤」没有意义。
+    ambiguous_source = False
+    if draft_in_inbox and session_of is not None and not ledger_error:
+        try:
+            _session, _reason, ambiguous_source = session_of(draft)
+        except Exception:
+            ambiguous_source = True
     undo_ok = bool(draft_in_inbox and not done and pr_entry is None
+                   and not ledger_error and not ambiguous_source
                    and trace_state not in ("knowledge", "archived"))
     return {
         "key": key,
@@ -1182,7 +1198,9 @@ def collect(root, only: str = "") -> dict:
                     continue
                 # 台账里是一个坏值（不是对象）：保留孤儿行，至少让人看见评估残留。
         records.append(_draft_record(root, gm, row, drafts.get(key),
-                                     inbox, ledger, trace_rows, kb_ids))
+                                     inbox, ledger, trace_rows, kb_ids,
+                                     session_of=deps["gcd"].source_session_of,
+                                     ledger_error=ledger_error))
         seen.add(key)
     # 已出队、但 PR 还没走完的：一行不丢，状态由 PR 决定。
     for key, close_entry in close_index.items():

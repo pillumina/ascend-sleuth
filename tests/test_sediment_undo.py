@@ -9,11 +9,14 @@
 走脚本 CLI，不 mock 判据。不联网。
 """
 
+import contextlib
+import io
 import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -21,6 +24,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from groom_common import sanitize_key  # noqa: E402
 from tests.groom_fixtures import git, init_repo, run_py  # noqa: E402
 import pr_status  # noqa: E402
+import sediment_undo as su  # noqa: E402
 
 CASE = """cases:
   - id: {cid}
@@ -59,11 +63,12 @@ def write_directory_draft(repo: Path, key: str, cid: str = "DRAFT-B") -> Path:
     return base
 
 
-def write_sidecar(repo: Path, key: str, decision: str = "new_pattern") -> Path:
+def write_sidecar(repo: Path, key: str, decision: str = "new_pattern",
+                  assessment_id: str = "assess-1") -> Path:
     path = repo / "postmortems" / "inbox" / ".groom" / "assessments" / f"{sanitize_key(key)}.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        "assessment_id: assess-1\n"
+        f"assessment_id: {assessment_id}\n"
         "assessment:\n"
         "  proposed_novelty: new_pattern\n"
         "human_decision:\n"
@@ -166,6 +171,9 @@ class SedimentUndoTest(unittest.TestCase):
         self.assertEqual(entry["trace"]["written"], True)
         self.assertEqual(entry["assessment"]["human_decision"], "new_pattern")
         self.assertEqual(entry["assessment"]["human_decision_by"], "张工")
+        self.assertTrue(entry["assessment"]["path"].endswith(
+            "postmortems/inbox/.groom/assessments/" + sanitize_key(key) + ".yaml"),
+            entry["assessment"]["path"])
         self.assertEqual(entry["note"], "重复草稿")
 
     def test_refuses_when_pr_exists(self):
@@ -186,6 +194,70 @@ class SedimentUndoTest(unittest.TestCase):
         self.assertIn("open", payload.get("message", ""))
         self.assertTrue(draft.is_file())
         self.assertFalse((self.inbox / ".undone").exists())
+
+    def test_ledger_entry_not_object_is_refused(self):
+        key = "draft-a"
+        draft = write_flat_draft(self.repo, key)
+        ledger = pr_status.empty_ledger()
+        ledger["prs"][key] = None
+        pr_status.save_ledger(self.repo, ledger)
+        proc, payload = self.run_undo("--draft-key", key, "--apply", "--json")
+        self.assertEqual(proc.returncode, 2, proc.stdout)
+        self.assertEqual(payload.get("code"), "E_PR_EXISTS")
+        self.assertTrue(draft.is_file())
+
+    def test_assessment_changed_after_plan_is_refused(self):
+        # 模拟「计划之后、拿到锁之前另一个 groom 写了新评估」：脚本要在写任何东西之前重读并拦下。
+        key = "draft-a"
+        draft = write_flat_draft(self.repo, key)
+        sidecar = write_sidecar(self.repo, key, assessment_id="assess-1")
+        trace = write_trace(self.repo, "2026-11-01-demo")
+        before = trace.read_bytes()
+        real_plan = su.build_plan
+
+        def plan_then_race(*args, **kwargs):
+            plan = real_plan(*args, **kwargs)
+            write_sidecar(self.repo, key, assessment_id="assess-2")
+            return plan
+
+        buf = io.StringIO()
+        with mock.patch.object(su, "build_plan", side_effect=plan_then_race):
+            with contextlib.redirect_stdout(buf):
+                code = su.run(["--draft-key", key, "--apply", "--json",
+                               "--root", str(self.repo)])
+        payload = json.loads(buf.getvalue())
+        self.assertEqual(code, 2, buf.getvalue())
+        self.assertEqual(payload.get("code"), "E_ASSESSMENT_CHANGED")
+        self.assertTrue(draft.is_file())
+        self.assertTrue(sidecar.is_file())
+        self.assertEqual(trace.read_bytes(), before)
+
+    def test_partial_move_rolls_back(self):
+        # 平铺草稿有两个文件：第二个移失败时，第一个要移回 inbox，草稿保持完整可重试。
+        key = "draft-a"
+        draft = write_flat_draft(self.repo, key)
+        md = self.inbox / f"{key}.md"
+        real_move = su.shutil.move
+        calls = {"n": 0}
+
+        def flaky(src, dst):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise OSError("mock: file is busy")
+            return real_move(src, dst)
+
+        buf = io.StringIO()
+        with mock.patch.object(su.shutil, "move", side_effect=flaky):
+            with contextlib.redirect_stdout(buf):
+                code = su.run(["--draft-key", key, "--apply", "--json",
+                               "--root", str(self.repo)])
+        payload = json.loads(buf.getvalue())
+        self.assertEqual(code, 2, buf.getvalue())
+        self.assertEqual(payload.get("code"), "E_MOVE")
+        self.assertTrue(draft.is_file())
+        self.assertTrue(md.is_file())
+        leftover = self.inbox / ".undone"
+        self.assertFalse(leftover.exists() and any(leftover.iterdir()), str(list(leftover.iterdir())))
 
     def test_no_source_trace_only_queues_out(self):
         key = "draft-a"
