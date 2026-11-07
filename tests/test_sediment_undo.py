@@ -82,12 +82,12 @@ def write_sidecar(repo: Path, key: str, decision: str = "new_pattern",
 
 
 def write_trace(repo: Path, sid: str, state: str = "submitted",
-                case_id: str = "DRAFT-A") -> Path:
+                case_id: str = "DRAFT-A", status: str = "resolved") -> Path:
     path = repo / "traces" / f"{sid}.yaml"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         f'session_id: "{sid}"\n'
-        'status: resolved\n'
+        f'status: {status}\n'
         'updated_at: "2026-11-01T10:00:00+08:00"\n'
         "sedimented:\n"
         f"  state: {state}\n"
@@ -354,6 +354,96 @@ class SedimentUndoTest(unittest.TestCase):
         proc, payload = self.run_undo("--draft-key", key, "--apply", "--json")
         self.assertEqual(proc.returncode, 2, proc.stdout)
         self.assertEqual(payload.get("code"), "E_NO_DRAFT")
+
+    def test_apply_reopens_terminal_diagnosis(self):
+        key = "draft-a"
+        draft = write_flat_draft(self.repo, key, source_session="2026-11-01-demo")
+        sidecar = write_sidecar(self.repo, key)
+        trace = write_trace(self.repo, "2026-11-01-demo", status="resolved")
+
+        proc, payload = self.run_undo("--draft-key", key, "--apply", "--json")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertFalse(draft.exists())
+        self.assertFalse(sidecar.exists())
+        doc = load_yaml(trace)
+        self.assertEqual(doc["sedimented"]["state"], "none")
+        self.assertEqual(doc["status"], "in_progress")
+        self.assertEqual((doc.get("transitions") or [])[-1]["action"], "reopen")
+        self.assertEqual(payload["trace"]["status_from"], "resolved")
+        self.assertEqual(payload["trace"]["status_to"], "in_progress")
+        log = json.loads((self.inbox / ".groom" / "undo-log.jsonl").read_text(encoding="utf-8").strip())
+        self.assertTrue(log["trace"]["status_written"])
+        self.assertEqual(log["trace"]["status_from"], "resolved")
+
+    def test_keep_status_keeps_terminal_diagnosis(self):
+        key = "draft-a"
+        write_flat_draft(self.repo, key, source_session="2026-11-01-demo")
+        trace = write_trace(self.repo, "2026-11-01-demo", status="resolved")
+        proc, payload = self.run_undo("--draft-key", key, "--apply", "--json", "--keep-status")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(load_yaml(trace)["status"], "resolved")
+        self.assertFalse(payload["trace"]["status_written"])
+
+    def test_in_progress_trace_is_not_reopened(self):
+        key = "draft-a"
+        write_flat_draft(self.repo, key, source_session="2026-11-01-demo")
+        trace = write_trace(self.repo, "2026-11-01-demo", status="in_progress")
+        proc, payload = self.run_undo("--draft-key", key, "--apply", "--json")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        doc = load_yaml(trace)
+        self.assertEqual(doc["status"], "in_progress")
+        self.assertNotIn("transitions", doc)
+        self.assertFalse(payload["trace"]["status_written"])
+
+    def test_batch_plan_and_apply(self):
+        for key, cid, sid in (("draft-a", "DRAFT-A", "2026-11-01-a"),
+                              ("draft-b", "DRAFT-B", "2026-11-01-b")):
+            write_flat_draft(self.repo, key, cid=cid, source_session=sid)
+            write_sidecar(self.repo, key)
+            write_trace(self.repo, sid, case_id=cid)
+
+        proc, payload = self.run_undo("--draft-key", "draft-a", "--draft-key", "draft-b", "--json")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertTrue(payload["dryRun"])
+        self.assertEqual(payload["summary"], {"total": 2, "planned": 2, "refused": 0})
+        self.assertFalse((self.inbox / ".undone").exists())
+
+        proc, payload = self.run_undo("--draft-key", "draft-a", "--draft-key", "draft-b",
+                                      "--apply", "--json")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(payload["summary"], {"total": 2, "applied": 2, "failed": 0})
+        self.assertFalse((self.inbox / "draft-a.case.yaml").exists())
+        self.assertFalse((self.inbox / "draft-b.case.yaml").exists())
+        self.assertEqual(len(list((self.inbox / ".undone").iterdir())), 2)
+        log_lines = (self.inbox / ".groom" / "undo-log.jsonl").read_text(encoding="utf-8").strip().splitlines()
+        self.assertEqual(len(log_lines), 2)
+        for sid in ("2026-11-01-a", "2026-11-01-b"):
+            doc = load_yaml(self.repo / "traces" / f"{sid}.yaml")
+            self.assertEqual(doc["sedimented"]["state"], "none")
+            self.assertEqual(doc["status"], "in_progress")
+
+    def test_batch_refusal_does_not_block_others(self):
+        write_flat_draft(self.repo, "draft-a", cid="DRAFT-A", source_session="2026-11-01-a")
+        write_trace(self.repo, "2026-11-01-a", case_id="DRAFT-A")
+        write_flat_draft(self.repo, "draft-b", cid="DRAFT-B", source_session="2026-11-01-b")
+        ledger = pr_status.empty_ledger()
+        ledger["prs"]["draft-b"] = {
+            "platform": "github", "repo": "x/y", "number": 1,
+            "url": "https://github.com/x/y/pull/1", "state": "open", "source": "platform",
+        }
+        pr_status.save_ledger(self.repo, ledger)
+
+        proc, payload = self.run_undo("--draft-key", "draft-a", "--draft-key", "draft-b", "--json")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertEqual(payload["summary"], {"total": 2, "planned": 1, "refused": 1})
+
+        proc, payload = self.run_undo("--draft-key", "draft-a", "--draft-key", "draft-b",
+                                      "--apply", "--json")
+        self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+        self.assertEqual(payload["summary"], {"total": 2, "applied": 1, "failed": 1})
+        self.assertFalse((self.inbox / "draft-a.case.yaml").exists())
+        self.assertTrue((self.inbox / "draft-b.case.yaml").is_file())
+        self.assertEqual(load_yaml(self.repo / "traces" / "2026-11-01-a.yaml")["status"], "in_progress")
 
     def test_ambiguous_source_is_refused(self):
         key = "draft-a"

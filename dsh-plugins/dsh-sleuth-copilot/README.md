@@ -160,7 +160,10 @@ DSH 会话里的一个独立交互层插件。它把诊断的状态、下一步�
   进「最近完成」，历史行带 PR 链接。PR 被关闭时主按钮是「恢复草稿」，点击把移动命令填进输入框。
 - 撤销沉淀：草稿还在 inbox、台账里没有 PR 记录、来源 trace 也没说升格时，详情动作行给「撤销沉淀」。
   点开是一条指令：`scripts/sediment_undo.py --draft-key <key>` 先打印计划，加 `--apply` 才执行。
-  面板不删草稿；点「填入输入框」交给会话里的 agent。
+  面板不删草稿；点「填入输入框」交给会话里的 agent。执行时默认把已收尾的诊断重新打开（status 回
+  `in_progress`）；只想撤草稿就加 `--keep-status`。
+- 批量撤销：批次条在可撤销的行有 2 份及以上时给「撤销可撤销的 n 份」，范围 = 当前列表（筛选与搜索词）。
+  点开预览一条带多份 `--draft-key` 的指令，填入后可先删掉不想撤的行，再由 agent 逐份执行。
 - 撤销脚本的三件事：草稿移进 `postmortems/inbox/.undone/`（移回即复活）；删掉评估状态文件
   （`.groom/assessments/<key>.yaml`）；把来源 trace 的 `sedimented` 改回 `none`（trace 缺失或外部
   来源时跳过）。另写一行 `.groom/undo-log.jsonl`（评估 id、人决定、草稿去向）。
@@ -235,7 +238,7 @@ plugin_manager remove_bundle(target: 'dsh-sleuth-copilot')
 ## 验证
 
 ```
-node dsh-plugins/dsh-sleuth-copilot/test/render-smoke.mjs   # 浏览器半：四个面、折叠、点外部 / Esc 收起、常驻偏好、静置淡出（含 reduced-motion）、菜单点击不误收起、菜单语义、收尾表单默认值与必填、改 / 补收尾方式、收尾清单 / 历史 / 报告、材料 / 时间线、无候选沉淀入口、总览取数失败与不换单、沉淀队列 / 指令 / 目标选择、来源诊断跳会话、批量沉淀、撤销沉淀、查合入逐条进度、快捷键平台文案、搜索与命令面板
+node dsh-plugins/dsh-sleuth-copilot/test/render-smoke.mjs   # 浏览器半：四个面、折叠、点外部 / Esc 收起、常驻偏好、静置淡出（含 reduced-motion）、菜单点击不误收起、菜单语义、收尾表单默认值与必填、改 / 补收尾方式、收尾清单 / 历史 / 报告、材料 / 时间线、无候选沉淀入口、总览取数失败与不换单、沉淀队列 / 指令 / 目标选择、来源诊断跳会话、批量沉淀、撤销沉淀 / 批量撤销、填过指令后重开强制刷新、查合入逐条进度、快捷键平台文案、搜索与命令面板
 node dsh-plugins/dsh-sleuth-copilot/test/host-smoke.mjs     # Host 半：取数、证据 / 候选 / 材料、报告与时间线、沉淀 / 目标端点、查合入逐条进度、traces 越界与主检出落点、沙箱档位、子进程失败专码、PR 台账 CAS、工作区门禁、会话绑定、真实写入（临时副本）、CAS、归档缺收尾方式的回执、改 / 补收尾方式、错误码
 ```
 

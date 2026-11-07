@@ -1568,6 +1568,42 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 }
 
 {
+  // 批量撤销：批次条只列可撤销的行（范围 = 当前筛选与搜索），生成一条带多 key 的指令。
+  const undoDraft = (key, title) => Object.assign({}, SEDIMENT.drafts[0], {
+    key,
+    title,
+    path: 'postmortems/inbox/' + key + '.case.yaml',
+    source: { sessionId: key, mismatch: 'none', sedimented: 'submitted' },
+    undo: { available: true, prompt: '撤销这次沉淀：' + key + '。' },
+  })
+  const batchQueue = Object.assign({}, SEDIMENT, {
+    drafts: [undoDraft('draft-a', '草稿 A'), undoDraft('draft-b', '草稿 B')],
+    counts: { total: 2, unassessed: 0, needDecision: 2, needRerun: 0, decided: 0, prOpen: 0, prMerged: 0, overdue: 0, oldestDays: 1 },
+    primary: { kind: 'groom', label: '继续 groom', prompt: '继续 groom 的批次指令' },
+  })
+  const t = await mount('recent', { sediment: batchQueue, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  const batchBtn = findButtonContains(view, '撤销可撤销的 2 份')
+  expect('批量撤销：批次条出现入口', !!batchBtn, view.text.slice(-200))
+  click(batchBtn)
+  view = await t.settle()
+  expect('批量撤销：弹层标题', view.text.includes('批量撤销沉淀'), view.text.slice(-300))
+  expect('批量撤销：指令带两份 key', view.text.includes('--draft-key draft-a')
+    && view.text.includes('--draft-key draft-b'), view.text.slice(-400))
+  expect('批量撤销：指令说明重新打开诊断', view.text.includes('--keep-status'), view.text.slice(-400))
+  click(findButton(view, '填入输入框'))
+  await t.settle()
+  expect('批量撤销：填入输入框', t.lastDraft().includes('--draft-key draft-a')
+    && t.lastDraft().includes('--draft-key draft-b') && t.lastDraft().includes('--apply'),
+  t.lastDraft().slice(0, 200))
+}
+
+{
   // 填过指令后重新打开：队列强制刷新一次，不等 60 秒去重。指令在会话里执行，面板收不到
   // 通知；不强制刷新就会让刚撤销的草稿还留在屏幕上。标记只消费一次，之后恢复 60 秒去重。
   const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
@@ -1617,6 +1653,8 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('撤销沉淀：没有 PR 的草稿给入口', !!undoBtn, view.text.slice(-200))
   expect('撤销沉淀：入口带条件说明', !!undoBtn && undoBtn.props.title === '草稿还在 inbox、没有 PR 记录、来源 trace 没升格时才能撤销',
     undoBtn ? String(undoBtn.props.title) : 'missing')
+  expect('撤销沉淀：只有一份可撤销时不出批量入口', !findButtonContains(view, '撤销可撤销的'),
+    view.text.slice(-200))
   click(undoBtn)
   view = await t.settle()
   expect('撤销沉淀：弹层标题', view.text.includes('撤销这次沉淀'), view.text.slice(-300))

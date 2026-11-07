@@ -276,13 +276,14 @@ approval_stale: false
 
 ### 3.7.1 撤销一次不成立的沉淀
 
-`scripts/sediment_undo.py --draft-key <key> [--apply]` 处理「草稿选错了」。默认只打印计划，`--apply` 才写。它做三件事：
+`scripts/sediment_undo.py --draft-key <key> [--apply]` 处理「草稿选错了」。默认只打印计划，`--apply` 才写。它做四件事：
 
 - 把还在 inbox、且 PR 台账里没有记录的草稿移进 `postmortems/inbox/.undone/`。移动不删除，移回即复活。
 - 删掉它的评估状态文件（`.groom/assessments/<key>.yaml`）。
 - 把来源 trace 的 `sedimented` 改回 `none`。trace 缺失、外部来源或 `--keep-trace` 时跳过这一步。
+- 来源 trace 是终态（`resolved` / `escalated` / `archived`）时重新打开诊断（`trace_transition.py --reopen`，status 回 `in_progress`）。沉淀的前提是「这单已经有结论」；撤回沉淀通常也意味着结论还不成立。只想撤草稿、诊断仍算收尾时加 `--keep-status`。
 
-另外往 `.groom/undo-log.jsonl` 追加一行：评估 id、人决定的 `decision` / `by` / `at`、决定历史条数与草稿去向。评估正文（候选、理由）不留。`.undone/` 没有保留期，确认不再需要后手工删。
+批量时重复给 `--draft-key`，脚本逐份建计划、逐份执行；某份被拒不会拦下其他份。另外往 `.groom/undo-log.jsonl` 逐份追加一行：评估 id、人决定的 `decision` / `by` / `at`、决定历史条数、草稿去向与诊断状态变化。评估正文（候选、理由）不留。`.undone/` 没有保留期，确认不再需要后手工删。
 
 它和 `reject` / `defer` 不是一回事：那两个是「认真看过但不采纳」，草稿与评估状态文件留在队列里，`submitted` 仍是事实。撤销是这份草稿本身被撤回，重新沉淀会从头开始，`none` 才是撤完的状态。
 
@@ -350,7 +351,7 @@ approval_stale: false
 | `scripts/groom_status.py:56` | 状态与新鲜度 |
 | `scripts/groom_recheck.py:449` | PR 合入前复核 |
 | `scripts/groom_close_draft.py` | 终态决定的收尾：trace 沉淀回写 + 草稿出队 |
-| `scripts/sediment_undo.py` | 撤销一次不成立的沉淀：草稿出队 + 评估状态文件清理 + trace 回 none |
+| `scripts/sediment_undo.py` | 撤销一次不成立的沉淀（支持批量）：草稿出队 + 评估状态文件清理 + trace 回 none + 已收尾诊断重新打开 |
 | `scripts/groom_common.py` | 草稿发现、状态读写、git 工具 |
 | `skills/knowledge-groom/SKILL.md` | 流程与判断规则 |
 | `skills/knowledge-groom/references/subagent-prompts.md` | 子 agent 提示词与返回格式 |

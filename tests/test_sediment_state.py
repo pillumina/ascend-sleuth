@@ -15,6 +15,7 @@ target_ref 压过 origin/main 兜底）、CLI 的 ok:false 协议。
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 import unittest
@@ -61,6 +62,8 @@ def init_repo(base: Path):
     write_case(repo, "knowledge/inference/vllm-ascend/interrupt/CASE-A.yaml",
                "CASE-A", title="HCCL timeout")
     (repo / "README.md").write_text("test\n", encoding="utf-8")
+    # 真实检出里有 trace-status.yaml：撤销指令要按词表判诊断是否终态（读不到就不提示重新打开）。
+    shutil.copy2(ROOT / "trace-status.yaml", repo / "trace-status.yaml")
     commit_all(repo, "base")
     git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
     return repo
@@ -138,7 +141,7 @@ def write_assessment(repo: Path, key: str, commit: str, decision: str = "new_pat
 
 
 def write_trace(repo: Path, sid: str, state: str = "none", inbox_path: str = "",
-                case_id: str = "", harness_session=None) -> Path:
+                case_id: str = "", harness_session=None, status: str = "resolved") -> Path:
     """harness_session=None 时整个字段不写：主检出里还有这种旧 trace，读侧要当空值。"""
     traces = repo / "traces"
     traces.mkdir(exist_ok=True)
@@ -148,7 +151,7 @@ def write_trace(repo: Path, sid: str, state: str = "none", inbox_path: str = "",
         head += f'harness_session: "{harness_session}"\n'
     path.write_text(
         head
-        + 'status: resolved\n'
+        + f'status: {status}\n'
         + 'updated_at: "2026-11-01T10:00:00+08:00"\n'
         + "sedimented:\n"
         + f"  state: {state}\n"
@@ -335,6 +338,26 @@ class StateTest(SedimentCase):
         self.assertEqual(row["state"], "pr_open")
         self.assertFalse(row["undo"]["available"])
         self.assertEqual(row["undo"]["prompt"], "")
+
+    def test_undo_prompt_mentions_reopen_for_terminal_trace(self):
+        # 草稿来自一单已收尾的诊断：撤销默认会重新打开，指令里要提示；--keep-status 是出口。
+        write_draft(self.repo)
+        write_trace(self.repo, "2026-11-01-sediment", state="submitted",
+                    case_id="DRAFT-A", status="resolved",
+                    inbox_path="postmortems/inbox/2026-10-20-draft-a.case.yaml")
+        row = self.draft(self.collect())
+        self.assertTrue(row["undo"]["available"])
+        self.assertIn("重新打开", row["undo"]["prompt"])
+        self.assertIn("--keep-status", row["undo"]["prompt"])
+
+    def test_undo_prompt_has_no_reopen_note_for_open_trace(self):
+        write_draft(self.repo)
+        write_trace(self.repo, "2026-11-01-sediment", state="submitted",
+                    case_id="DRAFT-A", status="in_progress",
+                    inbox_path="postmortems/inbox/2026-10-20-draft-a.case.yaml")
+        row = self.draft(self.collect())
+        self.assertTrue(row["undo"]["available"])
+        self.assertNotIn("重新打开", row["undo"]["prompt"])
 
     def test_undo_hidden_when_trace_already_promoted(self):
         # 草稿还在 inbox 但 trace 已说升格（draft_left_behind）：该走收尾指令，不是撤销。

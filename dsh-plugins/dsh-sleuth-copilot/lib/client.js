@@ -323,6 +323,10 @@ window.__ModuleLoader__.load({
       'sediment.undo.title': '撤销这次沉淀',
       'sediment.undo.sub': '面板不删草稿。这条指令填进输入框，由会话里的 agent 执行。',
       'sediment.undo.hint': '草稿还在 inbox、没有 PR 记录、来源 trace 没升格时才能撤销',
+      'sediment.undo.batchAction': '撤销可撤销的 {n} 份',
+      'sediment.undo.batchTitle': '批量撤销沉淀',
+      'sediment.undo.batchSub': '范围 = 当前列表（筛选与搜索词）。填入后可先删掉不想撤的行再发送。',
+      'sediment.undo.batchHint': '只含可撤销的行；执行前把每份的计划给读者确认',
       'sediment.manualState': '手动改状态',
       'sediment.manualTitle': '手动改 PR 状态',
       'sediment.prompt.sub': '预览将填入输入框的指令',
@@ -744,6 +748,10 @@ window.__ModuleLoader__.load({
       'sediment.undo.title': 'Undo this sediment',
       'sediment.undo.sub': 'The panel does not delete drafts. Fill this instruction into the composer and the agent in this session will run it.',
       'sediment.undo.hint': 'Only available while the draft is still in the inbox, has no PR, and its trace is not promoted',
+      'sediment.undo.batchAction': 'Undo {n} undoable',
+      'sediment.undo.batchTitle': 'Undo sediment in batch',
+      'sediment.undo.batchSub': 'Scope = the current list (filter and search). You can delete rows you do not want from the composer before sending.',
+      'sediment.undo.batchHint': 'Only undoable rows are included; review each plan before running',
       'sediment.manualState': 'Set state manually',
       'sediment.manualTitle': 'Set PR state manually',
       'sediment.prompt.sub': 'Preview of the prompt to fill the composer',
@@ -4878,6 +4886,23 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         setMenuOpen(false)
       }
 
+      // 批量撤销：只生成指令，范围冻结在点开这一刻（当前筛选与搜索词）；读者可在输入框里删行。
+      function openBatchUndo() {
+        const keys = sedUndoRows.map((draft) => String(draft.key || '')).filter(Boolean)
+        if (!keys.length) return
+        const args = keys.map((key) => '--draft-key ' + key).join(' ')
+        const filterDef = sedFilterDefs.find((item) => item.key === sedFilter)
+        const scope = ['筛选「' + (filterDef ? filterDef.label : sedFilter) + '」']
+        const query = String(searchText || '').trim()
+        if (query) scope.push('搜索「' + query + '」')
+        const text = '撤销本批沉淀：' + keys.length + ' 份（范围：' + scope.join(' + ') + '）。\n'
+          + '先看计划（只读）：\npython3 scripts/sediment_undo.py ' + args + '\n'
+          + '确认后执行：\npython3 scripts/sediment_undo.py ' + args + ' --apply\n'
+          + '脚本逐份处理；被拒的会跳过并报原因，不要绕过。已收尾的诊断撤销后会重新打开'
+          + '（status 回 in_progress）；只想撤草稿就加 --keep-status。'
+        openPromptFallback(tr('sediment.undo.batchTitle'), text, tr('sediment.undo.batchSub'))
+      }
+
       function openTarget(resume) {
         const remotes = sedRemotes
         const savedName = sedTarget && sedTarget.remote ? String(sedTarget.remote) : ''
@@ -5237,6 +5262,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       }
 
       const sedDecidedRows = sedDrafts.filter((draft) => draft.state === 'decided')
+      // 批量撤销的范围 = 当前列表（筛选与搜索词）里可撤销的行；单份用详情里的按钮。
+      const sedUndoRows = sedSorted.filter((draft) => draft && draft.undo && draft.undo.available)
       const sedDecided = Number(sedCounts.decided) || 0
       const sedOldest = Number(sedCounts.oldestDays) || sedDrafts.reduce((max, draft) => {
         const age = draft.ageDays === null || draft.ageDays === undefined ? -1 : Number(draft.ageDays)
@@ -5314,7 +5341,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               m: checkRun.total,
             })
             : tr('sediment.refreshing'))
-          : sedPrimaryLabel)) : null
+          : sedPrimaryLabel),
+        sedUndoRows.length >= 2
+          ? h('button', {
+            type: 'button', className: 'scp-btn scp-btn--ghost',
+            title: tr('sediment.undo.batchHint'),
+            onClick: openBatchUndo,
+          }, tr('sediment.undo.batchAction', { n: sedUndoRows.length }))
+          : null) : null
 
       // 诊断视图的批量沉淀：只在「可沉淀」筛选下出现，范围就是当前筛选（含搜索词）。
       // 只生成指令、不写 trace 与知识库；单条动作仍在右列详情里。
