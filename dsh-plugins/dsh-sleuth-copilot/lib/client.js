@@ -1404,6 +1404,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       sedimentSelectKey: '',
       sediment: { phase: 'idle', data: null, message: '', at: 0 },
       sedimentSeq: 0,
+      // 填过指令之后，下一次打开队列强制刷新一次：指令在会话里执行、面板收不到通知，
+      // 60 秒去重会让读者回来时还看到执行前的旧行（例如刚撤销的草稿还在）。
+      sedimentForceNext: false,
       // 查合入的逐条进度：active 时把已到达的行就地写进 sediment.drafts；
       // 整批结束 refreshSediment(true) 会覆盖为权威快照，然后清空。
       checkRun: null,
@@ -1481,7 +1484,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
     async function refreshSediment(force) {
       if (!store.cwd) return
       const now = Date.now()
-      if (!force && store.sediment.phase === 'ready' && now - store.sediment.at < 60000) return
+      const forceNext = store.sedimentForceNext === true
+      if (!force && !forceNext && store.sediment.phase === 'ready' && now - store.sediment.at < 60000) return
+      store.sedimentForceNext = false
       const seq = store.sedimentSeq + 1
       store.sedimentSeq = seq
       store.sediment = Object.assign({}, store.sediment, {
@@ -3508,6 +3513,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           if (inputActions && typeof inputActions.setDraft === 'function') {
             try {
               inputActions.setDraft(text)
+              store.sedimentForceNext = true
               flash(tr('hint.draft'))
               return
             } catch (error) {
@@ -4338,6 +4344,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         if (inputActions && typeof inputActions.setDraft === 'function') {
           try {
             inputActions.setDraft(text)
+            store.sedimentForceNext = true
             flash(tr('hint.draft'))
             setPaletteOpen(false)
             return

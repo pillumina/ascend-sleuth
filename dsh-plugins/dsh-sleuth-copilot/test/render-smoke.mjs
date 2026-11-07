@@ -1568,6 +1568,31 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 }
 
 {
+  // 填过指令后重新打开：队列强制刷新一次，不等 60 秒去重。指令在会话里执行，面板收不到
+  // 通知；不去重就会让刚撤销的草稿还留在屏幕上。
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-sed-row')[0])
+  view = await t.settle()
+  click(findButtonContains(view, '撤销沉淀'))
+  view = await t.settle()
+  click(findButton(view, '填入输入框'))
+  await t.settle()
+  const before = t.rpcCalls.filter((item) => item.endpoint === 'copilot-sediment').length
+  const closed = await t.settle()
+  click(findToolbar(closed))
+  await t.settle()
+  await t.settle()
+  const after = t.rpcCalls.filter((item) => item.endpoint === 'copilot-sediment').length
+  expect('填过指令后重开队列：强制刷新一次', after === before + 1, before + ' → ' + after)
+}
+
+{
   // 撤销沉淀：草稿还在 inbox、没有 PR 时给入口；点开先看指令，填进输入框由会话里的
   // agent 先跑计划再执行。面板不删草稿，也不自动发送。
   const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
