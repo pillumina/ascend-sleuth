@@ -4890,7 +4890,11 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       function openBatchUndo() {
         const keys = sedUndoRows.map((draft) => String(draft.key || '')).filter(Boolean)
         if (!keys.length) return
-        const args = keys.map((key) => '--draft-key ' + key).join(' ')
+        // key 来自 inbox 文件名；常规字符直接写，出现空格或引号时按 shell 单引号转义。
+        const quote = (key) => (/^[A-Za-z0-9._-]+$/.test(key)
+          ? key
+          : "'" + key.replace(/'/g, "'\\''") + "'")
+        const args = keys.map((key) => '--draft-key ' + quote(key)).join(' ')
         const filterDef = sedFilterDefs.find((item) => item.key === sedFilter)
         const scope = ['筛选「' + (filterDef ? filterDef.label : sedFilter) + '」']
         const query = String(searchText || '').trim()

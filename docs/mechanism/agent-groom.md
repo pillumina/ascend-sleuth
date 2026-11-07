@@ -280,7 +280,7 @@ approval_stale: false
 
 - 把还在 inbox、且 PR 台账里没有记录的草稿移进 `postmortems/inbox/.undone/`。移动不删除，移回即复活。
 - 删掉它的评估状态文件（`.groom/assessments/<key>.yaml`）。
-- 把来源 trace 的 `sedimented` 改回 `none`。trace 缺失、外部来源或 `--keep-trace` 时跳过这一步。
+- 把来源 trace 的 `sedimented` 改回 `none`。trace 缺失或外部来源时跳过这一步；`--keep-trace` 时它与下一条的状态都不写。
 - 来源 trace 是终态（`resolved` / `escalated` / `archived`）时重新打开诊断（`trace_transition.py --reopen`，status 回 `in_progress`）。沉淀的前提是「这单已经有结论」；撤回沉淀通常也意味着结论还不成立。只想撤草稿、诊断仍算收尾时加 `--keep-status`。
 
 批量时重复给 `--draft-key`，脚本逐份建计划、逐份执行；某份被拒不会拦下其他份。另外往 `.groom/undo-log.jsonl` 逐份追加一行：评估 id、人决定的 `decision` / `by` / `at`、决定历史条数、草稿去向与诊断状态变化。评估正文（候选、理由）不留。`.undone/` 没有保留期，确认不再需要后手工删。
