@@ -132,7 +132,7 @@ DSH 会话里的一个独立交互层插件。它把诊断的状态、下一步�
 
 - 数据：`copilot-sediment` → `lib/sediment_state.py`，复用 `scripts/groom_status.py` 与
   `scripts/groom_common.py` 的判据，不复制；只读，按需读（展开状态条或打开沉淀视图时），不塞进 10 秒轮询。
-  填过指令后重新打开队列会强制刷新一次；平时 60 秒内复用上次结果。
+  填过任一指令后重新打开队列会强制刷新一次；平时 60 秒内复用上次结果。
 - 右列顶部与诊断详情一致：一行识别信息（阶段、评估建议、来源诊断、天数），下面按正文排草稿标题
   （标题取自草稿 case 的 `title`，没有 case 时取 postmortem 首行），长标题给「展开全文」。
   来源诊断显示 trace 单号，点它切到该 trace 记的会话（`harness_session`）。trace 没记会话号时
