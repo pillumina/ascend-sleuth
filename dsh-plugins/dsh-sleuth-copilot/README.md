@@ -163,10 +163,14 @@ DSH 会话里的一个独立交互层插件。它把诊断的状态、下一步�
   面板不删草稿；点「填入输入框」交给会话里的 agent。执行时默认把已收尾的诊断重新打开（status 回
   `in_progress`）；只想撤草稿就加 `--keep-status`。
 - 批量撤销：批次条在可撤销的行有 2 份及以上时给「撤销可撤销的 n 份」，范围 = 当前列表（筛选与搜索词）。
-  点开预览一条带多份 `--draft-key` 的指令，填入后可先删掉不想撤的行，再由 agent 逐份执行。
-- 撤销脚本的三件事：草稿移进 `postmortems/inbox/.undone/`（移回即复活）；删掉评估状态文件
-  （`.groom/assessments/<key>.yaml`）；把来源 trace 的 `sedimented` 改回 `none`（trace 缺失或外部
-  来源时跳过）。另写一行 `.groom/undo-log.jsonl`（评估 id、人决定、草稿去向）。
+  点开预览一条带多份 `--draft-key` 的指令（含本批名单）；填入后从两条命令里各删掉不想撤的
+  `--draft-key`，再由 agent 逐份执行。
+- 撤销脚本的动作：
+  - 草稿移进 `postmortems/inbox/.undone/`（移回即复活）；
+  - 删掉评估状态文件（`.groom/assessments/<key>.yaml`）；
+  - 来源 trace 的 `sedimented` 改回 `none`（trace 缺失或外部来源时跳过）；
+  - 已收尾的诊断重新打开（`--keep-status` 跳过这一步）。
+  另写一行 `.groom/undo-log.jsonl`（评估 id、人决定、草稿去向、诊断状态变化）。
 - 有 PR 记录或 trace 已说升格的草稿拒绝撤销；已出队的用「恢复草稿」。`.undone/` 没有保留期，
   确认不再需要后手工删。
 - 平台适配器：`scripts/platforms/` 下一个 YAML（标准 REST）或一个 Python（CLI/特殊认证）；新增平台

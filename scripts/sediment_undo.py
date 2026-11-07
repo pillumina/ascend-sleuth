@@ -43,6 +43,9 @@
 #   python3 scripts/sediment_undo.py --draft-key a --draft-key b --apply   # 批量
 #   python3 scripts/sediment_undo.py --draft-key <key> --apply --json  # 机器可读
 #
+# 单份的 JSON 是平铺结果；批量是 `{ok, dryRun, results[], summary}`。重复执行同一份会报
+# `E_NO_DRAFT`（草稿已出队），批量重跑时跳过这类即可。
+#
 # 退出码：0 = 计划已打印（批量下至少一份可撤销），或撤销已完成；2 = 被边界拦下 / 执行失败 / 参数错。
 
 from __future__ import annotations
@@ -60,6 +63,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _stdio import pin_utf8_stdio  # noqa: E402
 from _yaml import load_text  # noqa: E402
+from _trace_state import is_terminal, load_vocab  # noqa: E402
 from exec_log_path import log_lock, resolve_traces  # noqa: E402
 from groom_close_draft import source_session_of  # noqa: E402
 from groom_common import (  # noqa: E402
@@ -70,8 +74,6 @@ import pr_status  # noqa: E402
 
 UNDONE_DIR = ".undone"
 UNDO_LOG_REL = Path(".groom") / "undo-log.jsonl"
-# 诊断终态：撤销沉淀时默认重新打开（见头注「为什么撤销要重新打开诊断」）。
-TERMINAL_STATUSES = ("resolved", "escalated", "archived")
 
 
 class Refused(RuntimeError):
@@ -291,6 +293,10 @@ def build_plan(root: Path, inbox: Path, traces: Path, key: str,
                 raise Refused("E_TRACE", f"来源 trace 读不了，先确认它没坏再撤销：{exc}") from exc
             trace["from"] = snap["sedimented"]
             trace["status_from"] = snap["status"]
+            try:
+                vocab = load_vocab(root)
+            except Exception as exc:
+                raise Refused("E_SCHEMA", f"读不到 trace-status.yaml，不能判诊断状态：{exc}") from exc
             if snap["sedimented"] == "none":
                 trace["warnings"].append("来源 trace 已经是未沉淀，不需要回写沉淀状态")
             elif snap["sedimented"] in ("knowledge", "archived"):
@@ -303,7 +309,7 @@ def build_plan(root: Path, inbox: Path, traces: Path, key: str,
 
             if keep_status:
                 trace["warnings"].append("按 --keep-status 保持诊断状态")
-            elif snap["status"] in TERMINAL_STATUSES:
+            elif is_terminal(vocab, snap["status"]):
                 trace["status_action"] = "reopen"
                 trace["status_to"] = "in_progress"
             if trace["action"] == "write" or trace["status_action"] == "reopen":
@@ -534,6 +540,9 @@ def run(argv=None) -> int:
                 print("已完成：" + item, file=sys.stderr)
         return 2
 
+    if not keys:
+        return fail("E_SCHEMA", "至少给一个 --draft-key（空的 key 不算）")
+
     try:
         root = repo_root(Path(args.root).expanduser() if args.root else Path(__file__).resolve().parents[1])
         inbox = Path(args.inbox).expanduser() if args.inbox else Path(shared_inbox(root))
@@ -552,6 +561,8 @@ def run(argv=None) -> int:
         plan = build_plan(root, inbox, traces, key, args.keep_trace, args.keep_status)
     except Refused as exc:
         return fail(exc.code, exc.message, exc.done)
+    except Exception as exc:
+        return fail("E_INTERNAL", f"撤销失败：{exc}")
 
     if not args.apply:
         if args.json:
@@ -572,6 +583,8 @@ def run(argv=None) -> int:
         result = _apply_plan(root, inbox, traces, plan, stamp, args)
     except Refused as exc:
         return fail(exc.code, exc.message, exc.done)
+    except Exception as exc:
+        return fail("E_INTERNAL", f"撤销失败：{exc}")
     if args.json:
         print(json.dumps(result, ensure_ascii=False))
     else:
@@ -592,6 +605,9 @@ def _run_batch(args, root: Path, inbox: Path, traces: Path, keys: list,
             except Refused as exc:
                 results.append({"draft": key, "ok": False,
                                 "code": exc.code, "message": exc.message})
+            except Exception as exc:
+                results.append({"draft": key, "ok": False,
+                                "code": "E_INTERNAL", "message": str(exc)})
         planned = [item for item in results if item["ok"]]
         refused = [item for item in results if not item["ok"]]
         if args.json:
@@ -623,6 +639,9 @@ def _run_batch(args, root: Path, inbox: Path, traces: Path, keys: list,
         except Refused as exc:
             results.append({"draft": key, "ok": False, "code": exc.code,
                             "message": exc.message, "done": exc.done})
+        except Exception as exc:
+            results.append({"draft": key, "ok": False, "code": "E_INTERNAL",
+                            "message": str(exc), "done": []})
     failed = total - applied
     if args.json:
         print(json.dumps({

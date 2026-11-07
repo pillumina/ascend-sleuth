@@ -325,7 +325,7 @@ window.__ModuleLoader__.load({
       'sediment.undo.hint': '草稿还在 inbox、没有 PR 记录、来源 trace 没升格时才能撤销',
       'sediment.undo.batchAction': '撤销可撤销的 {n} 份',
       'sediment.undo.batchTitle': '批量撤销沉淀',
-      'sediment.undo.batchSub': '范围 = 当前列表（筛选与搜索词）。填入后可先删掉不想撤的行再发送。',
+      'sediment.undo.batchSub': '范围 = 当前列表（筛选与搜索词）。填入后从下面两条命令里各删掉不想撤的 --draft-key 再发送。',
       'sediment.undo.batchHint': '只含可撤销的行；执行前把每份的计划给读者确认',
       'sediment.manualState': '手动改状态',
       'sediment.manualTitle': '手动改 PR 状态',
@@ -748,9 +748,9 @@ window.__ModuleLoader__.load({
       'sediment.undo.title': 'Undo this sediment',
       'sediment.undo.sub': 'The panel does not delete drafts. Fill this instruction into the composer and the agent in this session will run it.',
       'sediment.undo.hint': 'Only available while the draft is still in the inbox, has no PR, and its trace is not promoted',
-      'sediment.undo.batchAction': 'Undo {n} undoable',
+      'sediment.undo.batchAction': 'Undo {n} undoable drafts',
       'sediment.undo.batchTitle': 'Undo sediment in batch',
-      'sediment.undo.batchSub': 'Scope = the current list (filter and search). You can delete rows you do not want from the composer before sending.',
+      'sediment.undo.batchSub': 'Scope = the current list (filter and search). Before sending, remove the keys you do not want from both commands in the composer.',
       'sediment.undo.batchHint': 'Only undoable rows are included; review each plan before running',
       'sediment.manualState': 'Set state manually',
       'sediment.manualTitle': 'Set PR state manually',
@@ -4895,15 +4895,24 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           ? key
           : "'" + key.replace(/'/g, "'\\''") + "'")
         const args = keys.map((key) => '--draft-key ' + quote(key)).join(' ')
+        const shortTitle = (title) => {
+          const text = String(title || '').trim()
+          return text.length > 40 ? text.slice(0, 40) + '…' : text
+        }
+        const names = sedUndoRows.map((draft) => {
+          const title = shortTitle(draft.title)
+          return String(draft.key || '') + (title ? '（' + title + '）' : '')
+        }).join('；')
         const filterDef = sedFilterDefs.find((item) => item.key === sedFilter)
         const scope = ['筛选「' + (filterDef ? filterDef.label : sedFilter) + '」']
         const query = String(searchText || '').trim()
         if (query) scope.push('搜索「' + query + '」')
         const text = '撤销本批沉淀：' + keys.length + ' 份（范围：' + scope.join(' + ') + '）。\n'
+          + '本批名单：' + names + '\n'
           + '先看计划（只读）：\npython3 scripts/sediment_undo.py ' + args + '\n'
           + '确认后执行：\npython3 scripts/sediment_undo.py ' + args + ' --apply\n'
           + '脚本逐份处理；被拒的会跳过并报原因，不要绕过。已收尾的诊断撤销后会重新打开'
-          + '（status 回 in_progress）；只想撤草稿就加 --keep-status。'
+          + '（status 回 in_progress）；只想撤草稿：在执行命令末尾加 --keep-status。'
         openPromptFallback(tr('sediment.undo.batchTitle'), text, tr('sediment.undo.batchSub'))
       }
 

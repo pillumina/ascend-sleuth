@@ -15,6 +15,7 @@ import json
 import os
 import sys
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -271,6 +272,46 @@ class SedimentUndoTest(unittest.TestCase):
         self.assertTrue(sidecar.is_file())
         self.assertEqual(trace.read_bytes(), before)
 
+    def test_empty_draft_key_is_schema_error(self):
+        proc, payload = self.run_undo("--draft-key", "", "--json")
+        self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+        self.assertEqual(payload.get("code"), "E_SCHEMA")
+        self.assertNotIn("Traceback", proc.stderr)
+
+    def test_trace_changed_after_plan_is_refused(self):
+        # 计划拿到的 trace 指纹在写之前被别处改掉：CAS 拦下，三处都不写。
+        key = "draft-a"
+        draft = write_flat_draft(self.repo, key, source_session="2026-11-01-demo")
+        sidecar = write_sidecar(self.repo, key)
+        trace = write_trace(self.repo, "2026-11-01-demo", status="resolved")
+        plan = su.build_plan(self.repo, self.inbox, self.repo / "traces", key, False, False)
+        trace.write_text(trace.read_text(encoding="utf-8").replace("status: resolved", "status: escalated"),
+                         encoding="utf-8")
+        args = types.SimpleNamespace(by="user", note="")
+        with self.assertRaises(su.Refused) as ctx:
+            su._apply_plan(self.repo, self.inbox, self.repo / "traces", plan, su._stamp(), args)
+        self.assertEqual(ctx.exception.code, "E_TRACE")
+        self.assertTrue(draft.is_file())
+        self.assertTrue(sidecar.is_file())
+        self.assertIn("status: escalated", trace.read_text(encoding="utf-8"))
+
+    def test_batch_middle_refusal_does_not_block_others(self):
+        for key, cid, sid in (("draft-a", "DRAFT-A", "2026-11-01-a"),
+                              ("draft-c", "DRAFT-C", "2026-11-01-c")):
+            write_flat_draft(self.repo, key, cid=cid, source_session=sid)
+            write_trace(self.repo, sid, case_id=cid)
+        write_flat_draft(self.repo, "draft-b", cid="DRAFT-B", source_session="2026-11-01-b")
+        (self.repo / "traces" / "2026-11-01-b.yaml").write_text("status: [unclosed\n", encoding="utf-8")
+
+        proc, payload = self.run_undo("--draft-key", "draft-a", "--draft-key", "draft-b",
+                                      "--draft-key", "draft-c", "--apply", "--json")
+        self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+        self.assertEqual(payload["summary"], {"total": 3, "applied": 2, "failed": 1})
+        self.assertFalse((self.inbox / "draft-a.case.yaml").exists())
+        self.assertTrue((self.inbox / "draft-b.case.yaml").is_file())
+        self.assertFalse((self.inbox / "draft-c.case.yaml").exists())
+        self.assertEqual(load_yaml(self.repo / "traces" / "2026-11-01-a.yaml")["status"], "in_progress")
+
     def test_partial_move_rolls_back(self):
         # 平铺草稿有两个文件：第二个改名失败时，第一个要改回 inbox，草稿保持完整可重试。
         # 移动走 os.rename（原子），所以这里 mock 掉 rename 的失败形状，不经过复制回退。
@@ -330,7 +371,11 @@ class SedimentUndoTest(unittest.TestCase):
         proc, payload = self.run_undo("--draft-key", key, "--apply", "--json", "--keep-trace")
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
         self.assertFalse(payload["trace"]["written"])
-        self.assertEqual(load_yaml(trace)["sedimented"]["state"], "submitted")
+        doc = load_yaml(trace)
+        self.assertEqual(doc["sedimented"]["state"], "submitted")
+        # --keep-trace 是「完全不动 trace」：诊断状态也不重新打开。
+        self.assertEqual(doc["status"], "resolved")
+        self.assertFalse(payload["trace"]["status_written"])
 
     def test_directory_layout_moves_whole_folder(self):
         key = "0f3a9c1e-6c1a-4a8e-9d0e-draft"

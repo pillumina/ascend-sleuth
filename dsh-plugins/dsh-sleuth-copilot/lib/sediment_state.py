@@ -501,8 +501,8 @@ def _undo_prompt(key: str, decision: str, trace_terminal: bool = False) -> str:
         lines.append(f"注意：这份草稿已有人决定（{decision}）。撤销会清掉评估状态文件与该草稿的决定记录，"
                      "评估 id 与决定摘要会写进 undo-log。")
     if trace_terminal:
-        lines.append("这单已收尾，撤销会把诊断重新打开（status 回 in_progress）；"
-                     "只想撤草稿就加 --keep-status。")
+        lines.append("这单已收尾，撤销会把诊断重新打开（status 回 in_progress）。"
+                     "只想撤草稿：在上面 --apply 那条命令末尾加 --keep-status。")
     lines.append("脚本的动作：")
     lines.append("- 草稿移进 postmortems/inbox/.undone/（移回即复活）")
     lines.append("- 删掉它的评估状态文件")
