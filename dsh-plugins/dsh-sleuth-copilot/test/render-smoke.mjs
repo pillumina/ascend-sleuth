@@ -651,6 +651,14 @@ const SEDIMENT = {
       source: { sessionId: ID, mismatch: 'none', sedimented: 'submitted' },
       promotion: { caseId: '', casePath: '', postmortemPath: '' }, pr: null,
       next: { kind: 'groom', label: '继续 groom', prompt: '继续 groom 的批次指令' }, writeback: '',
+      undo: {
+        available: true,
+        prompt: '撤销这次沉淀：2026-10-28-pd-prefill-hang。\n'
+          + '先看计划（只读）：\npython3 scripts/sediment_undo.py --draft-key 2026-10-28-pd-prefill-hang\n'
+          + '确认后执行：\npython3 scripts/sediment_undo.py --draft-key 2026-10-28-pd-prefill-hang --apply\n'
+          + '脚本把草稿移进 postmortems/inbox/.undone/（移回即复活）、删掉评估状态文件、'
+          + '把来源 trace 的 sedimented 改回 none；不动 knowledge/。',
+      },
     },
     {
       key: '2026-11-01-eplb-103900', title: 'EPLB 开启后 103900 传输超时，个别 rank 掉队',
@@ -1560,6 +1568,108 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 }
 
 {
+  // 批量撤销：批次条只列可撤销的行（范围 = 当前筛选与搜索），生成一条带多 key 的指令。
+  const undoDraft = (key, title) => Object.assign({}, SEDIMENT.drafts[0], {
+    key,
+    title,
+    path: 'postmortems/inbox/' + key + '.case.yaml',
+    source: { sessionId: key, mismatch: 'none', sedimented: 'submitted' },
+    undo: { available: true, prompt: '撤销这次沉淀：' + key + '。' },
+  })
+  const batchQueue = Object.assign({}, SEDIMENT, {
+    drafts: [undoDraft('draft-a', '草稿 A'), undoDraft('draft-b', '草稿 B')],
+    counts: { total: 2, unassessed: 0, needDecision: 2, needRerun: 0, decided: 0, prOpen: 0, prMerged: 0, overdue: 0, oldestDays: 1 },
+    primary: { kind: 'groom', label: '继续 groom', prompt: '继续 groom 的批次指令' },
+  })
+  const t = await mount('recent', { sediment: batchQueue, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  const batchBtn = findButtonContains(view, '撤销可撤销的 2 份')
+  expect('批量撤销：批次条出现入口', !!batchBtn, view.text.slice(-200))
+  click(batchBtn)
+  view = await t.settle()
+  expect('批量撤销：弹层标题', view.text.includes('批量撤销沉淀'), view.text.slice(-300))
+  expect('批量撤销：指令带两份 key', view.text.includes('--draft-key draft-a')
+    && view.text.includes('--draft-key draft-b'), view.text.slice(-400))
+  expect('批量撤销：指令说明不改诊断状态', view.text.includes('不改诊断状态')
+    && !view.text.includes('--keep-status'), view.text.slice(-400))
+  expect('批量撤销：名单带草稿标题', view.text.includes('本批名单')
+    && view.text.includes('草稿 A') && view.text.includes('草稿 B'), view.text.slice(-500))
+  click(findButton(view, '填入输入框'))
+  await t.settle()
+  expect('批量撤销：填入输入框', t.lastDraft().includes('--draft-key draft-a')
+    && t.lastDraft().includes('--draft-key draft-b') && t.lastDraft().includes('--apply'),
+  t.lastDraft().slice(0, 200))
+}
+
+{
+  // 填过指令后重新打开：队列强制刷新一次，不等 60 秒去重。指令在会话里执行，面板收不到
+  // 通知；不强制刷新就会让刚撤销的草稿还留在屏幕上。标记只消费一次，之后恢复 60 秒去重。
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-sed-row')[0])
+  view = await t.settle()
+  click(findButtonContains(view, '撤销沉淀'))
+  view = await t.settle()
+  click(findButton(view, '填入输入框'))
+  await t.settle()
+  const before = t.rpcCalls.filter((item) => item.endpoint === 'copilot-sediment').length
+  const closed = await t.settle()
+  click(findToolbar(closed))
+  await t.settle()
+  await t.settle()
+  const after = t.rpcCalls.filter((item) => item.endpoint === 'copilot-sediment').length
+  expect('填过指令后重开队列：强制刷新一次', after === before + 1, before + ' → ' + after)
+  // 标记只消费一次：再关再开不再取数，60 秒去重照旧（否则等于每次打开都跑 git + inbox）。
+  const reopened = await t.settle()
+  click(findToolbar(reopened))
+  await t.settle()
+  click(findToolbar(await t.settle()))
+  await t.settle()
+  await t.settle()
+  const afterAgain = t.rpcCalls.filter((item) => item.endpoint === 'copilot-sediment').length
+  expect('填过指令后重开队列：只强制一次', afterAgain === after, after + ' → ' + afterAgain)
+}
+
+{
+  // 撤销沉淀：草稿还在 inbox、没有 PR 时给入口；点开先看指令，填进输入框由会话里的
+  // agent 先跑计划再执行。面板不删草稿，也不自动发送。
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-sed-row')[0])
+  view = await t.settle()
+  const undoBtn = findButtonContains(view, '撤销沉淀')
+  expect('撤销沉淀：没有 PR 的草稿给入口', !!undoBtn, view.text.slice(-200))
+  expect('撤销沉淀：入口带条件说明', !!undoBtn && undoBtn.props.title === '草稿还在 inbox、没有 PR 记录、来源 trace 没升格时才能撤销',
+    undoBtn ? String(undoBtn.props.title) : 'missing')
+  expect('撤销沉淀：只有一份可撤销时不出批量入口', !findButtonContains(view, '撤销可撤销的'),
+    view.text.slice(-200))
+  click(undoBtn)
+  view = await t.settle()
+  expect('撤销沉淀：弹层标题', view.text.includes('撤销这次沉淀'), view.text.slice(-300))
+  expect('撤销沉淀：指令先看计划再执行', view.text.includes('scripts/sediment_undo.py --draft-key')
+    && view.text.includes('--apply'), view.text.slice(-400))
+  click(findButton(view, '填入输入框'))
+  await t.settle()
+  expect('撤销沉淀：填入输入框', t.lastDraft().includes('sediment_undo.py')
+    && t.lastDraft().includes('--apply'), t.lastDraft().slice(0, 160))
+}
+
+{
   const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
   click(findToolbar(t.view()))
   let view = await t.settle()
@@ -1644,6 +1754,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
     state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
     pr: { number: 417, url: 'https://gitcode.com/pillumina/ascend-sleuth/pulls/417', platform: 'gitcode', state: 'open', source: 'platform', checkedAt: '2026-11-04T09:00:00+08:00' },
     next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+    undo: { available: false, prompt: '' },
     // 生产形状：来源诊断带 trace 单号与会话号两个值，抬头显示单号、跳转用会话号。
     source: { sessionId: '2026-11-01-eplb-103900', harnessSession: 'session-origin-abc', mismatch: 'none', sedimented: 'submitted' },
   })
@@ -1664,6 +1775,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 
   const identity = byClass(view, 'scp-identity')
   expect('PR 详情：抬头是识别行', identity.length === 1 && nodeText(identity[0]).includes('已提 PR · 合入未确认'), identity.length ? nodeText(identity[0]) : 'missing')
+  expect('PR 详情：有 PR 的草稿不给撤销入口', !findButtonContains(view, '撤销沉淀'), view.text.slice(-200))
   // 来源诊断显示 trace 单号，点它跳的是该 trace 的 harness 会话号（拿单号去开会话会报 unknown session）。
   const sourceLink = byClass(view, 'scp-link').find((node) => nodeText(node).includes('2026-11-01-eplb-103900'))
   expect('PR 详情：来源诊断链接用 trace 单号', !!sourceLink, sourceLink ? nodeText(sourceLink) : 'missing')
@@ -1843,7 +1955,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('已出队行：详情提示来源', view.text.includes('草稿不在 inbox'), view.text.slice(-300))
   expect('已出队行：显示 PR 地址', view.text.includes('github.com/pillumina/ascend-sleuth/pull/429'))
   expect('已出队行：落点写合入后落库', view.text.includes('合入后落库'), view.text.slice(-300))
-  expect('已出队行：评估记录已清理', view.text.includes('评估记录已清理'), view.text.slice(-300))
+  expect('已出队行：评估状态文件已清理', view.text.includes('评估状态文件已清理'), view.text.slice(-300))
   const before = t.rpcCalls.length
   click(findNode(view, (node) => node.type === 'button'
     && String((node.props && node.props.className) || '').includes('scp-btn--primary')
@@ -2307,6 +2419,7 @@ function rowText(view, prNumber) {
     pr: { number: 418, url: 'https://github.com/pillumina/ascend-sleuth/pull/418', state: 'closed', source: 'platform', checkedAt: '2026-11-04T10:00:00+08:00' },
     next: { kind: 'restore', label: '恢复草稿', prompt: 'mv .done/x inbox/x' },
     restore: "把已出队的草稿移回 inbox，再继续 groom：\nmv '/repo/postmortems/inbox/.done/draft-restore' '/repo/postmortems/inbox/draft-restore'",
+    undo: { available: false, prompt: '' },
   })
   const restoreQueue = Object.assign({}, SEDIMENT, {
     prompts: Object.assign({}, SEDIMENT.prompts, { restore: restoreDraft.restore }),

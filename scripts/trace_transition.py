@@ -196,14 +196,20 @@ def sedimented_block(doc: dict, state: str, case_id: str, inbox_path: str) -> st
     current = doc.get("sedimented") if isinstance(doc.get("sedimented"), dict) else {}
     merged = dict(current)
     merged["state"] = state
-    if case_id:
-        merged["case_id"] = case_id
+    if state == "none":
+        # 「未沉淀 / 已撤回」不能留着上一次的落点：trace_entry_activity 会按 case_id
+        # 把这份 trace 算成沉淀过那条 case；inbox_path 也一样指向一份不存在的草稿。
+        merged["case_id"] = ""
+        merged["inbox_path"] = ""
     else:
-        merged.setdefault("case_id", "")
-    if inbox_path:
-        merged["inbox_path"] = inbox_path
-    else:
-        merged.setdefault("inbox_path", "")
+        if case_id:
+            merged["case_id"] = case_id
+        else:
+            merged.setdefault("case_id", "")
+        if inbox_path:
+            merged["inbox_path"] = inbox_path
+        else:
+            merged.setdefault("inbox_path", "")
     order = ["state", "case_id", "inbox_path"]
     keys = order + [k for k in merged if k not in order]
     body = "".join(f"  {k}: {json.dumps('' if merged.get(k) is None else str(merged.get(k)), ensure_ascii=False)}\n"

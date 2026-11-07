@@ -138,7 +138,7 @@ def write_assessment(repo: Path, key: str, commit: str, decision: str = "new_pat
 
 
 def write_trace(repo: Path, sid: str, state: str = "none", inbox_path: str = "",
-                case_id: str = "", harness_session=None) -> Path:
+                case_id: str = "", harness_session=None, status: str = "resolved") -> Path:
     """harness_session=None 时整个字段不写：主检出里还有这种旧 trace，读侧要当空值。"""
     traces = repo / "traces"
     traces.mkdir(exist_ok=True)
@@ -148,7 +148,7 @@ def write_trace(repo: Path, sid: str, state: str = "none", inbox_path: str = "",
         head += f'harness_session: "{harness_session}"\n'
     path.write_text(
         head
-        + 'status: resolved\n'
+        + f'status: {status}\n'
         + 'updated_at: "2026-11-01T10:00:00+08:00"\n'
         + "sedimented:\n"
         + f"  state: {state}\n"
@@ -315,6 +315,49 @@ class StateTest(SedimentCase):
         self.assertEqual(payload["primary"]["kind"], "pr")
         self.assertEqual(payload["counts"]["decided"], 1)
 
+    def test_undo_prompt_for_inbox_draft(self):
+        # 草稿还在 inbox、没有 PR：右列给「撤销沉淀」指令，带决定提示与 .undone 去向。
+        write_draft(self.repo)
+        write_assessment(self.repo, "2026-10-20-draft-a", fresh_commit(self.repo),
+                         decision="new_pattern")
+        row = self.draft(self.collect())
+        self.assertTrue(row["undo"]["available"])
+        self.assertIn("scripts/sediment_undo.py --draft-key 2026-10-20-draft-a", row["undo"]["prompt"])
+        self.assertIn("--apply", row["undo"]["prompt"])
+        self.assertIn("已有人决定（new_pattern）", row["undo"]["prompt"])
+        self.assertIn(".undone", row["undo"]["prompt"])
+
+    def test_undo_hidden_when_pr_exists(self):
+        write_draft(self.repo)
+        write_ledger(self.repo, target=GITHUB_TARGET,
+                     prs={"2026-10-20-draft-a": pr_entry(state="open")})
+        row = self.draft(self.collect())
+        self.assertEqual(row["state"], "pr_open")
+        self.assertFalse(row["undo"]["available"])
+        self.assertEqual(row["undo"]["prompt"], "")
+
+    def test_undo_prompt_says_diagnosis_status_is_untouched(self):
+        # 撤销只还原沉淀状态；诊断状态要改时去诊断面板「重新打开」，指令里写明边界。
+        write_draft(self.repo)
+        write_trace(self.repo, "2026-11-01-sediment", state="submitted",
+                    case_id="DRAFT-A", status="resolved",
+                    inbox_path="postmortems/inbox/2026-10-20-draft-a.case.yaml")
+        row = self.draft(self.collect())
+        self.assertTrue(row["undo"]["available"])
+        self.assertIn("不改诊断状态", row["undo"]["prompt"])
+        self.assertNotIn("--keep-status", row["undo"]["prompt"])
+
+    def test_undo_hidden_when_trace_already_promoted(self):
+        # 草稿还在 inbox 但 trace 已说升格（draft_left_behind）：该走收尾指令，不是撤销。
+        write_draft(self.repo)
+        write_trace(self.repo, "2026-11-01-sediment",
+                    state="knowledge", case_id="CASE-A",
+                    inbox_path="postmortems/inbox/2026-10-20-draft-a.case.yaml")
+        row = self.draft(self.collect())
+        self.assertEqual(row["state"], "done")
+        self.assertFalse(row["undo"]["available"])
+        self.assertEqual(row["undo"]["prompt"], "")
+
     def test_deferred_and_rejected(self):
         write_draft(self.repo, key="draft-defer", cid="DRAFT-D")
         write_assessment(self.repo, "draft-defer", fresh_commit(self.repo), decision="defer")
@@ -325,6 +368,37 @@ class StateTest(SedimentCase):
         self.assertEqual(self.draft(payload, "draft-reject")["state"], "rejected")
         self.assertEqual(self.draft(payload, "draft-defer")["next"]["kind"], "none")
         self.assertEqual(payload["counts"]["decided"], 0)
+
+    def test_undo_hidden_when_trace_says_promoted(self):
+        # trace 已升格、但知识库里找不到对应 case（missing_case）：撤销会抹掉升格指针，
+        # 交给知识库变更流程处理，不给撤销入口。
+        write_draft(self.repo)
+        write_trace(self.repo, "2026-11-01-sediment",
+                    state="knowledge", case_id="VLLM-ASC-99999",
+                    inbox_path="postmortems/inbox/2026-10-20-draft-a.case.yaml")
+        row = self.draft(self.collect())
+        self.assertEqual(row["source"]["mismatch"], "missing_case")
+        self.assertFalse(row["undo"]["available"])
+        self.assertEqual(row["undo"]["prompt"], "")
+
+    def test_undo_hidden_when_source_ambiguous(self):
+        write_draft(self.repo)
+        (inbox(self.repo) / "2026-10-20-draft-a.md").write_text(
+            "来源：traces/2026-11-01-a.yaml 与 traces/2026-11-02-b.yaml\n", encoding="utf-8")
+        write_trace(self.repo, "2026-11-01-a", state="submitted",
+                    inbox_path="postmortems/inbox/2026-10-20-draft-a.case.yaml")
+        row = self.draft(self.collect())
+        self.assertFalse(row["undo"]["available"])
+        self.assertEqual(row["undo"]["prompt"], "")
+
+    def test_undo_hidden_when_ledger_unreadable(self):
+        write_draft(self.repo)
+        path = inbox(self.repo) / ".groom" / "pr-state.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{not json", encoding="utf-8")
+        row = self.draft(self.collect())
+        self.assertFalse(row["undo"]["available"])
+        self.assertEqual(row["undo"]["prompt"], "")
 
     def test_orphan_sidecar_without_draft(self):
         write_draft(self.repo)
@@ -701,6 +775,7 @@ class ClosedDraftQueueTest(SedimentCase):
         self.assertEqual(row["next"]["label"], "恢复草稿")
         self.assertIn("mv ", row["next"]["prompt"])
         self.assertIn(".done", row["next"]["prompt"])
+        self.assertFalse(row["undo"]["available"])
 
     def test_pending_pr_does_not_report_trace_mismatch(self):
         write_case(self.repo, "knowledge/inference/vllm-ascend/interrupt/DRAFT-A.yaml",

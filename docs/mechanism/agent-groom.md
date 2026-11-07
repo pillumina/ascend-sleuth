@@ -274,6 +274,22 @@ approval_stale: false
 
 **为什么不做成 PR 门**：`traces/` 与 `postmortems/inbox/` 是 `.gitignore` 的运行时件，PR 与 CI 的检出里没有它们，marker 也不带 session id（指针在草稿头注释里）。塞进 `groom_recheck.py` 只能读到空目录，检查会退化成永远通过。这道检查只能落在本地，靠收尾顺序保证：先 `groom_recheck`，开 PR，合入后跑本步，最后 `groom_cleanup --post-merge`（清理会删 sidecar，而本步要读它）。`--post-merge` 跳过过期判定：合入后无法再对旧 base 重跑 groom，再过一次 stale 只会永远拦住清理；marker、内容绑定与索引检查仍照跑。
 
+### 3.7.1 撤销一次不成立的沉淀
+
+`scripts/sediment_undo.py --draft-key <key> [--apply]` 处理「草稿选错了」。默认只打印计划，`--apply` 才写。它做三件事：
+
+- 把还在 inbox、且 PR 台账里没有记录的草稿移进 `postmortems/inbox/.undone/`。移动不删除，移回即复活。
+- 删掉它的评估状态文件（`.groom/assessments/<key>.yaml`）。
+- 把来源 trace 的 `sedimented` 改回 `none`。trace 缺失或外部来源时跳过这一步；`--keep-trace` 时也不写。
+
+诊断状态（`status`）不动：撤销只还原 case 的沉淀状态，已收尾的单仍是收尾状态；想继续定位时，在诊断面板用「重新打开」。
+
+批量时重复给 `--draft-key`，脚本逐份建计划、逐份执行；某份被拒不会拦下其他份。另外往 `.groom/undo-log.jsonl` 逐份追加一行：评估 id、人决定的 `decision` / `by` / `at`、决定历史条数与草稿去向。评估正文（候选、理由）不留。`.undone/` 没有保留期，确认不再需要后手工删。
+
+它和 `reject` / `defer` 不是一回事：那两个是「认真看过但不采纳」，草稿与评估状态文件留在队列里，`submitted` 仍是事实。撤销是这份草稿本身被撤回，重新沉淀会从头开始，`none` 才是撤完的状态。
+
+有 PR 记录的草稿不撤销：PR 是外部事实，先在平台上处理它。来源 trace 已写成 `knowledge` / `archived` 的也拒绝：升格已经发生，牵动知识库与 PR，走知识库变更流程。
+
 ### 3.8 合入后
 
 合入后由主干 job 重建索引（`build_index.py` 的覆盖检查必须通过）；没有该 job 的部署按既有纪律在 main 上重建。`groom_recheck.py --post-merge` 可以在本地跑同一道覆盖检查。收尾与清理也在这一步：先 `groom_close_draft.py` 出队并回写 trace，再对每份 PR 用合入提交与它的第一个父提交跑 `groom_cleanup.py --post-merge`。
@@ -336,6 +352,7 @@ approval_stale: false
 | `scripts/groom_status.py:56` | 状态与新鲜度 |
 | `scripts/groom_recheck.py:449` | PR 合入前复核 |
 | `scripts/groom_close_draft.py` | 终态决定的收尾：trace 沉淀回写 + 草稿出队 |
+| `scripts/sediment_undo.py` | 撤销一次不成立的沉淀（支持批量）：草稿出队 + 评估状态文件清理 + trace 沉淀状态回 none |
 | `scripts/groom_common.py` | 草稿发现、状态读写、git 工具 |
 | `skills/knowledge-groom/SKILL.md` | 流程与判断规则 |
 | `skills/knowledge-groom/references/subagent-prompts.md` | 子 agent 提示词与返回格式 |

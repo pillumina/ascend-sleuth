@@ -105,6 +105,8 @@ def _scripts(root: Path):
             "pr": importlib.import_module("pr_status"),
             "ts": importlib.import_module("_trace_state"),
             "el": importlib.import_module("exec_log_path"),
+            # 撤销要与脚本读同一个来源 trace 判定：source_session_of 是唯一一份。
+            "gcd": importlib.import_module("groom_close_draft"),
         }
     except Exception as exc:
         raise SedimentError("E_SCRIPTS", f"读不到 scripts/ 下的判据脚本：{exc}") from exc
@@ -204,7 +206,7 @@ def _configured_ref(target: dict):
 
 
 def _trace_index(ts, traces: Path) -> list:
-    """全部轨迹的沉淀三字段 + 跳会话用的 harness 会话号。读不出的单跳过（队列不因一条坏 trace 空掉）。"""
+    """全部轨迹的沉淀状态、诊断状态与跳会话用的 harness 会话号。读不出的单跳过。"""
     rows = []
     try:
         entries = ts.load_traces(traces)
@@ -480,6 +482,28 @@ def _writeback(mismatch: str, session: str, case_id: str, draft_key: str = "") -
     return ("回写来源 trace：\n"
             f"python3 scripts/trace_transition.py {_q(session)} --field sedimented "
             f"--state knowledge --case-id {_q(case_id)} --json")
+
+
+def _undo_prompt(key: str, decision: str) -> str:
+    """撤销沉淀的指令。只给命令与边界，判断由执行的人做（先看计划、再加 --apply）。"""
+    lines = [
+        f"撤销这次沉淀：{key}。",
+        "先看计划（只读）：",
+        f"python3 scripts/sediment_undo.py --draft-key {_q(key)}",
+        "确认后执行：",
+        f"python3 scripts/sediment_undo.py --draft-key {_q(key)} --apply",
+    ]
+    if decision:
+        lines.append(f"注意：这份草稿已有人决定（{decision}）。撤销会清掉评估状态文件与该草稿的决定记录，"
+                     "评估 id 与决定摘要会写进 undo-log。")
+    lines.append("撤销只还原沉淀状态（sedimented 回 none），不改诊断状态；"
+                 "要回到进行中，在诊断面板用「重新打开」。")
+    lines.append("脚本的动作：")
+    lines.append("- 草稿移进 postmortems/inbox/.undone/（移回即复活）")
+    lines.append("- 删掉它的评估状态文件")
+    lines.append("- 来源 trace 的 sedimented 改回 none（trace 缺失或外部来源时跳过）")
+    lines.append("不动 knowledge/。")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------- 四条批次 prompt 与明细
@@ -859,7 +883,8 @@ def _target_fields(row: dict) -> dict:
 
 
 def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
-                  ledger: dict, trace_rows: list, kb_ids: set) -> dict:
+                  ledger: dict, trace_rows: list, kb_ids: set,
+                  session_of=None, ledger_error: str = "") -> dict:
     key = str(row.get("draft") or "")
     orphan = bool(row.get("orphan"))
     cases = []
@@ -913,6 +938,19 @@ def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
     source = _source(trace, done, promotion, kb_ids, draft_in_inbox)
     kind = NEXT_KIND.get(state, "none")
     pr = _pr_view(pr_entry)
+    # 撤销只在「草稿还在 inbox、还没提 PR、trace 也没说升格」时给：已出队的草稿走恢复流程，
+    # 已提 PR 的要先处理 PR，已升格的要动知识库与 PR——都不该由一次本地撤销带走。
+    # 来源 session 有歧义、或 PR 台账读坏时也不给：脚本在这两种情况下会拒绝，
+    # 按钮先承诺「能撤」没有意义。
+    ambiguous_source = False
+    if draft_in_inbox and not done and pr_entry is None and not ledger_error and session_of is not None:
+        try:
+            _session, _reason, ambiguous_source = session_of(draft)
+        except Exception:
+            ambiguous_source = True
+    undo_ok = bool(draft_in_inbox and not done and pr_entry is None
+                   and not ledger_error and not ambiguous_source
+                   and trace_state not in ("knowledge", "archived"))
     return {
         "key": key,
         "title": _title_of(gm, draft, key),
@@ -947,6 +985,11 @@ def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
         "next": {"kind": kind, "label": ("重新评估（继续 groom）" if state == "pr_closed" else ACTION_LABEL.get(kind, "")), "prompt": ""},
         "writeback": _writeback(source["mismatch"], source["sessionId"],
                                 promotion["caseId"], key),
+        "undo": {
+            "available": undo_ok,
+            "prompt": (_undo_prompt(key, str(human.get("decision") or ""))
+                       if undo_ok else ""),
+        },
     }
 
 
@@ -1031,6 +1074,7 @@ def _closed_record(root: Path, gm, key: str, close_entry: dict, draft, inbox: Pa
                  "prompt": ""},
         "writeback": _writeback(source["mismatch"], source["sessionId"],
                                 promotion["caseId"], key),
+        "undo": {"available": False, "prompt": ""},
     }
 
 
@@ -1157,7 +1201,9 @@ def collect(root, only: str = "") -> dict:
                     continue
                 # 台账里是一个坏值（不是对象）：保留孤儿行，至少让人看见评估残留。
         records.append(_draft_record(root, gm, row, drafts.get(key),
-                                     inbox, ledger, trace_rows, kb_ids))
+                                     inbox, ledger, trace_rows, kb_ids,
+                                     session_of=deps["gcd"].source_session_of,
+                                     ledger_error=ledger_error))
         seen.add(key)
     # 已出队、但 PR 还没走完的：一行不丢，状态由 PR 决定。
     for key, close_entry in close_index.items():
