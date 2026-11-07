@@ -15,7 +15,6 @@ target_ref 压过 origin/main 兜底）、CLI 的 ok:false 协议。
 
 import json
 import os
-import shutil
 import sys
 import tempfile
 import unittest
@@ -62,8 +61,6 @@ def init_repo(base: Path):
     write_case(repo, "knowledge/inference/vllm-ascend/interrupt/CASE-A.yaml",
                "CASE-A", title="HCCL timeout")
     (repo / "README.md").write_text("test\n", encoding="utf-8")
-    # 真实检出里有 trace-status.yaml：撤销指令要按词表判诊断是否终态（读不到就不提示重新打开）。
-    shutil.copy2(ROOT / "trace-status.yaml", repo / "trace-status.yaml")
     commit_all(repo, "base")
     git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
     return repo

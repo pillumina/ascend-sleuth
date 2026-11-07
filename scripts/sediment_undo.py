@@ -21,7 +21,7 @@
 # 为什么 trace 可以回 `none`：`groom_close_draft.py` 里那条纪律说 reject / defer 不改
 # trace——因为草稿确实提交过、只是没转正，改回 `none` 等于抹掉事实。撤销不同：草稿与
 # 评估状态文件一起撤回，重新沉淀会从头开始，`submitted` 已不成立，`none` 才是撤完的真实
-# 状态。撤掉的东西在 `.groom/undo-log.jsonl` 留一行（评估 id、人决定、草稿去向、诊断状态变化）。
+# 状态。撤掉的东西在 `.groom/undo-log.jsonl` 留一行（评估 id、人决定、草稿去向）。
 #
 # 边界：
 #   - 只处理还在 inbox 的草稿。已出队（`.done/`）的用「恢复草稿」流程；已升格的草稿

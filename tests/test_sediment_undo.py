@@ -373,7 +373,7 @@ class SedimentUndoTest(unittest.TestCase):
         self.assertFalse(payload["trace"]["written"])
         doc = load_yaml(trace)
         self.assertEqual(doc["sedimented"]["state"], "submitted")
-        # --keep-trace 是「完全不动 trace」：诊断状态也不重新打开。
+        # --keep-trace 是「完全不动 trace」：沉淀状态不回写，诊断状态本来也不动。
         self.assertEqual(doc["status"], "resolved")
 
     def test_directory_layout_moves_whole_folder(self):
