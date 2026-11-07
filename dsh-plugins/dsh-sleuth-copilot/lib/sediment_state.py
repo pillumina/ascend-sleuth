@@ -205,7 +205,7 @@ def _configured_ref(target: dict):
     return f"refs/remotes/{target['remote']}/{target['base']}"
 
 
-def _trace_index(ts, traces: Path, vocab=None) -> list:
+def _trace_index(ts, traces: Path) -> list:
     """全部轨迹的沉淀状态、诊断状态与跳会话用的 harness 会话号。读不出的单跳过。"""
     rows = []
     try:
@@ -216,14 +216,10 @@ def _trace_index(ts, traces: Path, vocab=None) -> list:
         doc = entry.get("doc") or {}
         sedimented = doc.get("sedimented")
         block = sedimented if isinstance(sedimented, dict) else {}
-        status = str(doc.get("status") or "")
         rows.append({
             "sessionId": str(entry.get("sessionId") or ""),
             "harnessSession": str(doc.get("harness_session") or "").strip(),
             "state": ts.sed_state(doc),
-            "status": status,
-            # 终态由 trace-status.yaml 判，不在面板里另写一份状态名。
-            "status_terminal": bool(vocab and ts.is_terminal(vocab, status)),
             "case_id": str(block.get("case_id") or block.get("caseId") or ""),
             # 两种写法都读：trace_transition 写 inbox_path，sediment_batch 写 inboxPath。
             "inbox_path": _posix(block.get("inbox_path") or block.get("inboxPath") or ""),
@@ -488,7 +484,7 @@ def _writeback(mismatch: str, session: str, case_id: str, draft_key: str = "") -
             f"--state knowledge --case-id {_q(case_id)} --json")
 
 
-def _undo_prompt(key: str, decision: str, trace_terminal: bool = False) -> str:
+def _undo_prompt(key: str, decision: str) -> str:
     """撤销沉淀的指令。只给命令与边界，判断由执行的人做（先看计划、再加 --apply）。"""
     lines = [
         f"撤销这次沉淀：{key}。",
@@ -500,9 +496,8 @@ def _undo_prompt(key: str, decision: str, trace_terminal: bool = False) -> str:
     if decision:
         lines.append(f"注意：这份草稿已有人决定（{decision}）。撤销会清掉评估状态文件与该草稿的决定记录，"
                      "评估 id 与决定摘要会写进 undo-log。")
-    if trace_terminal:
-        lines.append("这单已收尾，撤销会把诊断重新打开（status 回 in_progress）。"
-                     "只想撤草稿：在上面 --apply 那条命令末尾加 --keep-status。")
+    lines.append("撤销只还原沉淀状态（sedimented 回 none），不改诊断状态；"
+                 "要回到进行中，在诊断面板用「重新打开」。")
     lines.append("脚本的动作：")
     lines.append("- 草稿移进 postmortems/inbox/.undone/（移回即复活）")
     lines.append("- 删掉它的评估状态文件")
@@ -992,8 +987,7 @@ def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
                                 promotion["caseId"], key),
         "undo": {
             "available": undo_ok,
-            "prompt": (_undo_prompt(key, str(human.get("decision") or ""),
-                                    bool((trace or {}).get("status_terminal")))
+            "prompt": (_undo_prompt(key, str(human.get("decision") or ""))
                        if undo_ok else ""),
         },
     }
@@ -1164,11 +1158,7 @@ def collect(root, only: str = "") -> dict:
     except Exception as exc:
         raise SedimentError("E_GROOM", f"groom 状态计算失败：{exc}") from exc
     traces = Path(deps["el"].resolve_traces(root))
-    try:
-        vocab = ts.load_vocab(root)
-    except Exception:
-        vocab = {}
-    trace_rows = _trace_index(ts, traces, vocab)
+    trace_rows = _trace_index(ts, traces)
     try:
         kb_ids = set(ts.kb_case_meta(root))
     except Exception:

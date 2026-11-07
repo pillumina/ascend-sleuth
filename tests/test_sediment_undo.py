@@ -284,7 +284,7 @@ class SedimentUndoTest(unittest.TestCase):
         draft = write_flat_draft(self.repo, key, source_session="2026-11-01-demo")
         sidecar = write_sidecar(self.repo, key)
         trace = write_trace(self.repo, "2026-11-01-demo", status="resolved")
-        plan = su.build_plan(self.repo, self.inbox, self.repo / "traces", key, False, False)
+        plan = su.build_plan(self.repo, self.inbox, self.repo / "traces", key, False)
         trace.write_text(trace.read_text(encoding="utf-8").replace("status: resolved", "status: escalated"),
                          encoding="utf-8")
         args = types.SimpleNamespace(by="user", note="")
@@ -310,7 +310,7 @@ class SedimentUndoTest(unittest.TestCase):
         self.assertFalse((self.inbox / "draft-a.case.yaml").exists())
         self.assertTrue((self.inbox / "draft-b.case.yaml").is_file())
         self.assertFalse((self.inbox / "draft-c.case.yaml").exists())
-        self.assertEqual(load_yaml(self.repo / "traces" / "2026-11-01-a.yaml")["status"], "in_progress")
+        self.assertEqual(load_yaml(self.repo / "traces" / "2026-11-01-a.yaml")["status"], "resolved")
 
     def test_partial_move_rolls_back(self):
         # 平铺草稿有两个文件：第二个改名失败时，第一个要改回 inbox，草稿保持完整可重试。
@@ -375,7 +375,6 @@ class SedimentUndoTest(unittest.TestCase):
         self.assertEqual(doc["sedimented"]["state"], "submitted")
         # --keep-trace 是「完全不动 trace」：诊断状态也不重新打开。
         self.assertEqual(doc["status"], "resolved")
-        self.assertFalse(payload["trace"]["status_written"])
 
     def test_directory_layout_moves_whole_folder(self):
         key = "0f3a9c1e-6c1a-4a8e-9d0e-draft"
@@ -400,7 +399,8 @@ class SedimentUndoTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 2, proc.stdout)
         self.assertEqual(payload.get("code"), "E_NO_DRAFT")
 
-    def test_apply_reopens_terminal_diagnosis(self):
+    def test_apply_keeps_diagnosis_status(self):
+        # 撤销只还原沉淀状态：已收尾的诊断仍是 resolved，不写 transition 事件。
         key = "draft-a"
         draft = write_flat_draft(self.repo, key, source_session="2026-11-01-demo")
         sidecar = write_sidecar(self.repo, key)
@@ -412,24 +412,13 @@ class SedimentUndoTest(unittest.TestCase):
         self.assertFalse(sidecar.exists())
         doc = load_yaml(trace)
         self.assertEqual(doc["sedimented"]["state"], "none")
-        self.assertEqual(doc["status"], "in_progress")
-        self.assertEqual((doc.get("transitions") or [])[-1]["action"], "reopen")
-        self.assertEqual(payload["trace"]["status_from"], "resolved")
-        self.assertEqual(payload["trace"]["status_to"], "in_progress")
+        self.assertEqual(doc["status"], "resolved")
+        self.assertNotIn("transitions", doc)
+        self.assertNotIn("status_from", payload["trace"])
         log = json.loads((self.inbox / ".groom" / "undo-log.jsonl").read_text(encoding="utf-8").strip())
-        self.assertTrue(log["trace"]["status_written"])
-        self.assertEqual(log["trace"]["status_from"], "resolved")
+        self.assertNotIn("status_written", log["trace"])
 
-    def test_keep_status_keeps_terminal_diagnosis(self):
-        key = "draft-a"
-        write_flat_draft(self.repo, key, source_session="2026-11-01-demo")
-        trace = write_trace(self.repo, "2026-11-01-demo", status="resolved")
-        proc, payload = self.run_undo("--draft-key", key, "--apply", "--json", "--keep-status")
-        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-        self.assertEqual(load_yaml(trace)["status"], "resolved")
-        self.assertFalse(payload["trace"]["status_written"])
-
-    def test_in_progress_trace_is_not_reopened(self):
+    def test_in_progress_trace_stays_in_progress(self):
         key = "draft-a"
         write_flat_draft(self.repo, key, source_session="2026-11-01-demo")
         trace = write_trace(self.repo, "2026-11-01-demo", status="in_progress")
@@ -438,7 +427,7 @@ class SedimentUndoTest(unittest.TestCase):
         doc = load_yaml(trace)
         self.assertEqual(doc["status"], "in_progress")
         self.assertNotIn("transitions", doc)
-        self.assertFalse(payload["trace"]["status_written"])
+        self.assertNotIn("status_written", payload["trace"])
 
     def test_batch_plan_and_apply(self):
         for key, cid, sid in (("draft-a", "DRAFT-A", "2026-11-01-a"),
@@ -465,7 +454,7 @@ class SedimentUndoTest(unittest.TestCase):
         for sid in ("2026-11-01-a", "2026-11-01-b"):
             doc = load_yaml(self.repo / "traces" / f"{sid}.yaml")
             self.assertEqual(doc["sedimented"]["state"], "none")
-            self.assertEqual(doc["status"], "in_progress")
+            self.assertEqual(doc["status"], "resolved")
 
     def test_batch_refusal_does_not_block_others(self):
         write_flat_draft(self.repo, "draft-a", cid="DRAFT-A", source_session="2026-11-01-a")
@@ -488,7 +477,7 @@ class SedimentUndoTest(unittest.TestCase):
         self.assertEqual(payload["summary"], {"total": 2, "applied": 1, "failed": 1})
         self.assertFalse((self.inbox / "draft-a.case.yaml").exists())
         self.assertTrue((self.inbox / "draft-b.case.yaml").is_file())
-        self.assertEqual(load_yaml(self.repo / "traces" / "2026-11-01-a.yaml")["status"], "in_progress")
+        self.assertEqual(load_yaml(self.repo / "traces" / "2026-11-01-a.yaml")["status"], "resolved")
 
     def test_ambiguous_source_is_refused(self):
         key = "draft-a"

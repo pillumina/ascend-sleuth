@@ -4911,8 +4911,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           + '本批名单：' + names + '\n'
           + '先看计划（只读）：\npython3 scripts/sediment_undo.py ' + args + '\n'
           + '确认后执行：\npython3 scripts/sediment_undo.py ' + args + ' --apply\n'
-          + '脚本逐份处理；被拒的会跳过并报原因，不要绕过。已收尾的诊断撤销后会重新打开'
-          + '（status 回 in_progress）；只想撤草稿：在执行命令末尾加 --keep-status。'
+          + '脚本逐份处理；被拒的会跳过并报原因，不要绕过。撤销只还原沉淀状态，不改诊断状态；'
+          + '要回到进行中，在诊断面板用「重新打开」。'
         openPromptFallback(tr('sediment.undo.batchTitle'), text, tr('sediment.undo.batchSub'))
       }
 

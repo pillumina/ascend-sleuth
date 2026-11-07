@@ -339,25 +339,16 @@ class StateTest(SedimentCase):
         self.assertFalse(row["undo"]["available"])
         self.assertEqual(row["undo"]["prompt"], "")
 
-    def test_undo_prompt_mentions_reopen_for_terminal_trace(self):
-        # 草稿来自一单已收尾的诊断：撤销默认会重新打开，指令里要提示；--keep-status 是出口。
+    def test_undo_prompt_says_diagnosis_status_is_untouched(self):
+        # 撤销只还原沉淀状态；诊断状态要改时去诊断面板「重新打开」，指令里写明边界。
         write_draft(self.repo)
         write_trace(self.repo, "2026-11-01-sediment", state="submitted",
                     case_id="DRAFT-A", status="resolved",
                     inbox_path="postmortems/inbox/2026-10-20-draft-a.case.yaml")
         row = self.draft(self.collect())
         self.assertTrue(row["undo"]["available"])
-        self.assertIn("重新打开", row["undo"]["prompt"])
-        self.assertIn("--keep-status", row["undo"]["prompt"])
-
-    def test_undo_prompt_has_no_reopen_note_for_open_trace(self):
-        write_draft(self.repo)
-        write_trace(self.repo, "2026-11-01-sediment", state="submitted",
-                    case_id="DRAFT-A", status="in_progress",
-                    inbox_path="postmortems/inbox/2026-10-20-draft-a.case.yaml")
-        row = self.draft(self.collect())
-        self.assertTrue(row["undo"]["available"])
-        self.assertNotIn("重新打开", row["undo"]["prompt"])
+        self.assertIn("不改诊断状态", row["undo"]["prompt"])
+        self.assertNotIn("--keep-status", row["undo"]["prompt"])
 
     def test_undo_hidden_when_trace_already_promoted(self):
         # 草稿还在 inbox 但 trace 已说升格（draft_left_behind）：该走收尾指令，不是撤销。

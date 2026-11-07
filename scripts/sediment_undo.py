@@ -7,10 +7,9 @@
 # 「trace 说已交草稿、inbox 里没有」或「草稿没了、评估状态文件还在」这类不一致状态。
 # 本脚本把这几步按顺序做完，每步都写进报告。
 #
-# 为什么撤销要重新打开诊断：沉淀的前提是「这单已经有结论」；撤回沉淀通常也意味着结论还不
-# 成立（「感觉没定位完」）。所以来源 trace 是终态（resolved / escalated / archived）时默认
-# 走 `trace_transition.py --reopen` 回到 `in_progress`；只是撤掉投错的一份草稿、诊断仍算
-# 收尾时加 `--keep-status`。想连 trace 都不动时用 `--keep-trace`。
+# 撤销只还原 case 的沉淀状态：`sedimented` 回 `none`、草稿出队、评估状态文件删除；诊断状态
+# （`resolved` / `in_progress` 等）保持不变。想继续定位时，在诊断面板用「重新打开」。
+# 想连 trace 都不动时用 `--keep-trace`。
 #
 # 批量：`--draft-key` 可重复。逐份建计划、逐份执行，某份被拒不会拦下其他份。计划模式下
 # 只要有可撤销的份就退出 0（拒绝项照常列出）；执行模式下任一份失败退出 2。
@@ -63,7 +62,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _stdio import pin_utf8_stdio  # noqa: E402
 from _yaml import load_text  # noqa: E402
-from _trace_state import is_terminal, load_vocab  # noqa: E402
 from exec_log_path import log_lock, resolve_traces  # noqa: E402
 from groom_close_draft import source_session_of  # noqa: E402
 from groom_common import (  # noqa: E402
@@ -98,7 +96,7 @@ def _stamp() -> str:
 
 
 def _read_trace(path: Path) -> dict:
-    """读 trace 的沉淀状态、诊断状态与字节指纹（一次读盘，供计划与 CAS 用）。"""
+    """读 trace 的沉淀状态与字节指纹（一次读盘，供计划与 CAS 用）。"""
     raw = path.read_bytes()
     doc = load_text(raw.decode("utf-8-sig")) or {}
     if not isinstance(doc, dict):
@@ -110,11 +108,7 @@ def _read_trace(path: Path) -> dict:
         sedimented = sed.strip()
     else:
         sedimented = "none"
-    return {
-        "sedimented": sedimented,
-        "status": str(doc.get("status") or ""),
-        "sha256": hashlib.sha256(raw).hexdigest(),
-    }
+    return {"sedimented": sedimented, "sha256": hashlib.sha256(raw).hexdigest()}
 
 
 def _run_transition(root: Path, traces: Path, session: str, extra: list,
@@ -238,7 +232,7 @@ def _load_ledger(root: Path) -> dict:
 
 
 def build_plan(root: Path, inbox: Path, traces: Path, key: str,
-               keep_trace: bool, keep_status: bool) -> dict:
+               keep_trace: bool) -> dict:
     drafts = {draft.key: draft for draft in find_drafts(inbox)}
     draft = drafts.get(key)
     if draft is None:
@@ -267,7 +261,6 @@ def build_plan(root: Path, inbox: Path, traces: Path, key: str,
         raise Refused("E_ASSESSMENT", f"评估状态文件读不了，先确认它没坏再撤销：{exc}") from exc
     human = side_doc.get("human_decision") if isinstance(side_doc.get("human_decision"), dict) else {}
     trace = {"session": "", "path": "", "from": "none", "to": "none", "action": "skip",
-             "status_from": "", "status_to": "", "status_action": "skip",
              "sha256": "", "warnings": []}
     session, reason, ambiguous = "", "", False
     try:
@@ -292,11 +285,6 @@ def build_plan(root: Path, inbox: Path, traces: Path, key: str,
             except Exception as exc:
                 raise Refused("E_TRACE", f"来源 trace 读不了，先确认它没坏再撤销：{exc}") from exc
             trace["from"] = snap["sedimented"]
-            trace["status_from"] = snap["status"]
-            try:
-                vocab = load_vocab(root)
-            except Exception as exc:
-                raise Refused("E_SCHEMA", f"读不到 trace-status.yaml，不能判诊断状态：{exc}") from exc
             if snap["sedimented"] == "none":
                 trace["warnings"].append("来源 trace 已经是未沉淀，不需要回写沉淀状态")
             elif snap["sedimented"] in ("knowledge", "archived"):
@@ -307,12 +295,7 @@ def build_plan(root: Path, inbox: Path, traces: Path, key: str,
             else:
                 trace["action"] = "write"
 
-            if keep_status:
-                trace["warnings"].append("按 --keep-status 保持诊断状态")
-            elif is_terminal(vocab, snap["status"]):
-                trace["status_action"] = "reopen"
-                trace["status_to"] = "in_progress"
-            if trace["action"] == "write" or trace["status_action"] == "reopen":
+            if trace["action"] == "write":
                 trace["sha256"] = snap["sha256"]
     return {
         "root": root, "inbox": inbox, "traces": traces, "key": key,
@@ -360,10 +343,6 @@ def describe_plan(root: Path, plan: dict, stamp: str, apply: bool,
             lines.append(f"- 来源 trace：{trace['session']} 的 sedimented {trace['from']} → none")
         else:
             lines.append(f"- 来源 trace：{trace['session']}（沉淀状态不写回）")
-        if trace["status_action"] == "reopen":
-            lines.append(f"- 诊断状态：{trace['status_from'] or '未知'} → in_progress（重新打开）")
-        elif trace["status_from"]:
-            lines.append(f"- 诊断状态：{trace['status_from']}（保持不变）")
     lines.append(f"- 草稿去向：{_rel(root, plan['inbox'] / UNDONE_DIR)}/{stamp}-{sanitize_key(key)}/")
     for warning in trace.get("warnings") or []:
         lines.append("- 注意：" + warning)
@@ -382,9 +361,7 @@ def _apply_plan(root: Path, inbox: Path, traces: Path, plan: dict,
     assessment_deleted = False
     trace = plan["trace"]
     trace_result = {"session": trace["session"], "from": trace["from"],
-                    "to": trace["from"], "written": False,
-                    "status_from": trace["status_from"],
-                    "status_to": trace["status_from"], "status_written": False}
+                    "to": trace["from"], "written": False}
     try:
         # 目录级锁包住整段：计划与执行之间可能另一个 groom 写了新评估，或另一个
         # 撤销/收尾把草稿移走。拿到锁后先重验草稿还在，再按 trace → 草稿 → 评估状态文件
@@ -407,21 +384,10 @@ def _apply_plan(root: Path, inbox: Path, traces: Path, plan: dict,
                               "评估状态文件在计划之后出现或被改过（可能有另一个 groom 在写），"
                               "先重新跑一次计划")
 
-            # 先重新打开诊断，再回写沉淀状态：前者失败时草稿与 trace 都还在原状态；
-            # 若反过来，沉淀状态已回 none 而诊断还停在终态，重跑会因草稿已出队而卡住。
-            cur_sha = trace["sha256"]
-            if trace["status_action"] == "reopen":
-                payload = _run_transition(
-                    root, traces, trace["session"], ["--reopen"], cur_sha, args.by,
-                    "重新打开诊断")
-                cur_sha = str(((payload.get("current") or {}).get("sha256")) or "")
-                done.append("诊断状态重新打开")
-                trace_result["status_to"] = "in_progress"
-                trace_result["status_written"] = True
             if trace["action"] == "write":
                 _run_transition(
                     root, traces, trace["session"],
-                    ["--field", "sedimented", "--state", "none"], cur_sha, args.by,
+                    ["--field", "sedimented", "--state", "none"], trace["sha256"], args.by,
                     "来源 trace 回写")
                 done.append("来源 trace 回写 none")
                 trace_result["to"] = "none"
@@ -435,7 +401,6 @@ def _apply_plan(root: Path, inbox: Path, traces: Path, plan: dict,
                 "layout": plan["draft"].layout,
                 "source_trace": trace["session"],
                 "previous_sedimented": trace["from"],
-                "previous_status": trace["status_from"],
                 "note": args.note,
             }
             moved_to = _move_draft(root, inbox, plan["draft"], stamp, meta)
@@ -459,10 +424,7 @@ def _apply_plan(root: Path, inbox: Path, traces: Path, plan: dict,
                 "moved_to": _rel(root, moved_to),
                 "trace": {"session": trace["session"],
                           "from": trace["from"], "to": trace_result["to"],
-                          "written": trace_result["written"],
-                          "status_from": trace_result["status_from"],
-                          "status_to": trace_result["status_to"],
-                          "status_written": trace_result["status_written"]},
+                          "written": trace_result["written"]},
                 "assessment": {
                     "path": sidecar_rel,
                     "assessment_id": str(plan["side_doc"].get("assessment_id") or ""),
@@ -497,10 +459,6 @@ def print_apply_result(result: dict) -> None:
     print(f"- 来源 trace：{trace['session'] or '未记录'}"
           + (f" 的 sedimented {trace['from']} → none" if trace["written"]
              else "（沉淀状态未回写）"))
-    if trace["status_written"]:
-        print(f"- 诊断状态：{trace['status_from'] or '未知'} → in_progress（重新打开）")
-    elif trace["session"]:
-        print(f"- 诊断状态：{trace['status_from'] or '未知'}（保持不变）")
     print("- 评估状态文件：" + ("已删除" if result["assessmentDeleted"] else "没有"))
     print(f"- undo-log：{result['undoLog']}")
     for warning in result["warnings"]:
@@ -517,9 +475,7 @@ def run(argv=None) -> int:
     ap.add_argument("--traces", default=None, help="traces 目录（默认由主检出解析）")
     ap.add_argument("--apply", action="store_true", help="执行；不带时只打印计划")
     ap.add_argument("--keep-trace", action="store_true",
-                    help="不动来源 trace（沉淀状态与诊断状态都不写；手工修过 trace 后重跑时用）")
-    ap.add_argument("--keep-status", action="store_true",
-                    help="只撤草稿，不重新打开已收尾的诊断")
+                    help="不回写来源 trace 的沉淀状态（手工修过 trace 后重跑时用）")
     ap.add_argument("--by", default="user", choices=["user", "agent", "cli"], help="undo-log 里记谁做的")
     ap.add_argument("--note", default="", help="写进 undo-log 的备注")
     ap.add_argument("--json", action="store_true", help="输出 JSON（机器可读）")
@@ -558,7 +514,7 @@ def run(argv=None) -> int:
 
     key = keys[0]
     try:
-        plan = build_plan(root, inbox, traces, key, args.keep_trace, args.keep_status)
+        plan = build_plan(root, inbox, traces, key, args.keep_trace)
     except Refused as exc:
         return fail(exc.code, exc.message, exc.done)
     except Exception as exc:
@@ -599,7 +555,7 @@ def _run_batch(args, root: Path, inbox: Path, traces: Path, keys: list,
         results, plans = [], {}
         for key in keys:
             try:
-                plan = build_plan(root, inbox, traces, key, args.keep_trace, args.keep_status)
+                plan = build_plan(root, inbox, traces, key, args.keep_trace)
                 plans[key] = plan
                 results.append(plan_report(root, inbox, plan, stamp))
             except Refused as exc:
@@ -632,7 +588,7 @@ def _run_batch(args, root: Path, inbox: Path, traces: Path, keys: list,
     applied = 0
     for key in keys:
         try:
-            plan = build_plan(root, inbox, traces, key, args.keep_trace, args.keep_status)
+            plan = build_plan(root, inbox, traces, key, args.keep_trace)
             result = _apply_plan(root, inbox, traces, plan, stamp, args)
             applied += 1
             results.append(dict(result, draft=key))
