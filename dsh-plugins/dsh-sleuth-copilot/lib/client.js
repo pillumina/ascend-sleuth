@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.17.0'
+    const PLUGIN_VERSION = '0.18.0'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。
@@ -322,7 +322,7 @@ window.__ModuleLoader__.load({
       'sediment.undo.action': '撤销沉淀',
       'sediment.undo.title': '撤销这次沉淀',
       'sediment.undo.sub': '面板不删草稿。这条指令填进输入框，由会话里的 agent 执行。',
-      'sediment.undo.hint': '草稿还在 inbox、没有 PR 记录、来源 trace 没升格时才能撤销',
+      'sediment.undo.hint': '草稿还在 inbox、PR 没提过或已关闭、来源 trace 没升格时才能撤销',
       'sediment.undo.batchAction': '撤销可撤销的 {n} 份',
       'sediment.undo.batchTitle': '批量撤销沉淀',
       'sediment.undo.batchSub': '范围 = 当前列表（筛选与搜索词）。填入后从下面两条命令里各删掉不想撤的 --draft-key 再发送。',
@@ -747,7 +747,7 @@ window.__ModuleLoader__.load({
       'sediment.undo.action': 'Undo sediment',
       'sediment.undo.title': 'Undo this sediment',
       'sediment.undo.sub': 'The panel does not delete drafts. Fill this instruction into the composer and the agent in this session will run it.',
-      'sediment.undo.hint': 'Only available while the draft is still in the inbox, has no PR, and its trace is not promoted',
+      'sediment.undo.hint': 'Only available while the draft is still in the inbox, its PR is closed or absent, and its trace is not promoted',
       'sediment.undo.batchAction': 'Undo {n} undoable drafts',
       'sediment.undo.batchTitle': 'Undo sediment in batch',
       'sediment.undo.batchSub': 'Scope = the current list (filter and search). Before sending, remove the keys you do not want from both commands in the composer.',

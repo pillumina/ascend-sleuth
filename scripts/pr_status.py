@@ -9,7 +9,8 @@
 # 它做什么：
 #   1. 台账读写（`<inbox>/.groom/pr-state.json`，共享 inbox，同一克隆的 worktree 共用）；
 #   2. 列远端并识别平台（`--list-targets`，不探测网络）；
-#   3. 写目标与 PR 记录（`--set-target` / `--set` / `--mark`）；
+#   3. 写目标与 PR 记录（`--set-target` / `--set` / `--mark`）；删掉一条已关闭的
+#      PR 记录（`--forget`，只有 `closed` 可以删，撤销沉淀时用）；
 #   4. 按 PR URL 的 host 查状态（`--check` / `--check-all`）。状态只由平台查询或人手确认
 #      更新，不由「分支是否存在」「commit 是否在 main」推断（设计 5.6）。
 #
@@ -42,6 +43,7 @@
 #   python3 scripts/pr_status.py --root <repo> --set --draft <key> --platform gitcode \
 #       --repo owner/repo --number 418 --url <url> [--remote origin]
 #   python3 scripts/pr_status.py --root <repo> --mark --draft <key> --state merged
+#   python3 scripts/pr_status.py --root <repo> --forget --draft <key>
 #   python3 scripts/pr_status.py --root <repo> --check --draft <key>
 #   python3 scripts/pr_status.py --root <repo> --check-all
 #   python3 scripts/pr_status.py --root <repo> --list-platforms
@@ -105,6 +107,14 @@ class CasConflict(LedgerError):
         super().__init__(f"台账已被改动：expect {expected or '（文件不存在）'}，实际 {actual or '（文件不存在）'}")
         self.expected = expected
         self.actual = actual
+
+
+class PrRecordError(RuntimeError):
+    """按请求改动一份 PR 记录被拒（记录不存在 / 状态不是 closed）。带协议码。"""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
 
 
 # ---------------------------------------------------------------- 台账：路径 / 读 / 原子写 + CAS
@@ -193,6 +203,39 @@ def save_ledger(root, data: dict, expect_sha=None) -> str:
     if written != expected:
         raise LedgerError("台账写后校验失败（磁盘内容与本次序列化不一致）")
     return written
+
+
+def forget_pr(root, key: str, expect_sha=None) -> dict:
+    """删掉一份草稿的 PR 台账记录；返回被删掉的记录与新文件哈希。
+
+    只有 `state: closed` 的记录可以删：PR 关闭后这次提交流程已经结束，本地再留着它只会让
+    队列继续显示「PR 已关闭」、挡住撤销。`open` / `unknown` 还可能变成合入，`merged` 已有
+    knowledge/ 里的落点——删掉记录会让队列与审计失去依据，都拒绝。
+
+    写前按文件字节 sha256 做 CAS（`expect_sha` 显式给的时候用调用方的令牌，否则用本次读到
+    的那一版），两个写者并发时后写者不会静默覆盖先写者。记录不存在抛 `PrRecordError`
+    （E_NOT_FOUND），状态不是 closed 抛 `PrRecordError`（E_PR_ACTIVE），读写失败照旧抛
+    `LedgerError` / `CasConflict`。
+    """
+    key = str(key or "").strip()
+    if not key:
+        raise PrRecordError("E_ARGS", "--forget 需要 --draft")
+    before = ledger_sha256(root)
+    data = load_ledger(root)
+    pr = data["prs"].get(key)
+    if not isinstance(pr, dict):
+        raise PrRecordError("E_NOT_FOUND", f"台账里没有这份草稿的 PR 记录：{key}")
+    state = str(pr.get("state") or "unknown").lower()
+    if state not in STATES:
+        state = "unknown"
+    if state != "closed":
+        raise PrRecordError(
+            "E_PR_ACTIVE",
+            f"这份草稿的 PR 是 {state}，不能删记录：只有已关闭（closed）的 PR 才不再拦撤销。"
+            "PR 仍是外部事实，先在平台上处理它；状态还没确认就先跑 --check。")
+    del data["prs"][key]
+    digest = save_ledger(root, data, expect_sha=before if expect_sha is None else expect_sha)
+    return {"draft": key, "pr": pr, "sha256": digest}
 
 
 # ---------------------------------------------------------------- 远端 URL / 平台适配器
@@ -1134,6 +1177,21 @@ def cmd_mark(root, args) -> int:
     return _ok({"draft": draft, "pr": entry, "sha256": digest})
 
 
+def cmd_forget(root, args) -> int:
+    draft = str(args.draft or "").strip()
+    if not draft:
+        return _arg_fail("--forget 需要 --draft")
+    try:
+        result = forget_pr(root, draft, expect_sha=args.expect_sha256)
+    except PrRecordError as exc:
+        return _fail(exc.code, str(exc))
+    except CasConflict as exc:
+        return _fail("E_CAS", str(exc))
+    except LedgerError as exc:
+        return _fail("E_LEDGER", str(exc), extra={"write_failed": True})
+    return _ok(result)
+
+
 def cmd_check(root, args) -> int:
     draft = str(args.draft or "").strip()
     if not draft:
@@ -1312,7 +1370,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--json-lines", action="store_true", dest="json_lines",
                     help="配合 --check-all：每查完一条输出一行 JSON，最后输出汇总行（契约见文件头）")
     ap.add_argument("--expect-sha256", default=None,
-                    help="写前 CAS 令牌：--set-target / --set / --mark / --check 用台账 sha256，"
+                    help="写前 CAS 令牌：--set-target / --set / --mark / --forget / --check 用台账 sha256，"
                          "--migrate / --set-sync 用 settings 的 sha256")
     group = ap.add_mutually_exclusive_group()
     group.add_argument("--list-targets", action="store_true", help="列远端、平台与推荐目标")
@@ -1322,6 +1380,7 @@ def build_parser() -> argparse.ArgumentParser:
                        help="写 settings 的 sync 段")
     group.add_argument("--set", action="store_true", dest="set_pr", help="写/覆盖一份草稿的 PR 记录")
     group.add_argument("--mark", action="store_true", help="人手确认 PR 状态")
+    group.add_argument("--forget", action="store_true", help="删掉一份已关闭的 PR 记录（其余状态拒绝）")
     group.add_argument("--check", action="store_true", help="按平台查一份 PR 的状态")
     group.add_argument("--check-all", action="store_true", dest="check_all", help="查所有 open/unknown 的 PR")
     group.add_argument("--list-platforms", action="store_true", dest="list_platforms",
@@ -1377,6 +1436,8 @@ def main(argv=None) -> int:
             return cmd_set(root, args)
         if args.mark:
             return cmd_mark(root, args)
+        if args.forget:
+            return cmd_forget(root, args)
         if args.check:
             return cmd_check(root, args)
         if args.check_all:

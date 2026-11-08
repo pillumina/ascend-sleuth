@@ -215,7 +215,7 @@ python3 scripts/groom_recheck.py --pr-body-file <pr-body.md> \
 
 `groom_recheck.py` 是确定性检查，不需要问用户；直接跑，失败时按原因重跑 groom、重做批准或补 marker。
 
-**PR 开完后的本地台账写点**：每份草稿开完 PR 后用 `python3 scripts/pr_status.py --root . --set --draft <key> --platform <platform> --repo <owner/repo> --number <n> --url <url> --remote <remote>` 写进共享 inbox 的 `.groom/pr-state.json`；不要手编 JSON。查合入状态用 `--check`，没有适配器时用 `--mark` 手动确认。
+**PR 开完后的本地台账写点**：每份草稿开完 PR 后用 `python3 scripts/pr_status.py --root . --set --draft <key> --platform <platform> --repo <owner/repo> --number <n> --url <url> --remote <remote>` 写进共享 inbox 的 `.groom/pr-state.json`；不要手编 JSON。查合入状态用 `--check`，没有适配器时用 `--mark` 手动确认。PR 被关闭、这次沉淀要撤回时，撤销脚本会清掉这条记录；单独清理用 `python3 scripts/pr_status.py --root . --forget --draft <key>`（只允许 `closed`）。
 
 - `assessed_commit` 必须真实存在且是 base 的祖先；评估后相关 `knowledge/` 变了 → **过期**，重跑 groom。
 - marker 还必须带 `schema: groom-pr/v2`、`assessment_id`、`assessed_content_sha256` 以及人的

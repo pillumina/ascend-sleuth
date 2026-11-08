@@ -484,7 +484,19 @@ def _writeback(mismatch: str, session: str, case_id: str, draft_key: str = "") -
             f"--state knowledge --case-id {_q(case_id)} --json")
 
 
-def _undo_prompt(key: str, decision: str) -> str:
+def _pr_label(pr) -> str:
+    """台账里 PR 的一行身份：编号 + 地址；两项都可能缺（旧记录、手改过）。"""
+    if not isinstance(pr, dict):
+        return ""
+    parts = []
+    if pr.get("number") not in (None, ""):
+        parts.append("#" + str(pr.get("number")))
+    if pr.get("url"):
+        parts.append(str(pr.get("url")))
+    return " ".join(parts)
+
+
+def _undo_prompt(key: str, decision: str, pr=None) -> str:
     """撤销沉淀的指令。只给命令与边界，判断由执行的人做（先看计划、再加 --apply）。"""
     lines = [
         f"撤销这次沉淀：{key}。",
@@ -493,6 +505,11 @@ def _undo_prompt(key: str, decision: str) -> str:
         "确认后执行：",
         f"python3 scripts/sediment_undo.py --draft-key {_q(key)} --apply",
     ]
+    if pr:
+        checked = str(pr.get("checked_at") or "") or "未记录"
+        lines.append(f"台账里这份草稿的 PR 已关闭（{_pr_label(pr)}，上次确认 {checked}）："
+                     "撤销会把这条 PR 记录一并清掉，PR 本身在平台上不动。"
+                     "如果 PR 后来又打开了，先跑 pr_status.py --check 更新状态，再撤销。")
     if decision:
         lines.append(f"注意：这份草稿已有人决定（{decision}）。撤销会清掉评估状态文件与该草稿的决定记录，"
                      "评估 id 与决定摘要会写进 undo-log。")
@@ -502,6 +519,8 @@ def _undo_prompt(key: str, decision: str) -> str:
     lines.append("- 草稿移进 postmortems/inbox/.undone/（移回即复活）")
     lines.append("- 删掉它的评估状态文件")
     lines.append("- 来源 trace 的 sedimented 改回 none（trace 缺失或外部来源时跳过）")
+    if pr:
+        lines.append("- 清掉台账里这条已关闭的 PR 记录（PR 身份写进 undo-log）")
     lines.append("不动 knowledge/。")
     return "\n".join(lines)
 
@@ -938,17 +957,20 @@ def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
     source = _source(trace, done, promotion, kb_ids, draft_in_inbox)
     kind = NEXT_KIND.get(state, "none")
     pr = _pr_view(pr_entry)
-    # 撤销只在「草稿还在 inbox、还没提 PR、trace 也没说升格」时给：已出队的草稿走恢复流程，
-    # 已提 PR 的要先处理 PR，已升格的要动知识库与 PR——都不该由一次本地撤销带走。
+    # 撤销只在「草稿还在 inbox、PR 没提过或已关闭、trace 也没说升格」时给：已出队的草稿走
+    # 恢复流程；PR 还开着或已合入的要先处理 PR，已升格的要动知识库与 PR——都不该由一次本地
+    # 撤销带走。PR 记录是 closed 时允许撤销，脚本会一并清掉这条台账记录。
     # 来源 session 有歧义、或 PR 台账读坏时也不给：脚本在这两种情况下会拒绝，
     # 按钮先承诺「能撤」没有意义。
+    pr_closed = pr_entry is not None and _pr_state(pr_entry) == "closed"
+    undo_pr_ok = pr_entry is None or pr_closed
     ambiguous_source = False
-    if draft_in_inbox and not done and pr_entry is None and not ledger_error and session_of is not None:
+    if draft_in_inbox and not done and undo_pr_ok and not ledger_error and session_of is not None:
         try:
             _session, _reason, ambiguous_source = session_of(draft)
         except Exception:
             ambiguous_source = True
-    undo_ok = bool(draft_in_inbox and not done and pr_entry is None
+    undo_ok = bool(draft_in_inbox and not done and undo_pr_ok
                    and not ledger_error and not ambiguous_source
                    and trace_state not in ("knowledge", "archived"))
     return {
@@ -987,7 +1009,8 @@ def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
                                 promotion["caseId"], key),
         "undo": {
             "available": undo_ok,
-            "prompt": (_undo_prompt(key, str(human.get("decision") or ""))
+            "prompt": (_undo_prompt(key, str(human.get("decision") or ""),
+                                    pr_entry if pr_closed else None)
                        if undo_ok else ""),
         },
     }

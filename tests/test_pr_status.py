@@ -597,6 +597,49 @@ class FlowTest(RepoCase):
         self.assertFalse(payload["ok"])
         self.assertEqual(payload["error"]["code"], "E_NOT_FOUND")
 
+    def test_forget_closed_record_removes_it(self):
+        self._set_pr()
+        run_cli("--root", str(self.repo), "--mark", "--draft", "draft-a", "--state", "closed")
+        code, payload = run_cli("--root", str(self.repo), "--forget", "--draft", "draft-a")
+        self.assertEqual(code, 0, payload)
+        self.assertTrue(payload["ok"], payload)
+        self.assertEqual(payload["pr"]["state"], "closed")
+        self.assertNotIn("draft-a", pr.load_ledger(self.repo)["prs"])
+
+    def test_forget_refuses_unclosed_record(self):
+        # open / unknown / merged 都还拦撤销；删掉记录会让队列与审计失去依据。
+        self._set_pr()
+        code, payload = run_cli("--root", str(self.repo), "--forget", "--draft", "draft-a")
+        self.assertEqual(code, 0)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error"]["code"], "E_PR_ACTIVE")
+        self.assertIn("draft-a", pr.load_ledger(self.repo)["prs"])
+
+        run_cli("--root", str(self.repo), "--mark", "--draft", "draft-a", "--state", "merged")
+        code, payload = run_cli("--root", str(self.repo), "--forget", "--draft", "draft-a")
+        self.assertEqual(code, 0)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error"]["code"], "E_PR_ACTIVE")
+        self.assertIn("draft-a", pr.load_ledger(self.repo)["prs"])
+
+    def test_forget_missing_record_is_not_found(self):
+        code, payload = run_cli("--root", str(self.repo), "--forget", "--draft", "nope")
+        self.assertEqual(code, 0)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error"]["code"], "E_NOT_FOUND")
+
+    def test_forget_respects_stale_cas_token(self):
+        self._set_pr()
+        run_cli("--root", str(self.repo), "--mark", "--draft", "draft-a", "--state", "closed")
+        stale = pr.ledger_sha256(self.repo)
+        self._set_pr(draft="draft-b", number=2)
+        code, payload = run_cli("--root", str(self.repo), "--forget", "--draft", "draft-a",
+                                "--expect-sha256", stale)
+        self.assertEqual(code, 0)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error"]["code"], "E_CAS")
+        self.assertIn("draft-a", pr.load_ledger(self.repo)["prs"])
+
     def test_check_without_adapter_writes_unknown_and_keeps_pr(self):
         self._set_pr(url="https://example.com/o/r/pulls/1", platform="unknown")
         code, payload = run_cli("--root", str(self.repo), "--check", "--draft", "draft-a")

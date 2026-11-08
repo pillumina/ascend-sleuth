@@ -1654,7 +1654,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   view = await t.settle()
   const undoBtn = findButtonContains(view, '撤销沉淀')
   expect('撤销沉淀：没有 PR 的草稿给入口', !!undoBtn, view.text.slice(-200))
-  expect('撤销沉淀：入口带条件说明', !!undoBtn && undoBtn.props.title === '草稿还在 inbox、没有 PR 记录、来源 trace 没升格时才能撤销',
+  expect('撤销沉淀：入口带条件说明', !!undoBtn && undoBtn.props.title === '草稿还在 inbox、PR 没提过或已关闭、来源 trace 没升格时才能撤销',
     undoBtn ? String(undoBtn.props.title) : 'missing')
   expect('撤销沉淀：只有一份可撤销时不出批量入口', !findButtonContains(view, '撤销可撤销的'),
     view.text.slice(-200))
@@ -1667,6 +1667,42 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   await t.settle()
   expect('撤销沉淀：填入输入框', t.lastDraft().includes('sediment_undo.py')
     && t.lastDraft().includes('--apply'), t.lastDraft().slice(0, 160))
+}
+
+{
+  // 撤销沉淀：PR 已关闭的草稿也给入口（撤销会清掉台账记录，PR 本身在平台上不动）。
+  const closedPrDraft = Object.assign({}, SEDIMENT.drafts[0], {
+    key: '2026-10-30-pd-oom', title: 'PD 分离 prefill OOM', state: 'pr_closed',
+    stage: 'PR 已关闭', stageTone: 'bad',
+    pr: {
+      number: 431, url: 'https://github.com/pillumina/ascend-sleuth/pull/431',
+      platform: 'github', state: 'closed', source: 'platform', checkedAt: '2026-11-07T10:00:00+08:00',
+    },
+    next: { kind: 'groom', label: '重新评估（继续 groom）', prompt: '继续 groom 的批次指令' },
+    undo: { available: true, prompt: '撤销这次沉淀：2026-10-30-pd-oom。\n台账里这份草稿的 PR 已关闭（#431）；撤销会把这条 PR 记录一并清掉。' },
+  })
+  const closedPrQueue = Object.assign({}, SEDIMENT, {
+    drafts: [closedPrDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 0, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'groom', label: '重新评估（继续 groom）', prompt: '继续 groom 的批次指令' },
+    history: [],
+  })
+  const t = await mount('recent', { sediment: closedPrQueue, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  expect('撤销沉淀：PR 已关闭的行在队列里', view.text.includes('PR 已关闭'), view.text.slice(-200))
+  click(byClass(view, 'scp-sed-row')[0])
+  view = await t.settle()
+  expect('撤销沉淀：PR 已关闭的草稿给入口', !!findButtonContains(view, '撤销沉淀'), view.text.slice(-200))
+  expect('撤销沉淀：详情显示已关闭的 PR', view.text.includes('#431'), view.text.slice(-300))
+  click(findButtonContains(view, '撤销沉淀'))
+  view = await t.settle()
+  expect('撤销沉淀：指令说明台账记录会被清掉', view.text.includes('台账') && view.text.includes('清'),
+    view.text.slice(-400))
 }
 
 {

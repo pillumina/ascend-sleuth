@@ -336,6 +336,31 @@ class StateTest(SedimentCase):
         self.assertFalse(row["undo"]["available"])
         self.assertEqual(row["undo"]["prompt"], "")
 
+    def test_undo_available_when_pr_closed(self):
+        # 关闭的 PR 不再拦撤销；提示里写明台账记录会被清掉、PR 本身不动。
+        write_draft(self.repo)
+        write_ledger(self.repo, target=GITHUB_TARGET, prs={"2026-10-20-draft-a": pr_entry(
+            state="closed", number=431,
+            url="https://github.com/pillumina/ascend-sleuth/pull/431")})
+        row = self.draft(self.collect())
+        self.assertEqual(row["state"], "pr_closed")
+        self.assertTrue(row["undo"]["available"])
+        prompt = row["undo"]["prompt"]
+        self.assertIn("#431", prompt)
+        self.assertIn("已关闭", prompt)
+        self.assertIn("清掉", prompt)
+        self.assertIn("PR 本身在平台上不动", prompt)
+        self.assertIn("--apply", prompt)
+
+    def test_undo_hidden_when_pr_merged(self):
+        write_draft(self.repo)
+        write_ledger(self.repo, target=GITHUB_TARGET,
+                     prs={"2026-10-20-draft-a": pr_entry(state="merged")})
+        row = self.draft(self.collect())
+        self.assertEqual(row["state"], "pr_merged")
+        self.assertFalse(row["undo"]["available"])
+        self.assertEqual(row["undo"]["prompt"], "")
+
     def test_undo_prompt_says_diagnosis_status_is_untouched(self):
         # 撤销只还原沉淀状态；诊断状态要改时去诊断面板「重新打开」，指令里写明边界。
         write_draft(self.repo)
