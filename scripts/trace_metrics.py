@@ -672,8 +672,8 @@ def main():
                                      sorted(source_repos.items(), key=lambda x: -x[1])[:5])
             rows.append(
                 f"| 源码取用（source_analysis） | {source_events} 条；"
-                f"仓写法 {len(source_repos)} 种；版本写法 {len(source_refs)} 种"
-                f"（按原值计，别名不合并）"
+                f"仓写法 {len(source_repos)} 种、版本写法 {len(source_refs)} 种"
+                f"（两种都按原值计，别名不合并）"
                 + (f"；按仓 {repo_summary}" if repo_summary else "")
                 + " |")
             if source_fetch_exits:
