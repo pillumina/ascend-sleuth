@@ -15,9 +15,9 @@ name: kb-checks
 on:
   push:
     branches: [main]
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", "deployment.yaml", ".github/workflows/**", ".github/actions/**"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "source-catalog.d/**", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", "deployment.yaml", ".github/workflows/**", ".github/actions/**"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", "deployment.yaml", ".github/workflows/**", ".github/actions/**"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "source-catalog.d/**", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", "deployment.yaml", ".github/workflows/**", ".github/actions/**"]
 
 jobs:
   # ── 细网：这次改了哪一面 ──────────────────────────────────────────────────────
@@ -35,7 +35,7 @@ jobs:
   #   docs-index           ← docs（含 README；skill 名单取自 docs/_manifest.yaml，不扫 skills/）、code
   #   holdout-integrity    ← eval、code
   #   eval-scorecard       ← eval、knowledge（case↔夹具的负载类型覆盖算在 case 上）、code
-  #   unit-tests           ← scripts、tests（触发面不变；跑哪些测试按改动选，见强度让步）
+  #   unit-tests           ← scripts、tests、source-catalog.d（跑哪些测试按改动选，见强度让步）
   #   panel-checks         ← dsh-plugins、scripts、metrics、skills、docs、trace-status.yaml
   #   skill-self-contained ← skills（只 grep skills/，不执行脚本，故不吃 code）
   #   arena-gate-rule      ← scripts（跑的是 --self-test，用合成样本）
@@ -143,7 +143,7 @@ jobs:
           emit proposals  '^proposals/'
           emit eval       '^eval/'
           emit skills     '^skills/'
-          emit code       '^scripts/|^tests/'
+          emit code       '^scripts/|^tests/|^source-catalog\.d/'
           emit panels     '^dsh-plugins/|^trace-status\.yaml$'
 
           # unit-tests 用这份列表按改动选测试（映射算法与回退条件在 scripts/select_unit_tests.py）。

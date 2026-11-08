@@ -234,9 +234,12 @@ gates:
     branches:
       - when: repo_ambiguous
         action: >-
-          先枚举组织仓给**带理由的候选**（`python3 scripts/src_fetch.py --find "<签名>" --ref <版本>`：
-          脚本会逐个试该 ref，只有一个候选能解析就自动取回，多个则 exit 3 交回候选表）——
-          别把"源码在哪个仓"当问题直接问人，那是可枚举的事实；候选 ≥2 或全试不通时，
+          按发现顺序找，别把"源码在哪个仓"直接问人（那是可枚举的事实）：①候选表
+          `python3 scripts/src_fetch.py --find "<签名>" --ref <版本>`（脚本逐个试该 ref，
+          只有一个候选能解析就自动取回，多个或只命中兜底则 exit 3）；②组织枚举
+          `--list-orgs` 与 `--list-org-repos <组织>`（GitCode 组织匿名可枚举）；③搜仓名，
+          用 gh 或 web 搜报错里的接口名、算子名、库名，得到 org/repo；④取回并验证
+          `src_fetch.py <org/repo> --ref <版本> --verify "<签名>"`。验证不过或版本定不下来时，
           按 question 问一句并要求他回候选编号。**不许猜仓**：取错仓会产出错版本的证据，
           比不取更糟（与"没拿到该版本"等价）。私有仓/内网镜像才直接要 clone 地址（`--url`），
           镜像内代码按冻结 commit 取，不能按 tag 推断
@@ -244,8 +247,9 @@ gates:
           - cann-source-location   # 仓在哪一层（平台结构事实）；怎么调脚本见本 skill 的 src-fetch.md
       - when: repo_resolved
         action: >-
-          按版本取源码（`src_fetch.py <org/repo> --ref <版本>`）后 grep 报错签名/算子名定位到文件与行；
-          退出码非零就是没拿到，如实把结论写成"无法判定"，不要用其他版本或 web 搜索结果顶替
+          按版本取源码并验证（`src_fetch.py <org/repo> --ref <版本> --verify "<签名>"`），
+          验证命中后 grep 报错签名/算子名定位到文件与行；退出码非零（含 6 验证未通过）就是
+          不能把这棵树当证据，结论写"无法判定"，不要用其他版本或 web 搜索结果顶替
         refs:
           - cann-source-location
           - operator-debug-entrypoints

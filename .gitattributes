@@ -35,6 +35,10 @@ triage-tree.d/00-protocol.md merge=union
 # 记录里没有「每次重建都变」的字段（run 是本次运行的时间戳，属于数据本身），union 之后不会漂移。
 metrics/entry-activity.d/*.yaml merge=union
 
+# 源码仓目录：一层一个文件、追加型数据（补一个仓改一个层文件）。union 让两人各补一层、
+# 或同层各补一个仓时两边都留住；它只有短列表结构，行级合并不会拼出非法 YAML。
+source-catalog.d/*.yaml merge=union
+
 # 索引（总表 knowledge/_index.yaml 与读侧视图 knowledge/_index/*.list）**故意都不给 union**：
 #   总表还是**嵌套**结构（namespaces → ns → category → 条目列表），union 是行级文本合并——
 #   两人在同一格各加一条时，两段插入会被拼成不合法的 YAML（实测：parser 报 "expected <block end>"）。

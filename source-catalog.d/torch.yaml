@@ -1,0 +1,16 @@
+# PyTorch 与 NPU 适配层。Ascend/pytorch 在两个 host 都有镜像，按 gitcode、github 的顺序回退。
+layer: torch
+title: PyTorch 与 NPU 适配层
+
+orgs:
+  - {name: Ascend, host: gitcode, enumerable: false}
+
+repos:
+  - repo: Ascend/pytorch
+    sources:
+      - {host: gitcode, owner: Ascend, repo: pytorch}
+      - {host: github, owner: Ascend, repo: pytorch}
+    aliases: [torch-npu]
+    why: torch_npu（PyTorch 的昇腾设备后端）
+
+self_test: []
