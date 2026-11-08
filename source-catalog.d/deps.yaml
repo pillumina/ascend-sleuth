@@ -1,6 +1,7 @@
-# 推理依赖层：vllm-ascend 诊断里实际会落到的依赖库。
-# 收录依据是知识库 case 的证据链里出现过：Mooncake 19、triton 8、transformers 6、ray 4、xgrammar 2 条。
-# 只进已知表，不加 discover：这些层还没有稳定的报错签名规则，硬造候选会把表撑大。
+# 推理依赖层：vllm-ascend 诊断里对应的依赖库。
+# 收录依据：知识库 case 文本里出现过这些依赖名（提及次数不等于根因落点）。复现：
+#   grep -rli '<关键词>' knowledge/ --include=*.yaml | grep -v _index
+# 只进已知表，不加 discover：这些层还没有稳定的报错签名规则，硬造候选会让候选表噪声变大。
 layer: deps
 title: 推理依赖层（KV / 调度 / 模型 / 编译器）
 
@@ -34,7 +35,7 @@ repos:
     sources:
       - {host: github, owner: ray-project, repo: ray}
     aliases: [ray]
-    why: 分布式调度（PD 分离与多实例编排）
+    why: 分布式调度（PD 分离（prefill/decode 分离）与多实例编排）
 
   - repo: mlc-ai/xgrammar
     sources:
