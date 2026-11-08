@@ -7,6 +7,12 @@ orgs:
   - {name: vllm-project, host: github, enumerable: false}
 
 repos:
+  - repo: vllm-project/vllm
+    sources:
+      - {host: github, owner: vllm-project, repo: vllm}
+    aliases: [vllm]
+    why: vLLM 上游主干（适配层依赖的主体）
+
   - repo: vllm-project/vllm-ascend
     sources:
       - {host: github, owner: vllm-project, repo: vllm-ascend}

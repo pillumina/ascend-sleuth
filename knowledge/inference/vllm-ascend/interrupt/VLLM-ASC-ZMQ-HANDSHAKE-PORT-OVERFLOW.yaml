@@ -22,7 +22,7 @@ cases:
 
     investigation_quality: high   # 公式与"无范围校验"两点已按源码逐行核验（source_ref）
     source_ref:
-      repo: vllm-ascend
+      repo: vllm-project/vllm-ascend
       ref: v0.23.0rc1
       file: vllm_ascend/distributed/kv_transfer/kv_p2p/mooncake_connector.py
       line: 1971                      # "Handshake base port" 赋值段（另见 1592、1978-1979）

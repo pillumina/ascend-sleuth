@@ -17,6 +17,7 @@
 #   P0 结构：顶层 cases 为非空 list；每条含必需字段；字段非空
 #   P0 枚举：category / severity / fix_type 取值合法
 #   P0 交叉：ref_knowledge 的 ref 必须存在于 references/ 且 status: active；role 合法
+#   P0 指针：source_ref.repo 必须写成 org/repo，且能在 source-catalog.d 里解析到（fast_path: false 也算）
 #   P0 判别式：quickly_check.primary 必须有 command_template 与 expected；
 #              expected 的 `regex:` 部分必须可编译；不得含空分支（如 `foo|`——恒真，
 #              会让该 case 对任何输入都成为候选，实测 VLLM-ASC-11312 即此形态）
@@ -45,6 +46,7 @@ from _yaml import load_file  # noqa: E402  （解析后端单一事实源）
 from _stdio import pin_utf8_stdio  # noqa: E402
 from exec_log_path import resolve_traces
 from _trace_state import case_kind, derive, is_terminal, load_vocab  # noqa: E402  （traces/ 锚主检出，worktree 里没有）
+import source_catalog  # noqa: E402  （source_ref 指针要能在源码仓目录里解析）
 
 VALID_ROLES = {"signature-source", "fix-methodology", "root-cause-context"}
 VALID_CATEGORIES = {"interrupt", "precision", "performance"}
@@ -107,7 +109,7 @@ def check_regex(expected: str, where: str, fail):
         fail(f"{where}: expected 含空分支（恒真，会让该 case 对任何输入都成为候选）：{expected!r}")
 
 
-def check_case(case, path: Path, ref_index: dict, fail, warn):
+def check_case(case, path: Path, ref_index: dict, fail, warn, root: Path | None = None):
     cid = case.get("id") or "<无 id>"
     where = f"{path.name}#{cid}"
 
@@ -167,6 +169,51 @@ def check_case(case, path: Path, ref_index: dict, fail, warn):
             fail(f"{where}: ref_knowledge 悬挂引用 `{rid}`（references/ 下无此 id）")
         elif ref_index[rid][0] != "active":
             fail(f"{where}: ref_knowledge 指向非 active 词条 `{rid}`（status={ref_index[rid][0]}）")
+
+    check_source_ref(case, path, root or Path(__file__).resolve().parent.parent, fail, warn)
+
+
+_CATALOGS: dict = {}
+
+
+def catalog_for(root: Path):
+    """按仓库根加载源码仓目录；目录不存在时返回 None（私有部署没有它时只给警告）。"""
+    root = Path(root)
+    if root not in _CATALOGS:
+        data_dir = source_catalog.default_dir(root)
+        _CATALOGS[root] = source_catalog.load_catalog(data_dir) if data_dir.is_dir() else None
+    return _CATALOGS[root]
+
+
+def check_source_ref(case, path: Path, root: Path, fail, warn):
+    """source_ref 是代码指针：repo 要写成 org/repo，且能在源码仓目录里解析到。"""
+    raw = case.get("source_ref")
+    if raw is None:
+        return
+    entries = raw if isinstance(raw, list) else [raw]
+    label = f"{path.name}#{case.get('id') or '<无 id>'} source_ref"
+    cat = catalog_for(root)
+    for index, entry in enumerate(entries, 1):
+        where = f"{label}[{index}]" if len(entries) > 1 else label
+        if not isinstance(entry, dict):
+            fail(f"{where}: 不是映射")
+            continue
+        repo = entry.get("repo")
+        if not isinstance(repo, str) or not repo.strip():
+            fail(f"{where}: 缺 repo")
+            continue
+        repo = repo.strip()
+        if not re.fullmatch(r"[^/\s]+/[^/\s]+", repo):
+            fail(f"{where}: repo 要写成 org/repo（现在是 `{repo}`）")
+            continue
+        if cat is None:
+            warn(f"{where}: 源码仓目录不可用，跳过 repo 解析校验")
+            continue
+        if cat.lookup(repo)[1] is None and cat.sources_for(repo) is None:
+            fail(f"{where}: repo `{repo}` 不在源码仓目录（source-catalog.d）")
+        ref = entry.get("ref")
+        if ref is not None and (not isinstance(ref, str) or not ref.strip()):
+            fail(f"{where}: ref 为空或不是字符串")
 
 
 def case_source_session_of(case):
@@ -254,7 +301,7 @@ def gate_case(case, path: Path, root: Path, fail, warn):
     return "block"
 
 
-def check_file(path: Path, ref_index: dict, fail, warn):
+def check_file(path: Path, ref_index: dict, fail, warn, root: Path | None = None):
     try:
         data = load_file(path)
     except Exception as exc:
@@ -271,7 +318,7 @@ def check_file(path: Path, ref_index: dict, fail, warn):
         if not isinstance(case, dict):
             fail(f"{path}: cases 条目不是映射")
             continue
-        check_case(case, path, ref_index, fail, warn)
+        check_case(case, path, ref_index, fail, warn, root)
 
 
 def collect_targets(root: Path, args):
@@ -326,7 +373,7 @@ def main():
         warns.append(msg)
 
     for path in targets:
-        check_file(path, ref_index, fail, warn)
+        check_file(path, ref_index, fail, warn, root)
 
     # 升格闸门（EV-2026-097）：结构检查之外，另判「自诊断 case 是否够格升格」
     gate_stats = None

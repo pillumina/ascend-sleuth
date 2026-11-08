@@ -315,5 +315,20 @@ class SrcFetchScenarioTest(unittest.TestCase):
         self.assertIn("不可用", proc.stderr)
 
 
+    # ------------------------------------------------------------ 场景 13
+    def test_explicit_name_for_discover_only_repo_uses_catalog_sources(self):
+        """显式写 canonical 的仓（fast_path: false）不能当未知仓去 GitHub 找。"""
+        repo = self.make_repo("ops-hidden", {"src/h.c": "if (hidden failure) {}\n"})
+        entry = self.custom_repo("ops-hidden", repo.as_uri(), ["hidden"])
+        entry["fast_path"] = False
+        self.write_catalog([entry])
+
+        proc = self.run_cli("acme/ops-hidden", "--ref", "v1.0", *self.cat_args(),
+                            "--dest", str(self.dest))
+        self.assertExit(proc, 0)
+        self.assertNotIn("未知仓库，默认走 GitHub", proc.stdout)
+        self.assertTrue(last_line(proc).endswith("/v1.0"))
+
+
 if __name__ == "__main__":
     unittest.main()

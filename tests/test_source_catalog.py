@@ -75,8 +75,10 @@ class DefaultCatalogTest(unittest.TestCase):
         self.assertGreaterEqual(len(self.cat.known), len(LEGACY_KNOWN))
         for repo in ("cann/pyasc", "cann/oam-tools"):
             self.assertIn(repo, self.cat.repos)
-            self.assertIsNone(self.cat.lookup(repo)[1], f"{repo} 不该进已知表")
-            self.assertTrue(self.cat.sources_for(repo), f"{repo} 的 sources 要能按 canonical 取到")
+            self.assertNotIn(source_catalog.norm_key(repo), self.cat.known,
+                             f"{repo} 不该进已知表（别名快表）")
+            self.assertIsNotNone(self.cat.lookup(repo)[1],
+                                 f"{repo} 按 canonical 也要能取到地址（显式仓名取源码用）")
 
     def test_cann_candidates_keep_legacy_order(self):
         got = [repo.short for repo in self.cat.discover_repos("cann")]

@@ -29,7 +29,7 @@ cases:
 
     investigation_quality: high        # 源码 registry diff（v0.23.0 vs main）确凿定位
     source_ref:                        # 源码分析路径：比对 vllm registry 定位
-      repo: vllm
+      repo: vllm-project/vllm
       ref: v0.23.0
       file: vllm/models/registry.py
 

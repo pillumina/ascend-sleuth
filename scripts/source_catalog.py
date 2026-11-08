@@ -206,6 +206,11 @@ class Catalog:
         hit = self.known.get(key)
         if hit is not None:
             return hit
+        # 已知表是别名快表；目录里登记过的仓（fast_path: false 或仅候选）按 canonical 也能取地址。
+        # 不这样做时，显式写 canonical 的仓会被当成未知仓默认去 GitHub 找，取不到正确的 host。
+        for canonical, item in self.repos.items():
+            if norm_key(canonical) == key:
+                return (canonical, list(item.sources))
         return (repo.strip().rstrip("/").removesuffix(".git"), None)
 
     def sources_for(self, canonical: str) -> list | None:
