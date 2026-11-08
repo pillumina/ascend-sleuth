@@ -362,3 +362,17 @@ metric_strength:
   ixn_premature: 确定性
   ixn_question_recall_heldout: 确定性
   ixn_question_recall_self: 确定性
+  stop_reasons: 确定性
+  stop_reason_unrecorded: 确定性
+  parallel_group_events: 确定性
+  considered_candidates_events: 确定性
+  trace_record_violations: 确定性
+  trace_record_violations_total: 确定性
+  triage_miss_classes: 确定性
+  triage_miss_sessions: 确定性
+  reference_outcomes: 确定性
+  reference_purposes: 确定性
+  external_evidence: 自报
+  external_lookups: 自报
+  external_record_violations: 确定性
+  external_record_violations_total: 确定性
