@@ -43,6 +43,7 @@
   python3 scripts/src_fetch.py vllm-ascend --ref 0.26.0        # 自动容错到 v0.26.0
   python3 scripts/src_fetch.py vllm-project/vllm-ascend --ref v0.23.0
   python3 scripts/src_fetch.py Ascend/MindSpeed-LLM --ref v0.23.0        # gitcode
+  python3 scripts/src_fetch.py my-org/my-repo --ref <commit>    # 未知仓：依次试 GitHub 与 GitCode
   python3 scripts/src_fetch.py my-org/my-repo --ref <commit> --url https://...   # 自定义/私有
   python3 scripts/src_fetch.py --find "aclnnQuantBatchMatMulV3" --ref 8.1.RC1    # 只知道签名、不知道在哪个仓
   python3 scripts/src_fetch.py --find "HcclAllReduce failed" --ref v9.1.1 --verify "HcclAllReduce failed"
@@ -144,6 +145,20 @@ def lookup(repo: str, catalog=None):
         return canonical, None
     cands = [(src["host"], {k: v for k, v in src.items() if k != "host"}) for src in sources]
     return canonical, cands
+
+
+def explicit_sources(owner: str, repo: str, first_host: str = "github"):
+    """显式仓名的候选 host：先给的首选，再补 GitHub 与 GitCode（去重）。
+
+    只试 GitHub 时，只在 GitCode 上有的仓（cann 的若干层、Ascend 的若干仓）会把"知道仓名"
+    退化成"必须先进已知表"。这里只追加候选，不改首选顺序：首选解析得到就不试后面的，
+    当前能取到的仓取法不变。
+    """
+    hosts = []
+    for host in (first_host, "github", "gitcode"):
+        if host in HOSTS and host not in hosts:
+            hosts.append(host)
+    return [(host, {"owner": owner, "repo": repo}) for host in hosts]
 
 
 def clone_url(host: str, owner: str, repo: str) -> str:
@@ -876,12 +891,11 @@ def main() -> int:
                 return die(EXIT_USAGE,
                            f"组织「{args.org}」的 host 是 custom，未登记的仓「{given}」需要 --url，"
                            f"或先把它写进 source-catalog.d 的 sources")
-            fallback_hosts = [org_host] if org_host == "github" else [org_host, "github"]
             if "/" in given:                     # org/repo 形态：尊重给的 org，不再套 --org
                 owner, rname = given.split("/", 1)
             else:                                # 裸仓名：按 --org 组织下试，再回退到 GitHub 同名仓
                 owner, rname = args.org, given
-            candidates = [(host, {"owner": owner, "repo": rname}) for host in fallback_hosts]
+            candidates = explicit_sources(owner, rname, first_host=org_host)
             canonical, cands = f"{candidates[0][1]['owner']}/{candidates[0][1]['repo']}", candidates
             why = f"签名没命中已知层，按你给的仓名试：{canonical}" if not found else \
                   f"以你给的仓名 {canonical} 为准（候选表仅作对照；不对就按候选编号重跑）"
@@ -965,8 +979,9 @@ def main() -> int:
 
     if cands is None:
         if "/" in canonical:
-            cands = [("github", {"owner": canonical.split("/")[0], "repo": canonical.split("/")[1]})]
-            print(f"未知仓库，默认走 GitHub：{canonical}")
+            owner, repo_name = canonical.split("/", 1)
+            cands = explicit_sources(owner, repo_name)
+            print(f"未知仓库，依次试 GitHub 与 GitCode：{canonical}")
         else:
             return die(EXIT_USAGE, f"未知仓库「{args.repo}」（无 / 且不在已知表）——给 --url 或 org/repo")
 
@@ -1022,9 +1037,9 @@ def main() -> int:
                        f"本地有该版本的目录但核对不通过：{d}（{why}）——"
                        "确认它就是该版本就用 --force 重拉（会删掉该目录）")
         return die(EXIT_REF_UNRESOLVED,
-                   f"未能解析 ref「{args.ref or '(默认分支)'}」：tag 名可能与预期不同（已自动容错 v 前缀）。"
-                   "按上面列出的可用 tag 重试，或让用户确认版本号。"
-                   "**不要用 web 搜索代替取对应版本源码**")
+                   f"未能解析 ref「{args.ref or '(默认分支)'}」：仓名可能不对，或 tag 名与预期不同"
+                   "（已自动容错 v 前缀）。先确认仓名（`gh search repos <关键词>`），再看上面列出的"
+                   "可用 tag 重试，或让用户确认版本号。**不要用 web 搜索代替取对应版本源码**")
 
     # ③ 版本目录已在（token 命中但标记不符/损坏）
     target = repo_dir / version_token(resolved)

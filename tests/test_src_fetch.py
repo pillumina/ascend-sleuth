@@ -122,6 +122,25 @@ class FindRoutingTest(unittest.TestCase):
             self.assertIn("复用", again.stdout)
 
 
+class ExplicitSourcesTest(unittest.TestCase):
+    """显式仓名的 host 顺序：GitHub 优先，再补 GitCode；首选给定时不重复。"""
+
+    def hosts(self, **kwargs):
+        return [host for host, _slot in src_fetch.explicit_sources("acme", "ops", **kwargs)]
+
+    def test_default_is_github_then_gitcode(self):
+        self.assertEqual(self.hosts(), ["github", "gitcode"])
+
+    def test_first_host_is_kept(self):
+        self.assertEqual(self.hosts(first_host="gitcode"), ["gitcode", "github"])
+
+    def test_gitee_first_keeps_all_fallbacks(self):
+        self.assertEqual(self.hosts(first_host="gitee"), ["gitee", "github", "gitcode"])
+
+    def test_unknown_first_host_falls_back_to_default(self):
+        self.assertEqual(self.hosts(first_host="custom"), ["github", "gitcode"])
+
+
 class KnownRepoTest(unittest.TestCase):
     def test_cann_layers_are_known(self):
         for name in ("cann/ops-nn", "cann/hccl", "cann/ge", "cann/runtime"):
