@@ -56,7 +56,7 @@ python3 scripts/build_entry_activity.py             # 重建生成物 metrics/en
 | `metrics/gates.yaml` | 阈值与可解读性下限（数据）：新鲜度上限、读入成本线（类视图 `cell_read_soft_tok` / `cell_read_hard_tok`，兜底视图 `fallback_read_soft_tok` / `fallback_read_hard_tok`）、反馈下限、哪些指标分母为 0 即"不可解读" | 判据变化时 |
 | `scripts/metrics_snapshot.py` | 一期快照的单一产出命令：组装诊断侧 + 结构侧 + 内容流程侧（逐块标 `sources`）；撞号自动加后缀 | 随机制 |
 | `scripts/metrics_health.py` | 闭环检测器：读 timeline + gates，判新鲜度 / 越界 / 可解读性；`--check` 三态（0 判据全评过且无越界 / 1 有违反 / 2 有判据未被评估）；`--json` 是诊断面板的数据契约 | 随机制 |
-| `scripts/trace_metrics.py` | 诊断侧指标（markdown 概览 + `--emit-yaml` 骨架 + `--emit-yaml-only` 供组装） | 随机制 |
+| `scripts/trace_metrics.py` | 诊断侧指标（markdown 概览 + `--emit-yaml` 骨架 + `--emit-yaml-only` 供组装）；`--source-usage` 给源码取用切片（仓 / 版本 / 退出码 / 验证结果），只进人读与 `--json` | 随机制 |
 | `scripts/verify_metrics.py` | 校验聚合结构（period 唯一 / kind 合法 / live 期号命名 / 比例字段合法 / live 字段白名单 / 每个指标都声明了强度档），CI 强制 | 随机制 |
 | `scripts/session_cost.mjs` | 真实账单（提供方 usage）：解析 DSH 会话日志（多帧 zstd + JSONL），按 (turn, step) 去重后给出未缓存输入 / 缓存读取 / 缓存写入 / 输出与逐轮汇总；`--session <id>` / `--file` / `--all`；`--tools` 给工具流量表（按工具名的调用次数与返回累计字符数、平均每条、单条上限、参数完全相同的重复调用、同一目标的重复访问）；`--decompress <file>` 只把日志解成 JSONL，供 Python 侧（`trace_entry_activity.py`）读多帧 zstd；exec-log 的 `--cost-source measured` 就该填它读出来的值 | 需要 measured 口径时 |
 | `scripts/audit_skill_cost.py` | skill 上下文成本审计：常驻面（CLAUDE.md/AGENTS.md/被注入的 description）、按需面（正文 + 本地 references）、重复面（同一行出现在 ≥2 skill）、强制词密度与输出段数；skill-review 的 A 静态审计调它 | skill 改动前后 |
@@ -107,6 +107,7 @@ traces 是各检出各一份的运行时件：在 worktree 里跑知识整理收
 不可当验收证据；跟随后 resolve 率来自工程师反馈闭环（S1），是本行唯一较强的效果信号 |
 | 零执行评估所需的记录 | 停止原因记了几单 / 未记录几单；同批并发标记与候选全集各记了几条事件；字段违规几处（给总数，另列前 5 条） | trace 顶层 `stop_reason`（词表 = `scripts/trace_metrics.py` 的 `KNOWN_STOP_REASONS`）与 agent 事件的 `parallel_group`、`considered_candidates`。这是用历史记录离线比较探索策略的前提：不知道当时在哪停、哪些动作是同一批并行、筛候选时看过哪些，换一个策略在历史上走一遍就只能按人回忆重讲。未记录数与记了 `unknown` 分开算：前者是记录缺口，后者是当时确实拿不到；旧 trace 没有这些字段属未记录，不回填 |
 | 知识基线切片（`--kb-baseline`，默认关闭） | `kb_behind` 落后 / 最新 / unknown 三组各自的解决率、落后组与最新组的差（百分点），以及 `kb_merge: ff-only` 在有该字段的单里的触发率 | trace 顶层 `kb_behind`（整数或 `unknown`）与 `kb_merge`（`ff-only` / `none`）。解决率判据沿用脚本内 `status == resolved`，分母是组内 session 数；字段缺失（旧 trace）计入 unknown 组，不回填。切片只进人读输出与 `--json`，**不进 live 快照**：`verify_metrics.py` 的 `LIVE_FIELDS` 是白名单，新字段塞进去会被下一期校验拦下；要进 timeline 需另开一张卡同时改白名单与快照 schema |
+| 源码取用切片（`--source-usage`，默认关闭） | `source_analysis` 的仓写法与版本写法种数（按原值计，别名不合并）、`fetch_exit` 分布、`verify` 三态、按仓失败（`fetch_exit` 非零 / `verify` 未命中，T12 的判据）、分字段的未记录数 | agent 事件 `source_analysis` 的 `repo` / `ref` / `fetch_exit` / `verify`。字段缺失按"未记录"分字段计，不回填；越界值报违规，不中断整张表。切片只进人读输出与 `--json`，**不进 live 快照**：理由同上一行的白名单限制 |
 | S2 内容验证（口径，数据积累后进 timeline） | case 被 S2 replay 验证的分布：consistent（内容与外部 resolution 一致）/ self_consistent（自证）/ inconsistent（复审） | `.s2-replay/*.result.yaml` → `settle_s2_feedback.py` 结算 → case `validation_record`。口径纪律：consistent ≠ 现场 resolve——S1 现场解决率看条目使用记录里的现场计数（上表命中率/误诊率），S2 内容验证是独立通道，进 timeline 时标注 `source: issue-replay`，不与 S1 混算。按检查准入三条件，待 S2 结算有真实数据（≥2 期）后再扩展 verify_metrics 白名单 |
 
 ### 计数与分数分居三处

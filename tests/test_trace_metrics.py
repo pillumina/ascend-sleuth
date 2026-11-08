@@ -353,5 +353,78 @@ class KbBaselineSliceTest(_MetricsHarness):
         self.assertEqual(len(m["trace_record_violations"]), 2)
 
 
+
+class SourceUsageTest(_MetricsHarness):
+    """源码取用切片（--source-usage）：仓 / 版本 / 取用退出码 / 验证结果的聚合口径。"""
+
+    def test_counts_repo_ref_exit_and_verify(self):
+        extra = (
+            "  - role: agent\n    action: source_analysis\n"
+            "    repo: vllm-project/vllm-ascend\n    ref: v0.23.0\n"
+            "    fetch_exit: 0\n    verify: hit\n"
+            "  - role: agent\n    action: source_analysis\n"
+            "    repo: vllm-project/vllm-ascend\n    ref: v0.23.0\n"
+            "    fetch_exit: 3\n    verify: skipped\n"
+            "  - role: agent\n    action: source_analysis\n    tool_calls: []\n"
+        )
+        self.write_session("s1-src", extra=extra)
+        su = self.metrics_json("--source-usage")["source_usage"]
+        self.assertEqual(su["events"], 3)
+        self.assertEqual(su["repos"], {"vllm-project/vllm-ascend": 2})
+        self.assertEqual(su["refs"], {"v0.23.0": 2})
+        self.assertEqual(su["fetch_exits"], {"0": 1, "3": 1})
+        self.assertEqual(su["verify"], {"hit": 1, "skipped": 1})
+        self.assertEqual(su["unrecorded"], {"repo": 1, "fetch_exit": 1, "verify": 1})
+        self.assertIsNone(su["violations"])
+
+    def test_violations_are_reported(self):
+        extra = (
+            "  - role: agent\n    action: source_analysis\n    repo: r/x\n"
+            "    fetch_exit: \"zero\"\n    verify: maybe\n"
+        )
+        self.write_session("s1-badsrc", extra=extra)
+        su = self.metrics_json("--source-usage")["source_usage"]
+        self.assertEqual(su["violations_total"], 2)
+        self.assertTrue(any("fetch_exit" in v for v in su["violations"]))
+        self.assertTrue(any("verify" in v for v in su["violations"]))
+
+    def test_unhashable_verify_is_a_violation_not_a_crash(self):
+        """字段写成列表时不能崩：整张表要照常出，违规单独报。"""
+        extra = (
+            "  - role: agent\n    action: source_analysis\n    repo: r/x\n"
+            "    fetch_exit: 0\n    verify: [hit]\n"
+        )
+        self.write_session("s1-unhash", extra=extra)
+        su = self.metrics_json("--source-usage")["source_usage"]
+        self.assertEqual(su["violations_total"], 1)
+        self.assertIn("verify", su["violations"][0])
+        self.assertIsNone(su["verify"])
+
+    def test_fail_by_repo_supports_t12_criterion(self):
+        """T12 要读「同一仓 ≥2 次」：按仓给 fetch_exit 非零与 verify 未命中计数。"""
+        extra = (
+            "  - role: agent\n    action: source_analysis\n    repo: r/x\n"
+            "    ref: v1\n    fetch_exit: 3\n    verify: miss\n"
+            "  - role: agent\n    action: source_analysis\n    repo: r/x\n"
+            "    ref: v1\n    fetch_exit: 0\n    verify: miss\n"
+        )
+        self.write_session("s1-fail", extra=extra)
+        su = self.metrics_json("--source-usage")["source_usage"]
+        self.assertEqual(su["fail_by_repo"], {"r/x": {"fetch_nonzero": 1, "verify_miss": 2}})
+
+    def test_slice_not_in_emit_yaml_and_absent_without_flag(self):
+        self.write_session("s1-plain")
+        self.assertNotIn("source_usage", self.metrics())
+        self.assertNotIn("source_usage", self.metrics_json())
+        with_flag = self.metrics_json("--source-usage")
+        self.assertIn("source_usage", with_flag)
+        self.assertIn("源码取用", self.run_metrics("--source-usage"))
+        self.assertNotIn("source_usage",
+                         self.run_metrics("--source-usage", "--emit-yaml-only"),
+                         "可选切片不得进快照（live 字段白名单会拦）")
+        self.assertNotIn("source_usage", self.run_metrics("--source-usage", "--emit-yaml"),
+                         "可选切片不得进快照（live 字段白名单会拦）")
+
+
 if __name__ == "__main__":
     unittest.main()
