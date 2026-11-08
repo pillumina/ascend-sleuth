@@ -1597,6 +1597,8 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
     && view.text.includes('--draft-key draft-b'), view.text.slice(-400))
   expect('批量撤销：指令说明不改诊断状态', view.text.includes('不改诊断状态')
     && !view.text.includes('--keep-status'), view.text.slice(-400))
+  expect('批量撤销：指令说明已关闭 PR 会清台账', view.text.includes('PR 已关闭的行会一并清掉本地台账记录'),
+    view.text.slice(-400))
   expect('批量撤销：名单带草稿标题', view.text.includes('本批名单')
     && view.text.includes('草稿 A') && view.text.includes('草稿 B'), view.text.slice(-500))
   click(findButton(view, '填入输入框'))

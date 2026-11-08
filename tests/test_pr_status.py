@@ -606,6 +606,27 @@ class FlowTest(RepoCase):
         self.assertEqual(payload["pr"]["state"], "closed")
         self.assertNotIn("draft-a", pr.load_ledger(self.repo)["prs"])
 
+    def test_forget_accepts_state_with_spaces_and_case(self):
+        self._set_pr()
+        data = pr.load_ledger(self.repo)
+        data["prs"]["draft-a"]["state"] = " Closed "
+        pr.save_ledger(self.repo, data)
+        code, payload = run_cli("--root", str(self.repo), "--forget", "--draft", "draft-a")
+        self.assertEqual(code, 0, payload)
+        self.assertTrue(payload["ok"], payload)
+        self.assertNotIn("draft-a", pr.load_ledger(self.repo)["prs"])
+
+    def test_forget_bad_record_is_bad_record_not_missing(self):
+        self._set_pr()
+        data = pr.load_ledger(self.repo)
+        data["prs"]["draft-a"] = None
+        pr.save_ledger(self.repo, data)
+        code, payload = run_cli("--root", str(self.repo), "--forget", "--draft", "draft-a")
+        self.assertEqual(code, 0)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error"]["code"], "E_BAD_RECORD")
+        self.assertIn("draft-a", pr.load_ledger(self.repo)["prs"])
+
     def test_forget_refuses_unclosed_record(self):
         # open / unknown / merged 都还拦撤销；删掉记录会让队列与审计失去依据。
         self._set_pr()

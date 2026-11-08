@@ -402,7 +402,7 @@ def _landing_exists(state: str, promotion: dict, kb_ids: set) -> bool:
 
 
 def _pr_state(entry: dict) -> str:
-    state = str(entry.get("state") or "unknown").lower()
+    state = str(entry.get("state") or "unknown").strip().lower()
     return state if state in PR_STATES else "unknown"
 
 
@@ -506,21 +506,27 @@ def _undo_prompt(key: str, decision: str, pr=None) -> str:
         f"python3 scripts/sediment_undo.py --draft-key {_q(key)} --apply",
     ]
     if pr:
+        ident = _pr_label(pr) or "台账里没有编号与地址"
         checked = str(pr.get("checked_at") or "") or "未记录"
-        lines.append(f"台账里这份草稿的 PR 已关闭（{_pr_label(pr)}，上次确认 {checked}）："
+        lines.append(f"台账里这份草稿的 PR 已关闭（{ident}，上次确认 {checked}）："
                      "撤销会把这条 PR 记录一并清掉，PR 本身在平台上不动。"
-                     "如果 PR 后来又打开了，先跑 pr_status.py --check 更新状态，再撤销。")
+                     "台账可能过期，先在平台上确认它仍关闭再撤销；"
+                     "如果已被重新打开或合入，撤销会被拒绝或走知识库变更流程。")
     if decision:
         lines.append(f"注意：这份草稿已有人决定（{decision}）。撤销会清掉评估状态文件与该草稿的决定记录，"
                      "评估 id 与决定摘要会写进 undo-log。")
-    lines.append("撤销只还原沉淀状态（sedimented 回 none），不改诊断状态；"
-                 "要回到进行中，在诊断面板用「重新打开」。")
+    if pr:
+        lines.append("撤销还原沉淀状态（sedimented 回 none）与本地台账记录，不改诊断状态；"
+                     "要回到进行中，在诊断面板用「重新打开」。")
+    else:
+        lines.append("撤销只还原沉淀状态（sedimented 回 none），不改诊断状态；"
+                     "要回到进行中，在诊断面板用「重新打开」。")
     lines.append("脚本的动作：")
     lines.append("- 草稿移进 postmortems/inbox/.undone/（移回即复活）")
     lines.append("- 删掉它的评估状态文件")
     lines.append("- 来源 trace 的 sedimented 改回 none（trace 缺失或外部来源时跳过）")
     if pr:
-        lines.append("- 清掉台账里这条已关闭的 PR 记录（PR 身份写进 undo-log）")
+        lines.append("- 清掉台账里这条已关闭的 PR 记录（PR 编号与地址写进 undo-log）")
     lines.append("不动 knowledge/。")
     return "\n".join(lines)
 
@@ -936,7 +942,9 @@ def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
     trace_state = trace["state"] if trace else "none"
     done = bool(trace and trace_state in ("knowledge", "archived")
                 and draft_in_inbox and _landing_exists(trace_state, promotion, kb_ids))
-    pr_entry = ledger["prs"].get(key) if isinstance(ledger.get("prs"), dict) else None
+    ledger_prs = ledger.get("prs") if isinstance(ledger.get("prs"), dict) else {}
+    pr_entry = ledger_prs.get(key) if isinstance(ledger_prs, dict) else None
+    pr_broken = key in ledger_prs and not isinstance(ledger_prs.get(key), dict)
     if not isinstance(pr_entry, dict):
         pr_entry = None
     state = _classify(row, pr_entry, done)
@@ -960,10 +968,10 @@ def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
     # 撤销只在「草稿还在 inbox、PR 没提过或已关闭、trace 也没说升格」时给：已出队的草稿走
     # 恢复流程；PR 还开着或已合入的要先处理 PR，已升格的要动知识库与 PR——都不该由一次本地
     # 撤销带走。PR 记录是 closed 时允许撤销，脚本会一并清掉这条台账记录。
-    # 来源 session 有歧义、或 PR 台账读坏时也不给：脚本在这两种情况下会拒绝，
-    # 按钮先承诺「能撤」没有意义。
+    # 来源 session 有歧义、PR 台账读坏、或台账里这份记录不是对象时也不给：脚本在这几种情况下
+    # 会拒绝，按钮先承诺「能撤」没有意义。
     pr_closed = pr_entry is not None and _pr_state(pr_entry) == "closed"
-    undo_pr_ok = pr_entry is None or pr_closed
+    undo_pr_ok = (pr_entry is None or pr_closed) and not pr_broken
     ambiguous_source = False
     if draft_in_inbox and not done and undo_pr_ok and not ledger_error and session_of is not None:
         try:

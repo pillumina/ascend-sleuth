@@ -361,6 +361,15 @@ class StateTest(SedimentCase):
         self.assertFalse(row["undo"]["available"])
         self.assertEqual(row["undo"]["prompt"], "")
 
+    def test_undo_hidden_when_pr_record_not_object(self):
+        # 台账里这份记录不是对象：脚本退 E_BAD_RECORD，面板不能先给入口。
+        write_draft(self.repo)
+        write_ledger(self.repo, target=GITHUB_TARGET,
+                     prs={"2026-10-20-draft-a": None})
+        row = self.draft(self.collect())
+        self.assertFalse(row["undo"]["available"])
+        self.assertEqual(row["undo"]["prompt"], "")
+
     def test_undo_prompt_says_diagnosis_status_is_untouched(self):
         # 撤销只还原沉淀状态；诊断状态要改时去诊断面板「重新打开」，指令里写明边界。
         write_draft(self.repo)

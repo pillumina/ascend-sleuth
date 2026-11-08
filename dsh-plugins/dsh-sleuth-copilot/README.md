@@ -169,12 +169,12 @@ DSH 会话里的一个独立交互层插件。它把诊断的状态、下一步�
   - 草稿移进 `postmortems/inbox/.undone/`（移回即复活）；
   - 删掉评估状态文件（`.groom/assessments/<key>.yaml`）；
   - 来源 trace 的 `sedimented` 改回 `none`（trace 缺失或外部来源时跳过）；
-  - PR 记录是「已关闭」时，清掉台账里那条记录（PR 身份写进 undo-log 与 `.undone/<stamp>/.undo.json`）。
-  另写一行 `.groom/undo-log.jsonl`（评估 id、人决定、草稿去向）。诊断状态（`resolved` /
-  `in_progress` 等）保持不变，撤销不会把已收尾的单重新打开。
-- PR 还开着（`open` / `unknown`）或已合入（`merged`）的草稿拒绝撤销：PR 是外部事实，先在平台上处理它。
+  - PR 记录是「已关闭」时，清掉台账里那条记录（PR 的编号与地址写进 undo-log 与 `.undone/` 里的 `.undo.json`）。
+  撤销成功后另写一行 `.groom/undo-log.jsonl`（评估 id、人决定、草稿去向与 PR 的编号与地址）。
+  诊断状态（`resolved` / `in_progress` 等）保持不变，撤销不会把已收尾的单重新打开。
+- PR 没关闭（`open` / `unknown`）或已合入（`merged`）的草稿拒绝撤销：PR 是外部事实，先在平台上处理它。
   已关闭的记录不再拦撤销；单独清一条已关闭记录用 `python3 scripts/pr_status.py --root . --forget --draft <key>`
-  （只允许 `closed`，带 CAS）。trace 已说升格的草稿也拒绝撤销；已出队的用「恢复草稿」。
+  （只允许 `closed`，写前比对台账文件字节防并发覆盖）。trace 已说升格的草稿也拒绝撤销；已出队的用「恢复草稿」。
   `.undone/` 没有保留期，确认不再需要后手工删。
 - 平台适配器：`scripts/platforms/` 下一个 YAML（标准 REST）或一个 Python（CLI/特殊认证）；新增平台
   只加一个文件，核心与界面不改。doctor 从清单里查 token 与命令，缺项降级，不代装。

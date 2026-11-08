@@ -209,30 +209,34 @@ def forget_pr(root, key: str, expect_sha=None) -> dict:
     """删掉一份草稿的 PR 台账记录；返回被删掉的记录与新文件哈希。
 
     只有 `state: closed` 的记录可以删：PR 关闭后这次提交流程已经结束，本地再留着它只会让
-    队列继续显示「PR 已关闭」、挡住撤销。`open` / `unknown` 还可能变成合入，`merged` 已有
+    队列把一条结束了的 PR 当现行状态显示。`open` / `unknown` 还可能变成合入，`merged` 已有
     knowledge/ 里的落点——删掉记录会让队列与审计失去依据，都拒绝。
 
     写前按文件字节 sha256 做 CAS（`expect_sha` 显式给的时候用调用方的令牌，否则用本次读到
     的那一版），两个写者并发时后写者不会静默覆盖先写者。记录不存在抛 `PrRecordError`
-    （E_NOT_FOUND），状态不是 closed 抛 `PrRecordError`（E_PR_ACTIVE），读写失败照旧抛
-    `LedgerError` / `CasConflict`。
+    （E_NOT_FOUND），记录不是对象抛 `PrRecordError`（E_BAD_RECORD），状态不是 closed 抛
+    `PrRecordError`（E_PR_ACTIVE），读写失败照旧抛 `LedgerError` / `CasConflict`。
     """
     key = str(key or "").strip()
     if not key:
         raise PrRecordError("E_ARGS", "--forget 需要 --draft")
     before = ledger_sha256(root)
     data = load_ledger(root)
+    if key not in data["prs"]:
+        raise PrRecordError("E_NOT_FOUND", f"台账里没有这份草稿的 PR 记录：{key}")
     pr = data["prs"].get(key)
     if not isinstance(pr, dict):
-        raise PrRecordError("E_NOT_FOUND", f"台账里没有这份草稿的 PR 记录：{key}")
-    state = str(pr.get("state") or "unknown").lower()
+        raise PrRecordError(
+            "E_BAD_RECORD",
+            f"台账里这份草稿的记录不是对象（台账可能被手改坏了）：{key}。先修台账再清记录。")
+    state = str(pr.get("state") or "unknown").strip().lower()
     if state not in STATES:
         state = "unknown"
     if state != "closed":
         raise PrRecordError(
             "E_PR_ACTIVE",
             f"这份草稿的 PR 是 {state}，不能删记录：只有已关闭（closed）的 PR 才不再拦撤销。"
-            "PR 仍是外部事实，先在平台上处理它；状态还没确认就先跑 --check。")
+            "PR 仍是外部事实，先在平台上处理它；状态还没确认就先跑 --check 确认。")
     del data["prs"][key]
     digest = save_ledger(root, data, expect_sha=before if expect_sha is None else expect_sha)
     return {"draft": key, "pr": pr, "sha256": digest}

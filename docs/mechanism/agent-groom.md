@@ -278,19 +278,23 @@ approval_stale: false
 
 `scripts/sediment_undo.py --draft-key <key> [--apply]` 处理「草稿选错了」。默认只打印计划，`--apply` 才写。它做三件事：
 
-- 把还在 inbox、且 PR 台账里没有未关闭记录的草稿移进 `postmortems/inbox/.undone/`。移动不删除，移回即复活。
+- 把还在 inbox、PR 记录不存在或已关闭（`closed`）的草稿移进 `postmortems/inbox/.undone/`。移动不删除，移回即复活。
 - 删掉它的评估状态文件（`.groom/assessments/<key>.yaml`）。
-- 把来源 trace 的 `sedimented` 改回 `none`。trace 缺失或外部来源时跳过这一步；`--keep-trace` 时也不写。
+- 把来源 trace 的 `sedimented` 改回 `none`。trace 缺失或外部来源时跳过这一步；`--keep-trace` 时也不写。`--keep-trace` 仍会读 trace：已升格（`knowledge` / `archived`）的草稿照样拒绝。
 
-台账里记的是已关闭（`closed`）的 PR 时，撤销还会清掉那条记录：这次提交已经被撤回，留着它会让队列继续显示「PR 已关闭」，挡住下一次沉淀。清记录走 `pr_status.py` 的 `forget_pr`（只删 `closed`，带 CAS），PR 身份写进 `undo-log.jsonl` 与 `.undone/<stamp>/.undo.json`；PR 本身在平台上不动。清记录失败时草稿已经移到 `.undone/`、trace 已回 `none`，用 `python3 scripts/pr_status.py --root . --forget --draft <key>` 清掉后收工。
+PR 台账里记着已关闭的 PR 时，撤销还清掉那条记录。这次提交已经撤回；留着这条记录，之后把草稿移回 inbox 重新沉淀时，队列会把旧 PR 当现行状态，显示「PR 已关闭」。
 
-诊断状态（`status`）不动：撤销只还原 case 的沉淀状态，已收尾的单仍是收尾状态；想继续定位时，在诊断面板用「重新打开」。
+清记录走 `pr_status.py --forget`（只删 `closed`，写前比对台账文件字节，防并发覆盖）。PR 的编号与地址写进 `.groom/undo-log.jsonl` 与 `.undone/` 里的 `.undo.json`；PR 本身在平台上不动。
 
-批量时重复给 `--draft-key`，脚本逐份建计划、逐份执行；某份被拒不会拦下其他份。另外往 `.groom/undo-log.jsonl` 逐份追加一行：评估 id、人决定的 `decision` / `by` / `at`、决定历史条数与草稿去向。评估正文（候选、理由）不留。`.undone/` 没有保留期，确认不再需要后手工删。
+清记录失败时，草稿已经移到 `.undone/`、trace 已回 `none`，PR 的编号与地址留在 `.undo.json`。按报错给的原因处理后，用 `python3 scripts/pr_status.py --root . --forget --draft <key>` 收工；记录已被别的进程清掉时不算失败。
+
+诊断状态（`status`）不动：撤销还原 case 的沉淀状态，已收尾的单仍是收尾状态；想继续定位时，在诊断面板用「重新打开」。
+
+批量时重复给 `--draft-key`，脚本逐份建计划、逐份执行；某份被拒不会拦下其他份。撤销成功后往 `.groom/undo-log.jsonl` 逐份追加一行：评估 id、人决定的 `decision` / `by` / `at`、决定历史条数与草稿去向。评估正文（候选、理由）不留。`.undone/` 没有保留期，确认不再需要后手工删。
 
 它和 `reject` / `defer` 不是一回事：那两个是「认真看过但不采纳」，草稿与评估状态文件留在队列里，`submitted` 仍是事实。撤销是这份草稿本身被撤回，重新沉淀会从头开始，`none` 才是撤完的状态。
 
-PR 记录还没关闭（`open` / `unknown` / `merged`）的草稿不撤销：PR 是外部事实，先在平台上处理它。`unknown` 先跑 `pr_status.py --check` 确认；`merged` 的落点已经进 `knowledge/`。来源 trace 已写成 `knowledge` / `archived` 的也拒绝：升格已经发生，牵动知识库与 PR，走知识库变更流程。
+PR 记录还没关闭（`open` / `unknown` / `merged`）的草稿不撤销：PR 是外部事实，先在平台上处理它。`unknown` 先跑 `pr_status.py --check --draft <key>` 确认；`merged` 的落点已经进 `knowledge/`。来源 trace 已写成 `knowledge` / `archived` 的也拒绝：升格已经发生，牵动知识库与 PR，走知识库变更流程。
 
 ### 3.8 合入后
 

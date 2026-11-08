@@ -247,10 +247,10 @@ def build_plan(root: Path, inbox: Path, traces: Path, key: str,
     if key in prs:
         entry = prs.get(key)
         if not isinstance(entry, dict):
-            raise Refused("E_PR_EXISTS",
+            raise Refused("E_BAD_RECORD",
                           "这份草稿在 PR 台账里的记录不是对象（台账可能被手改坏了）。"
                           "先修好台账或重写这份记录，再撤销。")
-        state = str(entry.get("state") or "unknown").lower()
+        state = str(entry.get("state") or "unknown").strip().lower()
         if state != "closed":
             url = str(entry.get("url") or "")
             detail = f"state={state}{'，' + url if url else ''}"
@@ -283,8 +283,12 @@ def build_plan(root: Path, inbox: Path, traces: Path, key: str,
         raise Refused("E_DRAFT", f"草稿读不了，先修草稿再撤销：{exc}") from exc
     if keep_trace:
         trace["warnings"].append("按 --keep-trace 跳过来源 trace 回写（沉淀状态与诊断状态都不动）")
-    elif ambiguous:
-        raise Refused("E_SESSION_AMBIGUOUS", reason or "来源 session 有多个，先修草稿头注释只留一个")
+    if ambiguous:
+        # --keep-trace 不回写 trace，这时来源歧义不影响写盘；读侧仍无法判断是否已升格，
+        # 只把这条限制写进 warning。不带 --keep-trace 时必须先修草稿头注释。
+        if not keep_trace:
+            raise Refused("E_SESSION_AMBIGUOUS", reason or "来源 session 有多个，先修草稿头注释只留一个")
+        trace["warnings"].append("来源 session 有多个：--keep-trace 下不回写 trace，也不判断是否已升格")
     elif not session:
         trace["warnings"].append("来源 trace 未记录（外部来源）：只出队并清评估状态文件，不回写 trace")
     else:
@@ -302,11 +306,13 @@ def build_plan(root: Path, inbox: Path, traces: Path, key: str,
             if snap["sedimented"] == "none":
                 trace["warnings"].append("来源 trace 已经是未沉淀，不需要回写沉淀状态")
             elif snap["sedimented"] in ("knowledge", "archived"):
+                # 升格已经发生，撤回顾名思义要动知识库与 PR；--keep-trace 只跳过回写，
+                # 不跳过这条拒绝（否则升级过的单可以被一次本地撤销带走）。
                 raise Refused(
                     "E_ALREADY_PROMOTED",
                     f"来源 trace 的沉淀状态已经是 {snap['sedimented']}（已升格）；撤销只处理提交阶段"
                     "（submitted）的草稿。已升格的牵动知识库与 PR，按知识库变更流程处理。")
-            else:
+            elif not keep_trace:
                 trace["action"] = "write"
 
             if trace["action"] == "write":
@@ -452,24 +458,41 @@ def _apply_plan(root: Path, inbox: Path, traces: Path, plan: dict,
             if pr:
                 try:
                     pr_status.forget_pr(root, plan["key"])
+                    pr_cleared = True
+                    done.append("PR 台账记录已清除")
                 except pr_status.PrRecordError as exc:
-                    raise Refused(
-                        "E_PR_LEDGER",
-                        "清 PR 台账记录失败：" + str(exc)
-                        + f"。来源 trace 已回 none、草稿已移到 {_rel(root, moved_to)}；"
-                        + "台账记录还在，按上面的原因处理后跑 "
-                        + "python3 scripts/pr_status.py --root . --forget --draft "
-                        + shlex.quote(plan["key"]) + " 收工。", done)
+                    if getattr(exc, "code", "") == "E_NOT_FOUND":
+                        # 计划与执行之间另一个进程把记录清掉了：目标状态已经达成，
+                        # 不当失败，也不再给一个必然失败的修复命令。
+                        pr_cleared = True
+                        done.append("PR 台账记录已不存在（视为已清除）")
+                    elif getattr(exc, "code", "") == "E_PR_ACTIVE":
+                        raise Refused(
+                            "E_PR_LEDGER",
+                            "清 PR 台账记录失败：" + str(exc).rstrip("。") + "。"
+                            + f"来源 trace 已回 none、草稿已移到 {_rel(root, moved_to)}；"
+                            + "记录状态已经变了，撤销不再清它。先在平台上处理 PR；确认已关闭后把"
+                            + "台账状态改回 closed（python3 scripts/pr_status.py --root . --mark "
+                            + "--draft " + shlex.quote(plan["key"]) + " --state closed），再跑 "
+                            + "python3 scripts/pr_status.py --root . --forget --draft "
+                            + shlex.quote(plan["key"]) + " 收工。", done)
+                    else:
+                        raise Refused(
+                            "E_PR_LEDGER",
+                            "清 PR 台账记录失败：" + str(exc).rstrip("。") + "。"
+                            + f"来源 trace 已回 none、草稿已移到 {_rel(root, moved_to)}；"
+                            + "先修台账，再跑 python3 scripts/pr_status.py --root . --forget --draft "
+                            + shlex.quote(plan["key"]) + " 收工。", done)
                 except pr_status.LedgerError as exc:
                     raise Refused(
                         "E_PR_LEDGER",
-                        "清 PR 台账记录失败：" + str(exc)
-                        + f"。来源 trace 已回 none、草稿已移到 {_rel(root, moved_to)}；"
-                        + "台账记录还在，确认台账可写后跑 "
+                        "清 PR 台账记录失败：" + str(exc).rstrip("。") + "。"
+                        + f"来源 trace 已回 none、草稿已移到 {_rel(root, moved_to)}；"
+                        + "台账可能被别的进程改过或写不进去。先跑 "
                         + "python3 scripts/pr_status.py --root . --forget --draft "
-                        + shlex.quote(plan["key"]) + " 收工。", done)
-                pr_cleared = True
-                done.append("PR 台账记录已清除")
+                        + shlex.quote(plan["key"])
+                        + "：成功即收工；返回 E_NOT_FOUND 说明记录已经被清掉，同样不用再收工。",
+                        done)
 
             human = plan["human"] or {}
             pr_log = None
@@ -541,7 +564,8 @@ def run(argv=None) -> int:
     ap.add_argument("--traces", default=None, help="traces 目录（默认由主检出解析）")
     ap.add_argument("--apply", action="store_true", help="执行；不带时只打印计划")
     ap.add_argument("--keep-trace", action="store_true",
-                    help="不回写来源 trace 的沉淀状态（手工修过 trace 后重跑时用）")
+                    help="不回写来源 trace 的沉淀状态；仍读 trace 判断是否已升格"
+                         "（手工修过 trace 后重跑时用）")
     ap.add_argument("--by", default="user", choices=["user", "agent", "cli"], help="undo-log 里记谁做的")
     ap.add_argument("--note", default="", help="写进 undo-log 的备注")
     ap.add_argument("--json", action="store_true", help="输出 JSON（机器可读）")
