@@ -2,7 +2,9 @@
 layer: training
 title: 训练框架适配层
 
-orgs: []
+orgs:
+  - {name: Ascend, host: gitcode, enumerable: false}
+  - {name: volcengine, host: github, enumerable: false}
 
 repos:
   - repo: Ascend/MindSpeed-LLM

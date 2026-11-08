@@ -47,7 +47,7 @@ TEST_FILE_RE = re.compile(r"^tests/(test_[A-Za-z0-9_]+)\.py$")
 SCRIPT_REF_RE = re.compile(r"^scripts/([^/]+)$")
 # 数据目录 → 消费它的脚本：数据文件不是脚本，静态扫描看不出归属。不登记的话，
 # 只改数据的 PR 会选中空集（"没跑"与"跑了没命中"同形）。
-DATA_CONSUMERS = {"source-catalog.d": {"src_fetch"}}
+DATA_CONSUMERS = {"source-catalog.d": {"src_fetch", "source_catalog"}}
 
 
 class _Unparseable(Exception):

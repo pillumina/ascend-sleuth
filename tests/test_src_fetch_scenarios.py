@@ -259,5 +259,61 @@ class SrcFetchScenarioTest(unittest.TestCase):
         self.assertIn("非空", proc.stderr)
 
 
+    # ------------------------------------------------------------ 场景 9
+    def test_offline_with_explicit_repo_reuses_cache_only(self):
+        """显式仓名 + --offline：只复用本地缓存，不联网。"""
+        repo = self.make_repo("ops-foo", {"src/one.c": "if (foox kernel failed) {}\n"})
+        self.write_catalog([self.custom_repo("ops-foo", repo.as_uri(), ["foox"])])
+        args = ("acme/ops-foo", "--ref", "v1.0", "--offline", *self.cat_args(),
+                "--dest", str(self.dest))
+
+        miss = self.run_cli(*args)
+        self.assertExit(miss, 3)
+        self.assertNotIn("尝试解析", miss.stdout)
+        self.assertEqual(list(self.dest.rglob("*")), [], "离线模式不该 clone")
+        self.assertIn("离线模式只复用本地缓存", miss.stderr)
+
+        first = self.run_cli("acme/ops-foo", "--ref", "v1.0", *self.cat_args(),
+                             "--dest", str(self.dest))
+        self.assertExit(first, 0)
+        again = self.run_cli(*args)
+        self.assertExit(again, 0)
+        self.assertIn("复用", again.stdout)
+
+    # ------------------------------------------------------------ 场景 10
+    def test_discover_only_repo_with_custom_source_is_fetchable(self):
+        """只进签名候选表（fast_path: false）的仓也要能取地址：不能靠已知表 lookup。"""
+        repo = self.make_repo("ops-hidden", {"src/h.c": "if (hidden failure) {}\n"})
+        entry = self.custom_repo("ops-hidden", repo.as_uri(), ["hidden"])
+        entry["fast_path"] = False
+        self.write_catalog([entry])
+
+        proc = self.run_cli("--find", "hidden failure", "--org", "acme", "--ref", "v1.0",
+                            *self.cat_args(), "--dest", str(self.dest),
+                            "--verify", "hidden failure")
+        self.assertExit(proc, 0)
+        self.assertTrue(last_line(proc).endswith("/v1.0"))
+
+    # ------------------------------------------------------------ 场景 11
+    def test_unknown_repo_in_custom_org_is_usage_error_not_traceback(self):
+        """custom host 组织里的未登记仓拿不到地址：给用法错，不能抛 traceback。"""
+        self.write_catalog([self.custom_repo("ops-foo", "file:///tmp/not-used", ["foox"])])
+        proc = self.run_cli("--find", SIGNATURE, "acme/ops-unknown", "--org", "acme",
+                            "--ref", "v1.0", *self.cat_args(), "--dest", str(self.dest))
+
+        self.assertExit(proc, 2)
+        self.assertIn("custom", proc.stderr)
+        self.assertNotIn("Traceback", proc.stderr + proc.stdout)
+
+    # ------------------------------------------------------------ 场景 12
+    def test_bad_catalog_path_is_not_silent(self):
+        """--catalog 写错路径：给用法错，不静默当成空目录。"""
+        bad = Path(self._tmp.name) / "no-such-catalog"
+        proc = self.run_cli("--list", "--catalog", str(bad))
+
+        self.assertExit(proc, 2)
+        self.assertIn("不可用", proc.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

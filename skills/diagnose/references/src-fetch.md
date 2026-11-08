@@ -79,14 +79,22 @@ exit 3 之后按这个顺序继续，前四步都不需要工程师：
 
 ## 数据目录（source-catalog.d）
 
-仓表是数据，不是代码。`source-catalog.d/<层>.yaml` 一层一个文件（`cann.yaml`、`training.yaml` 等），是已知表、签名候选表与可枚举组织的唯一来源。`src_fetch.py` 只做取用流程，`source_catalog.py` 只做加载与候选计算。私有部署或场景测试换目录用 `--catalog <目录>`。接口前缀与层的对应判据见先验层 `references/software-facts/cann-source-location.yaml`。
+源码仓目录是数据，不是代码。`source-catalog.d/<层>.yaml` 一层一个文件（`cann.yaml`、`training.yaml` 等），是已知表、签名候选表与可枚举组织的唯一来源。
+
+- `src_fetch.py` 只做取用流程。
+- `source_catalog.py` 只做加载、校验与候选计算。
+- 私有部署或场景测试换目录用 `--catalog <目录>`。
+
+接口前缀与层的对应判据见先验层 `references/software-facts/cann-source-location.yaml`。
 
 每个层文件里与本流程相关的有三部分：
 
 - `orgs`：组织名、host、`enumerable` 与说明。只有可枚举组织才走现枚举。
 - `repos`：一个仓一条，含 `repo`（`org/repo`）、`sources`（host 与 owner/repo，可多条并按可信度排序）、`aliases`、`why`，以及 `discover`（签名关键词规则：`all_of` / `any_of` / `primary` / `discriminators` / `fallback`）。
-- `self_test`：真实签名到期望仓的用例，`--self-test` 逐条跑。
+- `self_test`：真实签名到期望仓的用例，`--self-test` 逐条跑。用例的组织必须在 `orgs` 里声明，跨层合并。
 
-补一个仓只改数据：在对应层文件的 `repos` 里加一条，在 `self_test` 里加一条真实签名用例，然后跑 `python3 scripts/src_fetch.py --self-test`。不要改脚本。`--self-test` 不通过时 exit 1，并列出问题；自测是唯一会报错的地方：关键词含大写、仓名写错、真实签名不再命中，都只表现为零候选且不报错（看起来像"上游没有这个仓"）。
+补一个仓只改数据：在对应层文件的 `repos` 里加一条；报错签名会点到它时，再加 `discover` 与 `self_test`。不改脚本。改完跑 `python3 scripts/src_fetch.py --self-test`。
 
-**诊断中发现缺仓不直接改**：先用 `python3 scripts/evolve_intake.py record …` 记信号（按部署声明落卡或落台账），由演进流程决定补哪一层。诊断中途改仓目录，会让本单的证据依赖一份未审的改动。
+数据写坏时只有这一步会明确报错：关键词含大写、仓名写错、真实签名不再命中，都只表现为零候选（看起来像"上游没有这个仓"）；`--self-test` 把它们变成 exit 1 并点名。
+
+**诊断中发现缺仓不直接改**：先用 `python3 scripts/evolve_intake.py record …` 记一条改进信号（按部署声明写成改进项或信号记录），由演进流程决定补哪一层。诊断中途改仓目录，会让这次诊断的证据依赖一份未审的改动。

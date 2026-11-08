@@ -1,4 +1,4 @@
-# CANN 开源面（gitcode 的 cann 组织，2026-09 实测 82 个公开仓）。
+# CANN 开源面（gitcode 的 cann 组织）。组织仓清单可现枚举，这里不写死数量。
 # 只收「错误签名会直接点到名字」的层，不把组织全表搬进 known：其余层由
 # `--list-org-repos cann` 现枚举。新增一个仓只改本文件，不改脚本。
 layer: cann

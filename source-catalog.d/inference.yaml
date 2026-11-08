@@ -3,7 +3,8 @@
 layer: inference
 title: 推理框架与模型侧
 
-orgs: []
+orgs:
+  - {name: vllm-project, host: github, enumerable: false}
 
 repos:
   - repo: vllm-project/vllm-ascend

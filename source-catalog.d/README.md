@@ -1,6 +1,6 @@
 # 源码仓目录（source-catalog.d）
 
-这里存"哪个仓在哪、怎么找到它"，是 `scripts/src_fetch.py` 的唯一仓表来源。消费方与校验器是
+这里存"哪个仓在哪、怎么找到它"，是 `scripts/src_fetch.py` 的唯一数据来源。消费方与校验器是
 `scripts/source_catalog.py`，按版本取源码、缓存与退出码契约仍在 `scripts/src_fetch.py`。
 
 ## 为什么是目录
@@ -14,12 +14,13 @@
 1. 在对应层文件的 `repos` 加一条：canonical 名、`sources`（host 与 owner/repo，私有仓用
    `host: custom` 加 `url`）、可选 `aliases`、`why`。
 2. 若报错签名会直接点到它，加 `discover`（`all_of` / `any_of` / `primary` / `discriminators` /
-   `fallback`），并在 `self_test` 加一条真实签名到期望仓。
+   `fallback`），并在 `self_test` 加一条真实签名到期望仓。`self_test` 里的组织必须在 `orgs`
+   里声明（加载时跨层合并）。
 3. 跑 `python3 scripts/src_fetch.py --self-test`。结构错与签名不命中都会在这里报红。
 
 新增层的信号来自诊断：同一类"找不到仓"出现两次以上，再由演进记录成改进项补数据，不在诊断里
-直接改。为什么强调这一点：`discover` 写坏或缺失时的表现是**静默零候选**，看起来像上游没有这个
-仓；自测是唯一能让它响亮失败的形态。
+直接改。`discover` 写坏或缺失时的表现是**静默零候选**，看起来像上游没有这个仓；只有自测会
+明确报错。
 
 ## 字段
 

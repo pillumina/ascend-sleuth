@@ -634,13 +634,26 @@ def prune_version(repo_dir: Path, ref: str) -> int:
 
 # ---------------------------------------------------------------- 目录查看与验证
 def candidate_sources(catalog, org: str, short: str):
-    """候选仓 → (canonical, [(host, slot), ...])：目录里登记过就用它的 sources（含 custom 与私有地址）。"""
+    """候选仓 → (canonical, [(host, slot), ...])；构造不出地址时第二项为 None。
+
+    目录登记过的仓用它的 sources（含 custom 与私有地址，`fast_path: false` 的签名候选仓也算）。
+    组织是 custom host 且仓没登记时不能凭空拼地址：调用方要报用法错，不能拼出没有 url 的 slot。
+    """
     canonical = f"{org}/{short}"
-    _canon, sources = catalog.lookup(canonical)
-    if sources is not None:
+    sources = catalog.sources_for(canonical)
+    if sources:
         return canonical, [(src["host"], {k: v for k, v in src.items() if k != "host"}) for src in sources]
-    host = catalog.orgs[org].host if org in catalog.orgs else "gitcode"
+    meta = catalog.orgs.get(org)
+    if meta is not None and meta.host == "custom":
+        return canonical, None
+    host = meta.host if meta else "gitcode"
     return canonical, [(host, {"owner": org, "repo": short})]
+
+
+def die_no_url(canonical: str, org: str) -> int:
+    return die(EXIT_USAGE,
+               f"组织「{org}」的 host 是 custom，但候选仓「{canonical}」没有登记可用的 url——"
+               f"把它写进 source-catalog.d 的 sources，或用 --url 显式给地址")
 
 
 def print_catalog(catalog) -> int:
@@ -650,7 +663,8 @@ def print_catalog(catalog) -> int:
         repos = [repo for repo in catalog.repos.values() if repo.layer == layer]
         if not repos:
             continue
-        print(f"[{layer}]")
+        title = catalog.titles.get(layer, "")
+        print(f"[{layer}]" + (f" {title}" if title else ""))
         for repo in repos:
             hosts = "、".join(str(src.get("host")) for src in repo.sources)
             aliases = f"  别名：{'、'.join(repo.aliases)}" if repo.aliases else ""
@@ -802,11 +816,16 @@ def main() -> int:
         Path(args.catalog).expanduser().resolve() if args.catalog else source_catalog.default_dir(root))
     set_catalog(catalog)
 
-    if args.verify is not None and not args.verify.strip():
-        return die(EXIT_USAGE, "--verify 需要非空签名（例：--verify \"HcclAllReduce failed\"）")
-
     if args.self_test:
         return self_test(catalog)
+    if catalog.problems:
+        for problem in catalog.problems:
+            print(f"⚠ 源码仓目录：{problem}", file=sys.stderr)
+        if args.catalog:
+            return die(EXIT_USAGE, f"--catalog 指向的目录不可用：{args.catalog}（原因见上）")
+
+    if args.verify is not None and not args.verify.strip():
+        return die(EXIT_USAGE, "--verify 需要非空签名（例：--verify \"HcclAllReduce failed\"）")
 
     if args.list:
         return print_catalog(catalog)
@@ -853,6 +872,10 @@ def main() -> int:
         if args.repo:
             given = norm_repo(args.repo)
             org_host = catalog.orgs[args.org].host if args.org in catalog.orgs else "gitcode"
+            if org_host == "custom":
+                return die(EXIT_USAGE,
+                           f"组织「{args.org}」的 host 是 custom，未登记的仓「{given}」需要 --url，"
+                           f"或先把它写进 source-catalog.d 的 sources")
             fallback_hosts = [org_host] if org_host == "github" else [org_host, "github"]
             if "/" in given:                     # org/repo 形态：尊重给的 org，不再套 --org
                 owner, rname = given.split("/", 1)
@@ -877,6 +900,8 @@ def main() -> int:
                 # （那样断网现场会得到一条拉取失败，看起来像"上游没有这个仓"）。
                 # 只有本地已核对通过的同版本才能复用，否则如实说清楚要什么。
                 canonical, cands = candidate_sources(catalog, args.org, found[0][0])
+                if cands is None:
+                    return die_no_url(canonical, args.org)
                 org_part, repo_part = canonical.split("/", 1)
                 local = find_local(cache_root / org_part / repo_part, args.ref)
                 ok_local = [d for d, _how, ok, _why, _m in local if ok]
@@ -891,6 +916,8 @@ def main() -> int:
                              and is_fallback_candidate(args.org, find_sig, found[0][0]))
             if len(found) == 1 and not only_fallback:
                 canonical, cands = candidate_sources(catalog, args.org, found[0][0])
+                if cands is None:
+                    return die_no_url(canonical, args.org)
                 print(f"唯一候选 → {canonical}")
             elif only_fallback:
                 return die(EXIT_REF_UNRESOLVED,
@@ -909,6 +936,8 @@ def main() -> int:
                 cds, canonical_by_url = [], {}
                 for name, _w, _s in found:
                     canonical_i, sources = candidate_sources(catalog, args.org, name)
+                    if sources is None:
+                        return die_no_url(canonical_i, args.org)
                     for host, slot in sources:
                         url = slot["url"] if host == "custom" else clone_url(host, slot["owner"], slot["repo"])
                         canonical_by_url[url] = canonical_i
@@ -960,6 +989,15 @@ def main() -> int:
             print(f"缓存：{describe_src(cache_root, where)}")
             return finish_ok(d, args)
     bad_local = [(d, why) for d, _how, ok, why, _m in local if not ok]
+
+    if args.offline:
+        if bad_local:
+            d, why = bad_local[0]
+            return die(EXIT_LOCAL_MISMATCH,
+                       f"离线模式只复用本地缓存：{d} 核对不通过（{why}）——去掉 --offline 会联网重拉")
+        return die(EXIT_REF_UNRESOLVED,
+                   f"离线模式只复用本地缓存：本地没有「{args.ref or '(默认分支)'}」的版本——"
+                   "去掉 --offline 才会联网拉取")
 
     # ② 需要联网：解析 ref（逐候选源）；解析不到就非零退出，并给可用 tag
     resolved, url_used, failures = None, "", []

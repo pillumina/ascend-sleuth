@@ -40,8 +40,10 @@ class SelectUnitTestsTest(unittest.TestCase):
         """数据目录改动要选中消费脚本的测试：数据文件不是脚本，静态扫描看不出归属。"""
         self.write("scripts/src_fetch.py")
         self.write("tests/test_src_fetch.py", "import src_fetch\n")
+        self.write("scripts/source_catalog.py")
+        self.write("tests/test_source_catalog.py", "import source_catalog\n")
         result, notes = self.select(["source-catalog.d/cann.yaml"])
-        self.assertEqual(result, ["tests.test_src_fetch"])
+        self.assertEqual(result, ["tests.test_source_catalog", "tests.test_src_fetch"])
         self.assertFalse(any("跳过" in note for note in notes))
 
     def test_shared_module_pulls_dependents_tests(self):

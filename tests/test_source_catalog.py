@@ -67,23 +67,53 @@ class DefaultCatalogTest(unittest.TestCase):
             got[key] = (canonical, [src["host"] for src in sources])
         self.assertEqual(got, LEGACY_KNOWN)
 
-    def test_known_table_size_and_discover_only_repos(self):
+    def test_known_table_keeps_legacy_repos(self):
+        """旧的 16 个仓必须都在；新增仓只改数据，所以这里不钉总数。"""
         known_canonicals = {canonical for canonical, _sources in self.cat.known.values()}
-        self.assertEqual(len(known_canonicals), 16)
-        self.assertEqual(len(self.cat.known), len(LEGACY_KNOWN))
+        legacy_canonicals = {canonical for canonical, _hosts in LEGACY_KNOWN.values()}
+        self.assertLessEqual(legacy_canonicals, known_canonicals)
+        self.assertGreaterEqual(len(self.cat.known), len(LEGACY_KNOWN))
         for repo in ("cann/pyasc", "cann/oam-tools"):
             self.assertIn(repo, self.cat.repos)
             self.assertIsNone(self.cat.lookup(repo)[1], f"{repo} 不该进已知表")
+            self.assertTrue(self.cat.sources_for(repo), f"{repo} 的 sources 要能按 canonical 取到")
 
     def test_cann_candidates_keep_legacy_order(self):
         got = [repo.short for repo in self.cat.discover_repos("cann")]
-        self.assertEqual(got, LEGACY_CANDIDATE_REPOS)
+        self.assertEqual(got[:len(LEGACY_CANDIDATE_REPOS)], LEGACY_CANDIDATE_REPOS)
 
     def test_self_test_cases_cover_real_signatures(self):
-        self.assertEqual(len(self.cat.self_tests), 12)
-        for _org, _sig, expect in self.cat.self_tests:
+        legacy_cases = set()
+        for _org, sig, expect in self.cat.self_tests:
             self.assertIn(expect, self.cat.repos)
-            self.assertIn(expect, self.cat.repos)
+            legacy_cases.add((sig, expect))
+        self.assertEqual(len(legacy_cases), len(self.cat.self_tests), "同一条签名用例重复")
+        self.assertGreaterEqual(len(self.cat.self_tests), 12)
+
+    def test_added_layer_does_not_break_legacy_snapshot(self):
+        """只改数据加一个层/仓，不该让等价性用例红（RFC 的「补仓只改数据」）。"""
+        import shutil
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d) / "source-catalog.d"
+            shutil.copytree(source_catalog.default_dir(ROOT), base)
+            (base / "review.yaml").write_text("""
+layer: review
+title: 评审夹具层
+orgs:
+  - {name: acme, host: github, enumerable: false}
+repos:
+  - repo: acme/ops-new
+    sources: [{host: github, owner: acme, repo: ops-new}]
+    discover: {any_of: [brandnew], primary: [brandnew]}
+self_test:
+  - {sig: "brandnew failure", expect: acme/ops-new}
+""", encoding="utf-8")
+            cat = source_catalog.load_catalog(base)
+            self.assertEqual(cat.validate(), [])
+            self.assertIn("review", cat.layers)
+            self.assertEqual(cat.lookup("acme/ops-new")[0], "acme/ops-new")
+            for key in LEGACY_KNOWN:
+                self.assertIsNotNone(cat.lookup(key)[1], f"新增层后 {key} 仍要能查到")
 
     def test_top_candidates_for_representative_signatures(self):
         cases = {

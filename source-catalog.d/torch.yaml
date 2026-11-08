@@ -2,7 +2,8 @@
 layer: torch
 title: PyTorch 与 NPU 适配层
 
-orgs: []
+orgs:
+  - {name: Ascend, host: gitcode, enumerable: false}
 
 repos:
   - repo: Ascend/pytorch

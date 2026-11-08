@@ -66,6 +66,7 @@ class Catalog:
         self.orgs: dict[str, Org] = {}
         self.self_tests: list[tuple[str, str, str]] = []   # (org, sig, expect canonical)
         self.layers: list[str] = []
+        self.titles: dict[str, str] = {}
         self._alias_owner: dict[str, str] = {}
         self._load()
 
@@ -95,6 +96,8 @@ class Catalog:
         if layer in self.layers:
             self.problems.append(f"{path.name}: layer「{layer}」重复")
         self.layers.append(layer)
+        if doc.get("title"):
+            self.titles[layer] = str(doc["title"])
 
         for org in doc.get("orgs") or []:
             if not isinstance(org, dict) or not org.get("name"):
@@ -204,6 +207,11 @@ class Catalog:
         if hit is not None:
             return hit
         return (repo.strip().rstrip("/").removesuffix(".git"), None)
+
+    def sources_for(self, canonical: str) -> list | None:
+        """按 canonical 名取 sources，**不看 fast_path**：签名候选里的仓（如 pyasc）也能拿到地址。"""
+        repo = self.repos.get(canonical)
+        return list(repo.sources) if repo else None
 
     def discover_repos(self, org: str) -> list[Repo]:
         return [r for r in self.repos.values() if r.org == org and r.discover]
