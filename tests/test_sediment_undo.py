@@ -197,6 +197,98 @@ class SedimentUndoTest(unittest.TestCase):
         self.assertTrue(draft.is_file())
         self.assertFalse((self.inbox / ".undone").exists())
 
+    def test_refuses_when_pr_not_closed(self):
+        # merged / unknown 也拦：前者落点已经进 knowledge/，后者还没确认。
+        for state in ("merged", "unknown"):
+            key = f"draft-{state}"
+            draft = write_flat_draft(self.repo, key)
+            ledger = pr_status.empty_ledger()
+            ledger["prs"][key] = {
+                "platform": "github", "repo": "pillumina/ascend-sleuth", "number": 419,
+                "url": "https://github.com/pillumina/ascend-sleuth/pull/419",
+                "state": state, "source": "platform",
+                "created_at": "2026-11-01T10:00:00+08:00",
+            }
+            pr_status.save_ledger(self.repo, ledger)
+            proc, payload = self.run_undo("--draft-key", key, "--apply", "--json")
+            self.assertEqual(proc.returncode, 2, proc.stdout + proc.stderr)
+            self.assertEqual(payload.get("code"), "E_PR_EXISTS", proc.stdout)
+            self.assertIn(state, payload.get("message", ""))
+            self.assertTrue(draft.is_file())
+            self.assertFalse((self.inbox / ".undone").exists())
+
+    def test_closed_pr_is_undoable_and_clears_ledger(self):
+        key = "draft-a"
+        draft = write_flat_draft(self.repo, key, source_session="2026-11-01-demo")
+        trace = write_trace(self.repo, "2026-11-01-demo", state="submitted")
+        sidecar = write_sidecar(self.repo, key, decision="new_pattern")
+        ledger = pr_status.empty_ledger()
+        ledger["prs"][key] = {
+            "platform": "github", "repo": "pillumina/ascend-sleuth", "number": 431,
+            "url": "https://github.com/pillumina/ascend-sleuth/pull/431",
+            "state": "closed", "source": "platform",
+            "checked_at": "2026-11-07T10:00:00+08:00",
+            "created_at": "2026-11-01T10:00:00+08:00",
+        }
+        pr_status.save_ledger(self.repo, ledger)
+
+        proc, payload = self.run_undo("--draft-key", key)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertIn("PR 台账", proc.stdout)
+        self.assertIn("已关闭", proc.stdout)
+        self.assertIn("#431", proc.stdout)
+        self.assertTrue(draft.is_file())
+
+        proc, payload = self.run_undo("--draft-key", key, "--apply", "--json")
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        self.assertTrue(payload.get("ok"), payload)
+        self.assertEqual(payload.get("prCleared"), True)
+        self.assertEqual(payload["pr"]["number"], 431)
+        self.assertFalse(draft.is_file())
+        self.assertFalse(sidecar.exists())
+        moved = list((self.inbox / ".undone").glob(f"*-{sanitize_key(key)}"))
+        self.assertEqual(len(moved), 1, moved)
+        self.assertTrue((moved[0] / f"{key}.case.yaml").is_file())
+        self.assertEqual(load_yaml(trace)["sedimented"]["state"], "none")
+        self.assertNotIn(key, pr_status.load_ledger(self.repo)["prs"])
+        meta = json.loads((moved[0] / ".undo.json").read_text(encoding="utf-8"))
+        self.assertEqual(meta["previous_pr"]["number"], 431)
+        entries = (self.inbox / ".groom" / "undo-log.jsonl").read_text(
+            encoding="utf-8").strip().splitlines()
+        self.assertEqual(len(entries), 1)
+        entry = json.loads(entries[0])
+        self.assertEqual(entry["pr"]["state"], "closed")
+        self.assertEqual(entry["pr"]["number"], 431)
+        self.assertEqual(entry["pr"]["cleared"], True)
+
+    def test_ledger_clear_failure_is_reported_with_repair_command(self):
+        key = "draft-a"
+        write_flat_draft(self.repo, key, source_session="2026-11-01-demo")
+        trace = write_trace(self.repo, "2026-11-01-demo", state="submitted")
+        ledger = pr_status.empty_ledger()
+        ledger["prs"][key] = {
+            "platform": "github", "repo": "pillumina/ascend-sleuth", "number": 431,
+            "url": "https://github.com/pillumina/ascend-sleuth/pull/431",
+            "state": "closed", "source": "platform",
+            "checked_at": "2026-11-07T10:00:00+08:00",
+            "created_at": "2026-11-01T10:00:00+08:00",
+        }
+        pr_status.save_ledger(self.repo, ledger)
+        buf = io.StringIO()
+        with mock.patch.object(su.pr_status, "forget_pr",
+                               side_effect=su.pr_status.LedgerError("mock: 写锁不可用")):
+            with contextlib.redirect_stdout(buf):
+                code = su.run(["--draft-key", key, "--apply", "--json",
+                               "--root", str(self.repo)])
+        payload = json.loads(buf.getvalue())
+        self.assertEqual(code, 2, buf.getvalue())
+        self.assertEqual(payload.get("code"), "E_PR_LEDGER", buf.getvalue())
+        self.assertIn("--forget", payload.get("message", ""))
+        self.assertIn("来源 trace 回写 none", payload.get("done") or [])
+        self.assertTrue(any("草稿移入" in item for item in payload.get("done") or []))
+        self.assertEqual(load_yaml(trace)["sedimented"]["state"], "none")
+        self.assertIn(key, pr_status.load_ledger(self.repo)["prs"])
+
     def test_ledger_entry_not_object_is_refused(self):
         key = "draft-a"
         draft = write_flat_draft(self.repo, key)
@@ -205,8 +297,88 @@ class SedimentUndoTest(unittest.TestCase):
         pr_status.save_ledger(self.repo, ledger)
         proc, payload = self.run_undo("--draft-key", key, "--apply", "--json")
         self.assertEqual(proc.returncode, 2, proc.stdout)
-        self.assertEqual(payload.get("code"), "E_PR_EXISTS")
+        self.assertEqual(payload.get("code"), "E_BAD_RECORD")
         self.assertTrue(draft.is_file())
+
+    def test_keep_trace_still_refuses_promoted_trace(self):
+        # --keep-trace 只跳过回写；已升格的 trace 仍拒绝，避免一次本地撤销带走升格过的单。
+        key = "draft-a"
+        draft = write_flat_draft(self.repo, key, source_session="2026-11-01-demo")
+        write_trace(self.repo, "2026-11-01-demo", state="knowledge")
+        proc, payload = self.run_undo("--draft-key", key, "--apply", "--json", "--keep-trace")
+        self.assertEqual(proc.returncode, 2, proc.stdout)
+        self.assertEqual(payload.get("code"), "E_ALREADY_PROMOTED")
+        self.assertTrue(draft.is_file())
+
+    def test_keep_trace_still_refuses_ambiguous_source(self):
+        # 来源有歧义时定位不到 trace，也就判断不了是否已升格：--keep-trace 不跳过这条拒绝。
+        key = "draft-a"
+        draft = write_flat_draft(self.repo, key)
+        (self.inbox / f"{key}.md").write_text(
+            "来源：traces/2026-11-01-a.yaml 与 traces/2026-11-02-b.yaml\n", encoding="utf-8")
+        proc, payload = self.run_undo("--draft-key", key, "--apply", "--json", "--keep-trace")
+        self.assertEqual(proc.returncode, 2, proc.stdout)
+        self.assertEqual(payload.get("code"), "E_SESSION_AMBIGUOUS")
+        self.assertTrue(draft.is_file())
+
+    def test_forget_not_found_is_treated_as_cleared(self):
+        # 计划之后另一个进程清掉了记录：目标状态已经达成，不当失败，也不给必然失败的命令。
+        key = "draft-a"
+        write_flat_draft(self.repo, key, source_session="2026-11-01-demo")
+        write_trace(self.repo, "2026-11-01-demo", state="submitted")
+        ledger = pr_status.empty_ledger()
+        ledger["prs"][key] = {
+            "platform": "github", "repo": "pillumina/ascend-sleuth", "number": 431,
+            "url": "https://github.com/pillumina/ascend-sleuth/pull/431",
+            "state": "closed", "source": "platform",
+            "checked_at": "2026-11-07T10:00:00+08:00",
+        }
+        pr_status.save_ledger(self.repo, ledger)
+        buf = io.StringIO()
+        with mock.patch.object(
+                su.pr_status, "forget_pr",
+                side_effect=su.pr_status.PrRecordError(
+                    "E_NOT_FOUND", "台账里没有这份草稿的 PR 记录：draft-a")):
+            with contextlib.redirect_stdout(buf):
+                code = su.run(["--draft-key", key, "--apply", "--json",
+                               "--root", str(self.repo)])
+        payload = json.loads(buf.getvalue())
+        self.assertEqual(code, 0, buf.getvalue())
+        self.assertTrue(payload.get("ok"), payload)
+        self.assertTrue(payload.get("prCleared"))
+        entries = (self.inbox / ".groom" / "undo-log.jsonl").read_text(
+            encoding="utf-8").strip().splitlines()
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(json.loads(entries[0])["pr"]["cleared"], True)
+
+    def test_forget_active_state_message_gives_mark_command(self):
+        # 计划之后记录被改成 open：报错要说清记录状态变了，并给出把状态改回 closed 的命令。
+        key = "draft-a"
+        write_flat_draft(self.repo, key, source_session="2026-11-01-demo")
+        write_trace(self.repo, "2026-11-01-demo", state="submitted")
+        ledger = pr_status.empty_ledger()
+        ledger["prs"][key] = {
+            "platform": "github", "repo": "pillumina/ascend-sleuth", "number": 431,
+            "url": "https://github.com/pillumina/ascend-sleuth/pull/431",
+            "state": "closed", "source": "platform",
+            "checked_at": "2026-11-07T10:00:00+08:00",
+        }
+        pr_status.save_ledger(self.repo, ledger)
+        buf = io.StringIO()
+        with mock.patch.object(
+                su.pr_status, "forget_pr",
+                side_effect=su.pr_status.PrRecordError(
+                    "E_PR_ACTIVE", "这份草稿的 PR 是 open，不能删记录。")):
+            with contextlib.redirect_stdout(buf):
+                code = su.run(["--draft-key", key, "--apply", "--json",
+                               "--root", str(self.repo)])
+        payload = json.loads(buf.getvalue())
+        self.assertEqual(code, 2, buf.getvalue())
+        self.assertEqual(payload.get("code"), "E_PR_LEDGER", buf.getvalue())
+        message = payload.get("message", "")
+        self.assertIn("--mark", message)
+        self.assertIn("--state closed", message)
+        self.assertNotIn("。。", message)
 
     def test_assessment_appears_after_plan_is_refused(self):
         # 计划时没有评估状态文件、拿锁前另一个 groom 写进一份：也不能删（undo-log 里不会记它）。

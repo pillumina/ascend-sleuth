@@ -276,19 +276,24 @@ approval_stale: false
 
 ### 3.7.1 撤销一次不成立的沉淀
 
-`scripts/sediment_undo.py --draft-key <key> [--apply]` 处理「草稿选错了」。默认只打印计划，`--apply` 才写。它做三件事：
+`scripts/sediment_undo.py --draft-key <key> [--apply]` 处理「草稿选错了」。默认只打印计划，`--apply` 才写。它做四件事，最后一件只在 PR 记录已关闭（`closed`）时执行：
 
-- 把还在 inbox、且 PR 台账里没有记录的草稿移进 `postmortems/inbox/.undone/`。移动不删除，移回即复活。
+- 把还在 inbox、PR 记录不存在或已关闭的草稿移进 `postmortems/inbox/.undone/`。移动不删除，移回即复活。
 - 删掉它的评估状态文件（`.groom/assessments/<key>.yaml`）。
-- 把来源 trace 的 `sedimented` 改回 `none`。trace 缺失或外部来源时跳过这一步；`--keep-trace` 时也不写。
+- 把来源 trace 的 `sedimented` 改回 `none`。trace 缺失或外部来源时跳过这一步；`--keep-trace` 时也不写。`--keep-trace` 仍会读 trace：已升格（`knowledge` / `archived`）的草稿照样拒绝，来源 session 有多个时也拒绝。
+- 清掉台账里那条已关闭的 PR 记录（PR 的编号与地址写进 `.groom/undo-log.jsonl` 与 `.undone/` 里的 `.undo.json`），PR 本身在平台上不动。
 
-诊断状态（`status`）不动：撤销只还原 case 的沉淀状态，已收尾的单仍是收尾状态；想继续定位时，在诊断面板用「重新打开」。
+PR 记录已关闭时要清掉它：这次提交已经撤回；留着这条记录，之后把草稿移回 inbox 重新沉淀时，队列会把旧 PR 当现行状态，显示「PR 已关闭」。
 
-批量时重复给 `--draft-key`，脚本逐份建计划、逐份执行；某份被拒不会拦下其他份。另外往 `.groom/undo-log.jsonl` 逐份追加一行：评估 id、人决定的 `decision` / `by` / `at`、决定历史条数与草稿去向。评估正文（候选、理由）不留。`.undone/` 没有保留期，确认不再需要后手工删。
+清记录走 `pr_status.py --forget`（只删 `closed`，写前比对台账文件字节，防并发覆盖）。清记录失败时，草稿已经移到 `.undone/`、trace 未改或已回 `none`，PR 的编号与地址留在 `.undo.json`。按报错给的原因处理后，用 `python3 scripts/pr_status.py --root . --forget --draft <key>` 收工；记录已被别的进程清掉时不算失败。
+
+诊断状态（`status`）不动：撤销还原 case 的沉淀状态，已收尾的单仍是收尾状态；想继续定位时，在诊断面板用「重新打开」。
+
+批量时重复给 `--draft-key`，脚本逐份建计划、逐份执行；某份被拒不会拦下其他份。撤销成功后往 `.groom/undo-log.jsonl` 逐份追加一行：评估 id、人决定的 `decision` / `by` / `at`、决定历史条数与草稿去向。评估正文（候选、理由）不留。`.undone/` 没有保留期，确认不再需要后手工删。
 
 它和 `reject` / `defer` 不是一回事：那两个是「认真看过但不采纳」，草稿与评估状态文件留在队列里，`submitted` 仍是事实。撤销是这份草稿本身被撤回，重新沉淀会从头开始，`none` 才是撤完的状态。
 
-有 PR 记录的草稿不撤销：PR 是外部事实，先在平台上处理它。来源 trace 已写成 `knowledge` / `archived` 的也拒绝：升格已经发生，牵动知识库与 PR，走知识库变更流程。
+PR 记录还没关闭（`open` / `unknown` / `merged`）的草稿不撤销：PR 是外部事实，先在平台上处理它。`unknown` 先跑 `pr_status.py --check --draft <key>` 确认；`merged` 的落点已经进 `knowledge/`。来源 trace 已写成 `knowledge` / `archived` 的也拒绝：升格已经发生，牵动知识库与 PR，走知识库变更流程。
 
 ### 3.8 合入后
 

@@ -26,10 +26,14 @@
 # 边界：
 #   - 只处理还在 inbox 的草稿。已出队（`.done/`）的用「恢复草稿」流程；已升格的草稿
 #     不在这里删，那会牵动知识库与 PR。
-#   - PR 台账里这份草稿有任何记录（open / merged / unknown / closed）就拒绝：PR 是外部
-#     事实，删本地草稿不会关掉它，先确认 PR 再谈撤销。
+#   - PR 台账里这份草稿的记录还没关闭（open / merged / unknown）就拒绝：PR 是外部事实，
+#     删本地草稿不会关掉它，先在平台上处理。记录是 closed 时允许撤销，并在撤销完成后
+#     清掉这条台账记录（undo-log 与 `.undone/` 里的 `.undo.json` 留 PR 的编号与地址）；
+#     PR 本身在平台上不动。清记录走 `pr_status.py --forget`（只删 closed，写前比对
+#     台账文件字节，防并发覆盖）。
 #   - 来源 trace 已经是 `knowledge` / `archived` 时拒绝：升格已经发生，撤回要牵动知识库与
-#     PR，走知识库变更流程；这里只处理提交阶段（`submitted`）的草稿。
+#     PR，走知识库变更流程；这里只处理提交阶段（`submitted`）的草稿。`--keep-trace` 只跳过
+#     回写，这条拒绝仍生效。
 #   - 草稿移进 `postmortems/inbox/.undone/`（移动不删除，移回即复活）。`find_drafts`
 #     不扫点目录，所以移走后不再进队列。撤销后草稿留在 `.undone/`，没有保留期；
 #     确认不再需要后手工删。
@@ -53,6 +57,7 @@ import argparse
 import hashlib
 import json
 import os
+import shlex
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -240,17 +245,28 @@ def build_plan(root: Path, inbox: Path, traces: Path, key: str,
                       f"inbox 里没有这份草稿（{key}）。已出队的草稿用「恢复草稿」流程，不再撤销。")
     ledger = _load_ledger(root)
     prs = ledger.get("prs") if isinstance(ledger.get("prs"), dict) else {}
+    pr = None
     if key in prs:
         entry = prs.get(key)
-        if isinstance(entry, dict):
-            state = str(entry.get("state") or "unknown")
+        if not isinstance(entry, dict):
+            raise Refused("E_BAD_RECORD",
+                          "这份草稿在 PR 台账里的记录不是对象（台账可能被手改坏了）。"
+                          "先修好台账或重写这份记录，再撤销。")
+        state = str(entry.get("state") or "unknown").strip().lower()
+        if state != "closed":
             url = str(entry.get("url") or "")
             detail = f"state={state}{'，' + url if url else ''}"
-        else:
-            detail = "记录不是对象，台账可能被手改坏了"
-        raise Refused("E_PR_EXISTS",
-                      f"这份草稿在 PR 台账里有记录（{detail}）。"
-                      "PR 是外部事实，先在平台上处理它，再撤销本地草稿。")
+            raise Refused("E_PR_EXISTS",
+                          f"这份草稿在 PR 台账里的记录还没关闭（{detail}）。"
+                          "PR 是外部事实，先在平台上处理它；状态没确认时先跑 "
+                          "pr_status.py --check 确认。只有已关闭（closed）的 PR 记录允许撤销。")
+        pr = {"platform": str(entry.get("platform") or ""),
+              "repo": str(entry.get("repo") or ""),
+              "number": entry.get("number"),
+              "url": str(entry.get("url") or ""),
+              "state": state,
+              "source": str(entry.get("source") or ""),
+              "checked_at": str(entry.get("checked_at") or "")}
     sidecar = assessment_path(inbox, key)
     sidecar_sha = ""
     try:
@@ -269,7 +285,9 @@ def build_plan(root: Path, inbox: Path, traces: Path, key: str,
         raise Refused("E_DRAFT", f"草稿读不了，先修草稿再撤销：{exc}") from exc
     if keep_trace:
         trace["warnings"].append("按 --keep-trace 跳过来源 trace 回写（沉淀状态与诊断状态都不动）")
-    elif ambiguous:
+    if ambiguous:
+        # 来源有歧义时定位不到 trace，也就无法判断是否已升格；--keep-trace 只跳过回写，
+        # 不跳过这条拒绝。
         raise Refused("E_SESSION_AMBIGUOUS", reason or "来源 session 有多个，先修草稿头注释只留一个")
     elif not session:
         trace["warnings"].append("来源 trace 未记录（外部来源）：只出队并清评估状态文件，不回写 trace")
@@ -288,11 +306,13 @@ def build_plan(root: Path, inbox: Path, traces: Path, key: str,
             if snap["sedimented"] == "none":
                 trace["warnings"].append("来源 trace 已经是未沉淀，不需要回写沉淀状态")
             elif snap["sedimented"] in ("knowledge", "archived"):
+                # 升格已经发生，撤回顾名思义要动知识库与 PR；--keep-trace 只跳过回写，
+                # 不跳过这条拒绝（否则升级过的单可以被一次本地撤销带走）。
                 raise Refused(
                     "E_ALREADY_PROMOTED",
                     f"来源 trace 的沉淀状态已经是 {snap['sedimented']}（已升格）；撤销只处理提交阶段"
                     "（submitted）的草稿。已升格的牵动知识库与 PR，按知识库变更流程处理。")
-            else:
+            elif not keep_trace:
                 trace["action"] = "write"
 
             if trace["action"] == "write":
@@ -300,8 +320,25 @@ def build_plan(root: Path, inbox: Path, traces: Path, key: str,
     return {
         "root": root, "inbox": inbox, "traces": traces, "key": key,
         "draft": draft, "sidecar": sidecar, "side_doc": side_doc, "human": human,
-        "sidecarSha256": sidecar_sha, "trace": trace,
+        "sidecarSha256": sidecar_sha, "trace": trace, "pr": pr,
     }
+
+
+def _pr_ident(pr: dict) -> str:
+    """PR 的一行身份：编号 + 地址；台账里两样都可能缺（旧记录、手改过）。"""
+    parts = []
+    number = pr.get("number")
+    if number not in (None, ""):
+        parts.append("#" + str(number))
+    url = str(pr.get("url") or "")
+    if url:
+        parts.append(url)
+    return " ".join(parts) or "（台账里没有编号与地址）"
+
+
+def _trace_note(trace_result: dict) -> str:
+    """失败报告里 trace 的现状：没写回时说「未改」，不声称回写过。"""
+    return "来源 trace 已回 none" if trace_result.get("written") else "来源 trace 未改"
 
 
 def _trace_plan_view(trace: dict) -> dict:
@@ -320,6 +357,7 @@ def plan_report(root: Path, inbox: Path, plan: dict, stamp: str) -> dict:
         "layout": plan["draft"].layout,
         "assessment": _rel(root, plan["sidecar"]) if plan["sidecar"].exists() else "",
         "trace": _trace_plan_view(plan["trace"]),
+        "pr": plan["pr"],
         "undoneTo": _rel(root, inbox / UNDONE_DIR) + "/" + stamp + "-"
                     + sanitize_key(plan["key"]),
     }
@@ -337,6 +375,11 @@ def describe_plan(root: Path, plan: dict, stamp: str, apply: bool,
                      + (f"（人决定 {decision}，一并清除）" if decision else ""))
     else:
         lines.append("- 评估状态文件：没有")
+    pr = plan.get("pr")
+    if pr:
+        checked = pr.get("checked_at") or "未记录"
+        lines.append(f"- PR 台账：{_pr_ident(pr)} 已关闭（上次确认 {checked}），"
+                     "撤销完成后清掉这条记录；PR 本身在平台上不动")
     trace = plan["trace"]
     if trace["session"]:
         if trace["action"] == "write":
@@ -356,6 +399,8 @@ def _apply_plan(root: Path, inbox: Path, traces: Path, plan: dict,
     """执行一份计划；失败抛 Refused（带已完成步骤）。返回结果字典。"""
     done = []
     moved_to = None
+    pr = plan.get("pr")
+    pr_cleared = False
     sidecar = Path(plan["sidecar"])
     sidecar_rel = _rel(root, sidecar) if sidecar.exists() else ""
     assessment_deleted = False
@@ -365,7 +410,7 @@ def _apply_plan(root: Path, inbox: Path, traces: Path, plan: dict,
     try:
         # 目录级锁包住整段：计划与执行之间可能另一个 groom 写了新评估，或另一个
         # 撤销/收尾把草稿移走。拿到锁后先重验草稿还在，再按 trace → 草稿 → 评估状态文件
-        # 的顺序写；每完成一步就记进 done，失败报告据此说清现状。
+        # → PR 台账的顺序写；每完成一步就记进 done，失败报告据此说清现状。
         with log_lock(assessment_guard(inbox)) as held:
             if not held:
                 raise Refused("E_LOCK", "评估状态文件的目录锁不可用（本平台没有锁原语），本次没有写入")
@@ -401,6 +446,7 @@ def _apply_plan(root: Path, inbox: Path, traces: Path, plan: dict,
                 "layout": plan["draft"].layout,
                 "source_trace": trace["session"],
                 "previous_sedimented": trace["from"],
+                "previous_pr": pr,
                 "note": args.note,
             }
             moved_to = _move_draft(root, inbox, plan["draft"], stamp, meta)
@@ -414,7 +460,50 @@ def _apply_plan(root: Path, inbox: Path, traces: Path, plan: dict,
                 assessment_deleted = True
                 done.append("评估状态文件已删除")
 
+            if pr:
+                try:
+                    pr_status.forget_pr(root, plan["key"])
+                    pr_cleared = True
+                    done.append("PR 台账记录已清除")
+                except pr_status.PrRecordError as exc:
+                    if getattr(exc, "code", "") == "E_NOT_FOUND":
+                        # 计划与执行之间另一个进程把记录清掉了：目标状态已经达成，
+                        # 不当失败，也不再给一个必然失败的修复命令。
+                        pr_cleared = True
+                        done.append("PR 台账记录已不存在（视为已清除）")
+                    elif getattr(exc, "code", "") == "E_PR_ACTIVE":
+                        raise Refused(
+                            "E_PR_LEDGER",
+                            "清 PR 台账记录失败：" + str(exc).rstrip("。") + "。"
+                            + f"{_trace_note(trace_result)}、草稿已移到 {_rel(root, moved_to)}；"
+                            + "记录状态已经变了，撤销不再清它。先在平台上处理 PR；确认已关闭后把"
+                            + "台账状态改回 closed（python3 scripts/pr_status.py --root . --mark "
+                            + "--draft " + shlex.quote(plan["key"]) + " --state closed），再跑 "
+                            + "python3 scripts/pr_status.py --root . --forget --draft "
+                            + shlex.quote(plan["key"]) + " 收工。", done)
+                    else:
+                        raise Refused(
+                            "E_PR_LEDGER",
+                            "清 PR 台账记录失败：" + str(exc).rstrip("。") + "。"
+                            + f"{_trace_note(trace_result)}、草稿已移到 {_rel(root, moved_to)}；"
+                            + "先修台账，再跑 python3 scripts/pr_status.py --root . --forget --draft "
+                            + shlex.quote(plan["key"]) + " 收工。", done)
+                except pr_status.LedgerError as exc:
+                    raise Refused(
+                        "E_PR_LEDGER",
+                        "清 PR 台账记录失败：" + str(exc).rstrip("。") + "。"
+                        + f"{_trace_note(trace_result)}、草稿已移到 {_rel(root, moved_to)}；"
+                        + "台账可能被别的进程改过或写不进去。先跑 "
+                        + "python3 scripts/pr_status.py --root . --forget --draft "
+                        + shlex.quote(plan["key"])
+                        + "：成功即收工；返回 E_NOT_FOUND 说明记录已经被清掉，同样不用再收工。",
+                        done)
+
             human = plan["human"] or {}
+            pr_log = None
+            if pr:
+                pr_log = dict(pr)
+                pr_log["cleared"] = pr_cleared
             log_entry = {
                 "schema": "sediment-undo/v1",
                 "at": now_iso(),
@@ -433,6 +522,7 @@ def _apply_plan(root: Path, inbox: Path, traces: Path, plan: dict,
                     "human_decision_at": str(human.get("decided_at") or ""),
                     "human_decision_history": len(plan["side_doc"].get("human_decision_history") or []),
                 },
+                "pr": pr_log,
             }
             _append_undo_log(inbox, log_entry)
             done.append("undo-log 已写")
@@ -447,6 +537,8 @@ def _apply_plan(root: Path, inbox: Path, traces: Path, plan: dict,
         "movedTo": _rel(root, moved_to),
         "trace": trace_result,
         "assessmentDeleted": assessment_deleted,
+        "pr": pr,
+        "prCleared": pr_cleared,
         "undoLog": _rel(root, inbox / UNDO_LOG_REL),
         "warnings": trace.get("warnings") or [],
     }
@@ -460,6 +552,8 @@ def print_apply_result(result: dict) -> None:
           + (f" 的 sedimented {trace['from']} → none" if trace["written"]
              else "（沉淀状态未回写）"))
     print("- 评估状态文件：" + ("已删除" if result["assessmentDeleted"] else "没有"))
+    if result.get("pr") and result.get("prCleared"):
+        print("- PR 台账：已清掉已关闭的 PR 记录（" + _pr_ident(result["pr"]) + "）")
     print(f"- undo-log：{result['undoLog']}")
     for warning in result["warnings"]:
         print("- 注意：" + warning)
@@ -475,7 +569,8 @@ def run(argv=None) -> int:
     ap.add_argument("--traces", default=None, help="traces 目录（默认由主检出解析）")
     ap.add_argument("--apply", action="store_true", help="执行；不带时只打印计划")
     ap.add_argument("--keep-trace", action="store_true",
-                    help="不回写来源 trace 的沉淀状态（手工修过 trace 后重跑时用）")
+                    help="不回写来源 trace 的沉淀状态；仍读 trace 判断是否已升格"
+                         "（手工修过 trace 后重跑时用）")
     ap.add_argument("--by", default="user", choices=["user", "agent", "cli"], help="undo-log 里记谁做的")
     ap.add_argument("--note", default="", help="写进 undo-log 的备注")
     ap.add_argument("--json", action="store_true", help="输出 JSON（机器可读）")
@@ -528,6 +623,7 @@ def run(argv=None) -> int:
                 "layout": plan["draft"].layout,
                 "assessment": _rel(root, plan["sidecar"]) if plan["sidecar"].exists() else "",
                 "trace": _trace_plan_view(plan["trace"]),
+                "pr": plan["pr"],
                 "undoneTo": _rel(root, inbox / UNDONE_DIR) + "/" + stamp + "-"
                             + sanitize_key(plan["key"]),
             }, ensure_ascii=False))
