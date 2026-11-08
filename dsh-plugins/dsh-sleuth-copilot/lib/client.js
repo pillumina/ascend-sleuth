@@ -313,6 +313,7 @@ window.__ModuleLoader__.load({
       'sediment.prSource.ledger': '台账',
       'sediment.detail.lastChecked': '上次查证',
       'sediment.detail.closedDraft': '草稿不在 inbox；这条记录来自收尾日志（close-log）或 PR 台账。',
+      'sediment.detail.prBroken': 'PR 台账里这份草稿的记录不是对象，先修台账再撤销。',
       'sediment.checkFailed': '查合入没有全部成功；查不到的行记为「未确认」，也可以手动改状态。',
       'sediment.checkFailedWith': '查合入没有全部成功；查不到的行记为「未确认」，也可以手动改状态（原因：{reason}）。',
       'sediment.checkDoneOne': '查合入完成：{pr} · {state}',
@@ -738,6 +739,7 @@ window.__ModuleLoader__.load({
       'sediment.prSource.ledger': 'ledger',
       'sediment.detail.lastChecked': 'last checked',
       'sediment.detail.closedDraft': 'Draft is not in the inbox; this row comes from close-log or the PR ledger.',
+      'sediment.detail.prBroken': 'The ledger entry for this draft is not an object; fix the ledger before undoing.',
       'sediment.checkFailed': 'Merge check did not complete. Rows that could not be checked are marked unconfirmed; you can also set the state manually.',
       'sediment.checkFailedWith': 'Merge check did not complete. Rows that could not be checked are marked unconfirmed; you can also set the state manually (reason: {reason}).',
       'sediment.checkDoneOne': 'Merge check done: {pr} · {state}',
@@ -4912,7 +4914,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           + '先看计划（只读）：\npython3 scripts/sediment_undo.py ' + args + '\n'
           + '确认后执行：\npython3 scripts/sediment_undo.py ' + args + ' --apply\n'
           + '脚本逐份处理；被拒的会跳过并报原因，不要绕过。撤销还原沉淀状态，不改诊断状态；'
-          + 'PR 已关闭的行会一并清掉本地台账记录（PR 本身不动）；'
+          + 'PR 已关闭的行会一并清掉本地台账记录（PR 本身不动），撤销前先在平台上确认这些 PR 仍关闭；'
           + '要回到进行中，在诊断面板用「重新打开」。'
         openPromptFallback(tr('sediment.undo.batchTitle'), text, tr('sediment.undo.batchSub'))
       }
@@ -5671,6 +5673,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           }
           if (sedPick.closedDraft) {
             head.push(h('div', { key: 'closed', className: 'scp-sed-hint' }, tr('sediment.detail.closedDraft')))
+          }
+          if (sedPick.prBroken) {
+            head.push(h('div', { key: 'prBroken', className: 'scp-sed-hint' }, tr('sediment.detail.prBroken')))
           }
           const sedTargetState = sedPick.targetState && sedPick.targetState !== 'ok'
             ? tr('sediment.targetState.' + sedPick.targetState) : ''

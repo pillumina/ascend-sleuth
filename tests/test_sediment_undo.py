@@ -310,6 +310,17 @@ class SedimentUndoTest(unittest.TestCase):
         self.assertEqual(payload.get("code"), "E_ALREADY_PROMOTED")
         self.assertTrue(draft.is_file())
 
+    def test_keep_trace_still_refuses_ambiguous_source(self):
+        # 来源有歧义时定位不到 trace，也就判断不了是否已升格：--keep-trace 不跳过这条拒绝。
+        key = "draft-a"
+        draft = write_flat_draft(self.repo, key)
+        (self.inbox / f"{key}.md").write_text(
+            "来源：traces/2026-11-01-a.yaml 与 traces/2026-11-02-b.yaml\n", encoding="utf-8")
+        proc, payload = self.run_undo("--draft-key", key, "--apply", "--json", "--keep-trace")
+        self.assertEqual(proc.returncode, 2, proc.stdout)
+        self.assertEqual(payload.get("code"), "E_SESSION_AMBIGUOUS")
+        self.assertTrue(draft.is_file())
+
     def test_forget_not_found_is_treated_as_cleared(self):
         # 计划之后另一个进程清掉了记录：目标状态已经达成，不当失败，也不给必然失败的命令。
         key = "draft-a"

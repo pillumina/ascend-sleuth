@@ -28,10 +28,12 @@
 #     不在这里删，那会牵动知识库与 PR。
 #   - PR 台账里这份草稿的记录还没关闭（open / merged / unknown）就拒绝：PR 是外部事实，
 #     删本地草稿不会关掉它，先在平台上处理。记录是 closed 时允许撤销，并在撤销完成后
-#     清掉这条台账记录（undo-log 与 `.undone/<stamp>/.undo.json` 留 PR 身份）；PR 本身
-#     在平台上不动。清记录走 `pr_status.py` 的 `forget_pr`（只删 closed，带 CAS）。
+#     清掉这条台账记录（undo-log 与 `.undone/` 里的 `.undo.json` 留 PR 的编号与地址）；
+#     PR 本身在平台上不动。清记录走 `pr_status.py --forget`（只删 closed，写前比对
+#     台账文件字节，防并发覆盖）。
 #   - 来源 trace 已经是 `knowledge` / `archived` 时拒绝：升格已经发生，撤回要牵动知识库与
-#     PR，走知识库变更流程；这里只处理提交阶段（`submitted`）的草稿。
+#     PR，走知识库变更流程；这里只处理提交阶段（`submitted`）的草稿。`--keep-trace` 只跳过
+#     回写，这条拒绝仍生效。
 #   - 草稿移进 `postmortems/inbox/.undone/`（移动不删除，移回即复活）。`find_drafts`
 #     不扫点目录，所以移走后不再进队列。撤销后草稿留在 `.undone/`，没有保留期；
 #     确认不再需要后手工删。
@@ -284,11 +286,9 @@ def build_plan(root: Path, inbox: Path, traces: Path, key: str,
     if keep_trace:
         trace["warnings"].append("按 --keep-trace 跳过来源 trace 回写（沉淀状态与诊断状态都不动）")
     if ambiguous:
-        # --keep-trace 不回写 trace，这时来源歧义不影响写盘；读侧仍无法判断是否已升格，
-        # 只把这条限制写进 warning。不带 --keep-trace 时必须先修草稿头注释。
-        if not keep_trace:
-            raise Refused("E_SESSION_AMBIGUOUS", reason or "来源 session 有多个，先修草稿头注释只留一个")
-        trace["warnings"].append("来源 session 有多个：--keep-trace 下不回写 trace，也不判断是否已升格")
+        # 来源有歧义时定位不到 trace，也就无法判断是否已升格；--keep-trace 只跳过回写，
+        # 不跳过这条拒绝。
+        raise Refused("E_SESSION_AMBIGUOUS", reason or "来源 session 有多个，先修草稿头注释只留一个")
     elif not session:
         trace["warnings"].append("来源 trace 未记录（外部来源）：只出队并清评估状态文件，不回写 trace")
     else:
@@ -334,6 +334,11 @@ def _pr_ident(pr: dict) -> str:
     if url:
         parts.append(url)
     return " ".join(parts) or "（台账里没有编号与地址）"
+
+
+def _trace_note(trace_result: dict) -> str:
+    """失败报告里 trace 的现状：没写回时说「未改」，不声称回写过。"""
+    return "来源 trace 已回 none" if trace_result.get("written") else "来源 trace 未改"
 
 
 def _trace_plan_view(trace: dict) -> dict:
@@ -470,7 +475,7 @@ def _apply_plan(root: Path, inbox: Path, traces: Path, plan: dict,
                         raise Refused(
                             "E_PR_LEDGER",
                             "清 PR 台账记录失败：" + str(exc).rstrip("。") + "。"
-                            + f"来源 trace 已回 none、草稿已移到 {_rel(root, moved_to)}；"
+                            + f"{_trace_note(trace_result)}、草稿已移到 {_rel(root, moved_to)}；"
                             + "记录状态已经变了，撤销不再清它。先在平台上处理 PR；确认已关闭后把"
                             + "台账状态改回 closed（python3 scripts/pr_status.py --root . --mark "
                             + "--draft " + shlex.quote(plan["key"]) + " --state closed），再跑 "
@@ -480,14 +485,14 @@ def _apply_plan(root: Path, inbox: Path, traces: Path, plan: dict,
                         raise Refused(
                             "E_PR_LEDGER",
                             "清 PR 台账记录失败：" + str(exc).rstrip("。") + "。"
-                            + f"来源 trace 已回 none、草稿已移到 {_rel(root, moved_to)}；"
+                            + f"{_trace_note(trace_result)}、草稿已移到 {_rel(root, moved_to)}；"
                             + "先修台账，再跑 python3 scripts/pr_status.py --root . --forget --draft "
                             + shlex.quote(plan["key"]) + " 收工。", done)
                 except pr_status.LedgerError as exc:
                     raise Refused(
                         "E_PR_LEDGER",
                         "清 PR 台账记录失败：" + str(exc).rstrip("。") + "。"
-                        + f"来源 trace 已回 none、草稿已移到 {_rel(root, moved_to)}；"
+                        + f"{_trace_note(trace_result)}、草稿已移到 {_rel(root, moved_to)}；"
                         + "台账可能被别的进程改过或写不进去。先跑 "
                         + "python3 scripts/pr_status.py --root . --forget --draft "
                         + shlex.quote(plan["key"])

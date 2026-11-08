@@ -276,17 +276,16 @@ approval_stale: false
 
 ### 3.7.1 撤销一次不成立的沉淀
 
-`scripts/sediment_undo.py --draft-key <key> [--apply]` 处理「草稿选错了」。默认只打印计划，`--apply` 才写。它做三件事：
+`scripts/sediment_undo.py --draft-key <key> [--apply]` 处理「草稿选错了」。默认只打印计划，`--apply` 才写。它做四件事，最后一件只在 PR 记录已关闭（`closed`）时执行：
 
-- 把还在 inbox、PR 记录不存在或已关闭（`closed`）的草稿移进 `postmortems/inbox/.undone/`。移动不删除，移回即复活。
+- 把还在 inbox、PR 记录不存在或已关闭的草稿移进 `postmortems/inbox/.undone/`。移动不删除，移回即复活。
 - 删掉它的评估状态文件（`.groom/assessments/<key>.yaml`）。
-- 把来源 trace 的 `sedimented` 改回 `none`。trace 缺失或外部来源时跳过这一步；`--keep-trace` 时也不写。`--keep-trace` 仍会读 trace：已升格（`knowledge` / `archived`）的草稿照样拒绝。
+- 把来源 trace 的 `sedimented` 改回 `none`。trace 缺失或外部来源时跳过这一步；`--keep-trace` 时也不写。`--keep-trace` 仍会读 trace：已升格（`knowledge` / `archived`）的草稿照样拒绝，来源 session 有多个时也拒绝。
+- 清掉台账里那条已关闭的 PR 记录（PR 的编号与地址写进 `.groom/undo-log.jsonl` 与 `.undone/` 里的 `.undo.json`），PR 本身在平台上不动。
 
-PR 台账里记着已关闭的 PR 时，撤销还清掉那条记录。这次提交已经撤回；留着这条记录，之后把草稿移回 inbox 重新沉淀时，队列会把旧 PR 当现行状态，显示「PR 已关闭」。
+PR 记录已关闭时要清掉它：这次提交已经撤回；留着这条记录，之后把草稿移回 inbox 重新沉淀时，队列会把旧 PR 当现行状态，显示「PR 已关闭」。
 
-清记录走 `pr_status.py --forget`（只删 `closed`，写前比对台账文件字节，防并发覆盖）。PR 的编号与地址写进 `.groom/undo-log.jsonl` 与 `.undone/` 里的 `.undo.json`；PR 本身在平台上不动。
-
-清记录失败时，草稿已经移到 `.undone/`、trace 已回 `none`，PR 的编号与地址留在 `.undo.json`。按报错给的原因处理后，用 `python3 scripts/pr_status.py --root . --forget --draft <key>` 收工；记录已被别的进程清掉时不算失败。
+清记录走 `pr_status.py --forget`（只删 `closed`，写前比对台账文件字节，防并发覆盖）。清记录失败时，草稿已经移到 `.undone/`、trace 未改或已回 `none`，PR 的编号与地址留在 `.undo.json`。按报错给的原因处理后，用 `python3 scripts/pr_status.py --root . --forget --draft <key>` 收工；记录已被别的进程清掉时不算失败。
 
 诊断状态（`status`）不动：撤销还原 case 的沉淀状态，已收尾的单仍是收尾状态；想继续定位时，在诊断面板用「重新打开」。
 

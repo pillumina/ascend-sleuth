@@ -367,6 +367,7 @@ class StateTest(SedimentCase):
         write_ledger(self.repo, target=GITHUB_TARGET,
                      prs={"2026-10-20-draft-a": None})
         row = self.draft(self.collect())
+        self.assertTrue(row["prBroken"])
         self.assertFalse(row["undo"]["available"])
         self.assertEqual(row["undo"]["prompt"], "")
 

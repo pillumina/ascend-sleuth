@@ -1708,6 +1708,31 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 }
 
 {
+  // 台账里这份草稿的记录坏了（不是对象）：不给撤销，详情提示先修台账。
+  const brokenDraft = Object.assign({}, SEDIMENT.drafts[0], {
+    key: '2026-10-31-broken-ledger', title: '台账坏记录的草稿', pr: null, prBroken: true,
+    undo: { available: false, prompt: '' },
+  })
+  const brokenQueue = Object.assign({}, SEDIMENT, {
+    drafts: [brokenDraft],
+    counts: { total: 1, unassessed: 1, needDecision: 0, needRerun: 0, decided: 0, prOpen: 0, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'groom', label: '继续 groom', prompt: '继续 groom 的批次指令' },
+    history: [],
+  })
+  const t = await mount('recent', { sediment: brokenQueue, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  view = await t.settle()
+  view = await t.settle()
+  click(byClass(view, 'scp-sed-row')[0])
+  view = await t.settle()
+  expect('坏台账记录：不给撤销入口', !findButtonContains(view, '撤销沉淀'), view.text.slice(-200))
+  expect('坏台账记录：详情提示先修台账', view.text.includes('记录不是对象'), view.text.slice(-300))
+}
+
+{
   const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
   click(findToolbar(t.view()))
   let view = await t.settle()
