@@ -232,10 +232,7 @@ reference 由流程里的**缺口**触发（**不是第四检索层**：不参�
 报错签名指向框架代码/算子名/量化描述表（如 `fault kernel_name=QuantBatchMatMulV3`、`modelslim_config.py` 相关 KeyError）且 Tier 3 未覆盖时：
 
 1. **先定"哪个仓"，再向其确认版本**（源码分析依赖对应版本，不要猜）：
-   - 已知表里有 → 直接用（`python3 scripts/src_fetch.py --list` 看全表）：
-     - 框架适配：vllm-ascend、torch-npu、mindspeed-*、verl；
-     - CANN 常用层：`cann/ops-nn`、`cann/hccl`、`cann/ge`；
-     - 推理依赖：mooncake、transformers、ray、xgrammar、triton-ascend。
+   - 已知表里有 → 直接用（`python3 scripts/src_fetch.py --list` 看全表：按层列出标准仓名 `org/repo`、别名与 host）。
    - 已知表里没有 → **按发现顺序找，不要直接问人要地址**（命令与退出码展开见 `references/src-fetch.md`）：
      ① **候选表**：`python3 scripts/src_fetch.py --find "<报错签名>" --ref <版本>`。脚本按签名里的接口前缀与算子名给带理由的候选（默认 3 个），并**逐个试该版本**：只有一个候选能解析就自动取回（exit 0）；多个都能解析、只命中兜底或零候选就 exit 3。
      ② **可枚举组织**：`--list-orgs` 看有哪些组织、哪个可枚举；`--list-org-repos cann` 现枚举该组织的仓与说明。GitCode 组织匿名可枚举，不需要账号。
@@ -244,7 +241,7 @@ reference 由流程里的**缺口**触发（**不是第四检索层**：不参�
    - 验证不过或版本定不下来才问工程师，按闸表 `source-location` 的那一句（"这个报错在你们那的 CANN 安装目录里落在哪个子目录？"，让他回候选编号）。**别猜仓**：取错仓产出的是错版本的证据，比不取更糟。CANN 各仓共用同一套 CANN 发布号，所以"tag 能解析"不构成定位证据。
    - **两条例外**：①签名只命中公共前缀（`aclnn xxx` 没有算子名）时候选是**兜底**的，脚本仍 exit 3，补上算子名/接口名再试；②已确认是哪个仓时把它写在签名后面（`--find "<签名>" cann/ops-nn`）以它为准，别让候选盖掉你的判断。
    - **断网现场**：加 `--offline`。它只复用本地已有版本、只给候选，不联网。
-2. **获取源码（统一走 `scripts/src_fetch.py` 确定性入口，按版本取，不是"本地有什么用什么"）**：`python3 scripts/src_fetch.py <repo> --ref <tag> --verify "<签名>"`（`--list` 看已知仓库与 host：vllm-ascend=GitHub、mindspeed-*=GitCode、torch-npu=GitCode、verl=GitHub、CANN=gitcode 的 cann 组织；私有/未知 → `--url`；`--list-versions` 看本地已有版本；换仓目录用 `--catalog`）。缓存**按版本平铺**在 `src-code/<org>/<repo>/<tag>/`（缓存根在主检出、跨 worktree 共读；各版本目录互不干扰，并发诊断各读各版本），命中即复用、该版本缺失即按已知 host 拉取。
+2. **获取源码（统一走 `scripts/src_fetch.py` 确定性入口，按版本取，不是"本地有什么用什么"）**：`python3 scripts/src_fetch.py <repo> --ref <tag> --verify "<签名>"`（私有/未知 → `--url`；`--list-versions` 看本地已有版本；换仓目录用 `--catalog`）。缓存**按版本平铺**在 `src-code/<org>/<repo>/<tag>/`（缓存根在主检出、跨 worktree 共读；各版本目录互不干扰，并发诊断各读各版本），命中即复用、该版本缺失即按已知 host 拉取。
    **验证是收尾动作**：仓名与 tag 都是弱证据（CANN 各仓共用发布号），签名出现在树里才算证据。`--verify` 未命中时写「不能证明是这个仓或版本」，不写「不是这个仓」；签名可能只在二进制里（编译产物或驱动包），这种情况要说明局限（展开见 `references/src-fetch.md`）。
    **退出码就是契约，别只看输出里的路径**：`0` = 该版本已在本地产出**并核对通过**（带 `--verify` 时还要签名命中；stdout 末行 = 路径）；`3` = tag 解析不了（多半 tag 名不同，输出里有可用 tag 示例）**或候选定不下仓**（按上面的发现顺序继续）；`4` = 拉取失败（网络/私网）；`5` = 本地该版本目录核对不通过（确认要它才 `--force` 重拉）；`6` = 取到了树，但 `--verify` 的签名没出现在里面（不能证明是它）。**非零退出 = 不能把这棵树当证据**：不要拿本地其他版本的目录去读（那是错版本的证据），也不要拿 web 搜索结果当源码（搜上游 issue/PR 状态是步骤 5 的事，不是源码来源）。
    **镜像或 fork 现场**（仅 vllm-ascend / vllm）：官方 tag 的源码不是现场那份代码。工具目录里有 `vllm_kb_code` 就按镜像或分支查；没有就回 `src_fetch.py`，不拿别的版本顶替。判读与降级见 procedure 步骤 5 的「vllm-kb」一节。
