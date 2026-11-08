@@ -511,7 +511,7 @@ def _undo_prompt(key: str, decision: str, pr=None) -> str:
         lines.append(f"台账里这份草稿的 PR 已关闭（{ident}，上次确认 {checked}）："
                      "撤销会把这条 PR 记录一并清掉，PR 本身在平台上不动。"
                      "台账可能过期，先在平台上确认它仍关闭再撤销；"
-                     "如果已被重新打开或合入，撤销会被拒绝或走知识库变更流程。")
+                     "已合入的 PR 不走撤销（落点已进 knowledge/）。")
     if decision:
         lines.append(f"注意：这份草稿已有人决定（{decision}）。撤销会清掉评估状态文件与该草稿的决定记录，"
                      "评估 id 与决定摘要会写进 undo-log。")
