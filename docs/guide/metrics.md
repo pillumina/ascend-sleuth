@@ -107,6 +107,7 @@ traces 是各检出各一份的运行时件：在 worktree 里跑知识整理收
 不可当验收证据；跟随后 resolve 率来自工程师反馈闭环（S1），是本行唯一较强的效果信号 |
 | 零执行评估所需的记录 | 停止原因记了几单 / 未记录几单；同批并发标记与候选全集各记了几条事件；字段违规几处（给总数，另列前 5 条） | trace 顶层 `stop_reason`（词表 = `scripts/trace_metrics.py` 的 `KNOWN_STOP_REASONS`）与 agent 事件的 `parallel_group`、`considered_candidates`。这是用历史记录离线比较探索策略的前提：不知道当时在哪停、哪些动作是同一批并行、筛候选时看过哪些，换一个策略在历史上走一遍就只能按人回忆重讲。未记录数与记了 `unknown` 分开算：前者是记录缺口，后者是当时确实拿不到；旧 trace 没有这些字段属未记录，不回填 |
 | 知识基线切片（`--kb-baseline`，默认关闭） | `kb_behind` 落后 / 最新 / unknown 三组各自的解决率、落后组与最新组的差（百分点），以及 `kb_merge: ff-only` 在有该字段的单里的触发率 | trace 顶层 `kb_behind`（整数或 `unknown`）与 `kb_merge`（`ff-only` / `none`）。解决率判据沿用脚本内 `status == resolved`，分母是组内 session 数；字段缺失（旧 trace）计入 unknown 组，不回填。切片只进人读输出与 `--json`，**不进 live 快照**：`verify_metrics.py` 的 `LIVE_FIELDS` 是白名单，新字段塞进去会被下一期校验拦下；要进 timeline 需另开一张卡同时改白名单与快照 schema |
+| 源码取用切片（`--source-usage`，默认关闭） | `source_analysis` 的仓写法与版本写法种数（按原值计，别名不合并）、`fetch_exit` 分布、`verify` 三态、按仓失败（`fetch_exit` 非零 / `verify` 未命中，T12 的判据）、分字段的未记录数 | agent 事件 `source_analysis` 的 `repo` / `ref` / `fetch_exit` / `verify`。字段缺失按"未记录"分字段计，不回填；越界值报违规，不中断整张表。切片只进人读输出与 `--json`，**不进 live 快照**：理由同上一行的白名单限制 |
 | S2 内容验证（口径，数据积累后进 timeline） | case 被 S2 replay 验证的分布：consistent（内容与外部 resolution 一致）/ self_consistent（自证）/ inconsistent（复审） | `.s2-replay/*.result.yaml` → `settle_s2_feedback.py` 结算 → case `validation_record`。口径纪律：consistent ≠ 现场 resolve——S1 现场解决率看条目使用记录里的现场计数（上表命中率/误诊率），S2 内容验证是独立通道，进 timeline 时标注 `source: issue-replay`，不与 S1 混算。按检查准入三条件，待 S2 结算有真实数据（≥2 期）后再扩展 verify_metrics 白名单 |
 
 ### 计数与分数分居三处

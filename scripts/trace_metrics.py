@@ -229,7 +229,10 @@ def main():
     source_refs = {}
     source_fetch_exits = {}
     source_verify = {}
-    source_unrecorded = 0
+    # 未记录按字段分开计数：repo 缺了没法归仓，fetch_exit/verify 缺了没法判断取用是否成功。
+    source_unrecorded = {"repo": 0, "fetch_exit": 0, "verify": 0}
+    # 按仓失败：T12 要能读「同一仓 ≥2 次」，全局分布读不出这一条。
+    source_fail_by_repo = {}
     source_bad = []
 
     # reference 指标（ADR-0008 观测性）：hits per ref / 引用后 resolve 率 / 平台分布。
@@ -359,25 +362,35 @@ def main():
             elif a == "source_analysis":
                 source_events += 1
                 repo = t.get("repo")
-                if isinstance(repo, str) and repo.strip():
-                    source_repos[repo.strip()] = source_repos.get(repo.strip(), 0) + 1
+                repo_ok = isinstance(repo, str) and bool(repo.strip())
+                if repo_ok:
+                    repo = repo.strip()
+                    source_repos[repo] = source_repos.get(repo, 0) + 1
                 else:
-                    source_unrecorded += 1
+                    source_unrecorded["repo"] += 1
                 ref = t.get("ref")
                 if isinstance(ref, str) and ref.strip():
                     source_refs[ref.strip()] = source_refs.get(ref.strip(), 0) + 1
                 exit_code = t.get("fetch_exit")
-                if exit_code is not None:
-                    if isinstance(exit_code, int) and not isinstance(exit_code, bool):
-                        source_fetch_exits[exit_code] = source_fetch_exits.get(exit_code, 0) + 1
-                    else:
-                        source_bad.append(f"{sid}: fetch_exit 应为整数（{exit_code!r}）")
+                if exit_code is None:
+                    source_unrecorded["fetch_exit"] += 1
+                elif isinstance(exit_code, int) and not isinstance(exit_code, bool):
+                    source_fetch_exits[exit_code] = source_fetch_exits.get(exit_code, 0) + 1
+                    if repo_ok and exit_code != 0:
+                        slot = source_fail_by_repo.setdefault(repo, {"fetch_nonzero": 0, "verify_miss": 0})
+                        slot["fetch_nonzero"] += 1
+                else:
+                    source_bad.append(f"{sid}: fetch_exit 应为整数（{exit_code!r}）")
                 verify = t.get("verify")
-                if verify is not None:
-                    if verify in KNOWN_VERIFY:
-                        source_verify[verify] = source_verify.get(verify, 0) + 1
-                    else:
-                        source_bad.append(f"{sid}: verify 应为 hit/miss/skipped（{verify!r}）")
+                if verify is None:
+                    source_unrecorded["verify"] += 1
+                elif isinstance(verify, str) and verify in KNOWN_VERIFY:
+                    source_verify[verify] = source_verify.get(verify, 0) + 1
+                    if repo_ok and verify == "miss":
+                        slot = source_fail_by_repo.setdefault(repo, {"fetch_nonzero": 0, "verify_miss": 0})
+                        slot["verify_miss"] += 1
+                else:
+                    source_bad.append(f"{sid}: verify 应为 hit/miss/skipped（{verify!r}）")
             elif a == "external_lookup":
                 cap = t.get("capability")
                 if cap and cap not in KNOWN_CAPABILITIES:
@@ -549,11 +562,13 @@ def main():
     if args.source_usage:
         m["source_usage"] = {
             "events": source_events,
-            "repos": source_repos or None,
-            "refs": source_refs or None,
+            "repos": dict(sorted(source_repos.items())) or None,
+            "refs": dict(sorted(source_refs.items())) or None,
             "fetch_exits": {str(code): count for code, count in sorted(source_fetch_exits.items())} or None,
-            "verify": source_verify or None,
-            "unrecorded": source_unrecorded,
+            "verify": dict(sorted(source_verify.items())) or None,
+            "unrecorded": {k: v for k, v in source_unrecorded.items() if v} or None,
+            "fail_by_repo": ({repo: dict(sorted(slot.items(), key=lambda x: x[0]))
+                              for repo, slot in sorted(source_fail_by_repo.items())} or None),
             "violations": source_bad[:5] or None,
             "violations_total": len(source_bad),
         }
@@ -657,7 +672,8 @@ def main():
                                      sorted(source_repos.items(), key=lambda x: -x[1])[:5])
             rows.append(
                 f"| 源码取用（source_analysis） | {source_events} 条；"
-                f"仓 {len(source_repos)} 个；版本 {len(source_refs)} 个"
+                f"仓写法 {len(source_repos)} 种；版本写法 {len(source_refs)} 种"
+                f"（按原值计，别名不合并）"
                 + (f"；按仓 {repo_summary}" if repo_summary else "")
                 + " |")
             if source_fetch_exits:
@@ -673,8 +689,15 @@ def main():
                     + "、".join(f"{k} {v}" for k, v in sorted(source_verify.items(),
                                                               key=lambda x: -x[1]))
                     + " |")
-            if source_unrecorded:
-                rows.append(f"|   未记录 repo | {source_unrecorded} 条（旧 trace 或事件未写字段） |")
+            for field, label in (("repo", "仓"), ("fetch_exit", "取用退出码"),
+                                 ("verify", "验证结果")):
+                if source_unrecorded.get(field):
+                    rows.append(f"|   未记录{label} | {source_unrecorded[field]} 条（旧 trace 或事件未写字段） |")
+            if source_fail_by_repo:
+                detail = "、".join(
+                    f"{repo}（fetch_exit 非零 {slot['fetch_nonzero']} 次、verify 未命中 {slot['verify_miss']} 次）"
+                    for repo, slot in sorted(source_fail_by_repo.items()))
+                rows.append(f"|   按仓失败（T12 判据） | {detail} |")
             if source_bad:
                 rows.append(f"|   **字段违规** | {len(source_bad)} 处："
                             f"{'、'.join(source_bad[:5])}"
@@ -699,10 +722,11 @@ def main():
             "title": "本期诊断指标（trace_metrics.py 自动生成，人复核）",
             "recorded_at": datetime.date.today().isoformat(),
             "source": "trace_metrics.py 从 traces/*.yaml 自动生成",
-            # kb_baseline 是可选切片：不进快照（live 字段白名单见 verify_metrics.py），
-            # 否则显式跑 --kb-baseline --emit-yaml 会产出被下一期校验拦下的字段。
+            # kb_baseline 与 source_usage 是可选切片：不进快照（live 字段白名单见
+            # verify_metrics.py），否则显式跑 --kb-baseline/--source-usage --emit-yaml
+            # 会产出被下一期校验拦下的字段。
             "metrics": {k: v for k, v in m.items()
-                        if v is not None and k != "kb_baseline"},
+                        if v is not None and k not in ("kb_baseline", "source_usage")},
         }
         if args.emit_yaml_only:
             # 机器读路径：只吐 metrics mapping（组合快照的调用方要的就是这一块）

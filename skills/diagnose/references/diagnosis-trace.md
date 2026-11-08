@@ -200,7 +200,7 @@ case 错 / 执行错判）——让 `component_tally.py` 能聚合出"被跟随�
 
 记一条 `source_analysis` 时，除 `tool_calls` 外，把这次取源码的事实写进同一事件：`repo`（`org/repo`，与 `source-catalog.d` 同一写法）、`ref`（版本）、`fetch_exit`（`src_fetch.py` 的退出码整数）、`verify`（hit / miss / skipped）。
 
-`fetch_exit` 与 `verify` 不写时读数按"未记录"计，不回填；两值越界由 `trace_metrics.py` 报违规。汇总入口：`python3 scripts/trace_metrics.py --source-usage`（只进人读输出与 `--json`，不进 `--emit-yaml` 快照）。
+`fetch_exit` 与 `verify` 不写时读数按"未记录"分字段计，不回填；两值越界由 `trace_metrics.py` 报违规，不中断整张表。仓与版本按原值计数，别名不合并：同一仓写成两种名字就算两种写法，要合并先在 `source_catalog` 统一写法再记。汇总入口：`python3 scripts/trace_metrics.py --source-usage`（只进人读输出与 `--json`，不进 `--emit-yaml` 快照）。
 
 ## agent 事件分两层（output 给用户 / reason 记决策依据，缺一不可）
 
