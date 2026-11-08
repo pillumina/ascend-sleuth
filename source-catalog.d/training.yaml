@@ -1,0 +1,26 @@
+# 训练框架适配层。MindSpeed 系列在 gitcode 的 Ascend 组织，verl 在 GitHub。
+layer: training
+title: 训练框架适配层
+
+orgs: []
+
+repos:
+  - repo: Ascend/MindSpeed-LLM
+    sources:
+      - {host: gitcode, owner: Ascend, repo: MindSpeed-LLM}
+    aliases: [mindspeed-llm]
+    why: MindSpeed 大语言模型训练适配
+
+  - repo: Ascend/MindSpeed-MM
+    sources:
+      - {host: gitcode, owner: Ascend, repo: MindSpeed-MM}
+    aliases: [mindspeed-mm]
+    why: MindSpeed 多模态训练适配
+
+  - repo: volcengine/verl
+    sources:
+      - {host: github, owner: volcengine, repo: verl}
+    aliases: [verl]
+    why: 强化学习训练框架（昇腾侧脚本与补丁常落在这里）
+
+self_test: []

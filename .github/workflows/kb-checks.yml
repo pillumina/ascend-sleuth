@@ -15,9 +15,9 @@ name: kb-checks
 on:
   push:
     branches: [main]
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", "deployment.yaml", ".github/workflows/**", ".github/actions/**"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "source-catalog.d/**", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", "deployment.yaml", ".github/workflows/**", ".github/actions/**"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", "deployment.yaml", ".github/workflows/**", ".github/actions/**"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "source-catalog.d/**", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", "deployment.yaml", ".github/workflows/**", ".github/actions/**"]
 
 jobs:
   # ── 细网：这次改了哪一面 ──────────────────────────────────────────────────────
@@ -143,7 +143,7 @@ jobs:
           emit proposals  '^proposals/'
           emit eval       '^eval/'
           emit skills     '^skills/'
-          emit code       '^scripts/|^tests/'
+          emit code       '^scripts/|^tests/|^source-catalog\.d/'
           emit panels     '^dsh-plugins/|^trace-status\.yaml$'
 
           # unit-tests 用这份列表按改动选测试（映射算法与回退条件在 scripts/select_unit_tests.py）。

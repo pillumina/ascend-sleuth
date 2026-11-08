@@ -45,6 +45,9 @@ TEST_DIR = "tests"
 CI_PREFIX = ".github/"
 TEST_FILE_RE = re.compile(r"^tests/(test_[A-Za-z0-9_]+)\.py$")
 SCRIPT_REF_RE = re.compile(r"^scripts/([^/]+)$")
+# 数据目录 → 消费它的脚本：数据文件不是脚本，静态扫描看不出归属。不登记的话，
+# 只改数据的 PR 会选中空集（"没跑"与"跑了没命中"同形）。
+DATA_CONSUMERS = {"source-catalog.d": {"src_fetch"}}
 
 
 class _Unparseable(Exception):
@@ -165,6 +168,13 @@ def select(
         return "ALL", [f"tests/ 下有非 test_*.py 改动（共享夹具/助手）{shown}——全量"]
 
     scripts_changed = [path for path in changed if path.startswith(SCRIPT_DIR + "/")]
+    data_stems = {
+        stem
+        for path in changed
+        for prefix, stems in DATA_CONSUMERS.items()
+        if path.startswith(prefix + "/")
+        for stem in stems
+    }
     missing = [path for path in scripts_changed if not (root / path).is_file()]
     if missing:
         shown = "、".join(missing[:3])
@@ -172,7 +182,7 @@ def select(
 
     script_files = _script_files(root)
     modules = {path.stem: path for path in script_files.values() if path.suffix == ".py"}
-    changed_stems = {Path(path).stem for path in scripts_changed}
+    changed_stems = {Path(path).stem for path in scripts_changed} | data_stems
 
     for stem in sorted(changed_stems):
         path = modules.get(stem)

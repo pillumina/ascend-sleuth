@@ -32,6 +32,7 @@
     3  ref 解析不了：源可达但找不到该 tag/分支（**附可用 tag 示例**——多半是 tag 名不同或版本说错）
     4  拉取失败：候选源都不可达/克隆失败，或拉到的提交与 ref 不符（网络、私网、凭据）
     5  本地有该版本的目录但**核对不通过**（内容不是该 ref / 被外部改动）→ 确认后 --force 重拉
+    6  树已取到，但 `--verify` 的签名没出现在里面：**不能证明**它是该仓该版本 → 别当定位证据
 
   stdout 末行只有两种形态：**exit 0 时是版本目录的绝对路径**，非零时是一行显式的失败声明
   （`✗ 未取得该版本源码`）——绝不会把某个版本目录当成结果给出来。旧实现正是在这里让 agent 误以为
@@ -44,9 +45,18 @@
   python3 scripts/src_fetch.py Ascend/MindSpeed-LLM --ref v0.23.0        # gitcode
   python3 scripts/src_fetch.py my-org/my-repo --ref <commit> --url https://...   # 自定义/私有
   python3 scripts/src_fetch.py --find "aclnnQuantBatchMatMulV3" --ref 8.1.RC1    # 只知道签名、不知道在哪个仓
-  python3 scripts/src_fetch.py --list                    # 已知仓库与 host
+  python3 scripts/src_fetch.py --find "HcclAllReduce failed" --ref v9.1.1 --verify "HcclAllReduce failed"
+  python3 scripts/src_fetch.py vllm-ascend --ref v0.23.0 --verify "Handshake base port"   # 取到后验证
+  python3 scripts/src_fetch.py --list                    # 仓目录（按层）与 host
+  python3 scripts/src_fetch.py --list-orgs               # 目录里的组织：host、是否可枚举、仓数
+  python3 scripts/src_fetch.py --list-org-repos cann     # 可枚举组织现枚举，其余列目录仓
+  python3 scripts/src_fetch.py --self-test               # 目录结构 + 真实签名用例
   python3 scripts/src_fetch.py --list-versions           # 本地缓存：有哪些仓库、哪些版本（体积/时间/HEAD）
   python3 scripts/src_fetch.py vllm-ascend --ref v0.23.0 --prune        # 手工删版本（无自动 GC）
+
+仓目录（数据面）在仓库根的 `source-catalog.d/<层>.yaml`，加载与校验在 `scripts/source_catalog.py`：
+补一个仓只改数据（层文件的 `repos` 与 `self_test` 各加一条），不改本脚本；改完跑 `--self-test`。
+`--catalog <目录>` 可换成夹具目录（场景测试与私有部署用）。
 
 `--find` 的退出码语义与取源码一致，调用方照旧只看退出码：
   0  候选里**只有一个仓**能解析出该 ref → 已按它取好源码（stdout 末行 = 路径）
@@ -68,112 +78,39 @@ from _stdio import write_text_lf
 
 from exec_log_path import WHERE_LABEL_SRC, describe_src, resolve_src_code  # noqa: E402  （共享缓存根解析的单一事实源）
 
+import source_catalog  # noqa: E402  （仓目录：数据面在 source-catalog.d/，本脚本只做取用流程）
+
 # 已知仓库 → 有序候选 URL host（按可信度排序；同一仓库不同 host 是常态，自动回退）
 HOSTS = {
     "github": "https://github.com/{owner}/{repo}.git",
     "gitcode": "https://gitcode.com/{owner}/{repo}.git",
     "gitee": "https://gitee.com/{owner}/{repo}.git",
 }
-KNOWN_REPOS = {
-    # key: (canonical org/repo, [(host, {owner, repo}), ...] 按序尝试)
-    "vllm-ascend": ("vllm-project/vllm-ascend", [("github", {"owner": "vllm-project", "repo": "vllm-ascend"})]),
-    "vllm-project/vllm-ascend": ("vllm-project/vllm-ascend", [("github", {"owner": "vllm-project", "repo": "vllm-ascend"})]),
-    "mindspeed-llm": ("Ascend/MindSpeed-LLM", [("gitcode", {"owner": "Ascend", "repo": "MindSpeed-LLM"})]),
-    "Ascend/MindSpeed-LLM": ("Ascend/MindSpeed-LLM", [("gitcode", {"owner": "Ascend", "repo": "MindSpeed-LLM"})]),
-    "mindspeed-mm": ("Ascend/MindSpeed-MM", [("gitcode", {"owner": "Ascend", "repo": "MindSpeed-MM"})]),
-    "Ascend/MindSpeed-MM": ("Ascend/MindSpeed-MM", [("gitcode", {"owner": "Ascend", "repo": "MindSpeed-MM"})]),
-    "torch-npu": ("Ascend/pytorch", [("gitcode", {"owner": "Ascend", "repo": "pytorch"}), ("github", {"owner": "Ascend", "repo": "pytorch"})]),
-    "Ascend/pytorch": ("Ascend/pytorch", [("gitcode", {"owner": "Ascend", "repo": "pytorch"}), ("github", {"owner": "Ascend", "repo": "pytorch"})]),
-    "verl": ("volcengine/verl", [("github", {"owner": "volcengine", "repo": "verl"})]),
-    "volcengine/verl": ("volcengine/verl", [("github", {"owner": "volcengine", "repo": "verl"})]),
-    # CANN 开源面（gitcode 的 cann 组织，2026-09 起 82 仓）：报错签名最常指向的层。
-    # 只收「错误签名会直接点到名字」的层，不是把组织全表搬进来——其余层走 `--find <签名>`
-    # 现枚举（见 ORG_SIGNATURE_REPOS），免得这张表随上游增减而腐烂。
-    "cann/ops-nn": ("cann/ops-nn", [("gitcode", {"owner": "cann", "repo": "ops-nn"})]),
-    "cann/ops-transformer": ("cann/ops-transformer", [("gitcode", {"owner": "cann", "repo": "ops-transformer"})]),
-    "cann/ops-math": ("cann/ops-math", [("gitcode", {"owner": "cann", "repo": "ops-math"})]),
-    "cann/ops-cv": ("cann/ops-cv", [("gitcode", {"owner": "cann", "repo": "ops-cv"})]),
-    "cann/hccl": ("cann/hccl", [("gitcode", {"owner": "cann", "repo": "hccl"})]),
-    "cann/hcomm": ("cann/hcomm", [("gitcode", {"owner": "cann", "repo": "hcomm"})]),
-    "cann/ge": ("cann/ge", [("gitcode", {"owner": "cann", "repo": "ge"})]),
-    "cann/metadef": ("cann/metadef", [("gitcode", {"owner": "cann", "repo": "metadef"})]),
-    "cann/runtime": ("cann/runtime", [("gitcode", {"owner": "cann", "repo": "runtime"})]),
-    "cann/driver": ("cann/driver", [("gitcode", {"owner": "cann", "repo": "driver"})]),
-    "cann/asc-devkit": ("cann/asc-devkit", [("gitcode", {"owner": "cann", "repo": "asc-devkit"})]),
-}
 
-# 签名 → 候选仓（`--find` 的匹配表）。**只做"给候选"，不做"替人选"**：一条签名常常同时
-# 命中多层（aclnn 算子名既可能在上层算子库、也可能在 pyasc/asc-devkit 的接口层），谁对由
-# 报错栈与调用方判断。候选 ≤3 个，按「签名里命中的关键词数」排序。
-# 覆盖判据：只收**错误签名会直接点到名字**的词——收多了会让候选表变成一张需要维护的全量表。
-ORG_SIGNATURE_REPOS = {
-    "cann": [
-        {"repo": "ops-nn", "why": "aclnn 神经网络类算子（Conv/MatMul/Attention 等）"},
-        {"repo": "ops-transformer", "why": "aclnn transformer 类算子"},
-        {"repo": "ops-math", "why": "aclnn 数学类算子"},
-        {"repo": "ops-cv", "why": "aclnn 图像类算子"},
-        {"repo": "hccl", "why": "集合通信（Hccl* 接口、通信域/rank 表）"},
-        {"repo": "hcomm", "why": "HCCL 的通信基础库（通信资源/单边通信）"},
-        {"repo": "ge", "why": "图编译器与执行器（ge:: 命名空间）"},
-        {"repo": "metadef", "why": "算子元数据定义（算子原型/属性注册）"},
-        {"repo": "runtime", "why": "运行时与维测组件（aclrt*、plog）"},
-        {"repo": "driver", "why": "驱动模块（drv* 接口、设备资源与调度）"},
-        {"repo": "asc-devkit", "why": "Ascend C 算子开发语言与类库（AscendC::）"},
-        {"repo": "pyasc", "why": "Python 算子编程接口（与 Ascend C 一一对应）"},
-        {"repo": "oam-tools", "why": "故障定位工具（aicore error 分析、信息收集）"},
-    ],
-}
-# 签名里出现这些词 → 指向上表。**关键词一律小写，且这条由 --self-test 钉成断言**：
-# 大写不会报错，只会让匹配静默失效——实测 `HcclCommInitRootInfo failed` 就因为没有小写归一
-# 而零候选（`HcclAllReduce` 侥幸命中，因为驼峰拆分后留了 `hccl` 这一段）。
-# 匹配用「词元边界 + 小写 + 驼峰拆分」：`HcclAllReduce` → {hccl, all, reduce, hcclallreduce}，
-# 于是 `hccl` 命中，而 `transformer` 不会命中 `ascend-transformer-boost`（候选表不被撑大）。
-#   any_of  任一关键词出现即命中（前缀本身就是层名：hccl / ge / pyasc …）
-#   all_of  全部出现才命中（通用词要组合证据：aclnn 是四条算子库的公共前缀，靠 any_of 区分层）
-#   primary **主候选**关键词，须是完整词元——只有主候选为 1 个时脚本才自动开始取源码；
-#           没有主候选命中就只给候选表（`aclnnXxx` 这种公共前缀分不出是哪条算子库，
-#           硬猜会取错仓、读错证据）
-#   fallback 兜底候选：`aclnn` 是四条算子库的公共前缀，签名只给到这一层时命中它只能说明
-#           「是 aclnn 接口层」，**不足以定到 `ops-nn`**——所以它排在有判别词命中的候选之后
-#           （同分时最后一名），而不是被判成"唯一候选然后自动取"
-#   discriminators 判别词：命中它就不再是兜底（`aclnn` + `matmul` 对 ops-nn 是有效判别，
-#           与 ops-math 并列时分高者胜；只命中 `aclnn` 才是兜底）
-ORG_SIGNATURE_KEYWORDS = {
-    "cann": [
-        {"repo": "ops-nn", "all_of": ["aclnn"], "discriminators": ["conv", "matmul", "attention"],
-         "fallback": True, "primary": ["aclnnop", "opapi"]},
-        {"repo": "ops-transformer", "all_of": ["aclnn"],
-         "any_of": ["attention", "flash", "increment", "paged", "rotary"],
-         "primary": ["flashattention", "pagedattention"]},
-        {"repo": "ops-math", "all_of": ["aclnn"],
-         "any_of": ["matmul", "quantbatchmatmul", "add", "mul", "softmax", "norm"],
-         "primary": ["quantbatchmatmul", "softmax"]},
-        {"repo": "ops-cv", "all_of": ["aclnn"], "any_of": ["conv", "roi", "resize", "crop"]},
-        {"repo": "hccl", "any_of": ["hccl", "hccltest", "allreduce", "allgather",
-                                    "reducescatter", "alltoall", "broadcast"],
-         "primary": ["hccl", "hccltest", "allreduce", "allgather", "reducescatter", "alltoall"]},
-        {"repo": "hcomm", "any_of": ["hcomm", "hcommres"], "primary": ["hcomm", "hcommres"]},
-        {"repo": "ge", "any_of": ["ge", "geapi", "graphengine", "geir"],
-         "primary": ["ge", "geapi", "graphengine", "geir"]},
-        {"repo": "metadef", "any_of": ["metadef", "opproto", "implytype"],
-         "primary": ["metadef", "opproto", "implytype"]},
-        {"repo": "runtime", "any_of": ["aclrt", "aclmdl", "plog", "rts", "acl"],
-         "primary": ["aclrt", "aclmdl", "plog", "rts"]},
-        {"repo": "driver", "any_of": ["drv", "drvdev", "drvmem", "drvdevice"],
-         "primary": ["drv", "drvdev", "drvmem", "drvdevice"]},
-        {"repo": "asc-devkit", "any_of": ["ascendc", "ascendckernel", "atvc", "atvoss"],
-         "primary": ["ascendc", "ascendckernel", "atvc", "atvoss"]},
-        {"repo": "pyasc", "any_of": ["pyasc"], "primary": ["pyasc"]},
-        {"repo": "oam-tools", "any_of": ["msaicerr", "aicoreerror", "oam"],
-         "primary": ["msaicerr", "aicoreerror", "oam"]},
-    ],
-}
 
+ROOT = Path(__file__).resolve().parent.parent
+_CATALOG = None
+
+
+def _catalog(catalog=None):
+    """目录的单例入口：显式传入（main / 测试）优先，否则按脚本位置加载默认目录。"""
+    global _CATALOG
+    if catalog is not None:
+        return catalog
+    if _CATALOG is None:
+        _CATALOG = source_catalog.load_catalog(source_catalog.default_dir(ROOT))
+    return _CATALOG
+
+
+def set_catalog(catalog):
+    global _CATALOG
+    _CATALOG = catalog
 EXIT_OK = 0
 EXIT_USAGE = 2
 EXIT_REF_UNRESOLVED = 3
 EXIT_FETCH_FAILED = 4
 EXIT_LOCAL_MISMATCH = 5
+EXIT_VERIFY_FAILED = 6          # 取到了树，但签名没出现在里面：不能证明是它
 
 META_NAME = "src-fetch-meta.json"     # 落在 <版本目录>/.git/ 下（不在工作树里，git status 看不见）
 TMP_PREFIX = ".tmp-"
@@ -196,15 +133,17 @@ def norm_repo(repo: str) -> str:
     return repo.strip().rstrip("/").removesuffix(".git")
 
 
-def lookup(repo: str):
-    """返回 (canonical_org/repo, [候选 (host, {owner,repo}), ...])；未知仓库返回 (repo, None)。"""
-    key = norm_repo(repo)
-    if key in KNOWN_REPOS:
-        return KNOWN_REPOS[key]
-    for k, val in KNOWN_REPOS.items():
-        if norm_repo(k).lower() == key.lower():
-            return val
-    return (key, None)
+def lookup(repo: str, catalog=None):
+    """返回 (canonical_org/repo, [候选 (host, {owner,repo}) ...])；未知仓库返回 (输入归一值, None)。
+
+    已知表来自 `source-catalog.d/`（数据面），本函数只做归一与格式转换。
+    """
+    cat = _catalog(catalog)
+    canonical, sources = cat.lookup(repo)
+    if sources is None:
+        return canonical, None
+    cands = [(src["host"], {k: v for k, v in src.items() if k != "host"}) for src in sources]
+    return canonical, cands
 
 
 def clone_url(host: str, owner: str, repo: str) -> str:
@@ -215,176 +154,55 @@ def clone_url(host: str, owner: str, repo: str) -> str:
 # 为什么需要：报错签名只知道"是 CANN 的哪一层"，不知道"在哪个仓"。过去这里只有 exit 3 +
 # "给 --url"——把找地址的活推给工程师，而组织仓库清单是可枚举的（一条匿名 API）。这一节
 # 把「确定是哪个仓」从人的记忆变成可复现的一步：候选 → 逐个试 ref → 只有一个能解析就自动定。
-def signature_tokens(sig: str):
-    """报错签名 → 词元集合 + 归一文本。**用词元边界匹配，不做子串匹配**。
+def candidate_repos(org: str, sig: str, catalog=None):
+    """签名 → [(仓短名, why, 命中分)]；实现在 source_catalog，数据在 source-catalog.d/。"""
+    return _catalog(catalog).candidates(org, sig)
 
-    子串匹配的代价实测过：`transformer` 会命中 `ascend-transformer-boost`、`ge` 会命中任何含
-    "ge" 的词——候选表被撑大之后，"给候选"就退化成"给人一张全表让他自己找"。所以：
-    短词元（<6 字符，如 ge/hccl/aclrt/drv）只做**整词元**匹配；长词元允许前缀匹配
-    （aclnnQuantBatchMatMulV3 → aclnnquantbatchmatmul）。
+
+def is_fallback_candidate(org: str, sig: str, repo: str, catalog=None) -> bool:
+    """该候选是否只是兜底命中（公共前缀命中、没有判别词）：兜底不构成唯一候选。"""
+    return _catalog(catalog).is_fallback(org, sig, repo)
+
+
+def self_test(catalog=None) -> int:
+    """目录自测：结构校验 + 数据里的真实签名用例。
+
+    这类表坏了只表现为静默零候选（诊断中看起来像"上游没有这个仓"），
+    把不变量与真实签名钉成断言是唯一能让它响亮失败的形态。
     """
-    tokens = set()
-    for w in re.findall(r"[A-Za-z0-9]+", sig or ""):
-        tokens.add(w.lower())                                # 原词
-        parts = [p.lower() for p in re.findall(r"[A-Z]+(?![a-z])|[A-Z][a-z0-9]*|[a-z0-9]+", w)]
-        tokens.update(parts)                                 # 驼峰拆开：HcclAllReduce → hccl/all/reduce
-        head, tail = "".join(parts), "_".join(parts)         # 合并形简写：aclnnQuantBatchMatMulV3 → aclnn…matmul
-        tokens.add(head)
-        for i in range(len(parts)):                          # 连续前缀：HcclAllReduce → hcclall
-            for j in range(i + 1, len(parts) + 1):
-                tokens.add("".join(parts[i:j]))
-        for sep in ("_", "-", "::"):                         # 分隔符闭合的复合词：hccl_comm_init → hccl_comm_init
-            tokens.update(p.lower() for p in w.split(sep) if p)
-        flat = head + tail
-    flat_all = "".join(sorted(tokens))
-    return tokens, flat_all + (sig or "").lower().replace("_", "").replace("-", "")
-
-
-def boundary_components(tok: str) -> set:
-    """词元里「真边界」处的部件：`hcclAllReduce` → {hccl, hcclall, …}（前界 + 大小写转换点）。
-
-    用来挡假阳性：`geometry` 里的 `ge` 不是边界（在词中间，前后没有大小写转换），所以不该命中
-    `ge` 层；而 `hcclAllReduce` 的 `hccl`、`aclnnFlashAttentionScore` 的 `aclnn` 都是真边界。
-    只做 startswith/endswith 会把这两类混为一谈——实测 `geometry error` 就这样命中了 `ge`。
-    """
-    out = set()
-    for m in re.finditer(r"(?<=[a-z])(?=[A-Z])|(?<=[A-Z0-9])(?=[A-Z][a-z])", tok):
-        out.add(tok[:m.start()].lower())
-    return out
-
-
-def _kw_hit(kw: str, toks, flat: str) -> bool:
-    """单关键词命中判定（**宽松**：用于算分排序）。
-
-    **词元边界**（长词允许前后缀）：`HcclAllReduce` 拆出的 `hcclall` 要能被 `hccl` 命中；
-    `aclnnQuantBatchMatMulV3` 要能被 `aclnnquantbatchmatmul` 命中。
-    **复合词**（`::` 与 `_` 连接）：`ge::` 这类写法里 `ge` 是独立标识符，不是词元的前缀——
-    漏掉这一条实测会让 `ge::GEExecuteRun error` 零候选，而这正是 `ge` 层最常见的报错写法。
-    **后缀只认真边界**（见 boundary_components）：`geometry` 不该命中 `ge`，`AllReduce` 也不该
-    推出 `l` 去命中 `mul`——后缀匹配额外要求 ≥3 字符，否则三字母关键词会变回子串匹配。
-    """
-    if kw in toks:
-        return True
-    if len(kw) >= 6 and (kw in flat or f"::{kw}" in flat or f"_{kw}" in flat):
-        return True
-    for t in toks:
-        if t == kw or t.startswith(kw + "_") or t.startswith(kw + "-"):
-            return True
-        if re.match(rf"^{re.escape(kw)}(?![a-z])", t):
-            return True
-        if len(t) >= 3 and t.endswith(kw):
-            return True
-        if kw in boundary_components(t):
-            return True
-    return False
-
-
-def _kw_whole(kw: str, toks) -> bool:
-    """**严格**命中：关键词必须是完整词元。用于「哪个仓是主候选」——主候选只能来自整词元，
-    宽松的拆词命中（`hcclallreduce` 里的 `hccl`）证据太弱，不足以让脚本自动开始克隆。"""
-    return kw in toks
-
-
-def _rule_score(rule: dict, toks, flat: str):
-    """→ (命中分, 是否命中主关键词, 是否只是兜底命中)；all_of 缺一即为 (0, False, False)。"""
-    allof = rule.get("all_of") or []
-    anyof = rule.get("any_of") or []
-    if not allof and not anyof:
-        return 0, False, False                               # 规则写空 = 不命中（别静默全命中）
-    if allof and not all(_kw_hit(k, toks, flat) for k in allof):
-        return 0, False, False
-    score = 2 * len(allof)
-    if anyof and not any(_kw_hit(k, toks, flat) for k in anyof):
-        return 0, False, False
-    score += 2 if anyof else 0
-    discrim_hit = any(_kw_hit(k, toks, flat) for k in (rule.get("discriminators") or []))
-    if not discrim_hit:
-        score += 2 if any(_kw_hit(k, toks, flat) for k in (rule.get("base") or [])) else 0
-    primary = any(_kw_whole(k, toks) for k in (rule.get("primary") or []))
-    return score, primary, (bool(rule.get("fallback")) and not discrim_hit)
-
-
-def candidate_repos(org: str, sig: str):
-    """签名 → [(repo, why, 命中分)]：主候选优先 → 非兜底优先 → 分高优先 → 表内顺序（稳定）。"""
-    rules = ORG_SIGNATURE_REPOS.get(org, [])
-    if not rules:
-        return []
-    kws = {r["repo"]: r for r in ORG_SIGNATURE_KEYWORDS.get(org, [])}
-    toks, flat = signature_tokens(sig)
-    hits = {}
-    for r in rules:
-        score, primary, fallback = _rule_score(kws.get(r["repo"], {}), toks, flat)
-        if score:
-            hits[r["repo"]] = (score, primary, fallback)
-    why = {r["repo"]: r["why"] for r in rules}
-    order = {r["repo"]: i for i, r in enumerate(rules)}      # 同分时按表内声明顺序（稳定）
-    ranked = sorted(hits.items(),
-                    key=lambda kv: (not kv[1][1], kv[1][2], -kv[1][0], order[kv[0]]))
-    return [(repo, why[repo], score) for repo, (score, _p, _f) in ranked]
-
-
-def is_fallback_candidate(org: str, sig: str, repo: str) -> bool:
-    """该候选是否只是**兜底**命中（公共前缀命中、没有判别词）：兜底候选不构成"唯一候选"。"""
-    kws = {r["repo"]: r for r in ORG_SIGNATURE_KEYWORDS.get(org, [])}
-    toks, flat = signature_tokens(sig)
-    _score, _primary, fallback = _rule_score(kws.get(repo, {}), toks, flat)
-    return fallback
-
-
-def self_test() -> int:
-    """表不变量：关键词小写、仓名在候选表里存在、匹配表能被几条真实签名命中。
-
-    为什么值得一个自测：这类表**坏了不报错，只是静默零候选**——诊断中表现为"没找到源码仓"，
-    看起来像上游没有这个仓。把不变量钉成断言是唯一能让它响亮失败的形态。
-    """
-    problems = []
-    repos = {r["repo"] for r in ORG_SIGNATURE_REPOS.get("cann", [])}
-    for rule in ORG_SIGNATURE_KEYWORDS.get("cann", []):
-        repo = rule.get("repo")
-        if repo not in repos:
-            problems.append(f"关键词规则指向候选表里没有的仓：{repo}")
-        for field in ("any_of", "all_of"):
-            for kw in rule.get(field) or []:
-                if kw != kw.lower():
-                    problems.append(f"{repo}.{field} 关键词含大写（会静默不匹配）：{kw}")
-    cases = [
-        ("HcclCommInitRootInfo failed", "hccl"),
-        ("HcclAllReduce failed, rank table", "hccl"),
-        ("ge::GEExecuteRun error", "ge"),
-        ("aclnnQuantBatchMatMulV3 execute failed", "ops-math"),
-        ("ACL_ERROR_RT_DEVICE_MEM_ERROR", "runtime"),
-        ("drvDeviceOpen failed", "driver"),
-        ("AscendC::KernelLaunch error", "asc-devkit"),
-        ("opproto ImplyType not found", "metadef"),
-        ("msaicerr 解析 aicore error", "oam-tools"),
-        ("aclnnFlashAttentionScore failed", "ops-transformer"),
-        ("aclnnBatchMatMul failed", "ops-math"),
-        ("Conv2D aclnn error", "ops-cv"),
-    ]
-    for sig, expect in cases:
-        got = [c[0] for c in candidate_repos("cann", sig)]
-        if expect not in got:
-            problems.append(f"签名「{sig}」应命中 {expect}，实际 {got or '无候选'}")
+    cat = _catalog(catalog)
+    problems = cat.validate()
     if problems:
-        print("✗ src_fetch 匹配表自测失败：", file=sys.stderr)
-        for p in problems:
-            print(f"  - {p}", file=sys.stderr)
+        print("✗ src_fetch 目录自测失败：", file=sys.stderr)
+        for problem in problems:
+            print(f"  - {problem}", file=sys.stderr)
         return 1
-    print(f"✓ src_fetch 匹配表自测通过（{len(cases)} 条真实签名、"
-          f"{len(repos)} 个候选仓、{len(ORG_SIGNATURE_KEYWORDS.get('cann', []))} 条关键词规则）")
+    failures = cat.run_self_tests()
+    if failures:
+        print("✗ src_fetch 签名用例失败：", file=sys.stderr)
+        for failure in failures:
+            print(f"  - {failure}", file=sys.stderr)
+        return 1
+    candidates = sum(len(cat.discover_repos(org)) for org in cat.orgs)
+    print(f"✓ src_fetch 目录自测通过（{len(cat.layers)} 层、{len(cat.repos)} 个仓、"
+          f"{candidates} 个签名候选仓、{len(cat.self_tests)} 条真实签名）")
     return 0
 
 
-def org_repo_catalog(org: str, sig: str = "", offline: bool = False, limit: int = 3):
+def org_repo_catalog(org: str, sig: str = "", offline: bool = False, limit: int = 3, catalog=None):
     """→ (candidates, note)：候选仓清单。catalog 拉不到（离线/被限流）时 note 说明原因。
 
     复用 gc_docs 的 `/orgs/<org>/repos` 分页（同一事实源，不再写一份 API 客户端）。
     `--offline` 只在**签名关键词表**上做匹配、不联网——这是 CI 与断网现场的降级路径。
     零候选就如实返回零候选：不许用"仓名是签名子串"这种兜底（实测 `geometry error` 会被
     判成 `ge` 层——假阳性比零候选更糟，它会让调用方拿着错仓去读源码）。"""
-    cands = candidate_repos(org, sig)
+    cat = _catalog(catalog)
+    cands = candidate_repos(org, sig, cat)
+    meta = cat.orgs.get(org)
     if offline:
         return cands[:limit], "离线模式：未枚举组织仓库（候选来自签名关键词表）"
+    if meta is not None and not meta.enumerable:
+        return cands[:limit], f"组织「{org}」没有可枚举的公开清单（只有 GitCode 组织匿名可枚举），候选只来自签名关键词表"
     try:
         import gc_docs                                        # 延迟导入：只有这条路要联网
         rows = gc_docs.api_pages(f"/orgs/{org}/repos", per_page=100)
@@ -414,12 +232,16 @@ def print_candidates(org: str, cands, note: str, ref: str, header: str = "候选
         print(f"  {i}) {org}/{repo} —— {why}")
     if note:
         print(f"  {note}")
-    print("  判据：报错栈里的命名空间/接口前缀（aclnn*/Hccl*/ge::/aclrt*）比算子名更硬；"
-          "拿不准就问工程师「这个报错在你们那的 CANN 安装目录里落在哪个子目录」。")
-    if len(cands) > 1:
-        print("  建议：CANN 各仓共用同一套版本号，所以「版本对得上」不能唯一定位——"
-              "决定的是报错栈里的命名空间/接口前缀。定不下来就问工程师一句："
-              "这个报错在你们那的 CANN 安装目录里落在哪个子目录。")
+    if org == "cann":
+        print("  判据：报错栈里的命名空间/接口前缀（aclnn*/Hccl*/ge::/aclrt*）比算子名更硬；"
+              "拿不准就问工程师「这个报错在你们那的 CANN 安装目录里落在哪个子目录」。")
+        if len(cands) > 1:
+            print("  建议：CANN 各仓共用同一套版本号，所以「版本对得上」不能唯一定位——"
+                  "决定的是报错栈里的命名空间/接口前缀。定不下来就问工程师一句："
+                  "这个报错在你们那的 CANN 安装目录里落在哪个子目录。")
+    else:
+        print("  判据：报错栈里的命名空间/接口前缀与模块路径比仓名更硬；拿不准就问工程师"
+              "这个报错对应哪个仓，或它落在安装目录的哪个子目录。")
 
 
 def resolve_across_candidates(cands, ref: str):
@@ -810,6 +632,141 @@ def prune_version(repo_dir: Path, ref: str) -> int:
     return EXIT_OK
 
 
+# ---------------------------------------------------------------- 目录查看与验证
+def candidate_sources(catalog, org: str, short: str):
+    """候选仓 → (canonical, [(host, slot), ...])：目录里登记过就用它的 sources（含 custom 与私有地址）。"""
+    canonical = f"{org}/{short}"
+    _canon, sources = catalog.lookup(canonical)
+    if sources is not None:
+        return canonical, [(src["host"], {k: v for k, v in src.items() if k != "host"}) for src in sources]
+    host = catalog.orgs[org].host if org in catalog.orgs else "gitcode"
+    return canonical, [(host, {"owner": org, "repo": short})]
+
+
+def print_catalog(catalog) -> int:
+    """--list：按层列仓、别名与 host，末尾给组织。"""
+    print(f"源码仓目录：{catalog.base}（{len(catalog.layers)} 层、{len(catalog.repos)} 个仓）")
+    for layer in catalog.layers:
+        repos = [repo for repo in catalog.repos.values() if repo.layer == layer]
+        if not repos:
+            continue
+        print(f"[{layer}]")
+        for repo in repos:
+            hosts = "、".join(str(src.get("host")) for src in repo.sources)
+            aliases = f"  别名：{'、'.join(repo.aliases)}" if repo.aliases else ""
+            flag = "" if repo.fast_path else "  仅签名候选"
+            print(f"  {repo.canonical}  host：{hosts}{aliases}{flag}")
+    for org in catalog.orgs.values():
+        state = "可枚举" if org.enumerable else "不可枚举"
+        print(f"组织：{org.name}（{org.host}，{state}，{len(catalog.org_repos(org.name))} 个已登记的仓）")
+    return EXIT_OK
+
+
+def print_orgs(catalog) -> int:
+    """--list-orgs：零候选时先看有哪些组织可枚举。"""
+    if not catalog.orgs:
+        print("目录里没有登记组织")
+        return EXIT_OK
+    for org in catalog.orgs.values():
+        state = "可枚举" if org.enumerable else "不可枚举"
+        print(f"{org.name}\t{org.host}\t{state}\t{len(catalog.org_repos(org.name))} 个已登记的仓")
+        if org.note:
+            print(f"  说明：{org.note}")
+    return EXIT_OK
+
+
+def print_org_repos(catalog, org_name: str, offline: bool = False) -> int:
+    """--list-org-repos：可枚举组织现枚举（GitCode 匿名），其余列目录里已登记的仓。"""
+    org = catalog.orgs.get(org_name)
+    repos = catalog.org_repos(org_name)
+    if org is None and not repos:
+        return die(EXIT_USAGE, f"目录里没有登记组织「{org_name}」（--list-orgs 看已有组织）")
+    if org is not None and org.enumerable and not offline:
+        try:
+            import gc_docs
+            rows = gc_docs.api_pages(f"/orgs/{org_name}/repos", per_page=100)
+        except Exception as e:
+            print(f"组织清单拉取失败（{type(e).__name__}）——改为只列目录里已登记的仓", file=sys.stderr)
+            rows = None
+        if rows is not None:
+            print(f"{org_name}/ 共 {len(rows)} 个公开仓：")
+            for row in rows:
+                name = row.get("path") or row.get("name") or ""
+                desc = (row.get("description") or "").strip().replace("\n", " ")
+                if len(desc) > 60:
+                    desc = desc[:60] + "…"
+                print(f"  {org_name}/{name}  {desc}")
+            return EXIT_OK
+    if not repos:
+        return die(EXIT_USAGE, f"组织「{org_name}」不可枚举，目录里也没有登记它的仓")
+    print(f"目录里登记的「{org_name}」仓：")
+    for repo in repos:
+        print(f"  {repo.canonical}  {repo.why}")
+    return EXIT_OK
+
+
+def grep_signature(target: Path, sig: str) -> list[str]:
+    """在已取到的树里搜字面量。git grep 优先；不可用时退回逐文件搜（跳过二进制与 .git）。"""
+    try:
+        proc = subprocess.run(["git", "-C", str(target), "grep", "-n", "-F", "-e", sig],
+                              capture_output=True, text=True, encoding="utf-8", errors="replace")
+    except OSError:
+        proc = None
+    if proc is not None:
+        if proc.returncode == 0:
+            return [line for line in proc.stdout.splitlines() if line]
+        if proc.returncode == 1:
+            return []
+    hits = []
+    needle = sig.encode("utf-8")
+    for path in target.rglob("*"):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(target)
+        if ".git" in rel.parts:
+            continue
+        try:
+            data = path.read_bytes()
+        except OSError:
+            continue
+        if b"\x00" in data or needle not in data:
+            continue
+        for number, line in enumerate(data.decode("utf-8", "replace").splitlines(), 1):
+            if sig in line:
+                hits.append(f"{rel}:{number}:{line.strip()[:160]}")
+        if len(hits) >= 500:
+            break
+    return hits
+
+
+def finish_ok(target: Path, args) -> int:
+    """成功出口：带 --verify 就先验证，命中才按 exit 0 收尾，未命中 exit 6。"""
+    if args.verify is not None:
+        hits = grep_signature(target, args.verify)
+        if not hits:
+            return die(EXIT_VERIFY_FAILED,
+                       f"签名「{args.verify}」没有出现在 {target} 里：不能证明这是该版本的源码"
+                       "（仓或版本可能不对，也可能签名只在二进制里）。不要拿这份树当定位证据",
+                       tail="✗ 验证未通过")
+        print(f"验证命中 {len(hits)} 处（{args.verify}）：")
+        for line in hits[:20]:
+            print(f"  {line}")
+        if len(hits) > 20:
+            print(f"  …其余 {len(hits) - 20} 处略")
+    print(str(target))
+    return EXIT_OK
+
+
+def print_discovery_next_steps(org: str, sig: str, ref: str) -> None:
+    """零候选时的下一步：把"找不到就问人"之前的可复现动作列全。"""
+    print("下一步（按这个顺序试）：")
+    print("  1) 列可枚举组织：python3 scripts/src_fetch.py --list-orgs")
+    print(f"  2) 列组织仓：python3 scripts/src_fetch.py --list-org-repos {org}")
+    print(f"  3) 搜到仓名后取回并验证：python3 scripts/src_fetch.py <org/repo> "
+          f"--ref {ref or '<版本>'} --verify \"{sig}\"")
+    print("  4) 验证不过再问工程师：这个报错在安装目录里落在哪个子目录，或对应哪个仓")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="确定性获取对应版本的源码")
     ap.add_argument("repo", nargs="?", help="仓库标识（已知名 / org/repo；未知需 --url）")
@@ -826,22 +783,39 @@ def main() -> int:
                     help="只知道报错签名、不知道在哪个仓时用：枚举组织仓 → 给候选 → 能唯一解析就自动取"
                          "（签名必填；枚举别的组织配 --org）")
     ap.add_argument("--org", default="cann", help="--find 枚举的组织（默认 cann）")
-    ap.add_argument("--offline", action="store_true", help="--find 不联网：只按签名关键词表给候选")
+    ap.add_argument("--offline", action="store_true",
+                    help="不联网：候选只来自签名关键词表，组织清单只列目录里登记过的仓")
     ap.add_argument("--self-test", action="store_true",
-                    help="校验签名→候选仓匹配表（大小写/仓名/真实签名命中）；表坏了只会静默零候选")
+                    help="校验源码仓目录（结构 + 数据里的真实签名用例）；表坏了只会静默零候选")
     ap.add_argument("--root", default=None, help="仓库根目录（默认：本脚本上两级）")
+    ap.add_argument("--catalog", default=None,
+                    help="源码仓目录（默认仓库根 source-catalog.d/；场景测试与私有部署用）")
+    ap.add_argument("--verify", metavar="签名", default=None,
+                    help="取到或复用源码后，在树里搜这个字面量：命中 exit 0 并打印文件与行，未命中 exit 6")
+    ap.add_argument("--list-orgs", action="store_true", help="列出目录里的组织（host、是否可枚举、仓数）")
+    ap.add_argument("--list-org-repos", metavar="组织", default=None,
+                    help="列出某组织的仓：可枚举组织现枚举，其余列目录里已登记的仓")
     args = ap.parse_args()
 
+    root = Path(args.root).resolve() if args.root else ROOT
+    catalog = source_catalog.load_catalog(
+        Path(args.catalog).expanduser().resolve() if args.catalog else source_catalog.default_dir(root))
+    set_catalog(catalog)
+
+    if args.verify is not None and not args.verify.strip():
+        return die(EXIT_USAGE, "--verify 需要非空签名（例：--verify \"HcclAllReduce failed\"）")
+
     if args.self_test:
-        return self_test()
+        return self_test(catalog)
 
     if args.list:
-        print("已知仓库 → 候选 source：")
-        for key, (canonical, cands) in KNOWN_REPOS.items():
-            print(f"  {key:24s} -> {canonical}  ({'; '.join(c for c, _ in cands)})")
-        return EXIT_OK
+        return print_catalog(catalog)
 
-    root = Path(args.root).resolve() if args.root else Path(__file__).resolve().parent.parent
+    if args.list_orgs:
+        return print_orgs(catalog)
+
+    if args.list_org_repos is not None:
+        return print_org_repos(catalog, args.list_org_repos, args.offline)
     # --dest 归一为绝对路径：契约是"stdout 末行 = 绝对路径"，相对路径会让调用方拼错地方
     explicit = Path(args.dest).expanduser().resolve() if args.dest else None
     cache_root, where = resolve_src_code(root, explicit=explicit, local=args.local)
@@ -858,7 +832,7 @@ def main() -> int:
     if not args.repo and args.find is None:
         return die(EXIT_USAGE, "未指定 repo（--list 看已支持仓库，--list-versions 看本地缓存）")
 
-    canonical, cands = lookup(args.repo or "")
+    canonical, cands = lookup(args.repo or "", catalog)
     if args.url:
         cands = [("custom", {"url": args.url})]
         canonical = canonical or norm_repo(args.repo or "")
@@ -870,7 +844,7 @@ def main() -> int:
         return die(EXIT_USAGE, "--find 必须给报错签名（例：--find \"HcclAllReduce failed\"）——"
                                "没有签名就没有候选判据（枚举整个组织等于把 82 仓全表丢给调用方）")
     if args.find is not None and cands is None and not args.url:
-        found, note = org_repo_catalog(args.org, find_sig, offline=args.offline)
+        found, note = org_repo_catalog(args.org, find_sig, offline=args.offline, catalog=catalog)
         if found:
             print_candidates(args.org, found, note, args.ref,
                              header=f"签名「{find_sig}」的候选源码仓")
@@ -878,19 +852,22 @@ def main() -> int:
         # 会让判断链断在这里，而输出看起来一切正常）。候选表照打，作为"脚本本来会猜哪个"的对照。
         if args.repo:
             given = norm_repo(args.repo)
+            org_host = catalog.orgs[args.org].host if args.org in catalog.orgs else "gitcode"
+            fallback_hosts = [org_host] if org_host == "github" else [org_host, "github"]
             if "/" in given:                     # org/repo 形态：尊重给的 org，不再套 --org
                 owner, rname = given.split("/", 1)
-                candidates = [("gitcode", {"owner": owner, "repo": rname}),
-                              ("github", {"owner": owner, "repo": rname})]
             else:                                # 裸仓名：按 --org 组织下试，再回退到 GitHub 同名仓
-                candidates = [("gitcode", {"owner": args.org, "repo": given}),
-                              ("github", {"owner": args.org, "repo": given})]
+                owner, rname = args.org, given
+            candidates = [(host, {"owner": owner, "repo": rname}) for host in fallback_hosts]
             canonical, cands = f"{candidates[0][1]['owner']}/{candidates[0][1]['repo']}", candidates
             why = f"签名没命中已知层，按你给的仓名试：{canonical}" if not found else \
                   f"以你给的仓名 {canonical} 为准（候选表仅作对照；不对就按候选编号重跑）"
             print(why + ("（「%s」没进已知表也没有 /——按组织仓名处理）" % args.repo
                          if "/" not in given else ""))
         elif not found:
+            if note:
+                print(f"  说明：{note}")
+            print_discovery_next_steps(args.org, find_sig, args.ref)
             return die(EXIT_REF_UNRESOLVED,
                        f"签名「{find_sig}」在 {args.org} 里没命中任何候选仓"
                        + (f"；{note}" if note else ""))
@@ -899,12 +876,12 @@ def main() -> int:
                 # `--offline` 是「不联网」的承诺：唯一候选也不能顺手去联网核对 ref 再拉取
                 # （那样断网现场会得到一条拉取失败，看起来像"上游没有这个仓"）。
                 # 只有本地已核对通过的同版本才能复用，否则如实说清楚要什么。
-                slot = {"owner": args.org, "repo": found[0][0]}
-                local = find_local(cache_root / args.org / found[0][0], args.ref)
+                canonical, cands = candidate_sources(catalog, args.org, found[0][0])
+                org_part, repo_part = canonical.split("/", 1)
+                local = find_local(cache_root / org_part / repo_part, args.ref)
                 ok_local = [d for d, _how, ok, _why, _m in local if ok]
                 if ok_local:
                     print(f"离线模式：本地已有核对通过的版本 → 复用 {ok_local[0]}")
-                    canonical, cands = f"{args.org}/{found[0][0]}", [("gitcode", slot)]
                 else:
                     return die(EXIT_REF_UNRESOLVED,
                                f"离线模式只给候选、不拉取：签名唯一命中 {args.org}/{found[0][0]}，"
@@ -913,8 +890,7 @@ def main() -> int:
             only_fallback = (len(found) == 1
                              and is_fallback_candidate(args.org, find_sig, found[0][0]))
             if len(found) == 1 and not only_fallback:
-                slot = {"owner": args.org, "repo": found[0][0]}
-                canonical, cands = f"{slot['owner']}/{slot['repo']}", [("gitcode", slot)]
+                canonical, cands = candidate_sources(catalog, args.org, found[0][0])
                 print(f"唯一候选 → {canonical}")
             elif only_fallback:
                 return die(EXIT_REF_UNRESOLVED,
@@ -924,7 +900,19 @@ def main() -> int:
                            f"安装目录里落在哪个子目录；确认是它再跑 "
                            f"`python3 scripts/src_fetch.py {args.org}/{found[0][0]} --ref {args.ref}`")
             else:
-                cds = [("gitcode", {"owner": args.org, "repo": r}) for r, _w, _s in found]
+                if args.offline:
+                    names = "、".join(f"{args.org}/{name}" for name, _w, _s in found)
+                    print_discovery_next_steps(args.org, find_sig, args.ref)
+                    return die(EXIT_REF_UNRESOLVED,
+                               f"离线模式只给候选、不联网：{len(found)} 个候选都可能"
+                               f"（{names}）——去掉 --offline 再逐个试 ref，或先确认是哪个仓")
+                cds, canonical_by_url = [], {}
+                for name, _w, _s in found:
+                    canonical_i, sources = candidate_sources(catalog, args.org, name)
+                    for host, slot in sources:
+                        url = slot["url"] if host == "custom" else clone_url(host, slot["owner"], slot["repo"])
+                        canonical_by_url[url] = canonical_i
+                        cds.append((host, slot))
                 hits, tried = resolve_across_candidates(cds, args.ref)
                 if not hits:
                     print("  没有候选能解析出这个 ref——候选里选一个给准确版本，或让工程师报出"
@@ -934,11 +922,11 @@ def main() -> int:
                     return die(EXIT_REF_UNRESOLVED,
                                f"{len(found)} 个候选都没有 ref「{args.ref or '(默认分支)'}」")
                 if len(hits) == 1:
-                    slot = hits[0][1]
-                    canonical, cands = f"{args.org}/{slot['repo']}", [hits[0][:2]]
+                    canonical = canonical_by_url.get(hits[0][2], hits[0][1].get("repo", ""))
+                    cands = [hits[0][:2]]
                     print(f"唯一能解析该 ref 的候选 → {canonical}（按它取）")
                 else:
-                    names = "、".join(f"{args.org}/{c[1]['repo']}" for c in hits)
+                    names = "、".join(canonical_by_url.get(h[2]) or h[1].get("repo", "") for h in hits)
                     return die(EXIT_REF_UNRESOLVED,
                                f"{len(hits)} 个候选都有 ref「{args.ref or '(默认分支)'}」——"
                                f"同名 tag 不足以定位，**不能替人选**：{names}。"
@@ -970,8 +958,7 @@ def main() -> int:
             note = "（按 v 前缀容错匹配）" if how == "tolerant" else ""
             print(f"复用 {d}（{meta.get('ref_kind')} {meta.get('ref_name')}，HEAD 已核对{note}）")
             print(f"缓存：{describe_src(cache_root, where)}")
-            print(str(d))
-            return EXIT_OK
+            return finish_ok(d, args)
     bad_local = [(d, why) for d, _how, ok, why, _m in local if not ok]
 
     # ② 需要联网：解析 ref（逐候选源）；解析不到就非零退出，并给可用 tag
@@ -1012,8 +999,7 @@ def main() -> int:
         if ok:
             print(f"复用 {target}（本地已有该版本，HEAD 已核对）")
             print(f"缓存：{describe_src(cache_root, where)}")
-            print(str(target))
-            return EXIT_OK
+            return finish_ok(target, args)
         if not args.force:
             return die(EXIT_LOCAL_MISMATCH,
                        f"本地已有 {target} 但核对不通过：{why}——"
@@ -1052,8 +1038,7 @@ def main() -> int:
     print(f"{'产出' if result == 'installed' else '复用'} {target}"
           + (f"（{why}）" if why else "（新增版本；其他版本目录保留不动）"))
     print(f"缓存：{describe_src(cache_root, where)}")
-    print(str(target))
-    return EXIT_OK
+    return finish_ok(target, args)
 
 
 if __name__ == "__main__":

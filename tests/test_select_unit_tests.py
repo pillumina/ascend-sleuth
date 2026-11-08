@@ -36,6 +36,14 @@ class SelectUnitTestsTest(unittest.TestCase):
         result, _ = self.select(["scripts/build_foo.py"])
         self.assertEqual(result, ["tests.test_build_foo"])
 
+    def test_data_dir_change_selects_consumer_test(self):
+        """数据目录改动要选中消费脚本的测试：数据文件不是脚本，静态扫描看不出归属。"""
+        self.write("scripts/src_fetch.py")
+        self.write("tests/test_src_fetch.py", "import src_fetch\n")
+        result, notes = self.select(["source-catalog.d/cann.yaml"])
+        self.assertEqual(result, ["tests.test_src_fetch"])
+        self.assertFalse(any("跳过" in note for note in notes))
+
     def test_shared_module_pulls_dependents_tests(self):
         self.write("scripts/_shared.py", "def helper():\n    return 1\n")
         self.write("scripts/build_foo.py", "from _shared import helper\n")

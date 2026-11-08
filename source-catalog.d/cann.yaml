@@ -1,0 +1,140 @@
+# CANN 开源面（gitcode 的 cann 组织，2026-09 实测 82 个公开仓）。
+# 只收「错误签名会直接点到名字」的层，不把组织全表搬进 known：其余层由
+# `--list-org-repos cann` 现枚举。新增一个仓只改本文件，不改脚本。
+layer: cann
+title: CANN 开源仓（gitcode 的 cann 组织）
+
+orgs:
+  - name: cann
+    host: gitcode
+    enumerable: true
+    note: 组织仓清单匿名可枚举（/orgs/cann/repos，per_page 上限 100）
+
+# 已知表：别名直接命中时按 sources 顺序取（host 从可信到备份）。
+# fast_path: false 的仓只参与签名候选，不占已知表。
+repos:
+  - repo: cann/ops-nn
+    sources:
+      - {host: gitcode, owner: cann, repo: ops-nn}
+    why: aclnn 神经网络类算子（Conv/MatMul/Attention 等）
+    discover:
+      all_of: [aclnn]
+      discriminators: [conv, matmul, attention]
+      fallback: true
+      primary: [aclnnop, opapi]
+
+  - repo: cann/ops-transformer
+    sources:
+      - {host: gitcode, owner: cann, repo: ops-transformer}
+    why: aclnn transformer 类算子
+    discover:
+      all_of: [aclnn]
+      any_of: [attention, flash, increment, paged, rotary]
+      primary: [flashattention, pagedattention]
+
+  - repo: cann/ops-math
+    sources:
+      - {host: gitcode, owner: cann, repo: ops-math}
+    why: aclnn 数学类算子
+    discover:
+      all_of: [aclnn]
+      any_of: [matmul, quantbatchmatmul, add, mul, softmax, norm]
+      primary: [quantbatchmatmul, softmax]
+
+  - repo: cann/ops-cv
+    sources:
+      - {host: gitcode, owner: cann, repo: ops-cv}
+    why: aclnn 图像类算子
+    discover:
+      all_of: [aclnn]
+      any_of: [conv, roi, resize, crop]
+
+  - repo: cann/hccl
+    sources:
+      - {host: gitcode, owner: cann, repo: hccl}
+    why: 集合通信（Hccl* 接口、通信域/rank 表）
+    discover:
+      any_of: [hccl, hccltest, allreduce, allgather, reducescatter, alltoall, broadcast]
+      primary: [hccl, hccltest, allreduce, allgather, reducescatter, alltoall]
+
+  - repo: cann/hcomm
+    sources:
+      - {host: gitcode, owner: cann, repo: hcomm}
+    why: HCCL 的通信基础库（通信资源/单边通信）
+    discover:
+      any_of: [hcomm, hcommres]
+      primary: [hcomm, hcommres]
+
+  - repo: cann/ge
+    sources:
+      - {host: gitcode, owner: cann, repo: ge}
+    why: "图编译器与执行器（ge:: 命名空间）"
+    discover:
+      any_of: [ge, geapi, graphengine, geir]
+      primary: [ge, geapi, graphengine, geir]
+
+  - repo: cann/metadef
+    sources:
+      - {host: gitcode, owner: cann, repo: metadef}
+    why: 算子元数据定义（算子原型/属性注册）
+    discover:
+      any_of: [metadef, opproto, implytype]
+      primary: [metadef, opproto, implytype]
+
+  - repo: cann/runtime
+    sources:
+      - {host: gitcode, owner: cann, repo: runtime}
+    why: 运行时与维测组件（aclrt*、plog）
+    discover:
+      any_of: [aclrt, aclmdl, plog, rts, acl]
+      primary: [aclrt, aclmdl, plog, rts]
+
+  - repo: cann/driver
+    sources:
+      - {host: gitcode, owner: cann, repo: driver}
+    why: 驱动模块（drv* 接口、设备资源与调度）
+    discover:
+      any_of: [drv, drvdev, drvmem, drvdevice]
+      primary: [drv, drvdev, drvmem, drvdevice]
+
+  - repo: cann/asc-devkit
+    sources:
+      - {host: gitcode, owner: cann, repo: asc-devkit}
+    why: "Ascend C 算子开发语言与类库（AscendC::）"
+    discover:
+      any_of: [ascendc, ascendckernel, atvc, atvoss]
+      primary: [ascendc, ascendckernel, atvc, atvoss]
+
+  - repo: cann/pyasc
+    fast_path: false
+    sources:
+      - {host: gitcode, owner: cann, repo: pyasc}
+    why: Python 算子编程接口（与 Ascend C 一一对应）
+    discover:
+      any_of: [pyasc]
+      primary: [pyasc]
+
+  - repo: cann/oam-tools
+    fast_path: false
+    sources:
+      - {host: gitcode, owner: cann, repo: oam-tools}
+    why: 故障定位工具（aicore error 分析、信息收集）
+    discover:
+      any_of: [msaicerr, aicoreerror, oam]
+      primary: [msaicerr, aicoreerror, oam]
+
+# 真实签名到期望仓：--self-test 逐条跑。新增仓时在这里补一条，
+# 否则表写坏了只表现为静默零候选（看起来像上游没有这个仓）。
+self_test:
+  - {sig: "HcclCommInitRootInfo failed", expect: cann/hccl}
+  - {sig: "HcclAllReduce failed, rank table", expect: cann/hccl}
+  - {sig: "ge::GEExecuteRun error", expect: cann/ge}
+  - {sig: "aclnnQuantBatchMatMulV3 execute failed", expect: cann/ops-math}
+  - {sig: "ACL_ERROR_RT_DEVICE_MEM_ERROR", expect: cann/runtime}
+  - {sig: "drvDeviceOpen failed", expect: cann/driver}
+  - {sig: "AscendC::KernelLaunch error", expect: cann/asc-devkit}
+  - {sig: "opproto ImplyType not found", expect: cann/metadef}
+  - {sig: "msaicerr 解析 aicore error", expect: cann/oam-tools}
+  - {sig: "aclnnFlashAttentionScore failed", expect: cann/ops-transformer}
+  - {sig: "aclnnBatchMatMul failed", expect: cann/ops-math}
+  - {sig: "Conv2D aclnn error", expect: cann/ops-cv}

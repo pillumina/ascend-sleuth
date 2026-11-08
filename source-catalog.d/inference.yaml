@@ -1,0 +1,15 @@
+# 推理框架侧。已知表命中的仓不参与签名候选（没有错误签名会直接点到 org/repo 名），
+# 找不到仓时走 `--find` 的零候选提示与显式仓名加 `--verify`。
+layer: inference
+title: 推理框架与模型侧
+
+orgs: []
+
+repos:
+  - repo: vllm-project/vllm-ascend
+    sources:
+      - {host: github, owner: vllm-project, repo: vllm-ascend}
+    aliases: [vllm-ascend]
+    why: vLLM 的昇腾适配层（现场问题最常落在这里）
+
+self_test: []
