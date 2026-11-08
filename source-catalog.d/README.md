@@ -9,6 +9,8 @@
 `.gitattributes` 给 `source-catalog.d/*.yaml` 配了 `merge=union`，同层各补一个仓时两边都留住。
 放这里而不是 `references/`：这是工具读的配置，要被 schema 校验，不是先验知识词条。
 
+已知表以本目录为唯一来源：skill 正文只写怎么用（如 `--list`），不抄仓名与 host。抄一份会随数据变化腐烂，agent 还可能拿旧名单跳过查表。
+
 ## 补一个仓
 
 1. 在对应层文件的 `repos` 加一条：canonical 名、`sources`（host 与 owner/repo，私有仓用
