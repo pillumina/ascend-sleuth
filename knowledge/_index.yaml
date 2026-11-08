@@ -1724,7 +1724,7 @@ namespaces:
       - 0.23.0
       - '23.0'
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-15086.yaml
-      hash: 189a9a3fcb75
+      hash: 7c513e88cf9c
     - id: VLLM-ASC-15087
       title: 'PD 分离 prefill 节点静默冻结：抢占禁用开关 _disable_preemption_on_prefill_node()（由 PR #14233 引入并只在含它的构建里存在；patch_balance_schedule.py:79，guard=vllm_version_is(''0.23.0'')
         && kv_r…'
@@ -1751,7 +1751,7 @@ namespaces:
       - patch_balance_schedule.py
       - pool_scheduler.py
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-15087.yaml
-      hash: 18ce6b66913e
+      hash: 8b17cfe07c69
     - id: VLLM-ASC-16446
       title: DP>1 + FlashComm1(SP) + multistream_overlap_shared_expert 三者同时开启时 vllm serve 拉起期挂死：507034
         vector core execution timed out（任一因素去掉即起得来）——SP 通信与共享专家侧流次序无保证
@@ -2949,7 +2949,7 @@ namespaces:
       - '65535'
       - '65536'
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-ZMQ-HANDSHAKE-PORT-OVERFLOW.yaml
-      hash: 8427fd5e38f9
+      hash: aab5c3572db5
     performance:
     - id: VLLM-ASC-10710
       title: DSV4-Flash-w8a8-mtp 完全相同串行请求 Prefix Cache 命中率恒 0%：混合压缩 KV（compression_ratio=128）最小命中长度=block_size×128（block128→16k、投机/MTP→32k），10k
