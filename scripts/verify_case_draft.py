@@ -174,6 +174,7 @@ def check_case(case, path: Path, ref_index: dict, fail, warn, root: Path | None 
 
 
 _CATALOGS: dict = {}
+_CATALOG_WARNED: set = set()
 
 
 def catalog_for(root: Path):
@@ -192,7 +193,14 @@ def check_source_ref(case, path: Path, root: Path, fail, warn):
         return
     entries = raw if isinstance(raw, list) else [raw]
     label = f"{path.name}#{case.get('id') or '<无 id>'} source_ref"
+    if not entries:
+        fail(f"{label}: 不能是空列表（要么写指针，要么删掉该字段）")
+        return
     cat = catalog_for(root)
+    if cat is not None and cat.problems and root not in _CATALOG_WARNED:
+        _CATALOG_WARNED.add(root)
+        for problem in cat.problems:
+            warn(f"source_ref: 源码仓目录有问题——{problem}")
     for index, entry in enumerate(entries, 1):
         where = f"{label}[{index}]" if len(entries) > 1 else label
         if not isinstance(entry, dict):

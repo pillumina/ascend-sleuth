@@ -55,6 +55,27 @@ class SourceRefPointerTest(unittest.TestCase):
         self.assertEqual(len(fails), 1)
         self.assertIn("缺 repo", fails[0])
 
+    def test_empty_list_is_rejected(self):
+        fails, _ = check({"id": "C8", "source_ref": []})
+        self.assertEqual(len(fails), 1)
+        self.assertIn("空列表", fails[0])
+
+    def test_broken_catalog_is_warned_once(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "source-catalog.d").mkdir()
+            (root / "source-catalog.d" / "bad.yaml").write_text(
+                "layer: bad\nrepos: [{repo: x/y}]\n", encoding="utf-8")
+            fails, warns = [], []
+            for _ in range(2):
+                vcd.check_source_ref({"id": "C9", "source_ref": {"repo": "x/y", "ref": "v1"}},
+                                     Path("case.yaml"), root, fails.append, warns.append)
+            self.assertEqual(fails, [])
+            self.assertTrue(warns)
+            self.assertEqual(sum("源码仓目录有问题" in w for w in warns), 1,
+                             "同一个仓库根只告警一次")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -24,7 +24,7 @@
 
 ## 与案例的对应
 
-案例的 `source_ref.repo` 写这里的 canonical 名（`org/repo`）。校验在 `scripts/verify_case_draft.py`：形态必须是 `org/repo`，且能在本目录里解析到。
+案例的 `source_ref.repo` 写这里的 canonical 名（`org/repo`）。校验在 `scripts/verify_case_draft.py`：形态必须是 `org/repo`，且能在本目录里解析到。没有本目录的部署只降级"可解析"为警告，形态仍硬校验。
 
 ## 字段
 
