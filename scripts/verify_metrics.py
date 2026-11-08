@@ -56,6 +56,10 @@ LIVE_FIELDS = {
     "stop_reasons", "stop_reason_unrecorded",
     "parallel_group_events", "considered_candidates_events", "trace_record_violations",
     "trace_record_violations_total",
+    # 外部查证（trace_metrics.py，可选插件能力）：工具在不在、按 capability 的调用次数与违规。
+    # 白名单此前没跟上，`--emit-yaml` 一产出这些字段，下一期 live 期文件就会被本脚本拦下。
+    "external_evidence", "external_lookups",
+    "external_record_violations", "external_record_violations_total",
     # 结构侧（metrics_snapshot.py ← build_index 头注 / verify_references）
     "case_total", "reference_total", "capacity_by_ns",
     # 内容流程侧（metrics_snapshot.py ← tail_exec_log 聚合）
