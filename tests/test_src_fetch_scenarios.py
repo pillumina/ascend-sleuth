@@ -330,5 +330,51 @@ class SrcFetchScenarioTest(unittest.TestCase):
         self.assertTrue(last_line(proc).endswith("/v1.0"))
 
 
+    # ------------------------------------------------------------ 场景 14
+    def test_explicit_name_falls_back_from_github_to_gitcode(self):
+        """显式仓名在 GitHub 解析不到时，自动再试 GitCode（GitCode-only 仓不用进表）。"""
+        import contextlib
+        import io
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+        import src_fetch
+
+        remotes = Path(self._tmp.name) / "remotes"
+        repo_path = remotes / "gitcode" / "acme" / "ops-foo.git"
+        repo_path.mkdir(parents=True)
+        self.git(repo_path, "init", "-q")
+        (repo_path / "src.c").write_text("if (foox kernel failed) {}\n", encoding="utf-8")
+        self.git(repo_path, "add", "-A")
+        self.git(repo_path, "-c", "commit.gpgsign=false",
+                 "-c", "user.email=scenario@example.test",
+                 "-c", "user.name=Scenario Test", "commit", "-q", "-m", "init")
+        self.git(repo_path, "tag", "v1.0")
+
+        base = remotes.resolve().as_uri()
+        original_hosts = dict(src_fetch.HOSTS)
+        old_argv = sys.argv
+        try:
+            src_fetch.HOSTS.update({
+                "github": f"{base}/github/{{owner}}/{{repo}}.git",
+                "gitcode": f"{base}/gitcode/{{owner}}/{{repo}}.git",
+                "gitee": f"{base}/gitee/{{owner}}/{{repo}}.git",
+            })
+            sys.argv = ["src_fetch.py", "acme/ops-foo", "--ref", "v1.0",
+                        "--dest", str(self.dest), "--verify", SIGNATURE]
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = src_fetch.main()
+        finally:
+            src_fetch.HOSTS.clear()
+            src_fetch.HOSTS.update(original_hosts)
+            sys.argv = old_argv
+
+        stdout = out.getvalue()
+        self.assertEqual(rc, 0, stdout + err.getvalue())
+        self.assertIn("未知仓库，依次试 GitHub 与 GitCode", stdout)
+        self.assertIn("github", stdout)          # 先试 GitHub
+        self.assertIn("gitcode", stdout)         # 失败后回退
+        self.assertTrue(last_line(type("P", (), {"stdout": stdout})).endswith("/v1.0"))
+
+
 if __name__ == "__main__":
     unittest.main()
