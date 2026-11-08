@@ -89,7 +89,7 @@ case 文件，结算就变成每次改知识条目，观测与知识本体也就
 
 「源码不落库」= 源码不随仓库提交、也不写进知识库：`.gitignore` 已忽略 `src-code/`（本地分析缓存，按版本平铺为 `src-code/<org>/<repo>/<tag>/`：版本目录自包含、互不干扰，多 agent 并发可各读各版本；缓存根锚到主检出，同一克隆的所有 worktree 共读共写，worktree 清理不丢）。统一走 `scripts/src_fetch.py <repo> --ref <tag>` 按需拉取、同版本复用。
 
-知识库只记结论 + `source_ref` 指针。「不落库」不等于分析不需要源码，深入排查仍要 clone。`ref` 用触发版本对应的 commit / tag（与版本目录名同 token）。
+知识库只记结论 + `source_ref` 指针。「不落库」不等于分析不需要源码，深入排查仍要 clone。`repo` 写成 `org/repo`，且要能在 `source-catalog.d/` 里解析到（`fast_path: false` 的仓也算）；`ref` 用触发版本对应的 commit / tag（与版本目录名同 token）。多段定位时 `source_ref` 可写成映射列表，每段各自校验。形态与可解析性由 [`verify_case_draft.py`](../../scripts/verify_case_draft.py) 校验，CI 的 `case-structure` 是那道门；目录缺失时只降级"可解析"为警告，形态仍硬校验。
 
 ### 3.6 `ref_knowledge`
 

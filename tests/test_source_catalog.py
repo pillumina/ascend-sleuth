@@ -75,8 +75,10 @@ class DefaultCatalogTest(unittest.TestCase):
         self.assertGreaterEqual(len(self.cat.known), len(LEGACY_KNOWN))
         for repo in ("cann/pyasc", "cann/oam-tools"):
             self.assertIn(repo, self.cat.repos)
-            self.assertIsNone(self.cat.lookup(repo)[1], f"{repo} 不该进已知表")
-            self.assertTrue(self.cat.sources_for(repo), f"{repo} 的 sources 要能按 canonical 取到")
+            self.assertNotIn(source_catalog.norm_key(repo), self.cat.known,
+                             f"{repo} 不该进已知表（别名快表）")
+            self.assertIsNotNone(self.cat.lookup(repo)[1],
+                                 f"{repo} 按 canonical 也要能取到地址（显式仓名取源码用）")
 
     def test_cann_candidates_keep_legacy_order(self):
         got = [repo.short for repo in self.cat.discover_repos("cann")]
@@ -165,6 +167,28 @@ repos:
             self.assertIn("大写", problems)
             self.assertIn("缺 sources", problems)
             self.assertIn("同时指向", problems)
+
+    def test_discover_only_repo_alias_resolves(self):
+        """fast_path: false 的仓不进别名快表，但显式写它的别名也要能取到地址。"""
+        with tempfile.TemporaryDirectory() as d:
+            base = Path(d)
+            (base / "fixture.yaml").write_text('''
+layer: fixture
+title: 别名回退
+orgs: [{name: acme, host: github, enumerable: false}]
+repos:
+  - repo: acme/ops-hidden
+    fast_path: false
+    aliases: [hidden-alias]
+    sources: [{host: github, owner: acme, repo: ops-hidden}]
+    discover: {any_of: [hidden], primary: [hidden]}
+self_test: [{sig: "hidden failure", expect: acme/ops-hidden}]
+''', encoding="utf-8")
+            cat = source_catalog.load_catalog(base)
+            self.assertEqual(cat.validate(), [])
+            canonical, sources = cat.lookup("hidden-alias")
+            self.assertEqual(canonical, "acme/ops-hidden")
+            self.assertIsNotNone(sources)
 
     def test_custom_catalog_isolated(self):
         """--catalog 用夹具目录时，不该看到默认目录的仓。"""

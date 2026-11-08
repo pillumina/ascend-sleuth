@@ -251,7 +251,7 @@ reference 由流程里的**缺口**触发（**不是第四检索层**：不参�
 4. **追问用户验证**：对照预期/复现/补环境信息，验证根因假设。
 5. **follow-up**：查知识库是否已覆盖；`gh search issues/prs` 看上游是否已修复——**「已修复」不是结论、是待验证的假设**：上游有 PR / issue 已 closed 都不等于**你的部署版本里有这个修复**（PR 可能只进主干未 backport；镜像 / fork / 定制构建不能按版本号推断）。给「升级即可」之前必须做**落地实证**：从修复 PR 提取修复特征行 → 在你部署的那份代码里确认它在（做法、反证规则与结论分档见 `references/diagnosis-procedure.md` 步骤 5 的「上游修复的落地实证」）。未修复→根因+workaround；联网不可达→诚实说明无法查证。
 6. **多层级**：根因指向更底层开源仓（torch-npu、CANN 各层）→ 同样流程分析其源码（`source_ref` 指向该仓）。CANN 已开源（gitcode 的 cann 组织，常用层与定位判据见 `references/software-facts/cann-source-location.yaml`），所以"未开源"不再是结论；**闭源的只有商业发布形态的二进制/驱动包**——那种情况下**承认局限**，给方向 + 建议联系华为。
-7. **沉淀**：根因清楚且知识库未覆盖 → `/skill:to-postmortem` 记 `source_ref: {repo, ref, file, line}`；**顺手**沉淀跨事故稳定的结构事实 → `/skill:to-reference`（software-fact / env-var-table / compat-matrix，判据："6 个月后/跨版本是否仍成立"）。
+7. **沉淀**：根因清楚且知识库未覆盖 → `/skill:to-postmortem` 记 `source_ref: {repo, ref, file, line}`（`repo` 写 `org/repo`，与 `src_fetch.py` 同一写法，且要能在 `source-catalog.d/` 解析到）；**顺手**沉淀跨事故稳定的结构事实 → `/skill:to-reference`（software-fact / env-var-table / compat-matrix，判据："6 个月后/跨版本是否仍成立"）。
 
 ## 不要做
 
