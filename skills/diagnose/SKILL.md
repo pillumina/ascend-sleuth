@@ -232,7 +232,10 @@ reference 由流程里的**缺口**触发（**不是第四检索层**：不参�
 报错签名指向框架代码/算子名/量化描述表（如 `fault kernel_name=QuantBatchMatMulV3`、`modelslim_config.py` 相关 KeyError）且 Tier 3 未覆盖时：
 
 1. **先定"哪个仓"，再向其确认版本**（源码分析依赖对应版本，不要猜）：
-   - 已知表里有 → 直接用（`python3 scripts/src_fetch.py --list`：vllm-ascend / torch-npu / mindspeed-* / verl / CANN 常用层如 `cann/ops-nn`、`cann/hccl`、`cann/ge`）。
+   - 已知表里有 → 直接用（`python3 scripts/src_fetch.py --list` 看全表）：
+     - 框架适配：vllm-ascend、torch-npu、mindspeed-*、verl；
+     - CANN 常用层：`cann/ops-nn`、`cann/hccl`、`cann/ge`；
+     - 推理依赖：mooncake、transformers、ray、xgrammar、triton-ascend。
    - 已知表里没有 → **按发现顺序找，不要直接问人要地址**（命令与退出码展开见 `references/src-fetch.md`）：
      ① **候选表**：`python3 scripts/src_fetch.py --find "<报错签名>" --ref <版本>`。脚本按签名里的接口前缀与算子名给带理由的候选（默认 3 个），并**逐个试该版本**：只有一个候选能解析就自动取回（exit 0）；多个都能解析、只命中兜底或零候选就 exit 3。
      ② **可枚举组织**：`--list-orgs` 看有哪些组织、哪个可枚举；`--list-org-repos cann` 现枚举该组织的仓与说明。GitCode 组织匿名可枚举，不需要账号。

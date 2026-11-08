@@ -1,0 +1,46 @@
+# 推理依赖层：vllm-ascend 诊断里对应的依赖库。
+# 收录依据：知识库 case 文本里出现过这些依赖名（提及次数不等于根因落点）。复现：
+#   grep -rli '<关键词>' knowledge/ --include=*.yaml | grep -v _index
+# 只进已知表，不加 discover：这些层还没有稳定的报错签名规则，硬造候选会让候选表噪声变大。
+layer: deps
+title: 推理依赖层（KV / 调度 / 模型 / 编译器）
+
+orgs:
+  - {name: kvcache-ai, host: github, enumerable: false}
+  - {name: huggingface, host: github, enumerable: false}
+  - {name: triton-lang, host: github, enumerable: false}
+  - {name: ray-project, host: github, enumerable: false}
+  - {name: mlc-ai, host: github, enumerable: false}
+
+repos:
+  - repo: kvcache-ai/Mooncake
+    sources:
+      - {host: github, owner: kvcache-ai, repo: Mooncake}
+    aliases: [mooncake]
+    why: KV 缓存与传输库（vllm-ascend 的 mooncake_connector 依赖）
+
+  - repo: huggingface/transformers
+    sources:
+      - {host: github, owner: huggingface, repo: transformers}
+    aliases: [transformers]
+    why: 模型与配置定义层（架构不支持、配置字段报错常落在这里）
+
+  - repo: triton-lang/triton-ascend
+    sources:
+      - {host: github, owner: triton-lang, repo: triton-ascend}
+    aliases: [triton-ascend]
+    why: Triton 的昇腾后端（自定义算子与编译路径）
+
+  - repo: ray-project/ray
+    sources:
+      - {host: github, owner: ray-project, repo: ray}
+    aliases: [ray]
+    why: 分布式调度（PD 分离（prefill/decode 分离）与多实例编排）
+
+  - repo: mlc-ai/xgrammar
+    sources:
+      - {host: github, owner: mlc-ai, repo: xgrammar}
+    aliases: [xgrammar]
+    why: 结构化输出约束（语法编译与采样约束）
+
+self_test: []

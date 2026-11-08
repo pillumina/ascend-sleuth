@@ -80,6 +80,22 @@ class DefaultCatalogTest(unittest.TestCase):
             self.assertIsNotNone(self.cat.lookup(repo)[1],
                                  f"{repo} 按 canonical 也要能取到地址（显式仓名取源码用）")
 
+    def test_inference_deps_are_known(self):
+        """推理依赖层（按 case 证据链补的 5 个仓）：别名可查、host 是 github。"""
+        expected = {
+            "mooncake": "kvcache-ai/Mooncake",
+            "transformers": "huggingface/transformers",
+            "triton-ascend": "triton-lang/triton-ascend",
+            "ray": "ray-project/ray",
+            "xgrammar": "mlc-ai/xgrammar",
+        }
+        for alias, canonical in expected.items():
+            with self.subTest(alias=alias):
+                got, sources = self.cat.lookup(alias)
+                self.assertEqual(got, canonical)
+                self.assertIsNotNone(sources)
+                self.assertEqual(sources[0]["host"], "github")
+
     def test_cann_candidates_keep_legacy_order(self):
         got = [repo.short for repo in self.cat.discover_repos("cann")]
         self.assertEqual(got[:len(LEGACY_CANDIDATE_REPOS)], LEGACY_CANDIDATE_REPOS)
