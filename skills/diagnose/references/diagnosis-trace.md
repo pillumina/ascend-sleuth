@@ -196,6 +196,12 @@ case 错 / 执行错判）——让 `component_tally.py` 能聚合出"被跟随�
 - 判据：这条外部事实是否**进入了本次诊断结论的推理链**——是 → 记；纯背景、未用 → 不必记。
 - **别与 `user.evidence` 混**：外部是 agent 查到的、可再查证（记来源+事实即可）；用户**提供**的现场证据是跨 agent 必须自包含的（走 `inline`/`file`）。
 
+### `source_analysis` 的取用字段（源码取用读数）
+
+记一条 `source_analysis` 时，除 `tool_calls` 外，把这次取源码的事实写进同一事件：`repo`（`org/repo`，与 `source-catalog.d` 同一写法）、`ref`（版本）、`fetch_exit`（`src_fetch.py` 的退出码整数）、`verify`（hit / miss / skipped）。
+
+`fetch_exit` 与 `verify` 不写时读数按"未记录"计，不回填；两值越界由 `trace_metrics.py` 报违规。汇总入口：`python3 scripts/trace_metrics.py --source-usage`（只进人读输出与 `--json`，不进 `--emit-yaml` 快照）。
+
 ## agent 事件分两层（output 给用户 / reason 记决策依据，缺一不可）
 
 - `output`：给用户看的内容（可精简）——透明性的呈现层。

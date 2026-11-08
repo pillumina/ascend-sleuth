@@ -355,3 +355,46 @@ class KbBaselineSliceTest(_MetricsHarness):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SourceUsageTest(_MetricsHarness):
+    """源码取用切片（--source-usage）：仓 / 版本 / 取用退出码 / 验证结果的聚合口径。"""
+
+    def test_counts_repo_ref_exit_and_verify(self):
+        extra = (
+            "  - role: agent\n    action: source_analysis\n"
+            "    repo: vllm-project/vllm-ascend\n    ref: v0.23.0\n"
+            "    fetch_exit: 0\n    verify: hit\n"
+            "  - role: agent\n    action: source_analysis\n"
+            "    repo: vllm-project/vllm-ascend\n    ref: v0.23.0\n"
+            "    fetch_exit: 3\n    verify: skipped\n"
+            "  - role: agent\n    action: source_analysis\n    tool_calls: []\n"
+        )
+        self.write_session("s1-src", extra=extra)
+        su = self.metrics_json("--source-usage")["source_usage"]
+        self.assertEqual(su["events"], 3)
+        self.assertEqual(su["repos"], {"vllm-project/vllm-ascend": 2})
+        self.assertEqual(su["refs"], {"v0.23.0": 2})
+        self.assertEqual(su["fetch_exits"], {"0": 1, "3": 1})
+        self.assertEqual(su["verify"], {"hit": 1, "skipped": 1})
+        self.assertEqual(su["unrecorded"], 1)
+        self.assertIsNone(su["violations"])
+
+    def test_violations_are_reported(self):
+        extra = (
+            "  - role: agent\n    action: source_analysis\n    repo: r/x\n"
+            "    fetch_exit: \"zero\"\n    verify: maybe\n"
+        )
+        self.write_session("s1-badsrc", extra=extra)
+        su = self.metrics_json("--source-usage")["source_usage"]
+        self.assertEqual(su["violations_total"], 2)
+        self.assertTrue(any("fetch_exit" in v for v in su["violations"]))
+        self.assertTrue(any("verify" in v for v in su["violations"]))
+
+    def test_slice_not_in_emit_yaml_and_absent_without_flag(self):
+        self.write_session("s1-plain")
+        self.assertNotIn("source_usage", self.metrics())
+        self.assertNotIn("source_usage", self.metrics_json())
+        with_flag = self.metrics_json("--source-usage")
+        self.assertIn("source_usage", with_flag)
+        self.assertIn("源码取用", self.run_metrics("--source-usage"))

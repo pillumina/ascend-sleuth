@@ -5,8 +5,9 @@
 # 目的（ADR-0002）：过滤率/退休率/命中率/路由准确率从"假设"变"实测"。
 # 数据源：traces/ 目录（gitignored，活跃 + 历史都归此）。
 # 输出：markdown 指标表（stdout），人复核后追加进 docs/guide/metrics.md。
-# 可选切片：`--kb-baseline` 按知识基线（kb_behind / kb_merge）分组，只进人读输出与
-# `--json`，不改默认输出、不进 `--emit-yaml` 快照。
+# 可选切片：`--kb-baseline` 按知识基线（kb_behind / kb_merge）分组；`--source-usage`
+# 汇总 source_analysis 的仓、版本、取用退出码与验证结果。两者都只进人读输出与 `--json`，
+# 不改默认输出、不进 `--emit-yaml` 快照。
 #
 # 依赖的 trace action（词表见 skills/diagnose/SKILL.md「每步必写 trace」）：
 #   triage / load_index / quickly_check / load_full / run_check / hit / miss
@@ -78,6 +79,8 @@ KNOWN_PURPOSES = {"collect", "signature", "fix", "background", "procedure"}
 # 消费率无法归因（分不清该改知识库还是改流程）。skipped 不计入引用次数（那是"查过"的口径）。
 # 旧 trace 无 outcome 字段 → 照旧计入引用次数（不追溯改写历史记录）。
 KNOWN_OUTCOMES = {"hit", "miss", "skipped"}
+# source_analysis 的验证结果（--verify 的三种收尾）：hit/miss 是跑了；skipped 是没跑。
+KNOWN_VERIFY = {"hit", "miss", "skipped"}
 
 # external_lookup 的 capability 固定词表（与 skills/diagnose/references/diagnosis-trace.md 一致）：
 #   versioned-code  按版本或镜像定位源码（vllm_kb_code）
@@ -189,8 +192,11 @@ def main():
                          "unknown）分组给解决率，并给 kb_merge: ff-only 的触发率。默认输出不变；"
                          "切片只进人读输出与 --json，不进 --emit-yaml 快照（live 字段白名单见 "
                          "verify_metrics.py 的 LIVE_FIELDS）")
+    ap.add_argument("--source-usage", action="store_true",
+                    help="附加源码取用切片：source_analysis 的仓、版本、fetch_exit、verify 汇总。"
+                         "只进人读输出与 --json，不进 --emit-yaml 快照")
     ap.add_argument("--json", action="store_true",
-                    help="只输出 JSON（机器读）。与 --kb-baseline 同用时含 kb_baseline 字段")
+                    help="只输出 JSON（机器读）。与 --kb-baseline / --source-usage 同用时含对应字段")
     args = ap.parse_args()
 
     root = Path(args.root).resolve() if args.root else Path(__file__).resolve().parents[1]
@@ -215,6 +221,16 @@ def main():
     parallel_group_events = 0
     considered_candidates_events = 0
     record_bad = []
+
+    # 源码取用（source_analysis）：仓 / 版本 / 取用退出码 / 验证结果。
+    # 这些字段只在 agent 按「每步必写 trace」记了才有；旧 trace 没有属未记录，不回填。
+    source_events = 0
+    source_repos = {}
+    source_refs = {}
+    source_fetch_exits = {}
+    source_verify = {}
+    source_unrecorded = 0
+    source_bad = []
 
     # reference 指标（ADR-0008 观测性）：hits per ref / 引用后 resolve 率 / 平台分布。
     # 引用后 outcome 从该 session 最终 status 派生（不新增事件）；平台来自 lookup 事件。
@@ -340,6 +356,28 @@ def main():
                     ref_purposes[pur] = ref_purposes.get(pur, 0) + 1
                     if pur not in KNOWN_PURPOSES:
                         purpose_bad.append(f"{st.get('session_id', '?')}: {pur!r}")
+            elif a == "source_analysis":
+                source_events += 1
+                repo = t.get("repo")
+                if isinstance(repo, str) and repo.strip():
+                    source_repos[repo.strip()] = source_repos.get(repo.strip(), 0) + 1
+                else:
+                    source_unrecorded += 1
+                ref = t.get("ref")
+                if isinstance(ref, str) and ref.strip():
+                    source_refs[ref.strip()] = source_refs.get(ref.strip(), 0) + 1
+                exit_code = t.get("fetch_exit")
+                if exit_code is not None:
+                    if isinstance(exit_code, int) and not isinstance(exit_code, bool):
+                        source_fetch_exits[exit_code] = source_fetch_exits.get(exit_code, 0) + 1
+                    else:
+                        source_bad.append(f"{sid}: fetch_exit 应为整数（{exit_code!r}）")
+                verify = t.get("verify")
+                if verify is not None:
+                    if verify in KNOWN_VERIFY:
+                        source_verify[verify] = source_verify.get(verify, 0) + 1
+                    else:
+                        source_bad.append(f"{sid}: verify 应为 hit/miss/skipped（{verify!r}）")
             elif a == "external_lookup":
                 cap = t.get("capability")
                 if cap and cap not in KNOWN_CAPABILITIES:
@@ -508,6 +546,17 @@ def main():
     }
     if args.kb_baseline:
         m["kb_baseline"] = kb_baseline
+    if args.source_usage:
+        m["source_usage"] = {
+            "events": source_events,
+            "repos": source_repos or None,
+            "refs": source_refs or None,
+            "fetch_exits": {str(code): count for code, count in sorted(source_fetch_exits.items())} or None,
+            "verify": source_verify or None,
+            "unrecorded": source_unrecorded,
+            "violations": source_bad[:5] or None,
+            "violations_total": len(source_bad),
+        }
 
     rows = [
         "| 指标 | 值 |",
@@ -602,6 +651,36 @@ def main():
             )
     else:
         rows.append("| reference 引用 | 0——先验知识层刚建立（ADR-0008），trace 尚未积累 reference_lookup 事件 |")
+    if args.source_usage:
+        if source_events:
+            repo_summary = "、".join(f"{repo} {count}" for repo, count in
+                                     sorted(source_repos.items(), key=lambda x: -x[1])[:5])
+            rows.append(
+                f"| 源码取用（source_analysis） | {source_events} 条；"
+                f"仓 {len(source_repos)} 个；版本 {len(source_refs)} 个"
+                + (f"；按仓 {repo_summary}" if repo_summary else "")
+                + " |")
+            if source_fetch_exits:
+                rows.append(
+                    "|   取用退出码（fetch_exit） | "
+                    + "、".join(f"{code} {count}" for code, count in sorted(source_fetch_exits.items()))
+                    + " |")
+            else:
+                rows.append("|   取用退出码（fetch_exit） | 未记录（旧 trace 或未按新字段写） |")
+            if source_verify:
+                rows.append(
+                    "|   验证结果（verify） | "
+                    + "、".join(f"{k} {v}" for k, v in sorted(source_verify.items(),
+                                                              key=lambda x: -x[1]))
+                    + " |")
+            if source_unrecorded:
+                rows.append(f"|   未记录 repo | {source_unrecorded} 条（旧 trace 或事件未写字段） |")
+            if source_bad:
+                rows.append(f"|   **字段违规** | {len(source_bad)} 处："
+                            f"{'、'.join(source_bad[:5])}"
+                            f"{'…（只列前 5 条）' if len(source_bad) > 5 else ''} |")
+        else:
+            rows.append("| 源码取用（source_analysis） | 0 条——本批 trace 没有源码分析事件 |")
     # `--emit-yaml-only` 是机器读路径（供 metrics_snapshot.py 组合快照）：不出人读 markdown，
     # 否则调用方要在一堆 markdown 里找 YAML 块（实测会直接解析失败）。
     if args.json:

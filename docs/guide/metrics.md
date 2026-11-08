@@ -56,7 +56,7 @@ python3 scripts/build_entry_activity.py             # 重建生成物 metrics/en
 | `metrics/gates.yaml` | 阈值与可解读性下限（数据）：新鲜度上限、读入成本线（类视图 `cell_read_soft_tok` / `cell_read_hard_tok`，兜底视图 `fallback_read_soft_tok` / `fallback_read_hard_tok`）、反馈下限、哪些指标分母为 0 即"不可解读" | 判据变化时 |
 | `scripts/metrics_snapshot.py` | 一期快照的单一产出命令：组装诊断侧 + 结构侧 + 内容流程侧（逐块标 `sources`）；撞号自动加后缀 | 随机制 |
 | `scripts/metrics_health.py` | 闭环检测器：读 timeline + gates，判新鲜度 / 越界 / 可解读性；`--check` 三态（0 判据全评过且无越界 / 1 有违反 / 2 有判据未被评估）；`--json` 是诊断面板的数据契约 | 随机制 |
-| `scripts/trace_metrics.py` | 诊断侧指标（markdown 概览 + `--emit-yaml` 骨架 + `--emit-yaml-only` 供组装） | 随机制 |
+| `scripts/trace_metrics.py` | 诊断侧指标（markdown 概览 + `--emit-yaml` 骨架 + `--emit-yaml-only` 供组装）；`--source-usage` 给源码取用切片（仓 / 版本 / 退出码 / 验证结果），只进人读与 `--json` | 随机制 |
 | `scripts/verify_metrics.py` | 校验聚合结构（period 唯一 / kind 合法 / live 期号命名 / 比例字段合法 / live 字段白名单 / 每个指标都声明了强度档），CI 强制 | 随机制 |
 | `scripts/session_cost.mjs` | 真实账单（提供方 usage）：解析 DSH 会话日志（多帧 zstd + JSONL），按 (turn, step) 去重后给出未缓存输入 / 缓存读取 / 缓存写入 / 输出与逐轮汇总；`--session <id>` / `--file` / `--all`；`--tools` 给工具流量表（按工具名的调用次数与返回累计字符数、平均每条、单条上限、参数完全相同的重复调用、同一目标的重复访问）；`--decompress <file>` 只把日志解成 JSONL，供 Python 侧（`trace_entry_activity.py`）读多帧 zstd；exec-log 的 `--cost-source measured` 就该填它读出来的值 | 需要 measured 口径时 |
 | `scripts/audit_skill_cost.py` | skill 上下文成本审计：常驻面（CLAUDE.md/AGENTS.md/被注入的 description）、按需面（正文 + 本地 references）、重复面（同一行出现在 ≥2 skill）、强制词密度与输出段数；skill-review 的 A 静态审计调它 | skill 改动前后 |
