@@ -376,5 +376,52 @@ class SrcFetchScenarioTest(unittest.TestCase):
         self.assertTrue(last_line(type("P", (), {"stdout": stdout})).endswith("/v1.0"))
 
 
+    # ------------------------------------------------------------ 场景 15
+    def test_both_hosts_have_tag_uses_first_host_once(self):
+        """两个 host 都有该 tag 时用首选 GitHub，只解析一次、只 clone 一次。"""
+        import contextlib
+        import io
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+        import src_fetch
+
+        remotes = Path(self._tmp.name) / "remotes"
+        for host, marker in (("github", "GITHUB"), ("gitcode", "GITCODE")):
+            path = remotes / host / "acme" / "ops-both.git"
+            path.mkdir(parents=True)
+            self.git(path, "init", "-q")
+            (path / "marker.txt").write_text(marker + "\n", encoding="utf-8")
+            self.git(path, "add", "-A")
+            self.git(path, "-c", "commit.gpgsign=false",
+                     "-c", "user.email=scenario@example.test",
+                     "-c", "user.name=Scenario Test", "commit", "-q", "-m", "init")
+            self.git(path, "tag", "v1.0")
+
+        base = remotes.resolve().as_uri()
+        original_hosts = dict(src_fetch.HOSTS)
+        old_argv = sys.argv
+        try:
+            src_fetch.HOSTS.update({
+                "github": f"{base}/github/{{owner}}/{{repo}}.git",
+                "gitcode": f"{base}/gitcode/{{owner}}/{{repo}}.git",
+                "gitee": f"{base}/gitee/{{owner}}/{{repo}}.git",
+            })
+            sys.argv = ["src_fetch.py", "acme/ops-both", "--ref", "v1.0",
+                        "--dest", str(self.dest)]
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = src_fetch.main()
+        finally:
+            src_fetch.HOSTS.clear()
+            src_fetch.HOSTS.update(original_hosts)
+            sys.argv = old_argv
+
+        stdout = out.getvalue()
+        self.assertEqual(rc, 0, stdout + err.getvalue())
+        self.assertEqual(stdout.count("尝试解析"), 1, "首选 host 命中后不该再试第二个")
+        tree = Path(last_line(type("P", (), {"stdout": stdout})))
+        self.assertEqual((tree / "marker.txt").read_text(encoding="utf-8").strip(), "GITHUB")
+        self.assertEqual(len(list(self.dest.rglob("v1.0"))), 1, "只 clone 一次")
+
+
 if __name__ == "__main__":
     unittest.main()

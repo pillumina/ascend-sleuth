@@ -150,8 +150,9 @@ def lookup(repo: str, catalog=None):
 def explicit_sources(owner: str, repo: str, first_host: str = "github"):
     """显式仓名的候选 host：先给的首选，再补 GitHub 与 GitCode（去重）。
 
-    只试 GitHub 时，GitCode-only 的仓（cann 的若干层、Ascend 的若干仓）会把"知道仓名"
-    退化成"必须先进已知表"。顺序是加法：首选解析得到就不试后面的，当前能取到的仓不变。
+    只试 GitHub 时，只在 GitCode 上有的仓（cann 的若干层、Ascend 的若干仓）会把"知道仓名"
+    退化成"必须先进已知表"。这里只追加候选，不改首选顺序：首选解析得到就不试后面的，
+    当前能取到的仓取法不变。
     """
     hosts = []
     for host in (first_host, "github", "gitcode"):
@@ -1036,9 +1037,9 @@ def main() -> int:
                        f"本地有该版本的目录但核对不通过：{d}（{why}）——"
                        "确认它就是该版本就用 --force 重拉（会删掉该目录）")
         return die(EXIT_REF_UNRESOLVED,
-                   f"未能解析 ref「{args.ref or '(默认分支)'}」：tag 名可能与预期不同（已自动容错 v 前缀）。"
-                   "按上面列出的可用 tag 重试，或让用户确认版本号。"
-                   "**不要用 web 搜索代替取对应版本源码**")
+                   f"未能解析 ref「{args.ref or '(默认分支)'}」：仓名可能不对，或 tag 名与预期不同"
+                   "（已自动容错 v 前缀）。先确认仓名（`gh search repos <关键词>`），再看上面列出的"
+                   "可用 tag 重试，或让用户确认版本号。**不要用 web 搜索代替取对应版本源码**")
 
     # ③ 版本目录已在（token 命中但标记不符/损坏）
     target = repo_dir / version_token(resolved)

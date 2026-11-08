@@ -58,7 +58,7 @@ exit 3 之后按这个顺序继续，前四步都不需要工程师：
 1. **先看已知表与候选表**：`--list` 看登记过的仓与 host；`--find` 的输出里已有带理由的候选。
 2. **再看可枚举组织**：`--list-orgs` 看有哪些组织、哪个可枚举；`--list-org-repos cann` 现枚举该组织的仓与说明。GitCode 组织匿名可枚举，这一步不需要账号。断网时加 `--offline`，只列目录里登记过的仓。
 3. **再搜仓名**：上面两步都没有目标仓时，用 `gh search repos <关键词>` 或 web 搜索报错里的接口名、算子名、库名，得到 `org/repo` 形态的仓名。
-4. **取回并验证**：`python3 scripts/src_fetch.py <org/repo> --ref <版本> --verify "<签名>"`。exit 0 才算拿到证据。显式写 `org/repo` 时脚本会依次试 GitHub 与 GitCode，GitCode-only 的仓不用另找地址；只有私有仓或两个 host 都没有时，才从仓页面取克隆地址配 `--url`。
+4. **取回并验证**：`python3 scripts/src_fetch.py <org/repo> --ref <版本> --verify "<签名>"`。exit 0 才算拿到证据。直接给 `org/repo` 取源码时先试 GitHub、再试 GitCode；走 `--find` 且带 `--org` 时先按该组织的 host 试，再试另一个。只在 GitCode 上有的仓因此不用另找地址；只有私有仓或两个 host 都取不到时，才从仓页面取克隆地址配 `--url`。
 5. **最后才问工程师**：验证不过、或版本定不下来时，问一句。
 
 **定不下来时问的那一句**（绑定在 `collect-gates.yaml` 的 `source-location` 闸门，探询纪律同其它闸门：只问一次、只问一句）：
