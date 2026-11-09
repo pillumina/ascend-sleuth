@@ -843,8 +843,12 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
     }
 
     // ============ 流程演进信号（无数据不占位） ============
+    // 聚合会为每个归因组件建行；attribution_kind 不是 execution 的组件计数为 0。
+    // 全 0 行是「有归因事件、无硬归因」，铺成表格会被读成有信号——
+    // 与 panel_render_check 用同一判据（有非零计数才算有信号）决定占不占位。
     function TallySection({ tally, s2Attrib }) {
-      const hasTally = tally && tally.length
+      const tallyRows = (tally || []).filter(c => (c.trace_mis || 0) > 0 || (c.s2_candidate || 0) > 0)
+      const hasTally = tallyRows.length > 0
       const hasS2 = s2Attrib && s2Attrib.length
       if (!hasTally && !hasS2) {
         return React.createElement(Section, { title: '流程演进信号' },
@@ -855,9 +859,9 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       return React.createElement(Section, { title: '流程演进信号' },
         hasTally ? React.createElement('div', { style: { marginBottom: hasS2 ? 9 : 0 } },
           React.createElement(SectionLabel, null, '归因事件（按需聚合）'),
-          tally.map(c => React.createElement('div', { key: c.id, className: 'ev-krow', style: { borderBottom: '1px dashed var(--bd)' } },
+          tallyRows.map(c => React.createElement('div', { key: c.id, className: 'ev-krow', style: { borderBottom: '1px dashed var(--bd)' } },
             React.createElement('span', { className: 'k', style: { fontFamily: mono, color: 'var(--tx)' } }, c.id),
-            React.createElement('span', { className: 'v', style: { color: 'var(--c-red)', fontWeight: 700 } }, 'mis=' + c.misdiagnoses),
+            React.createElement('span', { className: 'v', style: { color: 'var(--c-red)', fontWeight: 700 } }, 'mis=' + (c.trace_mis || 0)),
             React.createElement('span', { className: 'k', style: { marginLeft: 'auto' } }, (c.traces || c.source_traces || []).length + ' 来源'),
           ))) : null,
         hasS2 ? React.createElement('div', null,
