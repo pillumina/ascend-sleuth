@@ -20,6 +20,7 @@
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -71,7 +72,7 @@ def git(repo: Path, *args, check=True):
 
 
 def py(repo: Path, *args):
-    return subprocess.run(["python3", *args], cwd=repo, capture_output=True, text=True, encoding="utf-8", check=False)
+    return subprocess.run([sys.executable, *args], cwd=repo, capture_output=True, text=True, encoding="utf-8", check=False)
 
 
 def append_symptom(path: Path, branch_id: str, word: str):

@@ -495,17 +495,23 @@ async function main() {
   expect('排版：中文基准行高 ≥ 1.6', /--lh-base:1\.6/.test(evSrc))
   expect('排版：与「指标」面板同档位值域（两面板同一套刻度）',
     tDecl['--t-base'] === 14.5 && tDecl['--t-tiny'] === 11.5 && tDecl['--t-sm'] === 12.5)
-  // 空态断言必须**跟着数据走**：tally 为空（干净检出）时应出现一行说明；tally 有非零计数
-  // （工作检出里已有真实归因）时应渲染表格、且**不该**再出现空态文案。写死成"永远期待空态"
-  // 会让这条断言只在干净检出里成立——本地复跑必红，红的原因却不是回归（实测代价：
-  // 端到端演练因此常年一红，7 张以演练为判据的卡跟着一直 FAIL）。
+  // 空态断言必须**跟着数据走**：tally 没有任何非零计数（干净检出，或有归因事件但无硬归因）
+  // 时应出现一行说明；有非零计数（工作检出里已有真实归因）时应渲染表格、且**不该**再出现
+  // 空态文案。写死成"永远期待空态"会让这条断言只在干净检出里成立——本地复跑必红，红的原因
+  // 却不是回归（实测代价：端到端演练因此常年一红，7 张以演练为判据的卡跟着一直 FAIL）。
+  // 全 0 行由面板客户端按同一判据过滤（见 dsh-plugins/ev-panel/panel-client.js 的 TallySection）。
+  // 源码层钉住 tally 渲染：全 0 行过滤与 mis 字段名只在有数据的分支才执行，CI 的干净检出
+  // 走不到；用源文件断言防止回退成「按 tally.length 占位」或读不存在的 misdiagnoses 字段。
+  expect('tally 行按非零计数过滤，mis 读 trace_mis',
+    /const tallyRows = \(tally \|\| \[\]\)\.filter\(c => \(c\.trace_mis \|\| 0\) > 0 \|\| \(c\.s2_candidate \|\| 0\) > 0\)/.test(evSrc) &&
+    /'mis=' \+ \(c\.trace_mis \|\| 0\)/.test(evSrc))
   const tallyRows = (board && board.tally) || []
   const tallyHasSignal = tallyRows.some(r => (r.trace_mis || 0) > 0 || (r.s2_candidate || 0) > 0)
   if (tallyHasSignal) {
     expect('tally 有归因 → 渲染表格、不出现空态文案',
       !/尚无归因事件/.test(ev.text) && tallyRows.some(r => ev.text.includes(r.id)))
   } else {
-    expect('空区块不占位（tally 空 → 一行说明）', /尚无归因事件/.test(ev.text))
+    expect('空区块不占位（tally 无非零计数 → 一行说明）', /尚无归因事件/.test(ev.text))
   }
   expect('收起态不泄露完整决策链（长文本仅在展开后）', !/三项验证均通过/.test(ev.text))
   // 默认筛选是「待办优先」：只出实验中的卡 + 有缺口的卡，不含无缺口的已采纳卡。

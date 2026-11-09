@@ -9,6 +9,7 @@
 
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -79,7 +80,7 @@ class GeneratedPlaneTest(unittest.TestCase):
         self.gate("scripts/build_triage_tree.py")
 
     def gate(self, *args):
-        return sh(self.repo, "python3", *args)
+        return sh(self.repo, sys.executable, *args)
 
     # ---------------------------------------------------------------- ① 安全网还在
     def test_forgetting_to_regenerate_is_red_with_actionable_message(self):
@@ -162,7 +163,7 @@ class GeneratedPlaneTest(unittest.TestCase):
         head = (self.repo / "knowledge" / "_index.yaml").read_text(encoding="utf-8").split("namespaces:")[0]
         self.assertNotIn("case 总数：", head)
         self.assertNotIn("容量(", head)
-        out = sh(self.repo, "python3", "scripts/index_counts.py", "--json").stdout
+        out = sh(self.repo, sys.executable, "scripts/index_counts.py", "--json").stdout
         expected = 0
         for path in (self.repo / "knowledge").rglob("*.yaml"):
             if path.name.startswith("_") or "_archive" in path.parts:

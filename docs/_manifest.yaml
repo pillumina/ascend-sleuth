@@ -70,6 +70,9 @@ docs:
   - path: docs/spec/writing-norms.md
     layer: spec
     purpose: 人读/审阅文本的行文规范（词句层：口径以本文件为准）：共用条目、必须保留的原值、各面的共用与定制判定、哪些能硬化；篇章结构口径见 skills/doc-standards/
+  - path: docs/spec/test-portability.md
+    layer: spec
+    purpose: 测试在 Windows/Linux/macOS 上同一结论的判定口径（编码、路径、字节夹具、平台 API、外网用例），以及哪几条已进 CI、哪几条只能人审
   - path: docs/evolution.md
     layer: mechanism
     purpose: "旧链接入口（保留以免旧链接失效）：内容已并入 mechanism/rsi-mechanism.md，本文只是一页指路，不要在此续写"

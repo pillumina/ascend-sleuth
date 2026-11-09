@@ -7,6 +7,7 @@
 ③歧义签名必须 exit 3 且不自动克隆。
 """
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -22,6 +23,10 @@ from _stdio import pin_utf8_stdio  # noqa: E402
 # 脚本函数在本进程内被直接调用，print 也会写到测试进程的 stdout：Windows 上
 # 重定向成管道/文件时默认 cp936，非 GBK 字符（✓ ✗ ⚠）会直接抛 UnicodeEncodeError。
 pin_utf8_stdio()
+
+# 真出网的用例（唯一候选拉取、歧义签名枚举组织仓、组织仓清单枚举）在内网机器上会挂住，
+# 默认跳过；CI 的 Linux 单测 job 设 ASCEND_SLEUTH_NETWORK_TESTS=1 才跑。
+NETWORK = os.environ.get("ASCEND_SLEUTH_NETWORK_TESTS") == "1"
 
 
 def run_find(*extra):
@@ -100,6 +105,7 @@ class FindRoutingTest(unittest.TestCase):
         self.assertNotIn("cann/myorg", r.stdout)
         self.assertTrue(r.returncode != 0)        # 离线且未命中 → 不克隆，非零收尾
 
+    @unittest.skipUnless(NETWORK, "需要外网：歧义签名会枚举组织仓；设 ASCEND_SLEUTH_NETWORK_TESTS=1 才跑")
     def test_ambiguous_signature_does_not_clone(self):
         """歧义签名：exit 3 + 候选表；**不自动克隆**（--dest 为空目录且必须保持为空）。"""
         with tempfile.TemporaryDirectory() as d:
@@ -109,6 +115,7 @@ class FindRoutingTest(unittest.TestCase):
             self.assertIn("未取得该版本源码", r.stdout.splitlines()[-1])
             self.assertEqual(list(Path(d).iterdir()), [], "歧义时不该克隆任何仓")
 
+    @unittest.skipUnless(NETWORK, "需要外网：设 ASCEND_SLEUTH_NETWORK_TESTS=1 才跑（内网无出网会挂住）")
     def test_single_candidate_is_fetched_and_reused(self):
         """唯一候选自动取回（exit 0，末行=版本目录），再跑一次命中本地复用、不重拉。"""
         with tempfile.TemporaryDirectory() as d:
@@ -148,6 +155,7 @@ class KnownRepoTest(unittest.TestCase):
             self.assertEqual(canonical, name)
             self.assertEqual(cands[0][0], "gitcode", f"{name} 应走 gitcode")
 
+    @unittest.skipUnless(NETWORK, "需要外网：真枚举组织仓；设 ASCEND_SLEUTH_NETWORK_TESTS=1 才跑")
     def test_org_catalog_reports_descriptions(self):
         """真枚举一次组织仓（联网）；拿不到时降级为 note，不抛异常。"""
         cands, note = src_fetch.org_repo_catalog("cann", "aclnnFlashAttentionScore failed")

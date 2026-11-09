@@ -292,7 +292,7 @@ class SrcFetchScenarioTest(unittest.TestCase):
                             *self.cat_args(), "--dest", str(self.dest),
                             "--verify", "hidden failure")
         self.assertExit(proc, 0)
-        self.assertTrue(last_line(proc).endswith("/v1.0"))
+        self.assertEqual(Path(last_line(proc)).name, "v1.0")
 
     # ------------------------------------------------------------ 场景 11
     def test_unknown_repo_in_custom_org_is_usage_error_not_traceback(self):
@@ -327,7 +327,7 @@ class SrcFetchScenarioTest(unittest.TestCase):
                             "--dest", str(self.dest))
         self.assertExit(proc, 0)
         self.assertNotIn("未知仓库，默认走 GitHub", proc.stdout)
-        self.assertTrue(last_line(proc).endswith("/v1.0"))
+        self.assertEqual(Path(last_line(proc)).name, "v1.0")
 
 
     # ------------------------------------------------------------ 场景 14
@@ -373,7 +373,7 @@ class SrcFetchScenarioTest(unittest.TestCase):
         self.assertIn("未知仓库，依次试 GitHub 与 GitCode", stdout)
         self.assertIn("github", stdout)          # 先试 GitHub
         self.assertIn("gitcode", stdout)         # 失败后回退
-        self.assertTrue(last_line(type("P", (), {"stdout": stdout})).endswith("/v1.0"))
+        self.assertEqual(Path(last_line(type("P", (), {"stdout": stdout}))).name, "v1.0")
 
 
     # ------------------------------------------------------------ 场景 15
