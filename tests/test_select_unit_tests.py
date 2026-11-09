@@ -160,5 +160,115 @@ class SelectUnitTestsTest(unittest.TestCase):
         self.assertEqual("".join(buf).strip(), "tests.test_build_foo")
 
 
+class ShardTest(unittest.TestCase):
+    """`--shard I/N`：把选中列表（或全量）切成不重不漏的 N 片，供 CI 并行。"""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+        (self.root / "tests").mkdir()
+        (self.root / "scripts").mkdir()
+
+    def write(self, rel: str, text: str = "") -> None:
+        path = self.root / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    def test_round_robin_partitions_without_overlap(self):
+        items = [f"tests.test_{name}" for name in "abcde"]
+        parts = [sut.shard(items, f"{i}/2") for i in (1, 2)]
+        self.assertEqual(
+            parts,
+            [["tests.test_a", "tests.test_c", "tests.test_e"], ["tests.test_b", "tests.test_d"]],
+        )
+        self.assertEqual(sorted(sum(parts, [])), sorted(items))
+
+    def test_all_expands_full_test_dir(self):
+        for name in "bdac":
+            self.write(f"tests/test_{name}.py", "x = 1\n")
+        self.write("tests/groom_fixtures.py", "x = 1\n")   # 非 test_*.py 不进全量
+        parts = []
+        for shard_id in (1, 2):
+            rc, out, err = self.run_main(
+                ["--root", str(self.root), "--all", "--shard", f"{shard_id}/2"]
+            )
+            self.assertEqual(rc, 0, err)
+            parts.extend(out.splitlines())
+        self.assertEqual(parts, ["tests.test_a", "tests.test_c", "tests.test_b", "tests.test_d"])
+
+    def test_shard_does_not_pull_in_unselected_modules(self):
+        self.write("scripts/build.py", "x = 1\n")
+        self.write("scripts/other.py", "x = 1\n")
+        for name in "abcd":
+            self.write(f"tests/test_{name}.py", "import other\n")
+        self.write("tests/test_a.py", "import build\n")
+        self.write("tests/test_c.py", "import build\n")
+        rc, out, err = self.run_main(
+            ["--root", str(self.root), "--shard", "1/1"], stdin_text="scripts/build.py\n"
+        )
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out.splitlines(), ["tests.test_a", "tests.test_c"])
+
+    def test_empty_shard_prints_nothing(self):
+        self.write("tests/test_a.py", "x = 1\n")
+        rc, out, err = self.run_main(["--root", str(self.root), "--all", "--shard", "2/2"])
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, "")
+
+    def test_invalid_or_out_of_range_shard_is_usage_error(self):
+        for spec in ("2", "", "0/2", "3/2", "a/b"):
+            with self.subTest(spec=spec):
+                rc, out, err = self.run_main(["--root", str(self.root), "--all", "--shard", spec])
+                self.assertEqual(rc, 2)
+                self.assertEqual(out, "")
+                self.assertIn("--shard", err)
+
+    def test_all_matches_discover_pattern_not_only_test_underscore(self):
+        """discover 默认 pattern 是 test*.py；testfoo.py 也要进全量，不能静默漏掉。"""
+        self.write("tests/testfoo.py", "x = 1\n")
+        rc, out, err = self.run_main(["--root", str(self.root), "--all", "--shard", "1/1"])
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out.splitlines(), ["tests.testfoo"])
+
+    def test_main_pins_lf_on_stdout_for_machine_consumers(self):
+        """Windows 上 Python 文本 stdout 会把 \n 翻成 \r\n，模块名会被 CI 读成带 \r。
+
+        用 `TextIOWrapper(newline="\\r\\n")` 模拟那个翻译；断言输出字节里没有 `\r`。
+        只断言「调用过 reconfigure」抓不住「调用位置在 print 之后」这类回退。
+        """
+        self.write("tests/test_a.py", "x = 1\n")
+        import contextlib
+        import io
+
+        raw = io.BytesIO()
+        fake = io.TextIOWrapper(raw, encoding="utf-8", newline="\r\n")
+        err = io.StringIO()
+        stdin = sys.stdin
+        try:
+            sys.stdin = type("FakeStdin", (), {"read": lambda self: ""})()
+            with contextlib.redirect_stdout(fake), contextlib.redirect_stderr(err):
+                rc = sut.main(["--root", str(self.root), "--all", "--shard", "1/1"])
+        finally:
+            sys.stdin = stdin
+            fake.flush()
+        self.assertEqual(rc, 0, err.getvalue())
+        self.assertEqual(raw.getvalue(), b"tests.test_a\n")
+
+    def run_main(self, argv, stdin_text=""):
+        import contextlib
+        import io
+
+        out, err = io.StringIO(), io.StringIO()
+        stdin = sys.stdin
+        try:
+            sys.stdin = type("FakeStdin", (), {"read": lambda self: stdin_text})()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                rc = sut.main(argv)
+        finally:
+            sys.stdin = stdin
+        return rc, out.getvalue().strip(), err.getvalue()
+
+
 if __name__ == "__main__":
     unittest.main()
