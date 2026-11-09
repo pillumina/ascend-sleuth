@@ -8,7 +8,12 @@
 
     {"schema": "ascend-sleuth-settings/1",
      "sync": {"remote": "origin", "branch": "main", "enabled": true, "auto_merge": true},
+     "identity": {"remote": "origin"},
      "target": {...}}
+
+`identity.remote` 是归属仓（默认 origin）：同源比较拿它的 URL，写侧的比较基准也按它的默认
+分支算，`sync.remote` 未显式配置时跟随它。归属仓显式配置却在本机解析不到时，合并前拦下
+（reason `identity-unresolved`）。
 
 配置文件缺失或读不出时用默认值（远端 origin、分支取当前分支上游（取不到则 main）、同步开），
 结果里 `config: "default"`。失败结果缓存在 `.local/kb-sync-state.json`：自动同步在 10 分钟内
@@ -18,8 +23,8 @@
 自动合并只在这些条件同时成立时发生：当前分支 = 配置 `branch`、HEAD 是远端分支的祖先、
 `git status --porcelain -uno` 为空、无进行中 merge / rebase / cherry-pick。worktree 与
 detached HEAD 不自动合并——合并会改当前检出的 HEAD，而 worktree 可能正被另一单使用。
-配置远端与 origin 不同源时同样只 fetch、不合并（reason `same-repo`）：合并会把另一个仓的
-提交带进当前检出。
+同步源与归属仓不同源时同样只 fetch、不合并（reason `same-repo`）：合并会把另一个仓的
+提交带进当前检出。归属仓显式配置却解析不到时也不合并（reason `identity-unresolved`）。
 
 用法：
   python3 scripts/kb_sync.py --show          # 只读，不联网：配置、HEAD、本地远端 ref、上次核对
@@ -33,13 +38,18 @@ detached HEAD 不自动合并——合并会改当前检出的 HEAD，而 worktr
   ok       true / false
   reason   "" | timeout | network | no-remote | not-a-repo | lock | exit-<n> | offline |
            disabled | dirty | branch-mismatch | not-ancestor | merge-in-progress |
-           auto-merge-off | not-ff | same-repo
+           auto-merge-off | not-ff | same-repo | identity-unresolved
   fetch_error  本次 fetch 失败时 git 原始输出的末行（已抹掉 URL 里的凭据）；成功与 --show 时为空
   last_error   --show 时上次失败留下的同一条原文；没有失败记录时为空
   merge    ff-only | none
   config   file | default
   enabled  true / false（settings 的 sync.enabled；--show 也照实给）
   offline  true / false（deployment.yaml 声明 sync.mode: offline）
+  identity_remote     归属仓远端名（默认 origin）
+  identity_url        归属仓解析到的 URL；取不到为空串
+  identity_explicit   settings 里是否显式写了 identity.remote
+  identity_resolved   归属仓在本机解析得到 URL
+  same_repo           同步源与归属仓的 host+path 是否一致；取不到 null
 
 退出码：0 = 已执行（含 fetch 失败、跳过、离线等降级）；2 = 参数不合法。
 """
@@ -124,6 +134,7 @@ def default_settings() -> dict:
         "schema": SCHEMA_SETTINGS,
         "sync": {"remote": DEFAULT_REMOTE, "branch": DEFAULT_BRANCH,
                  "enabled": True, "auto_merge": True},
+        "identity": {"remote": DEFAULT_REMOTE},
         "target": None,
     }
 
@@ -153,6 +164,15 @@ def normalize_sync(raw) -> dict:
     }
 
 
+def normalize_identity(raw) -> dict:
+    """`identity` 段 → `{"remote": ...}`。缺项与空值取 origin。
+
+    `load_settings` 会在返回值里加一个内存字段 `explicit`；写盘前过这一步把它丢掉。
+    """
+    raw = raw if isinstance(raw, dict) else {}
+    return {"remote": str(raw.get("remote") or DEFAULT_REMOTE).strip() or DEFAULT_REMOTE}
+
+
 def normalize_target(raw):
     """`target` 段 → 与 pr_status 对外结构一致的映射；没有可用远端时返回 None。"""
     if not isinstance(raw, dict) or not str(raw.get("remote") or "").strip():
@@ -174,6 +194,7 @@ def load_settings(root: Path):
     """→ (settings, config, problem)。config 是 `file`（读到了）或 `default`（缺失/损坏）。"""
     def fallback(problem: str):
         data = default_settings()
+        data["identity"]["explicit"] = False
         data["sync"]["branch"] = default_branch(Path(root), data["sync"]["remote"])
         return data, "default", problem
 
@@ -191,7 +212,15 @@ def load_settings(root: Path):
         return fallback(f"{path} 的 schema {schema!r} 不认")
     data = dict(raw)
     data["schema"] = SCHEMA_SETTINGS
-    data["sync"] = normalize_sync(raw.get("sync"))
+    raw_sync = raw.get("sync") if isinstance(raw.get("sync"), dict) else {}
+    raw_identity = raw.get("identity") if isinstance(raw.get("identity"), dict) else None
+    data["sync"] = normalize_sync(raw_sync)
+    data["identity"] = normalize_identity(raw_identity)
+    # explicit 只活在内存里：文件里写了 identity.remote 才算显式；写盘时丢掉。
+    data["identity"]["explicit"] = bool(
+        raw_identity is not None and str(raw_identity.get("remote") or "").strip())
+    if not str(raw_sync.get("remote") or "").strip():
+        data["sync"]["remote"] = data["identity"]["remote"]
     data["target"] = normalize_target(raw.get("target"))
     return data, "file", ""
 
@@ -247,6 +276,7 @@ def save_settings(root: Path, data: dict, expect_sha=None) -> str:
     data = dict(data)
     data["schema"] = SCHEMA_SETTINGS
     data["sync"] = normalize_sync(data.get("sync"))
+    data["identity"] = normalize_identity(data.get("identity"))
     data["target"] = normalize_target(data.get("target"))
     text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
     try:
@@ -484,11 +514,11 @@ def _url_key(url: str):
     return host.lower(), path
 
 
-def same_repo(root: Path, remote: str, timeout: float):
-    """配置远端与 origin 的 host+path 是否一致；取不到返回 None。"""
+def same_repo(root: Path, remote: str, timeout: float, identity_remote: str = DEFAULT_REMOTE):
+    """配置的同步源与归属仓的 host+path 是否一致；取不到返回 None。"""
     remote_url = _remote_url(root, remote, timeout)
-    origin_url = _remote_url(root, "origin", timeout)
-    left, right = _url_key(remote_url), _url_key(origin_url)
+    identity_url = _remote_url(root, identity_remote, timeout)
+    left, right = _url_key(remote_url), _url_key(identity_url)
     if left is None or right is None:
         return None
     return left == right
@@ -539,6 +569,10 @@ def _empty_base(remote: str, branch: str, config: str, config_error: str = "") -
         "offline": False,
         "config": config,
         "same_repo": None,
+        "identity_remote": DEFAULT_REMOTE,
+        "identity_url": "",
+        "identity_explicit": False,
+        "identity_resolved": False,
         # 合并提示要用合并前的坐标；不属于必需字段，但人读输出与 trace 提示都读它。
         "local_rev_before": "unknown",
         "behind_before": "unknown",
@@ -552,17 +586,27 @@ def _empty_base(remote: str, branch: str, config: str, config_error: str = "") -
 
 
 def local_snapshot(root: Path, remote: str, branch: str, *, timeout: float = DEFAULT_TIMEOUT,
-                   config: str = "file", config_error: str = "", enabled: bool = True) -> dict:
+                   config: str = "file", config_error: str = "", enabled: bool = True,
+                   identity: dict = None) -> dict:
     """只读本机 git 状态（不联网），填 local_rev / 远端 ref / 落后数 / 改动面。
 
-    `enabled` 由调用方从 settings 的 sync 段带进来，`offline` 就地读 deployment.yaml；
-    两者只读本地文件，`--show` 因此能给出真实状态而不联网。关闭或离线时 `ok: false`
-    并写对应 reason，但仍照常算落后数与改动面（面板要显示"落后多少、为什么没同步"）。
+    `identity` 是 settings 的归属仓（`{"remote", "explicit"}`，缺省按 origin 且未显式）；
+    `same_repo` 拿它的 URL 与 `remote` 的 URL 比。`enabled` 由调用方从 settings 的 sync 段
+    带进来，`offline` 就地读 deployment.yaml；两者只读本地文件，`--show` 因此能给出真实
+    状态而不联网。关闭或离线时 `ok: false` 并写对应 reason，但仍照常算落后数与改动面
+    （面板要显示"落后多少、为什么没同步"）。
     """
     root = Path(root)
+    identity = identity if isinstance(identity, dict) else {}
+    identity_remote = str(identity.get("remote") or DEFAULT_REMOTE)
     result = _empty_base(remote, branch, config, config_error)
     result["enabled"] = bool(enabled)
     result["offline"] = deployment_sync_mode(root) == "offline"
+    identity_url = _remote_url(root, identity_remote, timeout) if identity_remote else None
+    result.update(identity_remote=identity_remote,
+                  identity_url=identity_url or "",
+                  identity_explicit=bool(identity.get("explicit")),
+                  identity_resolved=bool(identity_url))
 
     def finish(res: dict) -> dict:
         if res["offline"]:
@@ -581,7 +625,7 @@ def local_snapshot(root: Path, remote: str, branch: str, *, timeout: float = DEF
         return finish(result)
     result["local_rev"] = _git_text(root, ["rev-parse", "--short", "HEAD"], timeout) or "unknown"
     result["local_rev_before"] = result["local_rev"]
-    result["same_repo"] = same_repo(root, remote, timeout) if remote else None
+    result["same_repo"] = same_repo(root, remote, timeout, identity_remote) if remote else None
     remote_ref = f"{remote}/{branch}" if remote and branch else ""
     if not remote_ref:
         return finish(result)
@@ -619,9 +663,11 @@ def sync(root: Path, *, do_fetch: bool = True, do_merge: bool = False,
     root = Path(root)
     settings, config, config_error = load_settings(root)
     sync_cfg = settings["sync"]
+    identity = settings.get("identity")
     remote, branch = sync_cfg["remote"], sync_cfg["branch"]
     result = local_snapshot(root, remote, branch, timeout=timeout, config=config,
-                            config_error=config_error, enabled=sync_cfg["enabled"])
+                            config_error=config_error, enabled=sync_cfg["enabled"],
+                            identity=identity)
 
     if result["offline"] or not result["enabled"]:
         return result
@@ -653,7 +699,8 @@ def sync(root: Path, *, do_fetch: bool = True, do_merge: bool = False,
 
     _record_fetch_ok(root, remote, branch)
     fresh = local_snapshot(root, remote, branch, timeout=timeout, config=config,
-                           config_error=config_error, enabled=sync_cfg["enabled"])
+                           config_error=config_error, enabled=sync_cfg["enabled"],
+                           identity=identity)
     result.update(fresh)
     result.update(ok=True, reason="", skipped=False, offline=False,
                   local_rev_before=fresh.get("local_rev_before", "unknown"),
@@ -661,7 +708,11 @@ def sync(root: Path, *, do_fetch: bool = True, do_merge: bool = False,
 
     if not do_merge:
         return result
-    # 配置远端与 origin 不同源时只拉不合并：合并会把另一个仓的提交带进当前检出。
+    # 归属仓显式配置却解析不到：先拦下，不拿同步源猜合并基准。
+    if fresh.get("identity_explicit") and not fresh.get("identity_resolved"):
+        result.update(merge="none", reason="identity-unresolved")
+        return result
+    # 同步源与归属仓不同源时只拉不合并：合并会把另一个仓的提交带进当前检出。
     if fresh.get("same_repo") is False:
         result.update(merge="none", reason="same-repo")
         return result
@@ -692,7 +743,8 @@ def sync(root: Path, *, do_fetch: bool = True, do_merge: bool = False,
         return result
 
     after = local_snapshot(root, remote, branch, timeout=timeout, config=config,
-                           config_error=config_error, enabled=sync_cfg["enabled"])
+                           config_error=config_error, enabled=sync_cfg["enabled"],
+                           identity=identity)
     before_rev, before_behind = result["local_rev_before"], result["behind_before"]
     result.update(after)
     result.update(ok=True, reason="", merge="ff-only",
@@ -775,7 +827,8 @@ MERGE_REASONS = {
     "dirty": "工作区有未提交改动",
     "merge-in-progress": "有进行中的 merge/rebase/cherry-pick",
     "auto-merge-off": "自动合并已关闭",
-    "same-repo": "配置远端与 origin 不同源，只拉不合并",
+    "same-repo": "同步源与归属仓不同源，只拉不合并",
+    "identity-unresolved": "归属仓解析不到，只拉不合并",
     "not-ff": "ff-only 合并失败",
     "status-failed": "读不出工作区状态",
     "timeout": "合并超时",
@@ -807,8 +860,16 @@ def render_show(result: dict) -> str:
         lines.append("  同步状态  已关闭（sync.enabled = false）")
     else:
         lines.append("  同步状态  可同步")
-    same = {True: "是", False: "否", None: "未知"}.get(result.get("same_repo"), "未知")
-    lines.append(f"  远端      {result['remote']}/{result['branch']}（与 origin 同源：{same}）")
+    yesno = {True: "是", False: "否", None: "未知"}
+    identity_remote = str(result.get("identity_remote") or DEFAULT_REMOTE)
+    identity_name = identity_remote if result.get("identity_explicit") \
+        else f"{identity_remote}（默认）"
+    identity_url = result.get("identity_url") or "URL 取不到"
+    resolved = "是" if result.get("identity_resolved") else "否"
+    same = yesno.get(result.get("same_repo"), "未知")
+    lines.append(f"  远端      {result['remote']}/{result['branch']}")
+    lines.append(f"  归属仓    {identity_name}（{identity_url}）"
+                 f"· 解析：{resolved} · 同源：{same}")
     lines.append(f"  本机 HEAD {result['local_rev']}")
     remote_ref = f"{result['remote']}/{result['branch']}"
     if result.get("remote_rev"):
@@ -862,8 +923,10 @@ def render_sync(result: dict) -> str:
         lines.append(f"未合并（{merge_reason_text(result.get('reason'))}）。")
     else:
         lines.append(f"知识库已是 {remote_ref} {result.get('remote_rev')}。")
-    if result.get("same_repo") is False:
-        lines.append("注意：配置远端与 origin 不同源；请核对 sync.remote。")
+    if result.get("identity_explicit") and not result.get("identity_resolved"):
+        lines.append("归属仓解析不到；把 settings 的 identity.remote 改成本机已有的远端。")
+    elif result.get("same_repo") is False:
+        lines.append("同步源与归属仓不同源；请核对 sync.remote 或归属仓。")
     return "\n".join(lines)
 
 
@@ -909,7 +972,8 @@ def main(argv=None) -> int:
         sync_cfg = settings["sync"]
         result = local_snapshot(root, sync_cfg["remote"], sync_cfg["branch"],
                                 timeout=args.timeout, config=config,
-                                config_error=config_error, enabled=sync_cfg["enabled"])
+                                config_error=config_error, enabled=sync_cfg["enabled"],
+                                identity=settings.get("identity"))
     else:
         result = sync(root, do_fetch=True, do_merge=(mode == "merge"), timeout=args.timeout,
                       force=args.force)

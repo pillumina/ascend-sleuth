@@ -339,20 +339,46 @@ class TargetTest(RepoCase):
         self.assertEqual(targets["recommendation"]["reason"], "上次选择的目标")
         self.assertEqual(targets["remotes"][0]["note"], "团队仓")
 
-    def test_upstream_remote_recommended(self):
+    def test_upstream_remote_recommended_when_identity_unresolved(self):
+        # 归属仓显式指向不存在的远端时不参与推荐，落到当前分支上游。
         self._set_upstream()
+        pr.kb_sync.save_settings(self.repo, {"identity": {"remote": "gone"}})
         targets = pr.list_targets(self.repo)
         self.assertEqual(targets["recommendation"],
                          {"remote": "origin", "base": "main", "reason": "当前分支的上游"})
 
-    def test_single_remote_recommended_when_no_saved_target(self):
+    def test_identity_remote_recommended_before_upstream(self):
+        self._set_upstream()
+        targets = pr.list_targets(self.repo)
+        self.assertEqual(targets["recommendation"],
+                         {"remote": "origin", "base": "main", "reason": "归属仓"})
+
+    def test_single_remote_recommended_when_identity_unresolved(self):
+        pr.kb_sync.save_settings(self.repo, {"identity": {"remote": "gone"}})
         targets = pr.list_targets(self.repo)
         self.assertEqual(targets["recommendation"]["reason"], "只有一个远端")
 
     def test_multiple_remotes_without_signal_gives_null(self):
         git(self.repo, "remote", "add", "backup", "https://gitlab.com/o/r.git")
+        pr.kb_sync.save_settings(self.repo, {"identity": {"remote": "gone"}})
         targets = pr.list_targets(self.repo)
         self.assertIsNone(targets["recommendation"])
+
+    def test_identity_beats_multiple_remotes(self):
+        git(self.repo, "remote", "add", "backup", "https://gitlab.com/o/r.git")
+        targets = pr.list_targets(self.repo)
+        self.assertEqual(targets["recommendation"]["remote"], "origin")
+        self.assertEqual(targets["recommendation"]["reason"], "归属仓")
+
+    def test_identity_fields_are_listed(self):
+        targets = pr.list_targets(self.repo)
+        self.assertEqual(targets["identity"]["remote"], "origin")
+        self.assertEqual(targets["identity"]["url"],
+                         "https://github.com/pillumina/ascend-sleuth.git")
+        self.assertFalse(targets["identity"]["explicit"])
+        pr.kb_sync.save_settings(self.repo, {"identity": {"remote": "origin"}})
+        targets = pr.list_targets(self.repo)
+        self.assertTrue(targets["identity"]["explicit"])
 
     def test_remote_fields_include_platform_and_dependencies(self):
         targets = pr.list_targets(self.repo)
@@ -417,6 +443,65 @@ class TargetTest(RepoCase):
         code, payload = run_cli("--root", str(self.repo), "--set-target", "--remote", "origin",
                                 "--expect-sha256", digest)
         self.assertTrue(payload["ok"], payload)
+
+
+# ---------------------------------------------------------------- 归属仓与写侧基准
+
+class IdentityBaseTest(RepoCase):
+    """`--set-identity` 的校验与写入，以及 `effective_base` 的三段顺序。"""
+
+    def add_remote(self, name="team", url="https://example.com/team/r.git"):
+        git(self.repo, "remote", "add", name, url)
+
+    def test_set_identity_writes_remote(self):
+        self.add_remote()
+        code, payload = run_cli("--root", str(self.repo), "--set-identity", "--remote", "team")
+        self.assertEqual(code, 0, payload)
+        self.assertTrue(payload["ok"], payload)
+        self.assertEqual(payload["identity"], {"remote": "team"})
+        self.assertTrue(payload["sha256"])
+        settings, _source, _problem = pr.kb_sync.load_settings(self.repo)
+        self.assertEqual(settings["identity"]["remote"], "team")
+        self.assertTrue(settings["identity"]["explicit"])
+
+    def test_set_identity_unknown_remote_is_arg_error(self):
+        code, payload = run_cli("--root", str(self.repo), "--set-identity", "--remote", "nope")
+        self.assertEqual(code, 2)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error"]["code"], "E_ARGS")
+
+    def test_set_identity_requires_remote(self):
+        code, payload = run_cli("--root", str(self.repo), "--set-identity")
+        self.assertEqual(code, 2)
+        self.assertEqual(payload["error"]["code"], "E_ARGS")
+
+    def test_set_identity_respects_settings_fingerprint(self):
+        self.add_remote()
+        code, payload = run_cli("--root", str(self.repo), "--set-identity",
+                                "--remote", "team", "--expect-sha256", "0" * 64)
+        self.assertEqual(code, 0, payload)
+        self.assertEqual(payload["error"]["code"], "E_CAS")
+        settings, _source, _problem = pr.kb_sync.load_settings(self.repo)
+        self.assertEqual(settings["identity"]["remote"], "origin")
+        digest = pr.kb_sync.settings_sha256(self.repo)
+        code, payload = run_cli("--root", str(self.repo), "--set-identity",
+                                "--remote", "team", "--expect-sha256", digest)
+        self.assertTrue(payload["ok"], payload)
+
+    def test_effective_base_prefers_saved_target(self):
+        pr.kb_sync.save_settings(self.repo, {"target": {"remote": "origin", "base": "develop"}})
+        self.assertEqual(pr.effective_base(self.repo), "origin/develop")
+
+    def test_effective_base_uses_identity_default_branch(self):
+        self.add_remote()
+        git(self.repo, "update-ref", "refs/remotes/team/develop", "HEAD")
+        git(self.repo, "symbolic-ref", "refs/remotes/team/HEAD", "refs/remotes/team/develop")
+        pr.kb_sync.save_settings(self.repo, {"identity": {"remote": "team"}})
+        self.assertEqual(pr.effective_base(self.repo), "team/develop")
+
+    def test_effective_base_falls_back_to_origin_main(self):
+        pr.kb_sync.save_settings(self.repo, {"identity": {"remote": "gone"}})
+        self.assertEqual(pr.effective_base(self.repo), "origin/main")
 
 
 # ---------------------------------------------------------------- 平台适配器

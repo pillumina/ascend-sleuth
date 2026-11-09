@@ -203,6 +203,25 @@ class RecheckTest(unittest.TestCase):
         self.assertEqual(p2.returncode, 2, p2.stdout + p2.stderr)
         self.assertIn("assessment-stale", [f["code"] for f in json.loads(p2.stdout)["findings"]])
 
+    def test_default_base_uses_identity_default_branch(self):
+        # 没有 target 时基准按归属仓默认分支，而不是写死 origin/main。
+        git(self.repo, "update-ref", "refs/remotes/origin/main", self.m1)
+        git(self.repo, "remote", "add", "team", "https://example.com/team/r.git")
+        git(self.repo, "update-ref", "refs/remotes/team/develop", self.m0)
+        git(self.repo, "symbolic-ref", "refs/remotes/team/HEAD", "refs/remotes/team/develop")
+        settings = self.repo / ".local" / "settings.json"
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        settings.write_text(json.dumps({
+            "schema": "ascend-sleuth-settings/1",
+            "identity": {"remote": "team"},
+        }), encoding="utf-8")
+        body = self.base / "pr.md"
+        body.write_text(marker(self.m0, self.b_sha), encoding="utf-8")
+        p = run_py(self.repo, "scripts/groom_recheck.py", "--repo", str(self.repo),
+                   "--pr-body-file", str(body), "--head", self.head_b, "--json")
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertEqual(json.loads(p.stdout)["base"], self.m0)
+
     def test_cli_json_success_exposes_parsed_marker(self):
         body = self.base / "pr.md"
         body.write_text(marker(self.m1, self.b_sha), encoding="utf-8")

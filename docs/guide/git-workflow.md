@@ -52,17 +52,23 @@ worktree 与 detached HEAD 不自动合并。worktree 里通常在做提 PR 的�
 
 续接只 fetch、不合并：诊断正在进行，合并会改当前工作区，可能换掉结论所在的那一版。要看远端有没有合入这单用过的 case，用续接里的漂移检查（`kb_drift.py`，它先让 `kb_sync.py` fetch 一次）或 `python3 scripts/kb_sync.py --show`（只读，不联网）。
 
-同源校验不一致时不自动合并：`git remote get-url <sync.remote>` 的 host 与 path 要与 `origin` 一致，`--show` 打出「与 origin 同源：是 / 否」。不同源时按提示核对 `sync.remote` 后再用，脚本会拦住合并。写目标（提 PR）不做这项校验。
+同源校验比较 host 与 path：`git remote get-url <sync.remote>` 要与归属仓（`identity.remote`，默认 `origin`）一致。`--show` 打出「归属仓 <名字>（<URL>）· 解析：是 / 否 · 同源：是 / 否」。
 
-同步源与提 PR 目标是两件事：`sync` 决定诊断与 groom 读哪份知识，`target` 决定草稿 PR 提到哪个远端分支。groom 的新鲜度按评估记录的目标 ref 判；目标未配置时会显式提示，并用 `origin/main` 兜底（不再静默替换）。配置目标用 `python3 scripts/pr_status.py --set-target --remote <名字> --base <分支>`，面板的目标选择走同一条写入。
+不同源时脚本拦住合并：按提示核对 `sync.remote` 后再用。写目标（提 PR）不做这项校验。
 
-同步只补读侧，不替代提交纪律：开工与提交前仍由提交者跑 `git fetch origin`（见「多 agent 并行」第 5 条），保证分支从最新 `main` 开、提交基于最新树。
+归属仓可在知识库面板或 `python3 scripts/pr_status.py --set-identity --remote <名字>` 配置。显式配置却在本机解析不到时，同样只 fetch、不合并（reason `identity-unresolved`）。默认 `origin` 在本机不存在时不拦，避免单远端检出因此无法合并。
+
+同步源与提 PR 目标是两件事：`sync` 决定诊断与 groom 读哪份知识，`target` 决定草稿 PR 提到哪个远端分支。groom 的新鲜度按评估记录的目标 ref 判；目标未配置时会显式提示，并按归属仓默认分支兜底（默认 `origin/main`，不再静默替换）。配置目标用 `python3 scripts/pr_status.py --set-target --remote <名字> --base <分支>`，面板的目标选择走同一条写入。
+
+同步只补读侧，不替代提交纪律：开工与提交前仍由提交者跑 `git fetch <归属仓>`（默认 `origin`，见「多 agent 并行」第 5 条），保证分支从最新 `main` 开、提交基于最新树。
 
 诊断侧这次 fetch 只保证候选集来自较新的知识库；它不改提交、不推送，也不处理与本地未提交改动的冲突。一次合并同时更新知识与流程：`knowledge/` 在运行时读取立即生效，`skills/` 要下一次会话才重新加载。
 
-配置在 `.local/settings.json`（主检出那一份，`.gitignore` 已挡在 git 外），schema `ascend-sleuth-settings/1`，`sync` 段含 `remote` / `branch` / `enabled` / `auto_merge`。默认 `origin`、当前分支上游（取不到用 `main`）、同步开、自动合并开；没有该文件时按默认值同步，groom 回到原有的选源流程（单个远端直接用，多个才问）。
+配置在 `.local/settings.json`（主检出那一份，`.gitignore` 已挡在 git 外），schema `ascend-sleuth-settings/1`。`sync` 段含 `remote` / `branch` / `enabled` / `auto_merge`，`identity` 段记归属仓（`{"remote": "origin"}`）。
 
-查看配置与状态用 `python3 scripts/kb_sync.py --show`（只读，不联网）；改配置用 `python3 scripts/pr_status.py --set-sync`（`--remote` / `--branch` / `--disable` / `--auto-merge off`），不要手改 JSON。
+默认 `origin`、当前分支上游（取不到用 `main`）、同步开、自动合并开；`sync.remote` 未显式配置时跟随归属仓。没有该文件时按默认值同步，groom 回到原有的选源流程（单个远端直接用，多个才问）。
+
+查看配置与状态用 `python3 scripts/kb_sync.py --show`（只读，不联网）；改配置用 `python3 scripts/pr_status.py --set-sync`（`--remote` / `--branch` / `--disable` / `--auto-merge off`），改归属仓用 `--set-identity --remote <名字>`，不要手改 JSON。
 
 `sync.enabled` 与 `sync.auto_merge` 只管诊断读侧的自动检查与自动合并。groom 是显式动作，不受这两个开关影响——关掉自动检查后周批仍会 fetch。要让整机不联网，用 `deployment.yaml` 的 `sync.mode: "offline"`。
 
