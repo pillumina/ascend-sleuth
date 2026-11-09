@@ -7,8 +7,8 @@ name: kb-checks
 #   ② `changes` job = **细网**，算出这次改了哪一面，各 job 用 `if:` 自取所需。
 # 两个事件的触发面不同：`push` 只在 `main` 上起，`pull_request` 在改了下列 `paths` 的 PR 上起。
 # 开发分支的推送不再单独起一轮——PR 事件以主干为基线算改动，文件清单准确。改前这些推送会另起一轮：
-# 新建分支首次推送退化成全量，其后每次推送只是把 PR 那轮的大部分 job 重跑一遍（其中 `unit-tests` 是 wall clock
-# 最长的一条）。`main` 的 push 必须留：PR 验的是当次合并预演（`refs/pull/N/merge`），主干前进后最终
+# 新建分支首次推送退化成全量，其后每次推送只是把 PR 那轮的大部分 job 重跑一遍（其中 `unit-tests`
+# 与 `unit-tests-windows` 是实际耗时最长的一对）。`main` 的 push 必须留：PR 验的是当次合并预演（`refs/pull/N/merge`），主干前进后最终
 # 合入的树没有别处验。收窄 `push` 的代价是未开 PR 时推送没有任何 CI。
 # 为什么不拆成多个 workflow 文件：被 `paths:` 过滤掉的 workflow 根本不上报 check，将来开分支
 # 保护会让 PR 永远等一个不会出现的 Expected。单文件 + job 级 `if:` 下，跳过的 job 照常上报 skipped。
@@ -35,7 +35,8 @@ jobs:
   #   docs-index           ← docs（含 README；skill 名单取自 docs/_manifest.yaml，不扫 skills/）、code
   #   holdout-integrity    ← eval、code
   #   eval-scorecard       ← eval、knowledge（case↔夹具的负载类型覆盖算在 case 上）、code
-  #   unit-tests           ← scripts、tests、source-catalog.d（跑哪些测试按改动选，见强度让步）
+  #   unit-tests           ← scripts、tests、source-catalog.d（跑哪些测试按改动选，见强度让步）  #   test-portability     ← tests（被扫对象）、scripts（检查器自身）
+  #   unit-tests-windows   ← scripts、tests、source-catalog.d（与 unit-tests 同一份选择）
   #   panel-checks         ← dsh-plugins、scripts、metrics、skills、docs、trace-status.yaml
   #   skill-self-contained ← skills（只 grep skills/，不执行脚本，故不吃 code）
   #   arena-gate-rule      ← scripts（跑的是 --self-test，用合成样本）
@@ -59,6 +60,9 @@ jobs:
   #     反向闭包算出要跑的模块。改 `.github/**`、改 tests 的共享助手/夹具、基线不可比、脚本
   #     解析失败时回退全量。强度：选中的测试红即挡 merge；「选得全不全」是约定——测试用
   #     动态表达式拼脚本路径时静态扫描会漏（残余与修法写在脚本头注）。
+  #   · unit-tests-windows 与 unit-tests 跑同一份测试选择，强度相同（选中即挡 merge）。它同样先
+  #     重建生成物（源改了没重建会让 test_build_triage_tree 这类「当前树与生成物一致」断言假红），
+  #     外网用例默认 skip（判定口径见 docs/spec/test-portability.md 的 R7）。
   #   · panel-checks 不算 knowledge：panel_render_check.js 读 knowledge/ 只做「索引非空、case
   #     文件非空」两条 >0 断言，新鲜度由 index-freshness 管。
   #   · panel-checks 吃 docs 与 trace-status.yaml：它读 docs/spec/writing-norms.md 并断言「文案共用
@@ -433,6 +437,9 @@ jobs:
         env:
           ALL: ${{ needs.changes.outputs.all }}
           CODE_FILES: ${{ needs.changes.outputs.code_files }}
+          # Linux 作业有出网：网络用例在这里保持覆盖。Windows 作业不设它（默认 skip），
+          # 避免把可移植性判定绑到外网可达性上。见 docs/spec/test-portability.md 的 R7。
+          ASCEND_SLEUTH_NETWORK_TESTS: "1"
         run: |
           set -eu
           echo "改动文件（来自 changes job）："
@@ -451,6 +458,68 @@ jobs:
             echo "选择："
             printf '%s\n' "$selected" | sed -e 's/^/  /'
             python3 -m unittest $selected
+          fi
+
+  # 测试可移植性静态检查：编码、路径分隔符、字节级换行夹具、平台专有 API、解释器字面量。
+  # 这些写法在 Linux 上不触发失败，只会在 Windows 上暴露；Linux 单测没有 Windows 执行环境，
+  # 此前只能等维护者在 Windows 上手动跑。编码类的同类不变量已有 tests/test_subprocess_encoding.py
+  # 覆盖 scripts/ 面，本 job 补 tests/ 面。判定口径见 docs/spec/test-portability.md。
+  # 准入判据（CLAUDE.md）：①机械可判（AST 扫描，不联网、不装包）②后果确定（命中即红；误报靠
+  # 行内豁免逐条处理）③复发（Windows 上编码/路径类问题已出现两轮）。
+  test-portability:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # 只读 AST，不装 pyyaml、不联网。
+      - run: python3 scripts/check_test_portability.py
+
+  # Windows 单测：同一份测试选择在 windows-latest 上再跑一遍。Linux 全绿而新增用例依赖 POSIX
+  # 路径、换行或 locale 时，只有这里会红。差异与强度写在头注「强度让步」。
+  unit-tests-windows:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # Windows 上 setup-python 提供 python.exe；下面统一用 python，不写 python3。
+      - run: python -m pip install pyyaml
+      # 与 unit-tests 同前置：源改了没重建时，test_build_triage_tree 这类「当前树与生成物一致」
+      # 的断言会假红，与可移植性无关。rebuild_generated.py 内部用 sys.executable，跨平台。
+      - name: 重建生成物
+        shell: bash
+        run: python scripts/rebuild_generated.py
+      # 不设 ASCEND_SLEUTH_NETWORK_TESTS：外网用例默认 skip。
+      - name: 按改动选单元测试并运行（Windows）
+        shell: bash
+        env:
+          ALL: ${{ needs.changes.outputs.all }}
+          CODE_FILES: ${{ needs.changes.outputs.code_files }}
+        run: |
+          set -eu
+          echo "改动文件（来自 changes job）："
+          printf '%s\n' "$CODE_FILES" | sed -e '/^$/d' -e 's/^/  /'
+          extra=""
+          if [ "$ALL" = "true" ]; then extra="--all"; fi
+          selected=$(printf '%s\n' "$CODE_FILES" | python scripts/select_unit_tests.py $extra)
+          if [ -z "$selected" ]; then
+            echo "没有与改动对应的单元测试——跳过（改动不在 Python 测试面）"
+            exit 0
+          fi
+          if [ "$selected" = "ALL" ]; then
+            echo "选择：全量"
+            python -m unittest discover tests
+          else
+            echo "选择："
+            printf '%s\n' "$selected" | sed -e 's/^/  /'
+            python -m unittest $selected
           fi
 
   # 面板：两个面板的渲染、文案、色语与数据口径契约都由 `panel_render_check` 与
