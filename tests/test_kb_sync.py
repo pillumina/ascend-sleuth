@@ -754,6 +754,35 @@ class IdentityTest(ConfiguredCase):
         self.assertEqual(doc["merge"], "ff-only")
         self.assertEqual(doc["local_rev"], upstream)
 
+    def test_save_settings_does_not_materialize_default_identity(self):
+        # 旧配置没有 identity 段：一次普通写入不应把默认 origin 写成显式声明。
+        self.write_settings()
+        path = self.repo / ".local" / "settings.json"
+        self.assertNotIn("identity", json.loads(path.read_text(encoding="utf-8")))
+        data, _config, _problem = kb_sync.load_settings(self.repo)
+        kb_sync.save_settings(self.repo, data)
+        self.assertNotIn("identity", json.loads(path.read_text(encoding="utf-8")))
+        again, _config2, _problem2 = kb_sync.load_settings(self.repo)
+        self.assertFalse(again["identity"]["explicit"])
+
+    def test_settings_save_keeps_missing_origin_compatible(self):
+        # 默认 origin 不存在、单远端检出：面板保存（写 settings）之后仍应放行合并。
+        backup = self.base / "backup.git"
+        git(self.base, "clone", "--bare", "-q", str(self.bare), str(backup))
+        upstream = self.upstream({"knowledge/a.yaml": "cases: []\n"})
+        git(self.repo, "fetch", "-q", "origin", "main")
+        git(self.repo, "push", "-q", str(backup), "origin/main:refs/heads/main")
+        git(self.repo, "remote", "remove", "origin")
+        git(self.repo, "remote", "add", "backup", str(backup))
+        self.write_settings(sync={"remote": "backup"})
+        data, _config, _problem = kb_sync.load_settings(self.repo)
+        kb_sync.save_settings(self.repo, data)
+        code, doc = self.run_cli("--merge", "--json")
+        self.assertEqual(code, 0)
+        self.assertFalse(doc["identity_explicit"])
+        self.assertEqual(doc["merge"], "ff-only")
+        self.assertEqual(doc["local_rev"], upstream)
+
     def test_human_show_reports_identity(self):
         self.write_settings(identity={"remote": "origin"})
         out = io.StringIO()

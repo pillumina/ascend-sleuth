@@ -1108,7 +1108,9 @@ def cmd_set_identity(root, args) -> int:
         return _arg_fail(f"远端不存在：{remote}（本机远端：{'、'.join(remotes) or '无'}）")
     settings_sha = _settings_sha_or_none(root)
     settings, source, problem = kb_sync.load_settings(Path(root))
-    settings["identity"] = {"remote": remote}
+    # explicit 让默认值是 origin 时也落盘：显式声明 origin 后，未来 origin 被删会走
+    # identity-unresolved 而不是退回默认放行。
+    settings["identity"] = {"remote": remote, "explicit": True}
     try:
         digest = kb_sync.save_settings(
             Path(root), settings,

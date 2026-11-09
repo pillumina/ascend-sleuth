@@ -276,7 +276,14 @@ def save_settings(root: Path, data: dict, expect_sha=None) -> str:
     data = dict(data)
     data["schema"] = SCHEMA_SETTINGS
     data["sync"] = normalize_sync(data.get("sync"))
-    data["identity"] = normalize_identity(data.get("identity"))
+    # 归属仓默认 origin 且未显式配置时不落盘：否则一次普通的 --set-sync 会把默认值写成
+    # 显式声明，默认 origin 缺失的单远端检出会从「放行」变成 identity-unresolved。
+    identity_raw = data.get("identity") if isinstance(data.get("identity"), dict) else {}
+    identity_remote = str(identity_raw.get("remote") or DEFAULT_REMOTE).strip() or DEFAULT_REMOTE
+    if bool(identity_raw.get("explicit")) or identity_remote != DEFAULT_REMOTE:
+        data["identity"] = normalize_identity(identity_raw)
+    else:
+        data.pop("identity", None)
     data["target"] = normalize_target(data.get("target"))
     text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
     try:

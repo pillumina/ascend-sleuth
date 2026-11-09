@@ -376,7 +376,7 @@ class TargetTest(RepoCase):
         self.assertEqual(targets["identity"]["url"],
                          "https://github.com/pillumina/ascend-sleuth.git")
         self.assertFalse(targets["identity"]["explicit"])
-        pr.kb_sync.save_settings(self.repo, {"identity": {"remote": "origin"}})
+        pr.kb_sync.save_settings(self.repo, {"identity": {"remote": "origin", "explicit": True}})
         targets = pr.list_targets(self.repo)
         self.assertTrue(targets["identity"]["explicit"])
 
@@ -462,6 +462,15 @@ class IdentityBaseTest(RepoCase):
         self.assertTrue(payload["sha256"])
         settings, _source, _problem = pr.kb_sync.load_settings(self.repo)
         self.assertEqual(settings["identity"]["remote"], "team")
+        self.assertTrue(settings["identity"]["explicit"])
+
+    def test_set_identity_origin_is_explicit(self):
+        # 显式把默认值 origin 设为归属仓：要落盘成显式声明，未来 origin 被删才拦。
+        code, payload = run_cli("--root", str(self.repo), "--set-identity", "--remote", "origin")
+        self.assertEqual(code, 0, payload)
+        saved = json.loads((self.repo / ".local" / "settings.json").read_text(encoding="utf-8"))
+        self.assertEqual(saved["identity"], {"remote": "origin"})
+        settings, _source, _problem = pr.kb_sync.load_settings(self.repo)
         self.assertTrue(settings["identity"]["explicit"])
 
     def test_set_identity_unknown_remote_is_arg_error(self):
