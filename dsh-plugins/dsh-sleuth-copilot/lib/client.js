@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.20.0'
+    const PLUGIN_VERSION = '0.21.0'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。
@@ -477,6 +477,12 @@ window.__ModuleLoader__.load({
       'kb.laterUnavailable': '稍后没记上：状态条连不上后台，稍后再试。',
       'kb.missing': '没找到 Ascend Sleuth 整页；确认面板包已安装，或稍后再试。',
       'kb.collapsed': '知识库有更新',
+      // 受限档位 fetch 被拒、退回只读探测：远端有新提交、落后数未知。
+      'kb.degraded': '远端有新提交（落后数未知）',
+      // 连败上屏：连续失败 3 次或权限拒绝时才出现，成功检查后消失。
+      'kb.error': '后台检查被拒绝：{time} {reason}',
+      'kb.errorDenied': '权限被拒',
+      'kb.errorFailed': '检查连续失败',
     }
     const EN = {
       'region': 'Diagnosis status bar',
@@ -913,6 +919,10 @@ window.__ModuleLoader__.load({
       'kb.laterUnavailable': 'Could not record the later reminder: the status bar cannot reach the host. Try again later.',
       'kb.missing': 'Ascend Sleuth page not found. Check that the panel package is installed, or try again later.',
       'kb.collapsed': 'Knowledge base has updates',
+      'kb.degraded': 'The remote has new commits (behind count unknown)',
+      'kb.error': 'Background check was rejected: {time} {reason}',
+      'kb.errorDenied': 'permission denied',
+      'kb.errorFailed': 'the check has failed 3 times in a row',
     }
     const DICTS = { zh: ZH, en: EN }
     let translate = (key, params) => formatText(ZH[key] !== undefined ? ZH[key] : key, params)
@@ -1354,7 +1364,13 @@ body[data-ds-dark-theme] .scp-veil,[data-theme="dark"] .scp-veil{background:rgba
 .scp-kb-notice .scp-kb-go:hover{background:var(--scp-surface-2);border-color:color-mix(in srgb,var(--scp-warn) 46%,var(--scp-border));}
 .scp-kb-notice .scp-kb-later{color:var(--scp-warn);opacity:.78;}
 .scp-kb-notice .scp-kb-later:hover{background:color-mix(in srgb,var(--scp-warn) 12%,transparent);color:var(--scp-warn);opacity:1;}
-@container (max-width: 720px){.scp-kb-notice{flex-wrap:wrap;}.scp-kb-notice-text{white-space:normal;}}
+/* 连败上屏：后台检查连续失败或权限拒绝时的一行，与「有更新」不同色。 */
+.scp-kb-error{display:flex;align-items:center;gap:8px;min-width:0;padding:3px 6px 3px 9px;border:1px solid color-mix(in srgb,var(--scp-bad) 24%,var(--scp-border));border-radius:9px;background:var(--scp-bad-soft);color:var(--scp-bad);font-size:11px;line-height:1.7;}
+.scp-kb-error-dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--scp-bad);}
+.scp-kb-error-main{display:flex;min-width:0;}
+.scp-kb-error-text{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.scp-kb-error .scp-btn{flex:none;font-size:11px;line-height:1.7;padding:2px 8px;}
+@container (max-width: 720px){.scp-kb-notice,.scp-kb-error{flex-wrap:wrap;}.scp-kb-notice-text,.scp-kb-error-text{white-space:normal;}}
 body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,[data-theme="dark"] .scp-actions,[data-theme="dark"] .scp-sed-actions{box-shadow:0 -8px 16px -12px rgba(0,0,0,.55);}
 @media (max-width:760px){.scp-batch{flex-wrap:wrap;gap:6px 8px;}.scp-batch .scp-spacer{display:none;}.scp-sed-step-label,.scp-sed-step-note{font-size:var(--scp-fs-cap);}.scp-target-row{flex-wrap:wrap;}}`,
     ].join('\n')
@@ -3559,8 +3575,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const kbNotice = data && data.ok !== false && data.kbNotice && typeof data.kbNotice === 'object'
           ? data.kbNotice
           : null
+        // 受限档位下 fetch 被拒、退回只读探测：behind 为 null，界面不显示数字。
+        const kbDegraded = !!kbNotice && kbNotice.behind === null
         const kbBehind = kbNotice ? Math.max(0, Number(kbNotice.behind) || 0) : 0
         const kbPanel = kbNotice ? Math.max(0, Number(kbNotice.panel) || 0) : 0
+        // 连败上屏：连续失败 3 次或权限拒绝时 host 才给 kbError；成功检查后随刷新消失。
+        const kbError = data && data.ok !== false && data.kbError && typeof data.kbError === 'object'
+          ? data.kbError
+          : null
 
         function toggleCollapsed() {
           // 展开是新一轮交互：上一次「关菜单」的标记不该带到现在
@@ -3768,7 +3790,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           return h('div', { className: 'scp-kb-notice', role: 'group', 'aria-label': tr('kb.collapsed') },
             h('span', { className: 'scp-kb-notice-dot', 'aria-hidden': 'true' }),
             h('span', { className: 'scp-kb-notice-main' },
-              h('span', { className: 'scp-kb-notice-text' }, tr('kb.behind', { n: kbBehind })),
+              h('span', { className: 'scp-kb-notice-text' },
+                kbDegraded ? tr('kb.degraded') : tr('kb.behind', { n: kbBehind })),
               kbPanel > 0 ? h('span', { className: 'scp-kb-notice-note' }, tr('kb.panel')) : null),
             h('span', { className: 'scp-spacer' }),
             h('button', {
@@ -3781,6 +3804,49 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               className: 'scp-btn scp-btn--ghost scp-kb-later',
               onClick: dismissKbNotice,
             }, tr('kb.later')))
+        }
+
+        // 连败原因：取失败原文的第一行，超长截断；没有原文时按原因码给一句话。
+        function kbErrorText(error) {
+          const raw = String((error && error.message) || '').trim()
+            .split(/\r?\n/)
+            .map((item) => item.trim())
+            .filter(Boolean)[0] || ''
+          if (raw) return raw.length > 80 ? raw.slice(0, 79) + '…' : raw
+          const reason = String((error && error.reason) || '')
+          return reason === 'permission-denied' || reason === 'E_PERM' ? tr('kb.errorDenied') : tr('kb.errorFailed')
+        }
+
+        // 「重试」：强制让 host 立刻再检查一次，再拉一次状态；成功后 kbError 随新数据清空。
+        function retryKbCheck() {
+          rpcCall('copilot-kb-recheck', { force: true })
+            .then(() => refresh(true))
+            .catch(() => {
+              // 连不上后台时保留这一行，等下一轮定时检查。
+            })
+        }
+
+        function renderKbError() {
+          if (!kbError) return null
+          const line = tr('kb.error', {
+            time: formatTime(kbError.checkedAt) || tr('none'),
+            reason: kbErrorText(kbError),
+          })
+          return h('div', { className: 'scp-kb-error', role: 'group', title: line },
+            h('span', { className: 'scp-kb-error-dot', 'aria-hidden': 'true' }),
+            h('span', { className: 'scp-kb-error-main' },
+              h('span', { className: 'scp-kb-error-text' }, line)),
+            h('span', { className: 'scp-spacer' }),
+            h('button', {
+              type: 'button',
+              className: 'scp-btn scp-kb-go',
+              onClick: goSync,
+            }, tr('kb.go')),
+            h('button', {
+              type: 'button',
+              className: 'scp-btn scp-btn--ghost scp-kb-retry',
+              onClick: retryKbCheck,
+            }, tr('action.retry')))
         }
 
         const failed = s.phase === 'error' || (data && data.ok === false)
@@ -3826,6 +3892,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 renderKeepOpen(),
                 renderCollapse()),
               renderKbNotice(),
+              renderKbError(),
               collapsed ? null : h('div', { className: 'scp-foot' },
                 h('span', { className: 'scp-empty-note' }, tr('empty.body')))),
             // 这个分支也要挂 hint：没有诊断单时点「去同步 / 稍后」的结果得看得见。
@@ -4038,6 +4105,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               renderKeepOpen(),
               renderCollapse()),
             renderKbNotice(),
+            renderKbError(),
             collapsed ? null : h('div', { className: 'scp-foot' },
               StepRail({ extra }),
               metaBits.length ? h('span', { className: 'scp-meta', title: metaBits.join(' · ') }, metaBits.join(' · ')) : null,

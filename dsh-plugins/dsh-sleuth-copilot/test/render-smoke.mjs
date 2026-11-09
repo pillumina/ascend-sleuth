@@ -735,6 +735,8 @@ async function mount(mode, options) {
     : { ready: true, reason: '' }
   // 知识库落后提示由 host 附加在 copilot-state 的响应里；不给就是「没有提示」。
   if (opts.kbNotice !== undefined) payload.kbNotice = opts.kbNotice
+  // 连败上屏同样由 host 附加；不给就是「没有失败」。
+  if (opts.kbError !== undefined) payload.kbError = opts.kbError
 
   const slots = {
     inject(_name, callback) {
@@ -3327,6 +3329,119 @@ const KB_NOTICE = {
   expect('延迟注册：回调触发后能切到 Ascend Sleuth 整页',
     t.selectedPanels.includes('ascend-sleuth-console'), JSON.stringify(t.selectedPanels))
   t.dispose()
+}
+
+// ── 知识库退化提示与连败上屏 ────────────────────────────────────────────────
+// 退化：受限档位 fetch 被拒但只读探测成功，落后数未知（behind=null）。
+const KB_DEGRADED = {
+  rev: 'feed777', behind: null, panel: 0, knowledge: 0, reference: 0,
+  checkedAt: '2026-11-09T14:10:00+08:00', degraded: 'permission-denied', updateAvailable: true,
+}
+// 连败：连续失败 3 次或权限拒绝时 host 给 kbError。
+const KB_ERROR = {
+  checkedAt: '2026-11-09T14:02:00+08:00',
+  reason: 'permission-denied',
+  message: '沙箱拒绝了这次调用（mode=workspace-write）：会话档位或可写根不覆盖这次读写。',
+}
+
+{
+  // 退化提示行：文案与正常不同，不显示落后数；动作仍是「去同步」「稍后」。
+  const t = await mount('recent', {
+    kbNotice: KB_DEGRADED,
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  const view = t.view()
+  expect('知识库退化：展开态出现提示行', byClass(view, 'scp-kb-notice').length === 1, view.text.slice(0, 300))
+  expect('知识库退化：文案说落后数未知',
+    view.text.includes('远端有新提交（落后数未知）'), view.text.slice(0, 300))
+  expect('知识库退化：不显示 behind 数字',
+    !view.text.includes('知识库落后') && !view.text.includes('落后 0 个提交'), view.text.slice(0, 300))
+  expect('知识库退化：给「去同步」', !!findButton(view, '去同步'), view.text.slice(0, 400))
+  expect('知识库退化：给「稍后」', !!findButton(view, '稍后'), view.text.slice(0, 400))
+  expect('知识库退化：不提示重启 DSH', !view.text.includes('含面板代码'), view.text.slice(0, 400))
+}
+
+{
+  // 收起态：退化提示也只加「知识库有更新」，不渲染提示行。
+  const t = await mount('recent', {
+    kbNotice: KB_DEGRADED,
+    prefs: { dockCollapsed: true, paletteFilter: 'all', pins: {} },
+  })
+  const view = t.view()
+  expect('知识库退化：收起态带「知识库有更新」', view.text.includes('知识库有更新'), view.text.slice(0, 300))
+  expect('知识库退化：收起态不渲染提示行', byClass(view, 'scp-kb-notice').length === 0)
+}
+
+{
+  // 连败上屏：「重试」发 copilot-kb-recheck 且 force=true，再拉一次状态；成功后行消失。
+  const t = await mount('recent', {
+    kbError: Object.assign({}, KB_ERROR),
+    onKbRecheck(args, state) { state.kbError = null },
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  let view = t.view()
+  expect('后台检查被拒：展开态出现 kb-error 行', byClass(view, 'scp-kb-error').length === 1, view.text.slice(0, 400))
+  const errorRow = byClass(view, 'scp-kb-error')[0]
+  const errorText = errorRow ? nodeText(errorRow) : ''
+  expect('后台检查被拒：文案带时间与原因',
+    /后台检查被拒绝：\d\d-\d\d \d\d:\d\d 沙箱拒绝了这次调用/.test(errorText), errorText)
+  expect('后台检查被拒：给「去同步」', !!findButton(view, '去同步'), view.text.slice(0, 400))
+  const retryButton = byClass(view, 'scp-kb-retry')[0]
+  expect('后台检查被拒：给「重试」', !!retryButton && nodeText(retryButton) === '重试', view.text.slice(0, 400))
+  const statesBefore = t.rpcCalls.filter((call) => call.endpoint === 'copilot-state').length
+  click(retryButton)
+  await t.settle()
+  await t.settle()
+  await t.settle()
+  const recheckCall = t.rpcCalls.filter((call) => call.endpoint === 'copilot-kb-recheck').pop()
+  expect('后台检查被拒：重试发出 copilot-kb-recheck 且 force=true',
+    !!recheckCall && recheckCall.args && recheckCall.args.force === true, JSON.stringify(recheckCall && recheckCall.args))
+  const statesAfter = t.rpcCalls.filter((call) => call.endpoint === 'copilot-state').length
+  expect('后台检查被拒：重试后重新拉状态', statesAfter > statesBefore,
+    JSON.stringify({ before: statesBefore, after: statesAfter }))
+  expect('后台检查被拒：成功刷新后行消失', byClass(await t.settle(), 'scp-kb-error').length === 0)
+}
+
+{
+  // 「去同步」复用 goSync：切到 Ascend Sleuth 整页。
+  const t = await mount('recent', {
+    kbError: KB_ERROR,
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  click(findButton(t.view(), '去同步'))
+  await t.settle()
+  expect('后台检查被拒：「去同步」切到 Ascend Sleuth 整页',
+    t.selectedPanels.includes('ascend-sleuth-console'), JSON.stringify(t.selectedPanels))
+  t.dispose()
+}
+
+{
+  // 没有诊断单的空态：同样出现 kb-error 行。
+  const t = await mount('empty', {
+    kbError: KB_ERROR,
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  expect('后台检查被拒：空态也出现 kb-error 行', byClass(t.view(), 'scp-kb-error').length === 1)
+}
+
+{
+  // 收起态：不渲染 kb-error 行。
+  const t = await mount('recent', {
+    kbError: KB_ERROR,
+    prefs: { dockCollapsed: true, paletteFilter: 'all', pins: {} },
+  })
+  expect('后台检查被拒：收起态不渲染 kb-error 行', byClass(t.view(), 'scp-kb-error').length === 0)
+}
+
+{
+  // 正常提示不受影响：没有 kbError 时不渲染这一行。
+  const t = await mount('recent', {
+    kbNotice: KB_NOTICE,
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  const view = t.view()
+  expect('后台检查被拒：没有失败时不渲染 kb-error 行', byClass(view, 'scp-kb-error').length === 0)
+  expect('后台检查被拒：正常提示行照旧', byClass(view, 'scp-kb-notice').length === 1)
 }
 
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')

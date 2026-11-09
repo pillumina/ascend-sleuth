@@ -38,10 +38,12 @@ const MAX_REPORT_BYTES = 512 * 1024
 const PR_PROGRESS_READ_MS = 120
 const PR_PROGRESS_TTL_MS = 30 * 1000
 // 知识库更新提醒：间隔与开关来自主检出的 .local/settings.json；启动后先等 3 秒，
-// 避开 DSH 启动时与状态取数抢子进程。关闭提醒时每 60 秒只重读设置、不起子进程。
-// 手动重查按 60 秒节流，同一远端提交只提醒一次。
+// 避开 DSH 启动时与状态取数抢子进程。之后每至多 60 秒重读一次设置：按「上次检查开始
+// 时刻 + 间隔」判到期才起检查，所以改间隔最多 60 秒后生效。手动重查按 60 秒节流，
+// 同一远端提交只提醒一次。
 const KB_CHECK_DELAY_MS = 3000
-const KB_DISABLED_POLL_MS = 60 * 1000
+// 设置的轮询上限：一次只排一个 timeout，未到期时排 min(60 秒, 剩余)。
+const KB_POLL_MS = 60 * 1000
 const KB_CHECK_DEFAULT_MINUTES = 30
 const KB_CHECK_MIN_MINUTES = 5
 const KB_CHECK_MAX_MINUTES = 720
@@ -136,8 +138,10 @@ function normalizeKbSurface(value) {
 }
 
 // 状态文件（主检出的 .local/kb-sync-notify.json）只用于去重与排查：dismissedRev 决定同一
-// 远端提交还提不提示，rev / behind / surface / checkedAt / lastError 留给人看。它不恢复提示，
-// 也不记「最近一次检查成不成功」——提示只由本次进程的检查给出。
+// 远端提交还提不提示，rev / behind / surface / checkedAt / lastError 留给人看。degraded 与
+// updateAvailable 记录受限档位下 fetch 被拒、退回只读探测的结果（落后数未知），
+// failures 记连续失败次数供上屏。
+// 它不恢复提示，也不记「最近一次检查成不成功」——提示只由本次进程的检查给出。
 function emptyKbState() {
   return {
     version: KB_STATE_VERSION,
@@ -147,6 +151,9 @@ function emptyKbState() {
     dismissedRev: '',
     checkedAt: '',
     lastError: '',
+    degraded: '',
+    updateAvailable: false,
+    failures: 0,
   }
 }
 
@@ -166,21 +173,28 @@ function kbNowIso() {
 }
 
 // 内存里给界面的提示：只带界面要显示的数字。reference 与底层 surface.reference 同名，
-// 客户端不用再记两套字段名。
+// 客户端不用再记两套字段名。受限档位 fetch 被拒时落后数未知：仍然提示有更新，behind 给
+// null（客户端不显示数字），degraded 带原因码、updateAvailable 为 true。
 function kbNoticeView(state) {
   if (state === null || typeof state !== 'object') return null
   const rev = typeof state.rev === 'string' ? state.rev : ''
+  const degraded = typeof state.degraded === 'string' ? state.degraded : ''
+  const updateAvailable = state.updateAvailable === true
   const behind = Number(state.behind)
-  if (!rev || !Number.isInteger(behind) || behind <= 0) return null
+  const hasBehind = Number.isInteger(behind) && behind > 0
+  if (!rev) return null
+  if (!hasBehind && !(degraded !== '' && updateAvailable)) return null
   if (rev === state.dismissedRev) return null
   const surface = normalizeKbSurface(state.surface)
   return {
     rev,
-    behind,
-    panel: surface.panel,
-    knowledge: surface.knowledge,
-    reference: surface.reference,
+    behind: hasBehind ? behind : null,
+    panel: hasBehind ? surface.panel : 0,
+    knowledge: hasBehind ? surface.knowledge : 0,
+    reference: hasBehind ? surface.reference : 0,
     checkedAt: typeof state.checkedAt === 'string' ? state.checkedAt : '',
+    degraded,
+    updateAvailable,
   }
 }
 
@@ -1351,6 +1365,7 @@ export function apply(ctx) {
   function kbReadState(raw) {
     if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
     const behind = Number(raw.behind)
+    const failures = Number(raw.failures)
     return {
       version: KB_STATE_VERSION,
       rev: typeof raw.rev === 'string' ? raw.rev : '',
@@ -1359,6 +1374,9 @@ export function apply(ctx) {
       dismissedRev: typeof raw.dismissedRev === 'string' ? raw.dismissedRev : '',
       checkedAt: typeof raw.checkedAt === 'string' ? raw.checkedAt : '',
       lastError: typeof raw.lastError === 'string' ? raw.lastError : '',
+      degraded: typeof raw.degraded === 'string' ? raw.degraded : '',
+      updateAvailable: raw.updateAvailable === true,
+      failures: Number.isInteger(failures) && failures >= 0 ? failures : 0,
     }
   }
 
@@ -1410,21 +1428,40 @@ export function apply(ctx) {
     return kbWriteChain
   }
 
-  // 「重新检查」与 copilot-state 共用的快照：notice 可能是 null（没落后 / 静默条件命中）。
-  function kbSnapshot() {
+  // 连续失败满 3 次、或失败原因是权限拒绝时，把失败摆到界面上：单次网络抖动仍然静默。
+  // 只有失败计数与原因码两种判据，不看失败原文；成功检查与静默收场都会把 failures 归零。
+  function kbErrorView() {
+    const failures = Number.isInteger(kbState.failures) ? kbState.failures : 0
+    const reason = kbLastReason || ''
+    const denied = reason === 'permission-denied' || reason === 'E_PERM'
+    if (!kbLastCheckAt || (!denied && failures < 3)) return null
     return {
-      notice: kbNotice ? Object.assign({}, kbNotice) : null,
       checkedAt: kbLastCheckAt,
-      error: kbLastError,
-      reason: kbLastReason,
+      reason,
+      message: kbLastError,
     }
   }
 
-  // 静默收场（离线部署 / 关闭同步）：清 lastError 与提示（用户关了同步就该消失），
+  // 「重新检查」与 copilot-state 共用的快照：notice 可能是 null（没落后 / 静默条件命中），
+  // kbError 只在连续失败或权限拒绝时非 null。
+  function kbSnapshot() {
+    return {
+      notice: kbNotice ? Object.assign({}, kbNotice) : null,
+      error: kbLastError,
+      reason: kbLastReason,
+      checkedAt: kbLastCheckAt,
+      kbError: kbErrorView(),
+    }
+  }
+
+  // 静默收场（离线部署 / 关闭同步）：清 lastError、失败计数与提示（用户关了同步就该消失），
   // 保留上次 rev/behind 供排查。
   function kbQuiet(mainRoot, checkedAt, reason) {
     kbState.checkedAt = checkedAt
     kbState.lastError = ''
+    kbState.degraded = ''
+    kbState.updateAvailable = false
+    kbState.failures = 0
     kbLastError = ''
     kbLastCheckAt = checkedAt
     kbLastReason = reason || ''
@@ -1432,12 +1469,14 @@ export function apply(ctx) {
     return persistKbState(mainRoot)
   }
 
-  // 失败收场：只更新 checkedAt / lastError，上次的 rev 与 behind 留着供排查；
+  // 失败收场：只更新 checkedAt / lastError 与失败计数，上次的 rev 与 behind 留着供排查；
   // 已显示的提示不动——网络抖动不该让一个仍然成立的「落后 N 个提交」消失，
-  // 它由下一次成功检查更新或清空。
-  function kbFailed(mainRoot, checkedAt, text, reason) {
+  // 它由下一次成功检查更新或清空。失败冷却里的跳过（doc.skipped）不计入连败。
+  function kbFailed(mainRoot, checkedAt, text, reason, skipped) {
+    const failures = Number.isInteger(kbState.failures) ? kbState.failures : 0
     kbState.checkedAt = checkedAt
     kbState.lastError = text
+    kbState.failures = skipped === true ? failures : failures + 1
     kbLastError = text
     kbLastCheckAt = checkedAt
     kbLastReason = reason || ''
@@ -1477,13 +1516,36 @@ export function apply(ctx) {
     }
   }
 
-  // 一次只排一个 timeout：到点先读设置，关着就每 60 秒重读（不起子进程），开着才跑检查。
+  // 一次只排一个 timeout：到点先读设置，关着就每 60 秒重读（不起子进程）；开着时按
+  // 「上次检查开始时刻 + 间隔」判到期，未到期就排 min(60 秒, 剩余)，到期才跑检查。
   function scheduleKb(delayMs) {
     clearKbTimer()
     const timer = kbTimerSvc
     if (!timer || typeof timer.timeout !== 'function') return
     const entry = timer.timeout(() => kbTick().catch(() => {}), delayMs)
     kbTimer = typeof entry === 'function' ? entry : null
+  }
+
+  // 距到期还有多久：从没检查过按已到期处理；返回 0 表示现在就该检查。
+  function kbDueDelay(schedule) {
+    if (!kbLastCheckStart) return 0
+    const intervalMs = schedule.minutes * 60 * 1000
+    const remaining = kbLastCheckStart + intervalMs - Date.now()
+    if (remaining <= 0) return 0
+    return Math.min(KB_POLL_MS, remaining)
+  }
+
+  // 关掉提醒检查时把失败上屏也收掉：只清内存不写盘的话，重启后 failures 还在，
+  // 展开态会继续显示「后台检查被拒绝」。只在确有要清的内容时落一次盘：
+  // 关着期间的每 60 秒轮询不再反复写状态文件。
+  async function clearKbFailureOnDisabled(mainRoot) {
+    const failures = Number.isInteger(kbState.failures) ? kbState.failures : 0
+    const changed = failures > 0 || kbState.lastError !== ''
+    kbState.failures = 0
+    kbState.lastError = ''
+    kbLastError = ''
+    kbLastReason = ''
+    if (changed) await persistKbState(mainRoot)
   }
 
   async function kbTick() {
@@ -1496,23 +1558,32 @@ export function apply(ctx) {
     }
     const schedule = await readKbSchedule(mainRoot)
     if (!schedule.enabled) {
-      // 关着提醒：不跑子进程，只把提示收掉，60 秒后再读设置。
+      // 关着提醒：不跑子进程，把提示与失败上屏一起收掉，60 秒后再读设置。
       kbNotice = null
-      scheduleKb(KB_DISABLED_POLL_MS)
+      await clearKbFailureOnDisabled(mainRoot)
+      scheduleKb(KB_POLL_MS)
+      return
+    }
+    const delay = kbDueDelay(schedule)
+    if (delay > 0) {
+      // 未到期：只重读设置，不起子进程。改间隔后这里最多 60 秒就会按新间隔重算。
+      scheduleKb(delay)
       return
     }
     await startKbCheck().catch(() => {})
-    // 检查可能跑了很久，结束后再读一次设置：期间被关掉就转 60 秒轮询。
+    // 检查可能跑了很久，结束后再读一次设置：期间被关掉就转 60 秒轮询；
+    // 开着则按同样的到期规则排下一次（刚检查完，未到期时排 60 秒）。
     const after = await readKbSchedule(mainRoot)
     if (!after.enabled) {
       kbNotice = null
-      scheduleKb(KB_DISABLED_POLL_MS)
+      await clearKbFailureOnDisabled(mainRoot)
+      scheduleKb(KB_POLL_MS)
       return
     }
-    scheduleKb(after.minutes * 60 * 1000)
+    scheduleKb(kbDueDelay(after) || KB_POLL_MS)
   }
 
-  async function runKbCheck() {
+  async function runKbCheck(force) {
     await kbStateLoaded
     kbLastCheckStart = Date.now()
     kbLastReason = ''
@@ -1528,24 +1599,30 @@ export function apply(ctx) {
       await kbFailed(mainRoot, kbNowIso(), noPythonMessage(), 'no-python')
       return kbSnapshot()
     }
+    // 手动重查要把 --force 传给脚本：失败冷却期内不带它，脚本直接回 skipped，
+    // 点「重试」等于没试。定时检查不带，冷却与静默规则照旧。
+    const argv = ['--check', '--json']
+    if (force === true) argv.push('--force')
+    argv.push('--root', shq(mainRoot))
     const doc = await runJsonHelper(
       mainRoot,
       python,
       join(mainRoot, 'scripts', 'kb_sync.py'),
-      ['--check', '--json', '--root', shq(mainRoot)],
+      argv,
       KB_CHECK_TIMEOUT_MS,
       policy,
     )
     // host 级失败（子进程起不来 / 超时 / 输出不是 JSON）没有 behind 字段；
-    // 脚本自己的业务失败三项齐全，按下面的静默规则处理。
+    // 脚本自己的业务失败三项齐全，按下面的静默规则处理。失败冷却里的跳过不计入连败。
     if (doc === null || typeof doc !== 'object' || !Object.prototype.hasOwnProperty.call(doc, 'behind')) {
       const message = doc !== null && typeof doc === 'object' && doc.message
         ? String(doc.message)
         : '知识库检查没有返回结果'
       const code = doc !== null && typeof doc === 'object' && doc.code ? String(doc.code) : 'helper'
-      await kbFailed(mainRoot, kbNowIso(), message, code)
+      await kbFailed(mainRoot, kbNowIso(), message, code, doc !== null && typeof doc === 'object' && doc.skipped === true)
       return kbSnapshot()
     }
+    const skipped = doc.skipped === true
     const reason = typeof doc.reason === 'string' ? doc.reason.trim() : ''
     // --check 不受 sync.enabled 影响，enabled 只作为状态上报；disabled 只可能是旧脚本或自动路径的降级。
     if (doc.offline === true || reason === 'disabled' || reason === 'offline') {
@@ -1557,16 +1634,41 @@ export function apply(ctx) {
         .map((item) => (typeof item === 'string' ? item.trim() : ''))
         .filter(Boolean)
         .join('；')
-      await kbFailed(mainRoot, kbNowIso(), text || '知识库检查失败', reason || 'failed')
+      await kbFailed(mainRoot, kbNowIso(), text || '知识库检查失败', reason || 'failed', skipped)
       return kbSnapshot()
     }
-    const behind = Number(doc.behind)
     const remoteRev = typeof doc.remote_rev === 'string' ? doc.remote_rev.trim() : ''
+    const degraded = typeof doc.degraded === 'string' ? doc.degraded.trim() : ''
+    const updateAvailable = doc.update_available === true
+    const behind = Number(doc.behind)
+    // 受限档位下 fetch 被拒、退回只读探测：远端有新提交但落后数未知。仍然提示有更新，
+    // behind 给 null（客户端不显示数字），panel / knowledge / reference 都是 0。
+    if (degraded !== '' && updateAvailable && !(Number.isInteger(behind) && behind > 0)) {
+      kbState = {
+        version: KB_STATE_VERSION,
+        rev: remoteRev,
+        behind: 0,
+        surface: emptyKbSurface(),
+        dismissedRev: kbState.dismissedRev,
+        checkedAt: kbNowIso(),
+        lastError: '',
+        degraded,
+        updateAvailable: true,
+        failures: 0,
+      }
+      kbLastError = ''
+      kbLastCheckAt = kbState.checkedAt
+      kbLastReason = ''
+      kbNotice = kbNoticeView(kbState)
+      await persistKbState(mainRoot)
+      return kbSnapshot()
+    }
     if (!Number.isInteger(behind) || behind < 0) {
-      await kbFailed(mainRoot, kbNowIso(), '知识库检查结果里的落后数不可用', 'unknown-behind')
+      await kbFailed(mainRoot, kbNowIso(), '知识库检查结果里的落后数不可用', 'unknown-behind', skipped)
       return kbSnapshot()
     }
     // 成功：覆盖 rev / behind / surface / checkedAt 并清 lastError；已「稍后」的远端提交继续静默。
+    // update_available=false 的只读探测结果等同已同步；字段照实记下，供排查。
     kbState = {
       version: KB_STATE_VERSION,
       rev: remoteRev,
@@ -1575,6 +1677,9 @@ export function apply(ctx) {
       dismissedRev: kbState.dismissedRev,
       checkedAt: kbNowIso(),
       lastError: '',
+      degraded,
+      updateAvailable: updateAvailable && degraded !== '',
+      failures: 0,
     }
     kbLastError = ''
     kbLastCheckAt = kbState.checkedAt
@@ -1585,9 +1690,9 @@ export function apply(ctx) {
   }
 
   // 单个 inflight：定时检查与手动重查撞在一起时只跑一次子进程。
-  function startKbCheck() {
+  function startKbCheck(force) {
     if (kbCheckFlight) return kbCheckFlight
-    const pending = runKbCheck().finally(() => {
+    const pending = runKbCheck(force === true).finally(() => {
       if (kbCheckFlight === pending) kbCheckFlight = null
     })
     kbCheckFlight = pending
@@ -1595,15 +1700,15 @@ export function apply(ctx) {
   }
 
   // 手动重查：有在跑的先等它结束（force 不能拿到同步前的旧快照）；距上次检查开始不足
-  // 60 秒时回当前快照，不重复起子进程。force=true 跳过这个节流：浏览器半「去同步」后
-  // 要立刻拿到新的落后数，否则提示行停在旧值。
+  // 60 秒时回当前快照，不重复起子进程。force=true 跳过这个节流并把 --force 传给脚本：
+  // 浏览器半「去同步 / 重试」后要立刻拿到新的落后数，失败冷却期内也要真跑一次。
   async function kbRecheck(payload) {
     await kbStateLoaded
     if (kbCheckFlight) await kbCheckFlight.catch(() => {})
     const force = payload !== null && typeof payload === 'object' && payload.force === true
     const now = Date.now()
     if (!force && kbLastCheckStart && now - kbLastCheckStart < KB_RECHECK_MIN_MS) return kbSnapshot()
-    return startKbCheck()
+    return startKbCheck(force)
   }
 
   // 「稍后」：记住这一版远端提交，同一 rev 不再提示；换 rev 才会重新出现。
@@ -1632,7 +1737,7 @@ export function apply(ctx) {
   // timer 是可选服务：缺它时整个 host 半照常挂载，只是不装定时器、不跑后台检查。
   // 用 ctx.inject 按依赖挂载：注入到的上下文里服务名就是属性（timerCtx.timer），
   // 取不到时退回 get('timer')；两种写法都没有就不装。定时器一次只排一个 timeout，
-  // 每次到点按 settings 决定跑不跑检查、下一次什么时候。
+  // 每次到点重读 settings，按上次检查开始时刻与间隔判到期；改间隔最多 60 秒后生效。
   ctx.effect(() => {
     const fiber = ctx.inject(['timer'], (timerCtx) => {
       const timer = timerCtx.timer || (typeof timerCtx.get === 'function' ? timerCtx.get('timer') : undefined)
@@ -1754,7 +1859,10 @@ export function apply(ctx) {
               )
               result = {
                 ok: true,
-                value: Object.assign({}, value, { kbNotice: kbNotice ? Object.assign({}, kbNotice) : null }),
+                value: Object.assign({}, value, {
+                  kbNotice: kbNotice ? Object.assign({}, kbNotice) : null,
+                  kbError: kbErrorView(),
+                }),
               }
             }
           } catch (error) {

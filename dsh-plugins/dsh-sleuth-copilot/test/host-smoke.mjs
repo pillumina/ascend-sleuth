@@ -7,7 +7,7 @@
 
 import { exec, execSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -229,16 +229,21 @@ function makeResultShell(result) {
 }
 
 // 知识库检查的假 shell：凡调 scripts/kb_sync.py 的命令都回夹具 JSON，其余命令真跑
-// （解释器探测走真实 python3；不 fetch、不跑 git、不联网）。
+// （解释器探测走真实 python3；不 fetch、不跑 git、不联网）。setForcePayload 模拟脚本的
+// 失败冷却：带 --force 的命令回另一份夹具（脚本靠 --force 跳过冷却，回真实结果）。
 function makeKbShell() {
   const calls = []
   const specs = []
   let payload = kbPayload({})
+  let forcedPayload = null
   return {
     calls,
     specs,
     setPayload(next) {
       payload = next
+    },
+    setForcePayload(next) {
+      forcedPayload = next
     },
     resolve(request) {
       return request
@@ -248,10 +253,11 @@ function makeKbShell() {
       calls.push(command)
       specs.push(spec)
       if (!command.includes('kb_sync.py')) return { result: () => runCommand(spec) }
+      const body = forcedPayload !== null && /(^|\s)--force(\s|$)/.test(command) ? forcedPayload : payload
       return {
         result: () => Promise.resolve({
           exitCode: 0, timedOut: false, aborted: false,
-          stdout: { text: JSON.stringify(payload) }, stderr: { text: '' },
+          stdout: { text: JSON.stringify(body) }, stderr: { text: '' },
         }),
       }
     },
@@ -1153,7 +1159,8 @@ expect('非检出：E_NO_ROOT', outsideState.envelope.result.value.ok === false 
 
 // ── 知识库更新提醒 ──────────────────────────────────────────────────────────
 // 检查唯一入口是 scripts/kb_sync.py：每个用例换一份夹具 JSON，验证静默规则、同一远端
-// 提交的去重与状态文件。假 timer 由用例点火，不挂真实定时器（进程不会被定时器拖住）。
+// 提交的去重与状态文件、受限档位的退化提示、连续失败上屏与按设置到期判断。
+// 假 timer 由用例点火，不挂真实定时器（进程不会被定时器拖住）。
 const kbHarnesses = []
 let kbTimers = null
 let kbTimerHarness = null
@@ -1198,23 +1205,43 @@ function newKbHarness(payload, timers) {
     && kbCommands[0].includes(join(KB_REPO, 'scripts', 'kb_sync.py'))
     && kbCommands[0].includes("--root '" + KB_REPO + "'"),
     JSON.stringify(kbCommands))
+  // 定时检查不带 --force：脚本的失败冷却与静默规则照旧。
+  expect('知识库：定时检查的命令不带 --force',
+    kbCommands.every((command) => !/(^|\s)--force(\s|$)/.test(command)), JSON.stringify(kbCommands))
   // 真机 bug：部署默认是 workspace-write + launch-root，后台 fetch 会 EPERM；这里显式收窄到主检出。
   const kbSpec = first.shell.specs.filter((spec) => String(spec.command || '').includes('kb_sync.py')).pop()
   expect('知识库：后台 fetch 的沙箱档位收窄到 workspace-write + 主检出',
     kbSpec && kbSpec.sandboxPolicy && kbSpec.sandboxPolicy.mode === 'workspace-write'
     && kbSpec.sandboxPolicy.workspaceRoot === KB_REPO,
     JSON.stringify(kbSpec && kbSpec.sandboxPolicy))
-  // 默认 settings 缺省：下一次排 30 分钟后。
-  expect('知识库：默认下一次 30 分钟后',
-    kbTimers.timeouts.length === 2 && kbTimers.timeouts[1].ms === 30 * 60 * 1000,
+  // 默认 settings 缺省：检查后至多 60 秒重读设置，按「上次检查开始 + 间隔」判到期。
+  expect('知识库：检查后至多 60 秒重读设置、按到期规则判下一次',
+    kbTimers.timeouts.length === 2 && kbTimers.timeouts[1].ms === 60 * 1000,
     JSON.stringify(kbTimers.timeouts.map((entry) => entry.ms)))
-  // 周期检查要真被执行一次：点火下一次 timeout，kb_sync 子进程计数应 +1。
+  // 未到期（离上次检查开始还不足默认 30 分钟）：点火只重读设置、不起子进程。
   await kbTimers.timeouts[1].fn()
+  expect('知识库：未到期时 60 秒轮询不起子进程、继续排下一次',
+    first.shell.calls.filter((command) => command.includes('kb_sync.py')).length === kbCommands.length
+    && kbTimers.timeouts.length === 3 && kbTimers.timeouts[2].ms === 60 * 1000,
+    JSON.stringify({
+      calls: first.shell.calls.filter((command) => command.includes('kb_sync.py')).length,
+      timeouts: kbTimers.timeouts.map((entry) => entry.ms),
+    }))
+  // 时间前进 31 分钟（超过默认 30 分钟间隔）：下一次轮询按「上次检查开始 + 间隔」判到期。
+  const realNowForInterval = Date.now
+  let intervalClockShift = 0
+  Date.now = () => realNowForInterval() + intervalClockShift
+  try {
+    intervalClockShift = 31 * 60 * 1000
+    await kbTimers.timeouts[2].fn()
+  } finally {
+    Date.now = realNowForInterval
+  }
   const commandsAfterInterval = first.shell.calls.filter((command) => command.includes('kb_sync.py'))
-  expect('知识库：到点再跑一次检查并继续排下一次',
+  expect('知识库：到期再跑一次检查并继续排下一次',
     commandsAfterInterval.length === kbCommands.length + 1
     && commandsAfterInterval.every((command) => /--check/.test(command) && /--json/.test(command))
-    && kbTimers.timeouts.length === 3 && kbTimers.timeouts[2].ms === 30 * 60 * 1000,
+    && kbTimers.timeouts.length === 4 && kbTimers.timeouts[3].ms === 60 * 1000,
     JSON.stringify({ calls: commandsAfterInterval.length, timeouts: kbTimers.timeouts.map((entry) => entry.ms) }))
   expect('知识库：不自己拼 git 命令',
     first.shell.calls.every((command) => !/(^|\s)git(\s|$)/.test(command)), JSON.stringify(first.shell.calls))
@@ -1270,6 +1297,12 @@ function newKbHarness(payload, timers) {
     recheckForce && recheckForce.notice && recheckForce.notice.rev === '9f8e7d'
     && recheckForce.notice.behind === 3 && commandsAfterForce.length === 3,
     JSON.stringify({ value: recheckForce, kbCalls: commandsAfterForce.length }))
+  // force 要一路传到脚本 argv：不带 --force 时脚本在失败冷却内直接回 skipped，重试等于没试。
+  expect('知识库：force 重查的命令带 --force',
+    commandsAfterForce.length > 0
+    && /(^|\s)--force(\s|$)/.test(commandsAfterForce[commandsAfterForce.length - 1])
+    && commandsAfterForce.slice(0, -1).every((command) => !/(^|\s)--force(\s|$)/.test(command)),
+    JSON.stringify(commandsAfterForce))
 
   // ①b 沙箱档位：部署默认已是完全权限时原样透传（不再包一层）。
   const fullShell = makeKbShell()
@@ -1283,13 +1316,30 @@ function newKbHarness(payload, timers) {
     fullSpec && fullSpec.sandboxPolicy && fullSpec.sandboxPolicy.mode === 'danger-full-access',
     JSON.stringify(fullSpec && fullSpec.sandboxPolicy))
 
-  // ①c 按 settings 调度：check_minutes=15 → 下一次 15 分钟。
+  // ①c 按 settings 调度：check_minutes=15 → 检查后按 60 秒轮询等到期。
   writeKbSettings({ check_enabled: true, check_minutes: 15 })
   const fifteen = newKbHarness(kbPayload({ remote_rev: 'abc1234', behind: 2 }), makeFakeTimers())
   await fifteen.timers.timeouts[0].fn()
-  expect('知识库：check_minutes=15 时下一次 15 分钟',
-    fifteen.timers.timeouts.length === 2 && fifteen.timers.timeouts[1].ms === 15 * 60 * 1000,
-    JSON.stringify(fifteen.timers.timeouts.map((entry) => entry.ms)))
+  expect('知识库：check_minutes=15 时检查后按 60 秒轮询等到期',
+    kbSyncCalls(fifteen.shell) === 1
+    && fifteen.timers.timeouts.length === 2 && fifteen.timers.timeouts[1].ms === 60 * 1000,
+    JSON.stringify({ calls: kbSyncCalls(fifteen.shell), timeouts: fifteen.timers.timeouts.map((entry) => entry.ms) }))
+  // P2：间隔从 15 分钟改成 5 分钟，时间前进 10 分钟再点火那次 60 秒轮询。
+  // 按新间隔已到期，最多 60 秒就起第二次检查，不再等旧间隔走完。
+  writeKbSettings({ check_enabled: true, check_minutes: 5 })
+  const realNowForReschedule = Date.now
+  let rescheduleClockShift = 0
+  Date.now = () => realNowForReschedule() + rescheduleClockShift
+  try {
+    rescheduleClockShift = 10 * 60 * 1000
+    await fifteen.timers.timeouts[1].fn()
+  } finally {
+    Date.now = realNowForReschedule
+  }
+  expect('知识库：改间隔后 60 秒轮询按新间隔到期并起第二次检查',
+    kbSyncCalls(fifteen.shell) === 2
+    && fifteen.timers.timeouts.length === 3 && fifteen.timers.timeouts[2].ms === 60 * 1000,
+    JSON.stringify({ calls: kbSyncCalls(fifteen.shell), timeouts: fifteen.timers.timeouts.map((entry) => entry.ms) }))
   clearKbSettings()
 
   // ①d check_enabled=false：不跑 kb_sync、60 秒后再读、提示置空；重开恢复检查。
@@ -1330,13 +1380,35 @@ function newKbHarness(payload, timers) {
   const reopened = (await kbRpc(paused.harness, 'copilot-state', {
     sessionId: 'kb-paused', cwd: SANDBOX,
   }, 'kb-state-reopened')).envelope.result.value
-  expect('知识库：重新打开后恢复检查并按间隔续排',
-    kbSyncCalls(paused.shell) === 2
-    && reopened && reopened.kbNotice && reopened.kbNotice.rev === '9f8e7d'
-    && paused.timers.timeouts.length === 4 && paused.timers.timeouts[3].ms === 30 * 60 * 1000,
+  expect('知识库：重新打开后不立即检查、按到期规则继续 60 秒轮询',
+    kbSyncCalls(paused.shell) === 1
+    && reopened && reopened.kbNotice === null
+    && paused.timers.timeouts.length === 4 && paused.timers.timeouts[3].ms === 60 * 1000,
     JSON.stringify({
       calls: kbSyncCalls(paused.shell),
       notice: reopened && reopened.kbNotice,
+      timeouts: paused.timers.timeouts.map((entry) => entry.ms),
+    }))
+  // 时间前进 31 分钟（超过 30 分钟间隔）：重新打开后到期即恢复检查，提示重新出现。
+  const realNowForReopen = Date.now
+  let reopenClockShift = 0
+  Date.now = () => realNowForReopen() + reopenClockShift
+  try {
+    reopenClockShift = 31 * 60 * 1000
+    await paused.timers.timeouts[3].fn()
+  } finally {
+    Date.now = realNowForReopen
+  }
+  const reopenedDue = (await kbRpc(paused.harness, 'copilot-state', {
+    sessionId: 'kb-paused', cwd: SANDBOX,
+  }, 'kb-state-reopened-due')).envelope.result.value
+  expect('知识库：重新打开后到期即恢复检查',
+    kbSyncCalls(paused.shell) === 2
+    && reopenedDue && reopenedDue.kbNotice && reopenedDue.kbNotice.rev === '9f8e7d'
+    && paused.timers.timeouts.length === 5 && paused.timers.timeouts[4].ms === 60 * 1000,
+    JSON.stringify({
+      calls: kbSyncCalls(paused.shell),
+      notice: reopenedDue && reopenedDue.kbNotice,
       timeouts: paused.timers.timeouts.map((entry) => entry.ms),
     }))
   clearKbSettings()
@@ -1353,6 +1425,51 @@ function newKbHarness(payload, timers) {
       timeouts: stringOff.timers.timeouts.map((entry) => entry.ms),
     }))
   clearKbSettings()
+
+  // ①f 退化提示：受限档位 fetch 被拒但只读探测成功。远端有新提交、落后数未知，
+  // 仍然提示有更新；behind 给 null，改动面全 0（脚本拿不到）。
+  const degradedPayload = kbPayload({
+    remote_rev: 'feed777',
+    behind: 'unknown',
+    update_available: true,
+    degraded: 'permission-denied',
+    degraded_error: 'fetch 被沙箱拒绝（workspace-write）',
+    surface: { knowledge: 0, routing: 0, reference: 0, methodology: 0, panel: 0, other: 0 },
+    surface_known: false,
+  })
+  const degraded = newKbHarness(degradedPayload, false)
+  const degradedValue = (await kbRpc(degraded.harness, 'copilot-kb-recheck', {}, 'kb-recheck-degraded')).envelope.result.value
+  expect('知识库：退化 payload 出现 updateAvailable 提示且 behind 为 null',
+    degradedValue && degradedValue.notice
+    && degradedValue.notice.rev === 'feed777'
+    && degradedValue.notice.behind === null
+    && degradedValue.notice.updateAvailable === true
+    && degradedValue.notice.degraded === 'permission-denied'
+    && degradedValue.notice.panel === 0 && degradedValue.notice.knowledge === 0
+    && degradedValue.notice.reference === 0,
+    JSON.stringify(degradedValue))
+  const degradedState = (await kbRpc(degraded.harness, 'copilot-state', {
+    sessionId: 'kb-degraded', cwd: SANDBOX,
+  }, 'kb-state-degraded')).envelope.result.value
+  const fileDegraded = readKbState()
+  expect('知识库：退化提示随 copilot-state 下发、状态文件记 degraded 与 updateAvailable',
+    degradedState && degradedState.kbNotice && degradedState.kbNotice.rev === 'feed777'
+    && degradedState.kbNotice.behind === null
+    && fileDegraded && fileDegraded.rev === 'feed777'
+    && fileDegraded.degraded === 'permission-denied' && fileDegraded.updateAvailable === true
+    && fileDegraded.failures === 0,
+    JSON.stringify({ notice: degradedState && degradedState.kbNotice, file: fileDegraded }))
+  const degradedSynced = newKbHarness(kbPayload({
+    remote_rev: 'feed888',
+    behind: 0,
+    degraded: 'permission-denied',
+    update_available: false,
+    surface: { knowledge: 0, routing: 0, reference: 0, methodology: 0, panel: 0, other: 0 },
+    surface_known: false,
+  }), false)
+  const degradedSyncedValue = (await kbRpc(degradedSynced.harness, 'copilot-kb-recheck', {}, 'kb-recheck-degraded-synced')).envelope.result.value
+  expect('知识库：update_available=false 的退化探测不提示（等同已同步）',
+    degradedSyncedValue && degradedSyncedValue.notice === null, JSON.stringify(degradedSyncedValue))
 
   // ② 稍后：notice 置空，记录落盘；同一 rev 换个进程（新 harness）也不再提示。
   const dismissFirst = (await kbRpc(first.harness, 'copilot-kb-dismiss', {
@@ -1461,6 +1578,142 @@ function newKbHarness(payload, timers) {
     && fileFailed && /fatal: unable to access/.test(fileFailed.lastError || '')
     && fileFailed.rev === 'a11ce55' && fileFailed.behind === 3,
     JSON.stringify({ value: failedValue, notice: failedState && failedState.kbNotice, file: fileFailed }))
+
+  // ⑥b 连续失败上屏：未满 3 次仍静默；失败冷却里的跳过（doc.skipped）不计入连败；
+  // 满 3 次或权限拒绝时 kbError 出现；成功一次后清空、failures 归零。
+  const streak = newKbHarness(kbPayload({ remote_rev: 'bad0001', behind: 3 }), false)
+  await kbRpc(streak.harness, 'copilot-kb-recheck', {}, 'kb-streak-seed')
+  const networkFailure = kbPayload({
+    ok: false, reason: 'network', behind: 'unknown', remote_rev: null,
+    fetch_error: 'fatal: unable to access https://example.invalid/x: Could not resolve host',
+  })
+  streak.shell.setPayload(networkFailure)
+  await kbRpc(streak.harness, 'copilot-kb-recheck', { force: true }, 'kb-streak-1')
+  streak.shell.setPayload(kbPayload({
+    ok: false, reason: 'cooldown', skipped: true, behind: 0, remote_rev: null,
+  }))
+  await kbRpc(streak.harness, 'copilot-kb-recheck', { force: true }, 'kb-streak-skipped')
+  const afterSkipped = (await kbRpc(streak.harness, 'copilot-state', {
+    sessionId: 'kb-streak', cwd: SANDBOX,
+  }, 'kb-state-streak-skipped')).envelope.result.value
+  const fileSkipped = readKbState()
+  expect('知识库：失败冷却里的跳过不计入连败、未满 3 次不上屏',
+    fileSkipped && fileSkipped.failures === 1
+    && afterSkipped && afterSkipped.kbError === null,
+    JSON.stringify({ file: fileSkipped, error: afterSkipped && afterSkipped.kbError }))
+  streak.shell.setPayload(networkFailure)
+  await kbRpc(streak.harness, 'copilot-kb-recheck', { force: true }, 'kb-streak-2')
+  const afterTwo = (await kbRpc(streak.harness, 'copilot-state', {
+    sessionId: 'kb-streak', cwd: SANDBOX,
+  }, 'kb-state-streak-2')).envelope.result.value
+  expect('知识库：连续失败 2 次仍静默',
+    afterTwo && afterTwo.kbError === null
+    && readKbState() && readKbState().failures === 2,
+    JSON.stringify({ error: afterTwo && afterTwo.kbError, file: readKbState() }))
+  await kbRpc(streak.harness, 'copilot-kb-recheck', { force: true }, 'kb-streak-3')
+  const afterThree = (await kbRpc(streak.harness, 'copilot-state', {
+    sessionId: 'kb-streak', cwd: SANDBOX,
+  }, 'kb-state-streak-3')).envelope.result.value
+  const fileThree = readKbState()
+  expect('知识库：连续失败 3 次后 kbError 上屏',
+    afterThree && afterThree.kbError
+    && afterThree.kbError.reason === 'network'
+    && /fatal: unable to access/.test(afterThree.kbError.message || '')
+    && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d$/.test(afterThree.kbError.checkedAt || '')
+    && fileThree && fileThree.failures === 3,
+    JSON.stringify({ error: afterThree && afterThree.kbError, file: fileThree }))
+
+  const permission = newKbHarness(kbPayload({ remote_rev: 'perm001', behind: 3 }), false)
+  await kbRpc(permission.harness, 'copilot-kb-recheck', {}, 'kb-permission-seed')
+  permission.shell.setPayload(kbPayload({
+    ok: false, reason: 'permission-denied', behind: 0, remote_rev: 'perm001',
+    fetch_error: 'fetch 被沙箱拒绝（workspace-write）',
+  }))
+  const permissionValue = (await kbRpc(permission.harness, 'copilot-kb-recheck', { force: true }, 'kb-permission-1')).envelope.result.value
+  const permissionState = (await kbRpc(permission.harness, 'copilot-state', {
+    sessionId: 'kb-permission', cwd: SANDBOX,
+  }, 'kb-state-permission')).envelope.result.value
+  expect('知识库：权限拒绝一次即出 kbError',
+    permissionValue && permissionValue.kbError
+    && permissionValue.kbError.reason === 'permission-denied'
+    && permissionState && permissionState.kbError
+    && permissionState.kbError.reason === 'permission-denied',
+    JSON.stringify({ value: permissionValue && permissionValue.kbError, state: permissionState && permissionState.kbError }))
+  permission.shell.setPayload(kbPayload({ remote_rev: 'perm001', behind: 2 }))
+  const clearedValue = (await kbRpc(permission.harness, 'copilot-kb-recheck', { force: true }, 'kb-permission-2')).envelope.result.value
+  const clearedState = (await kbRpc(permission.harness, 'copilot-state', {
+    sessionId: 'kb-permission', cwd: SANDBOX,
+  }, 'kb-state-permission-2')).envelope.result.value
+  const fileCleared = readKbState()
+  expect('知识库：成功检查后 kbError 清空、failures 归零',
+    clearedValue && clearedValue.kbError === null
+    && clearedState && clearedState.kbError === null
+    && fileCleared && fileCleared.failures === 0,
+    JSON.stringify({ value: clearedValue && clearedValue.kbError, state: clearedState && clearedState.kbError, file: fileCleared }))
+
+  // ⑥c 关掉提醒检查也要收掉失败上屏与失败计数：只清内存不写盘的话，重启后仍会显示。
+  // 关着期间的轮询不再重复写状态文件。
+  const disabledAfterFailure = newKbHarness(kbPayload({ remote_rev: 'fail0001', behind: 3 }), makeFakeTimers())
+  await disabledAfterFailure.timers.timeouts[0].fn()
+  disabledAfterFailure.shell.setPayload(networkFailure)
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await kbRpc(disabledAfterFailure.harness, 'copilot-kb-recheck', { force: true }, 'kb-disabled-fail-' + attempt)
+  }
+  const beforeDisable = (await kbRpc(disabledAfterFailure.harness, 'copilot-state', {
+    sessionId: 'kb-disabled-fail', cwd: SANDBOX,
+  }, 'kb-state-disabled-fail-before')).envelope.result.value
+  expect('知识库：关掉提醒前已连败 3 次、kbError 在屏',
+    beforeDisable && beforeDisable.kbError && beforeDisable.kbError.reason === 'network'
+    && readKbState() && readKbState().failures === 3,
+    JSON.stringify({ error: beforeDisable && beforeDisable.kbError, file: readKbState() }))
+  writeKbSettings({ check_enabled: false, check_minutes: 30 })
+  await disabledAfterFailure.timers.timeouts[1].fn()
+  const afterDisable = (await kbRpc(disabledAfterFailure.harness, 'copilot-state', {
+    sessionId: 'kb-disabled-fail', cwd: SANDBOX,
+  }, 'kb-state-disabled-fail-after')).envelope.result.value
+  const fileAfterDisable = readKbState()
+  expect('知识库：关掉提醒检查后 kbError 收掉、failures 与 lastError 归零',
+    afterDisable && afterDisable.kbError === null
+    && fileAfterDisable && fileAfterDisable.failures === 0 && fileAfterDisable.lastError === '',
+    JSON.stringify({ error: afterDisable && afterDisable.kbError, file: fileAfterDisable }))
+  // 状态文件是「先写临时文件再 rename」：每次写 mtime 都会变。关着时下一轮轮询不该再写。
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  const mtimeAfterClear = statSync(KB_STATE).mtimeMs
+  const callsAfterClear = kbSyncCalls(disabledAfterFailure.shell)
+  await disabledAfterFailure.timers.timeouts[2].fn()
+  const afterSecondPoll = (await kbRpc(disabledAfterFailure.harness, 'copilot-state', {
+    sessionId: 'kb-disabled-fail', cwd: SANDBOX,
+  }, 'kb-state-disabled-fail-poll')).envelope.result.value
+  expect('知识库：关着提醒时后续轮询不跑子进程、不重复写状态文件',
+    kbSyncCalls(disabledAfterFailure.shell) === callsAfterClear
+    && afterSecondPoll && afterSecondPoll.kbError === null
+    && statSync(KB_STATE).mtimeMs === mtimeAfterClear,
+    JSON.stringify({
+      calls: kbSyncCalls(disabledAfterFailure.shell),
+      error: afterSecondPoll && afterSecondPoll.kbError,
+      mtimeUnchanged: statSync(KB_STATE).mtimeMs === mtimeAfterClear,
+    }))
+  clearKbSettings()
+
+  // ⑥d 手动重查要跳过脚本的失败冷却：普通检查脚本回 skipped，force 请求回真实结果。
+  const cooldown = newKbHarness(kbPayload({
+    ok: false, skipped: true, reason: 'network', behind: 'unknown', remote_rev: null,
+    fetch_error: '失败冷却期内，脚本没有联网',
+  }), false)
+  cooldown.shell.setForcePayload(kbPayload({ remote_rev: 'warm001', behind: 2 }))
+  const cooldownNormal = (await kbRpc(cooldown.harness, 'copilot-kb-recheck', {}, 'kb-cooldown-normal')).envelope.result.value
+  const cooldownFile = readKbState()
+  const cooldownForced = (await kbRpc(cooldown.harness, 'copilot-kb-recheck', { force: true }, 'kb-cooldown-forced')).envelope.result.value
+  const cooldownCommands = cooldown.shell.calls.filter((command) => command.includes('kb_sync.py'))
+  expect('知识库：手动重查把 --force 传给脚本、冷却内拿到真实结果',
+    cooldownCommands.length === 2
+    && !/(^|\s)--force(\s|$)/.test(cooldownCommands[0])
+    && /(^|\s)--force(\s|$)/.test(cooldownCommands[1])
+    && cooldownNormal && cooldownNormal.notice === null
+    && cooldownFile && cooldownFile.failures === 0
+    && cooldownForced && cooldownForced.notice && cooldownForced.notice.rev === 'warm001'
+    && cooldownForced.notice.behind === 2,
+    JSON.stringify({ commands: cooldownCommands, normal: cooldownNormal, forced: cooldownForced && cooldownForced.notice }))
 
   // ⑦ 启动不从状态文件恢复提示：文件里有上次成功的落后数，第一次检查前 kbNotice 仍是 null；
   // 检查完成后才出现。状态文件只恢复「稍后」记录与排查字段。
@@ -1608,7 +1861,7 @@ for (const harness of [rw, incHarness, internalHarness, ro, timeoutHarness, abor
   }
 }
 expect('知识库：卸载时清掉排定的定时器',
-  kbTimers !== null && kbTimers.timeouts.length === 3
+  kbTimers !== null && kbTimers.timeouts.length === 4
   && kbTimers.timeouts.every((entry) => entry.disposed === true)
   && kbTimers.intervals.length === 0,
   JSON.stringify(kbTimers && { timeouts: kbTimers.timeouts.map((entry) => ({ ms: entry.ms, disposed: entry.disposed })) }))
