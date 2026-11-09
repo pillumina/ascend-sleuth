@@ -138,6 +138,8 @@ function emptyKbState() {
     dismissedRev: '',
     checkedAt: '',
     lastError: '',
+    // 最近一次检查是否成功（与 rev/behind 是否可信分开记）：启动恢复提示只看它。
+    lastCheckOk: false,
   }
 }
 
@@ -1318,6 +1320,8 @@ export function apply(ctx) {
       dismissedRev: typeof raw.dismissedRev === 'string' ? raw.dismissedRev : '',
       checkedAt: typeof raw.checkedAt === 'string' ? raw.checkedAt : '',
       lastError: typeof raw.lastError === 'string' ? raw.lastError : '',
+      // 旧版本状态文件没有这个字段：按「上次检查不算成功」处理。
+      lastCheckOk: raw.lastCheckOk === true,
     }
   }
 
@@ -1342,8 +1346,9 @@ export function apply(ctx) {
     kbState = state
     kbLastError = state.lastError
     kbLastCheckAt = state.checkedAt
-    // 上次检查失败时保留的 rev/behind 不冒充新提示：lastError 为空才恢复提示。
-    if (state.lastError === '') kbNotice = kbNoticeView(state)
+    // 只有上次检查成功才恢复提示：关掉同步或转离线后保留的旧 rev/behind 不冒充新提示，
+    // 否则每次启动会先闪一行旧落后数，等第一次检查回来才消失。
+    if (state.lastCheckOk === true) kbNotice = kbNoticeView(state)
   })().catch(() => {})
 
   async function writeKbState(mainRoot) {
@@ -1373,10 +1378,12 @@ export function apply(ctx) {
     }
   }
 
-  // 静默收场（离线部署 / 关闭同步）：清 lastError、更新 checkedAt，保留上次 rev/behind 供排查。
+  // 静默收场（离线部署 / 关闭同步）：清 lastError、更新 checkedAt，保留上次 rev/behind 供排查；
+  // lastCheckOk 记 false，重启后不会拿这组数字恢复提示。
   function kbQuiet(mainRoot, checkedAt, reason) {
     kbState.checkedAt = checkedAt
     kbState.lastError = ''
+    kbState.lastCheckOk = false
     kbLastError = ''
     kbLastCheckAt = checkedAt
     kbLastReason = reason || ''
@@ -1388,6 +1395,7 @@ export function apply(ctx) {
   function kbFailed(mainRoot, checkedAt, text, reason) {
     kbState.checkedAt = checkedAt
     kbState.lastError = text
+    kbState.lastCheckOk = false
     kbLastError = text
     kbLastCheckAt = checkedAt
     kbLastReason = reason || ''
@@ -1455,6 +1463,7 @@ export function apply(ctx) {
       dismissedRev: kbState.dismissedRev,
       checkedAt: kbNowIso(),
       lastError: '',
+      lastCheckOk: true,
     }
     kbLastError = ''
     kbLastCheckAt = kbState.checkedAt
@@ -1475,11 +1484,13 @@ export function apply(ctx) {
   }
 
   // 手动重查：有在跑的直接合并；距上次检查开始不足 60 秒时回当前快照，不重复起子进程。
-  async function kbRecheck() {
+  // force=true 跳过这个节流（浏览器半「去同步」后要立刻拿到新的落后数，否则提示行停在旧值）。
+  async function kbRecheck(payload) {
     await kbStateLoaded
     if (kbCheckFlight) return kbCheckFlight
+    const force = payload !== null && typeof payload === 'object' && payload.force === true
     const now = Date.now()
-    if (kbLastCheckStart && now - kbLastCheckStart < KB_RECHECK_MIN_MS) return kbSnapshot()
+    if (!force && kbLastCheckStart && now - kbLastCheckStart < KB_RECHECK_MIN_MS) return kbSnapshot()
     return startKbCheck()
   }
 
@@ -1606,7 +1617,7 @@ export function apply(ctx) {
             } else if (endpoint === 'copilot-kb-dismiss') {
               result = { ok: true, value: await kbDismiss(payload) }
             } else if (endpoint === 'copilot-kb-recheck') {
-              result = { ok: true, value: await kbRecheck() }
+              result = { ok: true, value: await kbRecheck(payload) }
             } else {
               // 知识库提示随状态下发，不在 computeState 内部拼：那条取数链路与检出无关。
               const value = await stateFor(

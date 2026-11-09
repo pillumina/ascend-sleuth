@@ -29,8 +29,9 @@ window.__ModuleLoader__.load({
     // 去同步后点开「知识库」标签：整页是异步挂载的，查早了没有标签，短轮询等它出现。
     const KB_TAB_OPEN_POLL_MS = 100
     const KB_TAB_OPEN_WAIT_MS = 1500
-    // 同步脚本要跑一会儿：点「去同步」后 30 秒复查一次结果。
-    const KB_RECHECK_DELAY_MS = 30000
+    // 同步要跑一会儿：点「去同步」后按 30 秒、60 秒各复查一次；每次带 force 让 host
+    // 跳过 60 秒节流，行还在才挂下一次。
+    const KB_RECHECK_DELAYS_MS = [30000, 60000]
     const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
     const FILTER_KEYS = ['all', 'open', 'pending', 'sediment']
     // PR 台账允许的状态（与 scripts/pr_status.py 的 STATES 一致）。
@@ -468,11 +469,12 @@ window.__ModuleLoader__.load({
       'none': '未记录',
       // 知识库落后提醒：host 半定时检测后由 copilot-state 带下来。
       'kb.behind': '知识库落后 {n} 个提交',
-      'kb.panel': '含面板代码：同步后重启 DSH 才能加载新面板',
+      'kb.panel': '这批改动含面板代码：同步后重启 DSH 才能加载新面板。',
       'kb.go': '去同步',
       'kb.later': '稍后',
-      'kb.laterDone': '已设为稍后提醒',
-      'kb.missing': '没找到 Ascend Sleuth 面板，先在侧栏「插件」里装面板包',
+      'kb.laterDone': '这一版不再提醒。',
+      'kb.laterFailed': '稍后没记上：主检出可能不可写。',
+      'kb.missing': '没找到 Ascend Sleuth 整页，先在侧栏「插件」里装面板包。',
       'kb.collapsed': '知识库有更新',
     }
     const EN = {
@@ -902,11 +904,12 @@ window.__ModuleLoader__.load({
       'none': 'not recorded',
       // Knowledge base behind notice: attached by the host half after a check.
       'kb.behind': 'Knowledge base is {n} commits behind',
-      'kb.panel': 'Includes panel code: restart DSH after syncing to load the new panel',
+      'kb.panel': 'These changes include panel code: restart DSH after syncing to load the new panel.',
       'kb.go': 'Sync',
       'kb.later': 'Later',
-      'kb.laterDone': 'Set to remind later',
-      'kb.missing': 'Ascend Sleuth panel not found. Install the panel package from Plugins in the sidebar first',
+      'kb.laterDone': 'This revision will not be shown again.',
+      'kb.laterFailed': 'Could not record the later reminder: the main checkout may not be writable.',
+      'kb.missing': 'Ascend Sleuth page not found. Install the panel package from Plugins in the sidebar first.',
       'kb.collapsed': 'knowledge base has updates',
     }
     const DICTS = { zh: ZH, en: EN }
@@ -3653,7 +3656,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             IconChevron({ open: true }))
         }
 
-        // 「去同步」：切到 Ascend Sleuth 整页，再尽力点开该页的「知识库」标签，最后挂一次复查。
+        // 「去同步」：切到 Ascend Sleuth 整页，再尽力点开该页的「知识库」标签，最后挂复查。
         // 拿不到 layout 服务时只 flash 一句装面板的指引，不抛。
         function goSync() {
           let switched = false
@@ -3664,7 +3667,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           }
           if (!switched) flash(tr('kb.missing'))
           openKbTab()
-          scheduleKbRecheck()
+          scheduleKbRecheck(0)
         }
 
         // 切到整页后不一定落在「知识库」子页：按可见标签名找，1.5 秒内轮询等页面挂载。
@@ -3713,29 +3716,41 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           tick()
         }
 
-        // 同步要时间：30 秒后问一次结果，按结果刷新提示行（同步完则行消失）。
-        function scheduleKbRecheck() {
-          if (kbRecheckTimer.current) clearTimeout(kbRecheckTimer.current)
+        // 同步要时间，且 host 的复查端点有 60 秒节流：按 30 秒、60 秒各试一次，
+        // 每次刷新后提示行还在才挂下一次（同步完则行消失、不再定时）。
+        function scheduleKbRecheck(attempt) {
+          if (kbRecheckTimer.current) {
+            clearTimeout(kbRecheckTimer.current)
+            kbRecheckTimer.current = null
+          }
+          const delay = KB_RECHECK_DELAYS_MS[attempt]
+          if (delay === undefined) return
           kbRecheckTimer.current = setTimeout(() => {
             kbRecheckTimer.current = null
             Promise.resolve()
-              .then(() => rpcCall('copilot-kb-recheck'))
+              .then(() => rpcCall('copilot-kb-recheck', { force: true }))
               .then(() => refresh(true))
+              .then(() => {
+                if (!store.data || !store.data.kbNotice) return
+                scheduleKbRecheck(attempt + 1)
+              })
               .catch(() => {
                 // 复查失败不改提示行：下一轮定时检查照常
               })
-          }, KB_RECHECK_DELAY_MS)
+          }, delay)
         }
 
-        // 「稍后」：记住这个版本号，本地立即收起提示行。
+        // 「稍后」：写进主检出的状态文件成功后才收起提示行。
+        // 写失败时保留行并说明原因，否则重开页面还会提示同一版，读者会以为上次点没生效。
         function dismissKbNotice() {
           if (!kbNotice) return
           const rev = String(kbNotice.rev || '')
-          if (store.data) store.data.kbNotice = null
-          emit()
-          flash(tr('kb.laterDone'))
-          rpcCall('copilot-kb-dismiss', { rev }).catch(() => {
-            // 写不进也不把行贴回来：下一轮定时检查按状态文件重新判断
+          rpcCall('copilot-kb-dismiss', { rev }).then(() => {
+            if (store.data) store.data.kbNotice = null
+            emit()
+            flash(tr('kb.laterDone'))
+          }, () => {
+            flash(tr('kb.laterFailed'))
           })
         }
 
@@ -3803,7 +3818,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 renderCollapse()),
               renderKbNotice(),
               collapsed ? null : h('div', { className: 'scp-foot' },
-                h('span', { className: 'scp-empty-note' }, tr('empty.body')))))
+                h('span', { className: 'scp-empty-note' }, tr('empty.body')))),
+            // 这个分支也要挂 hint：没有诊断单时点「去同步 / 稍后」的结果得看得见。
+            hint ? h('div', { className: 'scp-hint', role: 'status' }, hint) : null)
         }
 
         const bound = !!data.bound && primary.sessionId === data.bound.sessionId
@@ -6166,14 +6183,33 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
     }
 
     // ── 切到 Ascend Sleuth 整页（去同步用）──────────────────────────────────
-    // layout 是侧栏 shell 的服务；取不到时返回 false，调用方降级成一句装面板的指引。
+    // layout 是侧栏 shell 的服务，但不写进 exports.inject：声明成必需服务会让整条状态条在
+    // 缺它的宿主上进入 waiting，「去同步」这一个动作不该拖垮状态条。写法与 ascend-panel 取
+    // sessions 一致：先探针，再用 ctx.inject 动态注册；都拿不到就保持 null，调用方降级成
+    // 一句装面板的指引。
+    let layoutService = null
+    function noteLayout(value) {
+      if (layoutService) return
+      if (!value || typeof value !== 'object') return
+      layoutService = value
+    }
+    function probeLayout(ctx) {
+      layoutService = null
+      try { noteLayout(ctx.get('layout')) } catch { /* 未声明时可能抛 */ }
+      try {
+        if (typeof ctx.inject === 'function') {
+          ctx.inject(['layout'], (scope) => {
+            try { noteLayout(scope.get('layout')) } catch { /* 子 fiber 也没有就保持 null */ }
+          })
+        }
+      } catch { /* 注册失败就只靠前面的探针 */ }
+    }
     let selectPanelImpl = () => false
-    function makeSelectPanel(ctx) {
+    function makeSelectPanel() {
       return function selectPanel(id) {
         try {
-          const layout = ctx.get('layout')
-          if (!layout || typeof layout.selectPanel !== 'function') return false
-          layout.selectPanel(String(id))
+          if (!layoutService || typeof layoutService.selectPanel !== 'function') return false
+          layoutService.selectPanel(String(id))
           return true
         } catch {
           return false
@@ -6325,17 +6361,17 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
     return {
       // 显式声明用到的服务：cordis 只对声明过的服务名建键，未声明的 ctx.get 返回 undefined。
-      // 「切到该诊断的会话」必须有 sessions；layout 是侧栏 shell 的整页切换服务，去同步要切到
-      // Ascend Sleuth 整页，不声明就拿不到，所以这里跟着声明。取不到时 selectPanel 那层降级成
-      // 一句装面板的指引，不抛。uiWorkspace 只是后备，继续用 ctx.get 探测——声明一个旧发行版
-      // 没有的服务会让整条状态条一直等它，代价高于收益。
-      inject: ['connection', 'slots', 'sessions', 'layout'],
+      // 「切到该诊断的会话」必须有 sessions；uiWorkspace 只是后备，继续用 ctx.get 探测——
+      // 声明一个旧发行版没有的服务会让整条状态条一直等它，代价高于收益。
+      // layout（去同步切整页）同理不声明，走 probeLayout 的探针 + 动态注册。
+      inject: ['connection', 'slots', 'sessions'],
       apply(ctx) {
         const slots = ctx.get('slots')
         if (slots === undefined) return
         rpcCall = makeRpc(ctx)
         openSessionImpl = makeOpenSession(ctx)
-        selectPanelImpl = makeSelectPanel(ctx)
+        probeLayout(ctx)
+        selectPanelImpl = makeSelectPanel()
         ctx.effect(() => registerLocale(ctx), 'sleuth-copilot: locale')
         ctx.effect(() => stopTimer, 'sleuth-copilot: poll timer')
         ctx.effect(() => insertStyles(), 'sleuth-copilot: styles')
