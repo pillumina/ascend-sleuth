@@ -114,6 +114,15 @@ return {
         font-size:var(--t-tiny);color:var(--dsw-alias-label-secondary)}
       .sleu-kb-code{padding:1px 6px;border:1px solid var(--hair);border-radius:var(--r-xs);
         background:var(--dsw-alias-bg-layer-2);font-family:var(--font-mono);font-size:var(--t-tiny)}
+      /* 页脚常驻的归属仓行：只读时是一行事实，点「修改」在同排展开远端下拉。 */
+      .sleu-kb-idrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:12px;
+        font-size:var(--t-tiny);color:var(--dsw-alias-label-secondary)}
+      .sleu-kb-id{overflow-wrap:anywhere}
+      .sleu-kb-idrow.is-warn .sleu-kb-id{color:var(--c-amber)}
+      .sleu-kb-spin{display:inline-block;width:10px;height:10px;margin-right:6px;box-sizing:border-box;
+        border:1.5px solid currentColor;border-right-color:transparent;border-radius:var(--r-pill);
+        vertical-align:-1px;animation:sleu-kb-rot .9s linear infinite}
+      @keyframes sleu-kb-rot{to{transform:rotate(360deg)}}
       .sleu-kb-skel{height:52px;border-radius:var(--r-md)}
       @media (prefers-reduced-motion: reduce){
         .sleu-console,.sleu-console *{transition-duration:.001ms !important;animation-duration:.001ms !important;animation-delay:0ms !important}
@@ -166,7 +175,8 @@ return {
       E_BRANCH: '当前不在配置分支上',
       E_MERGE_IN_PROGRESS: '上一次合并还没结束',
       E_AUTO_MERGE_OFF: '自动合并已关闭',
-      E_SAME_REPO: '配置远端与 origin 不同源',
+      E_SAME_REPO: '同步源与归属仓不同源',
+      E_IDENTITY: '归属仓解析不到，未自动合并',
       E_FETCH: '拉取失败',
       E_CAS: '设置文件刚被改过，刷新后重试',
       E_SCRIPT: '本机脚本报错',
@@ -192,7 +202,8 @@ return {
       if (code === 'E_DIRTY') return '先提交或 git stash，再点「立即同步」。'
       if (code === 'E_NOT_FF') return '本地提交不能快进；处理后再同步。'
       if (code === 'E_WORKTREE') return '在 worktree 里不自动合并；回主检出再试。'
-      if (code === 'E_SAME_REPO') return '核对 .local/settings.json 的 sync.remote 后再试。'
+      if (code === 'E_SAME_REPO') return '把同步源设为归属仓，或把同步源换到与归属仓同源的远端。'
+      if (code === 'E_IDENTITY') return '改回 origin（默认），或把该远端补回来。'
       return ''
     }
     function kbShortRev(v) {
@@ -251,19 +262,20 @@ return {
     function kbMergeFlash(r) {
       // 旧脚本被失败缓存挡下：这次没有 fetch，不是同步失败，用提示而不是错误。
       if (r && r.ok !== true && r.code === 'E_SKIPPED') {
-        return { kind: 'warn', text: '上次失败还在 10 分钟缓存里，本次没有重试。',
+        return { kind: 'warn', code: 'E_SKIPPED', text: '上次失败还在 10 分钟缓存里，本次没有重试。',
           hint: kbHintFor('E_SKIPPED'), detail: r.detail ? String(r.detail) : '' }
       }
       if (!r || r.ok !== true) {
-        return { kind: 'err', text: '同步失败：' + kbReasonOf(r) + '。', hint: kbHintFor(r && r.code),
-          detail: r && r.detail ? String(r.detail) : '' }
+        return { kind: 'err', code: (r && r.code) || '', text: '同步失败：' + kbReasonOf(r) + '。',
+          hint: kbHintFor(r && r.code), detail: r && r.detail ? String(r.detail) : '' }
       }
       if (r.merged === false) {
         const why = r.reason_text ? String(r.reason_text).replace(/[。！？]$/, '') : kbReasonOf({ code: r.reason_code })
         if (!r.reason_code && !r.reason_text) {
-          return { kind: 'ok', text: '已经是最新，没有要合并的提交。' }
+          return { kind: 'ok', code: '', text: '已经是最新，没有要合并的提交。' }
         }
-        return { kind: 'warn', text: '没有自动合并：' + why + '。',
+        return { kind: 'warn', code: r.reason_code ? String(r.reason_code) : '',
+          text: '没有自动合并：' + why + '。',
           hint: '处理工作区或本地提交后，再点「立即同步」。' }
       }
       const to = kbShortRev(r.merged_rev)
@@ -278,7 +290,7 @@ return {
         text += '（' + inner.join('，') + '）'
       }
       text += '。知识立即生效；流程文件下次会话生效。'
-      return { kind: 'ok', text: text, hint: '回滚：git reset --hard ORIG_HEAD' }
+      return { kind: 'ok', code: '', text: text, hint: '回滚：git reset --hard ORIG_HEAD' }
     }
 
     const KB_BTN = {
@@ -339,18 +351,24 @@ return {
       const [dirty, setDirty] = React.useState(false)
       const [busy, setBusy] = React.useState('')
       const [flash, setFlash] = React.useState(null)
+      const [identityEdit, setIdentityEdit] = React.useState(false)
+      const [identityPick, setIdentityPick] = React.useState('')
 
-      const adopt = React.useCallback((payload) => {
+      // 首屏挂载才显示骨架屏；动作之后的刷新都走 silent：保留已有读数、结果提示与卡片，
+      // 原地换新。同步进行中也不换骨架屏——按钮与 aria-busy 表达"正在做"。
+      const adopt = React.useCallback((payload, keepDraft) => {
         setStatus(payload)
-        setDraft(kbDraftOf(payload))
-        setDirty(false)
+        setDraft((prev) => (keepDraft && prev ? prev : kbDraftOf(payload)))
+        setDirty((prev) => (keepDraft ? prev : false))
       }, [])
-      const load = React.useCallback(() => {
-        setLoading(true)
-        setLoadError(null)
+      const load = React.useCallback((silent) => {
+        if (!silent) setLoading(true)
         host.call('ascend-kb-sync-show', { sessionId })
-          .then((payload) => { adopt(payload); setLoading(false) })
-          .catch((e) => { setLoadError(String((e && e.message) || e)); setLoading(false) })
+          .then((payload) => { adopt(payload, !!silent); setLoading(false); setLoadError(null) })
+          .catch((e) => {
+            // 静默刷新失败不清空页面：手上那份读数比空白更有用。
+            if (!silent) { setLoadError(String((e && e.message) || e)); setLoading(false) }
+          })
       }, [sessionId, adopt])
       React.useEffect(() => { load() }, [load])
 
@@ -370,13 +388,28 @@ return {
       const cfgSource = offline
         ? '部署声明（offline）'
         : (config ? (config.source === 'default' ? '默认值（未写入 .local/settings.json）' : '个人设置') : '未读到配置')
+      // 归属仓：脚本给 identity_* 四项。旧脚本没有这四项时如实说读不到，不拿同步源冒充。
+      const identityRemote = data ? String(data.identity_remote || '') : ''
+      const identityUrl = data ? String(data.identity_url || '') : ''
+      const identityExplicit = !!(data && data.identity_explicit === true)
+      const identityResolved = data && data.identity_resolved === false
+        ? false
+        : (data && data.identity_resolved === true ? true : null)
+      const identityRemoteObj = remotes.filter(r => r && r.name === identityRemote)[0] || null
+      const identityWhere = identityUrl || (identityRemoteObj
+        ? String(identityRemoteObj.url || identityRemoteObj.host || '') : '')
+      // 显式配置的归属仓解析不到：`--show` 会以 reason=identity-unresolved 返回，两种形状都认。
+      const identityUnresolved = identityResolved === false
+        || !!(syncState === 'error' && syncError && syncError.code === 'E_IDENTITY')
+      const identityIssue = sameRepoMismatch || identityUnresolved
+      const syncRemoteForIdentity = (data && data.remote) || (draft && draft.remote) || ''
 
       function doMerge() {
         if (busy) return
         setBusy('merge')
         setFlash(null)
         host.call('ascend-kb-sync-merge', { sessionId })
-          .then((r) => { setBusy(''); setFlash(kbMergeFlash(r)); load() })
+          .then((r) => { setBusy(''); setFlash(kbMergeFlash(r)); load(true) })
           .catch((e) => {
             setBusy('')
             setFlash({ kind: 'err', text: '同步失败：调用不到同步端点。', detail: String((e && e.message) || e) })
@@ -402,12 +435,64 @@ return {
               return
             }
             setFlash({ kind: 'ok', text: '已保存到 ' + KB_SETTINGS_PATH + '。修改下次开单生效。' })
-            load()
+            setDirty(false)
+            load(true)
           })
           .catch((e) => {
             setBusy('')
             setFlash({ kind: 'err', text: '保存失败：调用不到保存端点。', detail: String((e && e.message) || e) })
           })
+      }
+      // 写归属仓：页脚「修改」与两条不一致提示共用的动作，走 `ascend-kb-sync-identity`。
+      function doIdentity(target) {
+        const name = String(target || '').trim()
+        if (busy) return
+        if (!name) {
+          setFlash({ kind: 'err', text: '没有选远端，无法设为归属仓。' })
+          return
+        }
+        setBusy('identity')
+        setFlash(null)
+        host.call('ascend-kb-sync-identity', {
+          sessionId: sessionId,
+          remote: name,
+          expectSha256: status && status.settings_sha256 ? String(status.settings_sha256) : '',
+        })
+          .then((r) => {
+            setBusy('')
+            if (!r || r.ok !== true) {
+              setFlash({ kind: 'err', text: '没能设为归属仓：' + kbReasonOf(r) + '。',
+                hint: kbHintFor(r && r.code),
+                // 参数错误的原文是中文说明（如「远端不存在」），比脚本输出信封更好读；其余保留原文。
+                detail: r && r.detail
+                  ? (r.code === 'E_ARGS' && r.message ? String(r.message) : String(r.detail))
+                  : '' })
+              return
+            }
+            setIdentityEdit(false)
+            setFlash({ kind: 'ok', text: '已把 ' + name + ' 设为归属仓。' })
+            load(true)
+          })
+          .catch((e) => {
+            setBusy('')
+            setFlash({ kind: 'err', text: '没能设为归属仓：调用不到设置端点。',
+              detail: String((e && e.message) || e) })
+          })
+      }
+      // 同源分歧只出一条提示：原因 + 一句下一步 + 按钮。「改回 origin」是解析不到时的出口。
+      function identityPrompt(kind) {
+        const reset = kind === 'reset'
+        const target = reset ? 'origin' : syncRemoteForIdentity
+        return {
+          kind: 'warn',
+          code: reset ? 'E_IDENTITY' : 'E_SAME_REPO',
+          text: reset ? '归属仓解析不到，未自动合并。' : '同步源与归属仓不同源，未自动合并。',
+          hint: reset ? '改回 origin（默认），或把该远端补回来。'
+            : '把同步源设为归属仓，或把同步源换到与归属仓同源的远端。',
+          action: target ? React.createElement('button', {
+            type: 'button', style: KB_BTN, disabled: !!busy, onClick: () => doIdentity(target),
+          }, busy === 'identity' ? '设置中' : (reset ? '改回 origin' : '把 ' + target + ' 设为归属仓')) : null,
+        }
       }
       function setRemote(name) {
         const picked = remotes.filter(r => r && r.name === name)[0]
@@ -438,13 +523,17 @@ return {
         style: kind === 'primary' ? KB_BTN_PRIMARY : KB_BTN,
         disabled: !!busy,
         onClick: doMerge,
-      }, busy === 'merge' ? '同步中' : '立即同步')
+      }, busy === 'merge'
+        ? [React.createElement('span', { key: 'spin', className: 'sleu-kb-spin', 'aria-hidden': 'true' }), '同步中']
+        : '立即同步')
 
       // 一块状态区（四个状态共用）：提示条只换样式与文案，动作位放「立即同步」。
       // 动作位单独算：同步可做时任何一条提示都带着它，做完一次动作不必先关掉提示才能再做。
       let banner = null
       if (flash) {
-        banner = Object.assign({}, flash)
+        // 同源分歧只出一条：结果提示若是这类原因，直接换成带按钮的那条，不再另起一行。
+        banner = flash.code === 'E_SAME_REPO' ? identityPrompt('same')
+          : (flash.code === 'E_IDENTITY' ? identityPrompt('reset') : Object.assign({}, flash))
       } else if (loadError) {
         banner = { kind: 'err', text: '读取失败：' + loadError + '。',
           hint: '检查本页所在目录是不是仓库根，再刷新本页。' }
@@ -462,8 +551,16 @@ return {
         banner = { kind: 'muted', text: '已关闭（个人设置）：启动诊断时不检查更新，也不合并。',
           hint: '打开「自动检查更新」并保存后，才能手动同步。' }
       } else if (syncState === 'error') {
-        banner = { kind: 'err', text: '同步失败：' + kbReasonOf(syncError) + '。',
-          hint: kbHintFor(syncError && syncError.code) }
+        const errCode = syncError && syncError.code
+        banner = errCode === 'E_SAME_REPO' ? identityPrompt('same')
+          : (errCode === 'E_IDENTITY' ? identityPrompt('reset')
+            : { kind: 'err', text: '同步失败：' + kbReasonOf(syncError) + '。',
+              hint: kbHintFor(syncError && syncError.code) })
+      } else if (sameRepoMismatch) {
+        banner = identityPrompt('same')
+      } else if (identityUnresolved) {
+        // 显式配置的归属仓解析不到：打开本页就该看到可操作的出口，不能只等点同步后才报。
+        banner = identityPrompt('reset')
       } else if (syncState === 'no-remote') {
         banner = remotes.length
           ? { kind: 'muted', text: '还没有配置同步源。选一个远端后点「保存」。' }
@@ -498,7 +595,8 @@ return {
       }
       const canSync = !offline && !disabled && syncState !== 'disabled' && remotes.length > 0
         && sync && sync.ok === true
-      if (banner && !banner.action && canSync && !busy) {
+      // 同步进行中也保留这颗按钮（文案变「同步中」+ spinner，禁用），页面不换骨架屏。
+      if (banner && !banner.action && canSync) {
         banner.action = syncAction('quiet')
       } else if (banner && !banner.action && banner.kind === 'err' && !busy) {
         banner.action = React.createElement('button', {
@@ -506,10 +604,6 @@ return {
         }, '重试')
       }
       const bannerNode = banner ? KbBanner(banner) : null
-      // 同源校验不一致：脚本会拦住自动合并，这里只把这一行说清楚，不重复「立即同步」动作。
-      const sameRepoNode = sameRepoMismatch
-        ? KbBanner({ kind: 'warn', text: '这个远端不是同一个仓，未自动合并。' })
-        : null
 
       const remoteValue = draft ? draft.remote : ''
       const remoteOptions = remotes.map(r => React.createElement('option', { key: 'r-' + r.name, value: r.name },
@@ -590,6 +684,53 @@ return {
         switchRow('自动合并', '仅当工作区干净、当前在配置分支上、且可快进时合并。不满足只提示，不 rebase。', 'autoMerge'),
       )
 
+      // 页脚常驻的归属仓一行：读事实；「修改」在同排展开远端下拉，写入走新端点。
+      // 与同步源不一致时这行用警示色，但不再复制一条带按钮的提示（提示条只留一条）。
+      let identityText = '归属仓：读不到'
+      if (data) {
+        if (identityRemote) {
+          identityText = '归属仓：' + identityRemote + '（' + (identityWhere || '地址未知') + '）'
+            + (identityExplicit ? '' : ' · 默认')
+        } else {
+          identityText = '归属仓：读不到（同步脚本还没给这一项）'
+        }
+        if (identityUnresolved) identityText += ' · 解析不到'
+        else if (sameRepoMismatch) identityText += ' · 与同步源不同源'
+      }
+      const identityOptions = remotes.map(r => React.createElement('option',
+        { key: 'ident-' + r.name, value: r.name }, r.name + (r.host ? ' · ' + r.host : '')))
+      const identityRow = React.createElement('div', {
+        className: 'sleu-kb-idrow' + (identityIssue ? ' is-warn' : ''),
+      },
+        React.createElement('span', { className: 'sleu-kb-id' }, identityText),
+        data ? React.createElement('button', {
+          type: 'button', style: KB_BTN, disabled: !!busy,
+          onClick: () => {
+            if (identityEdit) { setIdentityEdit(false); return }
+            setIdentityPick(identityRemote || (remotes[0] && remotes[0].name) || '')
+            setIdentityEdit(true)
+          },
+        }, identityEdit ? '收起' : '修改') : null,
+        identityEdit && remotes.length
+          ? React.createElement('select', {
+            className: 'sleu-kb-select',
+            'aria-label': '归属仓远端',
+            value: identityPick,
+            disabled: !!busy,
+            onChange: (e) => setIdentityPick(e.target.value),
+          }, identityOptions)
+          : null,
+        identityEdit && remotes.length
+          ? React.createElement('button', {
+            type: 'button', style: KB_BTN, disabled: !!busy || !identityPick,
+            onClick: () => doIdentity(identityPick),
+          }, busy === 'identity' ? '设置中' : '设为归属仓')
+          : null,
+        identityEdit && !remotes.length
+          ? React.createElement('span', { className: 'sleu-kb-hint' }, '没有可选的远端。')
+          : null,
+      )
+
       const behindKnown = data && typeof data.behind === 'number'
       const behindTone = !behindKnown ? 'muted' : (data.behind > 0 ? 'warn' : 'ok')
       const behindNote = data && typeof data.skipped === 'number' && data.skipped > 0
@@ -599,7 +740,7 @@ return {
       const remoteRev = data && data.remote_rev ? data.remote_rev : ''
       const lastChecked = data && data.last_checked ? data.last_checked : ''
 
-      return React.createElement('div', { className: 'sleu-kb' },
+      return React.createElement('div', { className: 'sleu-kb', 'aria-busy': busy ? 'true' : 'false' },
         React.createElement('div', { className: 'sleu-kb-grid' },
           React.createElement(KbStat, { key: 'local', label: '本机版本',
             value: localRev ? 'v' + kbShortRev(localRev) : '未记录',
@@ -616,9 +757,9 @@ return {
             value: lastChecked ? kbAgo(lastChecked) : '从未核对',
             tone: lastChecked ? '' : 'muted' })),
         bannerNode,
-        sameRepoNode,
         sourceCard,
         switches,
+        identityRow,
         React.createElement('div', { className: 'sleu-kb-foot' },
           React.createElement('span', null, '配置'),
           React.createElement('code', { className: 'sleu-kb-code' }, KB_SETTINGS_PATH),
