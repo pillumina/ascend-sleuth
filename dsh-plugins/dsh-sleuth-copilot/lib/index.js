@@ -14,7 +14,7 @@
 
 import { fileURLToPath } from 'node:url'
 import { dirname, join, sep } from 'node:path'
-import { mkdir, readFile, realpath, stat, writeFile, unlink } from 'node:fs/promises'
+import { mkdir, readFile, realpath, rename, stat, writeFile, unlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -130,6 +130,9 @@ function normalizeKbSurface(value) {
   return counts
 }
 
+// 状态文件（主检出的 .local/kb-sync-notify.json）只用于去重与排查：dismissedRev 决定同一
+// 远端提交还提不提示，rev / behind / surface / checkedAt / lastError 留给人看。它不恢复提示，
+// 也不记「最近一次检查成不成功」——提示只由本次进程的检查给出。
 function emptyKbState() {
   return {
     version: KB_STATE_VERSION,
@@ -139,8 +142,6 @@ function emptyKbState() {
     dismissedRev: '',
     checkedAt: '',
     lastError: '',
-    // 最近一次检查是否成功（与 rev/behind 是否可信分开记）：启动恢复提示只看它。
-    lastCheckOk: false,
   }
 }
 
@@ -1321,8 +1322,6 @@ export function apply(ctx) {
       dismissedRev: typeof raw.dismissedRev === 'string' ? raw.dismissedRev : '',
       checkedAt: typeof raw.checkedAt === 'string' ? raw.checkedAt : '',
       lastError: typeof raw.lastError === 'string' ? raw.lastError : '',
-      // 旧版本状态文件没有这个字段：按「上次检查不算成功」处理。
-      lastCheckOk: raw.lastCheckOk === true,
     }
   }
 
@@ -1351,15 +1350,19 @@ export function apply(ctx) {
   })().catch(() => {})
 
   // 落盘结果回传给调用方：「稍后」要据此决定清不清提示、回 saved 真假。
+  // 先写同目录临时文件再 rename 覆盖：进程崩在写一半时，旧文件（含 dismissedRev）仍是合法 JSON。
   async function writeKbState(mainRoot) {
     const file = join(mainRoot, KB_STATE_REL)
+    const temp = file + '.tmp'
     try {
       // .local/ 可能还不存在（新检出、刚清理过运行时件）；被占成文件时这里会抛，按写失败处理。
       await mkdir(dirname(file), { recursive: true })
-      await writeFile(file, JSON.stringify(kbState, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 })
+      await writeFile(temp, JSON.stringify(kbState, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 })
+      await rename(temp, file)
       return true
     } catch {
       // 写不进去只失去去重与排查信息；内存里的提示照常可用，下次检查重试。
+      await unlink(temp).catch(() => {})
       return false
     }
   }
@@ -1380,12 +1383,11 @@ export function apply(ctx) {
     }
   }
 
-  // 静默收场（离线部署 / 关闭同步）：清 lastError、更新 checkedAt，保留上次 rev/behind 供排查；
-  // lastCheckOk 记 false，让状态文件自己能区分「这组落后数是不是最近一次检查给出的」。
+  // 静默收场（离线部署 / 关闭同步）：清 lastError 与提示（用户关了同步就该消失），
+  // 保留上次 rev/behind 供排查。
   function kbQuiet(mainRoot, checkedAt, reason) {
     kbState.checkedAt = checkedAt
     kbState.lastError = ''
-    kbState.lastCheckOk = false
     kbLastError = ''
     kbLastCheckAt = checkedAt
     kbLastReason = reason || ''
@@ -1393,15 +1395,15 @@ export function apply(ctx) {
     return persistKbState(mainRoot)
   }
 
-  // 失败收场：只更新 checkedAt / lastError，上次的 rev 与 behind 留着供排查。
+  // 失败收场：只更新 checkedAt / lastError，上次的 rev 与 behind 留着供排查；
+  // 已显示的提示不动——网络抖动不该让一个仍然成立的「落后 N 个提交」消失，
+  // 它由下一次成功检查更新或清空。
   function kbFailed(mainRoot, checkedAt, text, reason) {
     kbState.checkedAt = checkedAt
     kbState.lastError = text
-    kbState.lastCheckOk = false
     kbLastError = text
     kbLastCheckAt = checkedAt
     kbLastReason = reason || ''
-    kbNotice = null
     return persistKbState(mainRoot)
   }
 
@@ -1465,7 +1467,6 @@ export function apply(ctx) {
       dismissedRev: kbState.dismissedRev,
       checkedAt: kbNowIso(),
       lastError: '',
-      lastCheckOk: true,
     }
     kbLastError = ''
     kbLastCheckAt = kbState.checkedAt
@@ -1500,6 +1501,7 @@ export function apply(ctx) {
   // 「稍后」：记住这一版远端提交，同一 rev 不再提示；换 rev 才会重新出现。
   // 落盘成功才清提示并回 saved:true；写不进去（例如 .local/ 被占成文件）时回滚记录、
   // 保留提示，让界面能把「没记住」告诉用户，而不是假装点了没生效。
+  // 回滚只在 dismissedRev 还是本次写的值时做：后一次失败不能覆盖前一次已经写成功的记录。
   async function kbDismiss(payload) {
     await kbStateLoaded
     const requested = payload !== null && typeof payload === 'object' && typeof payload.rev === 'string'
@@ -1512,7 +1514,7 @@ export function apply(ctx) {
     const mainRoot = await resolveKbRoot()
     const saved = mainRoot ? await persistKbState(mainRoot) : false
     if (!saved) {
-      kbState.dismissedRev = previousDismissed
+      if (kbState.dismissedRev === rev) kbState.dismissedRev = previousDismissed
       return { rev, saved: false }
     }
     if (kbNotice && kbNotice.rev === rev) kbNotice = null

@@ -474,7 +474,8 @@ window.__ModuleLoader__.load({
       'kb.later': '稍后',
       'kb.laterDone': '这一版不再提醒。',
       'kb.laterFailed': '稍后没记上：本地状态文件写不进去。',
-      'kb.missing': '没找到 Ascend Sleuth 整页，先在侧栏「插件」里装面板包。',
+      'kb.laterUnavailable': '稍后没记上：状态条连不上后台，稍后再试。',
+      'kb.missing': '没找到 Ascend Sleuth 整页；确认面板包已安装，或稍后再试。',
       'kb.collapsed': '知识库有更新',
     }
     const EN = {
@@ -909,7 +910,8 @@ window.__ModuleLoader__.load({
       'kb.later': 'Later',
       'kb.laterDone': 'This revision will not be shown again.',
       'kb.laterFailed': 'Could not record the later reminder: the local state file is not writable.',
-      'kb.missing': 'Ascend Sleuth page not found. Install the panel package from Plugins in the sidebar first.',
+      'kb.laterUnavailable': 'Could not record the later reminder: the status bar cannot reach the host. Try again later.',
+      'kb.missing': 'Ascend Sleuth page not found. Check that the panel package is installed, or try again later.',
       'kb.collapsed': 'Knowledge base has updates',
     }
     const DICTS = { zh: ZH, en: EN }
@@ -1523,6 +1525,94 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         store.message = message
         emit()
       }
+    }
+
+    // 「去同步」的两个后续动作放在插件闭包而不是状态条组件里：点「去同步」会把会话输入区
+    // 连同状态条一起卸载（整页切换），组件一卸载，挂在 ref 上的轮询与复查定时器就全被清掉，
+    // 复查不跑、知识库标签也点不到。提示是全局的，不随会话走，所以只在插件卸载时清。
+    let kbRecheckTimer = null
+    let kbTabTimer = null
+
+    function clearKbTimers() {
+      if (kbRecheckTimer) {
+        clearTimeout(kbRecheckTimer)
+        kbRecheckTimer = null
+      }
+      if (kbTabTimer) {
+        clearTimeout(kbTabTimer)
+        kbTabTimer = null
+      }
+    }
+
+    // 切到整页后不一定落在「知识库」子页：按可见标签名找，1.5 秒内轮询等页面挂载。
+    // 没有 querySelectorAll 的宿主（测试替身）直接跳过这一层。
+    function openKbTab() {
+      if (typeof document === 'undefined' || typeof document.querySelectorAll !== 'function') return
+      if (kbTabTimer) clearTimeout(kbTabTimer)
+      const startedAt = Date.now()
+      function tick() {
+        kbTabTimer = null
+        let tabs = null
+        try {
+          tabs = document.querySelectorAll('[role="tab"]')
+        } catch {
+          tabs = null
+        }
+        if (tabs && typeof tabs.length === 'number') {
+          for (let index = 0; index < tabs.length; index += 1) {
+            const tab = tabs[index]
+            if (!tab) continue
+            let label = ''
+            try {
+              label = String(tab.textContent || '').trim()
+            } catch {
+              label = ''
+            }
+            if (label !== '知识库') continue
+            let inside = false
+            try {
+              inside = typeof tab.closest === 'function' && !!tab.closest('.sleu-console')
+            } catch {
+              inside = false
+            }
+            if (!inside) continue
+            try {
+              if (typeof tab.click === 'function') tab.click()
+            } catch {
+              // 点不开就停在整页，读者自己点标签
+            }
+            return
+          }
+        }
+        if (Date.now() - startedAt >= KB_TAB_OPEN_WAIT_MS) return
+        kbTabTimer = setTimeout(tick, KB_TAB_OPEN_POLL_MS)
+      }
+      tick()
+    }
+
+    // 同步要时间：隔 30 秒复查一次，还落后再隔 60 秒复查（共约 90 秒）。
+    // 每次刷新后提示行还在才挂下一次（同步完则行消失、不再定时）。
+    function scheduleKbRecheck(attempt) {
+      if (kbRecheckTimer) {
+        clearTimeout(kbRecheckTimer)
+        kbRecheckTimer = null
+      }
+      const delay = KB_RECHECK_DELAYS_MS[attempt]
+      if (delay === undefined) return
+      kbRecheckTimer = setTimeout(() => {
+        kbRecheckTimer = null
+        Promise.resolve()
+          .then(() => rpcCall('copilot-kb-recheck', { force: true }))
+          .then(() => refresh(true))
+          .then(() => {
+            if (!store.data || !store.data.kbNotice) return
+            scheduleKbRecheck(attempt + 1)
+          })
+          .catch(() => {
+            // 这里只兜 RPC 抛错：不改提示行，等下一轮定时检查。
+            // host 业务失败不抛错，它按静默规则回空，随后的 refresh 可能把行清掉。
+          })
+      }, delay)
     }
 
     // 沉淀队列：按需读取。展开状态条或打开沉淀视图时才跑（groom_status 要读 git 与 inbox，
@@ -3202,9 +3292,6 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const inputRef = React.useRef(null)
         const rootRef = React.useRef(null)
         const handleRef = React.useRef(null)
-        // 去同步挂的两个定时器：30 秒复查与点开「知识库」标签的短轮询。切会话、卸载都要清。
-        const kbRecheckTimer = React.useRef(null)
-        const kbTabTimer = React.useRef(null)
         // 菜单/选择器刚被点击关闭的时刻：同一次手势不顺手收起状态条，过期自动失效
         const menuDismissedAtRef = React.useRef(0)
         // 这次手势是否起于状态条内部。必须在 mousedown（capture）时记：菜单项点击会把按钮
@@ -3226,22 +3313,6 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         React.useEffect(() => () => {
           if (hintTimer.current) clearTimeout(hintTimer.current)
         }, [])
-
-        function clearKbTimers() {
-          if (kbRecheckTimer.current) {
-            clearTimeout(kbRecheckTimer.current)
-            kbRecheckTimer.current = null
-          }
-          if (kbTabTimer.current) {
-            clearTimeout(kbTabTimer.current)
-            kbTabTimer.current = null
-          }
-        }
-
-        // 切会话：上一单挂的复查与点标签轮询不属于这一单，先清掉。
-        React.useEffect(() => {
-          clearKbTimers()
-        }, [s.sessionId])
 
         // 切会话时收起内层：旧菜单/表单纯属上一条单的状态，留着会在新单上重新弹出，
         // 提交时写到另一单。
@@ -3300,7 +3371,6 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         React.useEffect(() => () => {
           if (idleTimer.current) clearTimeout(idleTimer.current)
           if (flashTimer.current) clearTimeout(flashTimer.current)
-          clearKbTimers()
         }, [])
 
         // 步骤前进时让状态点轻闪一次；只在同一单上比较，首屏不闪。
@@ -3657,7 +3727,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         }
 
         // 「去同步」：切到 Ascend Sleuth 整页，再尽力点开该页的「知识库」标签，最后挂复查。
-        // 拿不到 layout 服务时只 flash 一句装面板的指引，不抛。
+        // 切页的后续动作在插件闭包里（见 openKbTab / scheduleKbRecheck）：这次点击会卸载状态条，
+        // 动作不能绑在组件生命周期上。拿不到 layout 服务时只 flash 一句装面板的指引，不抛。
         function goSync() {
           let switched = false
           try {
@@ -3668,77 +3739,6 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           if (!switched) flash(tr('kb.missing'))
           openKbTab()
           scheduleKbRecheck(0)
-        }
-
-        // 切到整页后不一定落在「知识库」子页：按可见标签名找，1.5 秒内轮询等页面挂载。
-        // 没有 querySelectorAll 的宿主（测试替身）直接跳过这一层。
-        function openKbTab() {
-          if (typeof document === 'undefined' || typeof document.querySelectorAll !== 'function') return
-          if (kbTabTimer.current) clearTimeout(kbTabTimer.current)
-          const startedAt = Date.now()
-          function tick() {
-            kbTabTimer.current = null
-            let tabs = null
-            try {
-              tabs = document.querySelectorAll('[role="tab"]')
-            } catch {
-              tabs = null
-            }
-            if (tabs && typeof tabs.length === 'number') {
-              for (let index = 0; index < tabs.length; index += 1) {
-                const tab = tabs[index]
-                if (!tab) continue
-                let label = ''
-                try {
-                  label = String(tab.textContent || '').trim()
-                } catch {
-                  label = ''
-                }
-                if (label !== '知识库') continue
-                let inside = false
-                try {
-                  inside = typeof tab.closest === 'function' && !!tab.closest('.sleu-console')
-                } catch {
-                  inside = false
-                }
-                if (!inside) continue
-                try {
-                  if (typeof tab.click === 'function') tab.click()
-                } catch {
-                  // 点不开就停在整页，读者自己点标签
-                }
-                return
-              }
-            }
-            if (Date.now() - startedAt >= KB_TAB_OPEN_WAIT_MS) return
-            kbTabTimer.current = setTimeout(tick, KB_TAB_OPEN_POLL_MS)
-          }
-          tick()
-        }
-
-        // 同步要时间：隔 30 秒复查一次，还落后再隔 60 秒复查（共约 90 秒）。
-        // 每次刷新后提示行还在才挂下一次（同步完则行消失、不再定时）。
-        function scheduleKbRecheck(attempt) {
-          if (kbRecheckTimer.current) {
-            clearTimeout(kbRecheckTimer.current)
-            kbRecheckTimer.current = null
-          }
-          const delay = KB_RECHECK_DELAYS_MS[attempt]
-          if (delay === undefined) return
-          kbRecheckTimer.current = setTimeout(() => {
-            kbRecheckTimer.current = null
-            Promise.resolve()
-              .then(() => rpcCall('copilot-kb-recheck', { force: true }))
-              .then(() => refresh(true))
-              .then(() => {
-                if (!store.data || !store.data.kbNotice) return
-                scheduleKbRecheck(attempt + 1)
-              })
-              .catch(() => {
-                // 这里只兜 RPC 抛错：不改提示行，等下一轮定时检查。
-                // host 业务失败不抛错，它按静默规则回空，随后的 refresh 可能把行清掉。
-              })
-          }, delay)
         }
 
         // 「稍后」：写进本地状态文件成功后才收起提示行。
@@ -3758,7 +3758,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             emit()
             flash(tr('kb.laterDone'))
           }, () => {
-            flash(tr('kb.laterFailed'))
+            // RPC 抛错是连不上后台，和「落盘失败」不是一回事，分开说。
+            flash(tr('kb.laterUnavailable'))
           })
         }
 
@@ -6383,6 +6384,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         ctx.effect(() => registerLocale(ctx), 'sleuth-copilot: locale')
         ctx.effect(() => stopTimer, 'sleuth-copilot: poll timer')
         ctx.effect(() => insertStyles(), 'sleuth-copilot: styles')
+        // 知识库提示的复查与标签轮询挂在插件生命周期：状态条会随整页切换被卸载，不能绑在组件上。
+        ctx.effect(() => () => clearKbTimers(), 'sleuth-copilot: kb timers')
 
         const Dock = withInputActions(makeDock())
         const Toolbar = withInputActions(ToolbarButton)

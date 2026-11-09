@@ -244,6 +244,23 @@ function createRenderer() {
     async rerender() {
       return settle()
     },
+    // 模拟整页切换把组件树卸载：只跑组件 effect 的清理，不回退插件级（apply 注册的）清理。
+    unmount() {
+      for (const instance of instances.values()) {
+        for (const state of Object.values(instance.effectState)) {
+          if (state && typeof state.cleanup === 'function') {
+            try {
+              state.cleanup()
+            } catch {
+              // 清理失败不阻断其余
+            }
+          }
+        }
+      }
+      instances.clear()
+      tree = null
+      dom = null
+    },
   }
 }
 
@@ -737,9 +754,13 @@ async function mount(mode, options) {
     },
   }
   const deferredInjects = []
+  // apply 里登记的清理（插件级），t.dispose() 时反向跑一遍：知识库复查/标签轮询是 module 级的，
+  // 只能从这里清，否则会挂住测试进程。
+  const pluginDisposers = []
   const ctx = {
     effect(fn) {
       const cleanup = fn()
+      if (typeof cleanup === 'function') pluginDisposers.push(cleanup)
       return cleanup
     },
     inject(deps, callback) {
@@ -914,6 +935,21 @@ async function mount(mode, options) {
     fireLayoutInject() {
       const fire = deferredInjects.shift()
       if (typeof fire === 'function') fire()
+    },
+    // 卸载组件树（模拟整页切换把状态条连同输入区一起换掉）。插件级清理不受影响。
+    unmount() {
+      renderer.unmount()
+    },
+    // 插件卸载：反向跑 apply 登记的所有清理，module 级知识库定时器也在这里清。
+    dispose() {
+      for (let index = pluginDisposers.length - 1; index >= 0; index -= 1) {
+        try {
+          pluginDisposers[index]()
+        } catch {
+          // 清理失败不阻断其余
+        }
+      }
+      pluginDisposers.length = 0
     },
     lastTransition() {
       const calls = rpcCalls.filter((call) => call.endpoint === 'copilot-transition')
@@ -3013,10 +3049,12 @@ const KB_NOTICE = {
     !!dismissCall && dismissCall.args.rev === '9f8e7d1', JSON.stringify(dismissCall && dismissCall.args))
   expect('稍后：提示行消失', byClass(view, 'scp-kb-notice').length === 0, view.text.slice(0, 300))
   expect('稍后：flash 说这一版不再提醒', view.text.includes('这一版不再提醒。'), view.text.slice(0, 300))
+  // 去同步在插件级挂过复查与标签轮询：用例收尾清掉，别挂住进程。
+  t.dispose()
 }
 
 {
-  // 稍后写失败（RPC 抛错）：提示行保留，flash 说明没记上（否则重开页面还会提示同一版）。
+  // RPC 抛错（连不上后台）：与「落盘失败」分开报，行同样保留。
   const t = await mount('recent', {
     kbNotice: KB_NOTICE,
     kbDismissError: true,
@@ -3026,9 +3064,9 @@ const KB_NOTICE = {
   click(findButton(view, '稍后'))
   view = await t.settle()
   view = await t.settle()
-  expect('稍后失败：提示行保留', byClass(view, 'scp-kb-notice').length === 1, view.text.slice(0, 300))
-  expect('稍后失败：flash 说明没记上',
-    view.text.includes('稍后没记上：本地状态文件写不进去。'), view.text.slice(0, 400))
+  expect('稍后连不上后台：提示行保留', byClass(view, 'scp-kb-notice').length === 1, view.text.slice(0, 300))
+  expect('稍后连不上后台：flash 说连不上',
+    view.text.includes('稍后没记上：状态条连不上后台，稍后再试。'), view.text.slice(0, 400))
 }
 
 {
@@ -3076,6 +3114,7 @@ const KB_NOTICE = {
   expect('30 秒复查：发出 copilot-kb-recheck 且要求强制',
     !!call && call.args && call.args.force === true, JSON.stringify(call && call.args))
   expect('30 秒复查：刷新后提示行消失', byClass(await t.settle(), 'scp-kb-notice').length === 0)
+  t.dispose()
 }
 
 {
@@ -3103,6 +3142,7 @@ const KB_NOTICE = {
   }
   expect('复查仍落后：挂第二次 60 秒定时器',
     scheduled.some((item) => item.ms === 60000), JSON.stringify(scheduled.map((item) => item.ms)))
+  t.dispose()
 }
 
 {
@@ -3147,6 +3187,7 @@ const KB_NOTICE = {
   click(findButton(view, '去同步'))
   view = await t.settle()
   expect('空态：动作的 flash 可见', view.text.includes('没找到 Ascend Sleuth 整页'), view.text.slice(-400))
+  t.dispose()
 }
 
 {
@@ -3165,8 +3206,9 @@ const KB_NOTICE = {
   const view = await t.settle()
   expect('去同步：没有 layout 服务不抛', !threw, threw && String(threw.message))
   expect('去同步：没有 layout 服务时给出装面板指引',
-    view.text.includes('没找到 Ascend Sleuth 整页，先在侧栏「插件」里装面板包。'), view.text.slice(-400))
+    view.text.includes('没找到 Ascend Sleuth 整页；确认面板包已安装，或稍后再试。'), view.text.slice(-400))
   expect('去同步：没有 layout 服务时没有可切的面板', t.selectedPanels.length === 0, JSON.stringify(t.selectedPanels))
+  t.dispose()
 }
 
 {
@@ -3187,6 +3229,82 @@ const KB_NOTICE = {
   expect('去同步：子 scope 没有 layout 时给出装面板指引',
     view.text.includes('没找到 Ascend Sleuth 整页'), view.text.slice(-400))
   expect('去同步：子 scope 没有 layout 时不切页', t.selectedPanels.length === 0, JSON.stringify(t.selectedPanels))
+  t.dispose()
+}
+
+{
+  // 切整页后能点到「知识库」标签：按可见标签名与容器限定，命中才点一次。
+  const t = await mount('recent', {
+    kbNotice: Object.assign({}, KB_NOTICE),
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  const realQsa = globalThis.document.querySelectorAll
+  let tabClicks = 0
+  let decoyClicks = 0
+  const tab = {
+    textContent: '知识库',
+    closest(selector) { return selector === '.sleu-console' ? {} : null },
+    click() { tabClicks += 1 },
+  }
+  // 同名的标签在别处（不在整页容器里）：不该被点。
+  const decoy = {
+    textContent: '知识库',
+    closest() { return null },
+    click() { decoyClicks += 1 },
+  }
+  globalThis.document.querySelectorAll = (selector) => (selector === '[role="tab"]' ? [decoy, tab] : [])
+  try {
+    click(findButton(t.view(), '去同步'))
+    await t.settle()
+  } finally {
+    globalThis.document.querySelectorAll = realQsa
+  }
+  expect('去同步：点开知识库标签', tabClicks === 1, String(tabClicks))
+  expect('去同步：不点不在整页容器里的同名标签', decoyClicks === 0, String(decoyClicks))
+  t.dispose()
+}
+
+{
+  // 卸载后复查仍执行：「去同步」会把状态条连同输入区卸载，定时器在插件闭包里，不随组件走。
+  // 关键判据是「卸载没有把 30 秒定时器 clear 掉」：只断言回调能跑证明不了定时器还活着。
+  const t = await mount('recent', {
+    kbNotice: Object.assign({}, KB_NOTICE),
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  const realTimeout = globalThis.setTimeout
+  const realClearTimeout = globalThis.clearTimeout
+  const scheduled = []
+  const cleared = []
+  globalThis.setTimeout = (fn, ms, ...rest) => {
+    const id = realTimeout(fn, ms, ...rest)
+    scheduled.push({ fn, ms, id })
+    return id
+  }
+  globalThis.clearTimeout = (id) => {
+    cleared.push(id)
+    realClearTimeout(id)
+  }
+  try {
+    click(findButton(t.view(), '去同步'))
+    await t.settle()
+    t.unmount()
+    const first = scheduled.find((item) => item.ms === 30000)
+    expect('卸载后：30 秒复查仍在、没被组件清理掉',
+      !!first && !cleared.includes(first.id), JSON.stringify(cleared))
+    if (first) first.fn()
+    await new Promise((resolve) => realTimeout(resolve, 0))
+    await new Promise((resolve) => realTimeout(resolve, 0))
+    await new Promise((resolve) => realTimeout(resolve, 0))
+  } finally {
+    globalThis.setTimeout = realTimeout
+    globalThis.clearTimeout = realClearTimeout
+  }
+  const call = t.rpcCalls.filter((item) => item.endpoint === 'copilot-kb-recheck').pop()
+  expect('卸载后：仍发出 copilot-kb-recheck 且带 force',
+    !!call && call.args && call.args.force === true, JSON.stringify(call && call.args))
+  expect('卸载后：首轮仍落后就继续挂 60 秒重试',
+    scheduled.some((item) => item.ms === 60000), JSON.stringify(scheduled.map((item) => item.ms)))
+  t.dispose()
 }
 
 {
@@ -3208,6 +3326,7 @@ const KB_NOTICE = {
   view = await t.settle()
   expect('延迟注册：回调触发后能切到 Ascend Sleuth 整页',
     t.selectedPanels.includes('ascend-sleuth-console'), JSON.stringify(t.selectedPanels))
+  t.dispose()
 }
 
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')

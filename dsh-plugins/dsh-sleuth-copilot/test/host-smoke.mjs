@@ -7,7 +7,7 @@
 
 import { exec, execSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -1201,9 +1201,22 @@ function newKbHarness(payload, withTimers) {
   expect('知识库：状态文件按 schema 落盘',
     fileFirst && fileFirst.version === 1 && fileFirst.rev === '9f8e7d' && fileFirst.behind === 3
     && fileFirst.surface && fileFirst.surface.panel === 1 && fileFirst.surface.knowledge === 2
-    && fileFirst.dismissedRev === '' && fileFirst.lastError === '' && fileFirst.lastCheckOk === true
+    && fileFirst.dismissedRev === '' && fileFirst.lastError === ''
     && typeof fileFirst.checkedAt === 'string' && fileFirst.checkedAt !== '',
     JSON.stringify(fileFirst))
+  // 原子写：落点文件本身是完整 JSON，同目录不留 .tmp。
+  const rawFirstState = readFileSync(KB_STATE, 'utf8')
+  let parsedFirstState = null
+  try {
+    parsedFirstState = JSON.parse(rawFirstState)
+  } catch {
+    parsedFirstState = null
+  }
+  expect('知识库：状态文件是合法 JSON 且无 .tmp 残留',
+    parsedFirstState !== null && parsedFirstState.rev === '9f8e7d'
+    && !existsSync(KB_STATE + '.tmp')
+    && readdirSync(join(KB_REPO, '.local')).every((name) => !name.endsWith('.tmp')),
+    JSON.stringify({ parsed: parsedFirstState !== null, temp: existsSync(KB_STATE + '.tmp') }))
 
   const recheckFirst = (await kbRpc(first.harness, 'copilot-kb-recheck', {}, 'kb-recheck-1')).envelope.result.value
   expect('知识库：recheck 返回同一 notice',
@@ -1264,20 +1277,29 @@ function newKbHarness(payload, withTimers) {
   expect('知识库：behind 0 不出现', syncedValue && syncedValue.notice === null, JSON.stringify(syncedValue))
   const fileSynced = readKbState()
   expect('知识库：behind 0 落到状态文件',
-    fileSynced && fileSynced.behind === 0 && fileSynced.lastError === ''
-    && fileSynced.lastCheckOk === true, JSON.stringify(fileSynced))
+    fileSynced && fileSynced.behind === 0 && fileSynced.lastError === '',
+    JSON.stringify(fileSynced))
 
-  // ⑤ 关闭同步 / 离线部署：静默，不算错误（lastError 保持空）。
-  const disabled = newKbHarness(kbPayload({
-    ok: false, reason: 'disabled', enabled: false, behind: 1, remote_rev: 'def5678',
-  }), false)
-  const disabledValue = (await kbRpc(disabled.harness, 'copilot-kb-recheck', {}, 'kb-recheck-disabled')).envelope.result.value
+  // ⑤ 关闭同步：先有提示，再关掉 → 静默、不算错误且提示变 null；离线部署同样静默。
+  const disabled = newKbHarness(kbPayload({ remote_rev: 'c0ffee1', behind: 2 }), false)
+  const disabledBefore = (await kbRpc(disabled.harness, 'copilot-kb-recheck', {}, 'kb-recheck-disabled-before')).envelope.result.value
+  expect('知识库：关闭同步用例先有提示',
+    disabledBefore && disabledBefore.notice && disabledBefore.notice.rev === 'c0ffee1',
+    JSON.stringify(disabledBefore && disabledBefore.notice))
+  disabled.shell.setPayload(kbPayload({
+    ok: false, reason: 'disabled', enabled: false, behind: 2, remote_rev: 'c0ffee1',
+  }))
+  const disabledValue = (await kbRpc(disabled.harness, 'copilot-kb-recheck', { force: true }, 'kb-recheck-disabled')).envelope.result.value
+  const disabledState = (await kbRpc(disabled.harness, 'copilot-state', {
+    sessionId: 'kb-disabled', cwd: SANDBOX,
+  }, 'kb-state-disabled')).envelope.result.value
   const fileDisabled = readKbState()
-  expect('知识库：关闭同步时静默、不算错误且 lastCheckOk 记 false',
+  expect('知识库：关闭同步时静默、不算错误且 notice 变 null',
     disabledValue && disabledValue.notice === null && disabledValue.reason === 'disabled'
-    && disabledValue.error === '' && fileDisabled && fileDisabled.lastError === ''
-    && fileDisabled.lastCheckOk === false,
-    JSON.stringify({ value: disabledValue, file: fileDisabled }))
+    && disabledValue.error === ''
+    && disabledState && disabledState.kbNotice === null
+    && fileDisabled && fileDisabled.lastError === '',
+    JSON.stringify({ value: disabledValue, notice: disabledState && disabledState.kbNotice, file: fileDisabled }))
 
   const offline = newKbHarness(kbPayload({
     ok: false, reason: 'offline', enabled: true, offline: true, behind: 1, remote_rev: 'def5678',
@@ -1286,29 +1308,33 @@ function newKbHarness(payload, withTimers) {
   expect('知识库：离线部署时静默',
     offlineValue && offlineValue.notice === null && offlineValue.reason === 'offline', JSON.stringify(offlineValue))
 
-  // ⑥ 失败保留：先成功一次（behind 3 / rev 9f8e7d），再注入网络失败。
-  // rev/behind 不许被清、lastCheckOk 转 false、原文落 lastError；提示静默。
-  const failing = newKbHarness(kbPayload({}), false)
+  // ⑥ 失败保留提示：先成功一次（behind 3 / rev a11ce55），再注入网络失败。
+  // 已显示的提示不清（网络抖动不该让仍然成立的落后数消失）、状态文件 rev/behind 保留、原文落 lastError。
+  const failing = newKbHarness(kbPayload({ remote_rev: 'a11ce55', behind: 3 }), false)
   const seedValue = (await kbRpc(failing.harness, 'copilot-kb-recheck', {}, 'kb-recheck-seed')).envelope.result.value
   const fileSeed = readKbState()
-  expect('知识库：失败前先成功一次（behind 3 / rev 9f8e7d）',
-    seedValue && seedValue.error === '' && seedValue.reason === ''
-    && fileSeed && fileSeed.rev === '9f8e7d' && fileSeed.behind === 3
-    && fileSeed.lastCheckOk === true,
+  expect('知识库：失败前先成功一次（behind 3 / rev a11ce55）',
+    seedValue && seedValue.notice && seedValue.notice.rev === 'a11ce55' && seedValue.notice.behind === 3
+    && fileSeed && fileSeed.rev === 'a11ce55' && fileSeed.behind === 3,
     JSON.stringify({ value: seedValue, file: fileSeed }))
   failing.shell.setPayload(kbPayload({
     ok: false, reason: 'network', behind: 'unknown', remote_rev: null,
     fetch_error: 'fatal: unable to access https://example.invalid/x: Could not resolve host',
   }))
   const failedValue = (await kbRpc(failing.harness, 'copilot-kb-recheck', { force: true }, 'kb-recheck-failed')).envelope.result.value
+  const failedState = (await kbRpc(failing.harness, 'copilot-state', {
+    sessionId: 'kb-failed', cwd: SANDBOX,
+  }, 'kb-state-failed')).envelope.result.value
   const fileFailed = readKbState()
-  expect('知识库：网络失败时静默、原文落 lastError、上次 rev/behind 保留',
-    failedValue && failedValue.notice === null && failedValue.reason === 'network'
+  expect('知识库：网络失败时提示保留、原文落 lastError、上次 rev/behind 不变',
+    failedValue && failedValue.notice && failedValue.notice.rev === 'a11ce55'
+    && failedValue.notice.behind === 3
+    && failedValue.reason === 'network'
     && /fatal: unable to access/.test(failedValue.error || '')
+    && failedState && failedState.kbNotice && failedState.kbNotice.rev === 'a11ce55'
     && fileFailed && /fatal: unable to access/.test(fileFailed.lastError || '')
-    && fileFailed.rev === '9f8e7d' && fileFailed.behind === 3
-    && fileFailed.lastCheckOk === false,
-    JSON.stringify({ value: failedValue, file: fileFailed }))
+    && fileFailed.rev === 'a11ce55' && fileFailed.behind === 3,
+    JSON.stringify({ value: failedValue, notice: failedState && failedState.kbNotice, file: fileFailed }))
 
   // ⑦ 启动不从状态文件恢复提示：文件里有上次成功的落后数，第一次检查前 kbNotice 仍是 null；
   // 检查完成后才出现。状态文件只恢复「稍后」记录与排查字段。
@@ -1316,7 +1342,7 @@ function newKbHarness(payload, withTimers) {
   const restoringValue = (await kbRpc(restoring.harness, 'copilot-kb-recheck', {}, 'kb-recheck-seed-restore')).envelope.result.value
   expect('知识库：启动用例先成功一次（behind 2 / rev beef001）',
     restoringValue && restoringValue.notice && restoringValue.notice.rev === 'beef001'
-    && readKbState() && readKbState().lastCheckOk === true,
+    && readKbState() && readKbState().rev === 'beef001',
     JSON.stringify(restoringValue))
   const restored = newKbHarness(kbPayload({ remote_rev: 'beef001', behind: 2 }), false)
   let restoredNotice = null
@@ -1334,7 +1360,7 @@ function newKbHarness(payload, withTimers) {
   const restoredCheck = (await kbRpc(restored.harness, 'copilot-kb-recheck', {}, 'kb-recheck-restore')).envelope.result.value
   expect('知识库：检查完成后才出现提示',
     restoredCheck && restoredCheck.notice && restoredCheck.notice.rev === 'beef001'
-    && readKbState() && readKbState().lastCheckOk === true,
+    && readKbState() && readKbState().rev === 'beef001',
     JSON.stringify(restoredCheck))
 
   restoring.shell.setPayload(kbPayload({
@@ -1342,11 +1368,11 @@ function newKbHarness(payload, withTimers) {
   }))
   const quietValue = (await kbRpc(restoring.harness, 'copilot-kb-recheck', { force: true }, 'kb-recheck-seed-quiet')).envelope.result.value
   const fileQuiet = readKbState()
-  expect('知识库：关闭同步把 lastCheckOk 记 false 且保留 rev/behind',
-    quietValue && quietValue.notice === null && fileQuiet && fileQuiet.lastCheckOk === false
-    && fileQuiet.rev === 'beef001' && fileQuiet.behind === 2,
+  expect('知识库：关闭同步清提示并保留 rev/behind 供排查',
+    quietValue && quietValue.notice === null
+    && fileQuiet && fileQuiet.rev === 'beef001' && fileQuiet.behind === 2,
     JSON.stringify({ value: quietValue, file: fileQuiet }))
-  // 新进程启动时状态文件里仍有 rev/behind，但 lastCheckOk=false：第一次检查前请求状态也不能闪提示。
+  // 新进程启动时状态文件里仍有 rev/behind，但提示已由 disabled 清掉：第一次检查前请求状态也不能闪提示。
   const silent = newKbHarness(kbPayload({ remote_rev: 'beef001', behind: 2 }), false)
   let silentNotice = null
   await new Promise((resolve) => setTimeout(resolve, 30))
@@ -1362,13 +1388,14 @@ function newKbHarness(payload, withTimers) {
     silentNotice === null && silent.shell.calls.every((command) => !command.includes('kb_sync.py')),
     JSON.stringify({ notice: silentNotice, calls: silent.shell.calls }))
 
-  // ⑧ 稍后写盘失败要能报：把临时根的 .local/ 占成普通文件，落盘必失败。
-  // 此时 dismiss 回 saved:false、dismissedRev 回滚、提示保留（界面据此说「没记住」）。
+  // ⑧ 稍后写盘失败要能报且回滚：把临时根的 .local/ 占成普通文件，落盘必失败。
+  // dismiss 回 saved:false、dismissedRev 回滚（不覆盖此前成功写入的记录）、提示保留。
   const dismissFail = newKbHarness(kbPayload({ remote_rev: '0ddba11', behind: 2 }), false)
   const dismissFailSeed = (await kbRpc(dismissFail.harness, 'copilot-kb-recheck', {}, 'kb-recheck-seed-dismissfail')).envelope.result.value
   expect('知识库：写失败用例先有提示',
     dismissFailSeed && dismissFailSeed.notice && dismissFailSeed.notice.rev === '0ddba11',
     JSON.stringify(dismissFailSeed && dismissFailSeed.notice))
+  const stateBeforeFail = readKbState()
   const localPath = join(KB_REPO, '.local')
   rmSync(localPath, { recursive: true, force: true })
   writeFileSync(localPath, '占位：让状态文件写不进去\n', 'utf8')
@@ -1378,11 +1405,23 @@ function newKbHarness(payload, withTimers) {
   const afterFailedDismiss = (await kbRpc(dismissFail.harness, 'copilot-state', {
     sessionId: 'kb-dismiss-fail', cwd: SANDBOX,
   }, 'kb-state-dismiss-fail')).envelope.result.value
-  expect('知识库：稍后写盘失败回 saved:false 且提示保留',
-    failedDismiss && failedDismiss.rev === '0ddba11' && failedDismiss.saved === false
-    && afterFailedDismiss && afterFailedDismiss.kbNotice && afterFailedDismiss.kbNotice.rev === '0ddba11',
-    JSON.stringify({ value: failedDismiss, notice: afterFailedDismiss && afterFailedDismiss.kbNotice }))
+  const stateWhileBroken = readKbState()
+  // 还原 .local/ 再成功检查一次：内存里应已回滚到失败前的 dismissedRev，落盘后能读到。
   rmSync(localPath, { recursive: true, force: true })
+  await kbRpc(dismissFail.harness, 'copilot-kb-recheck', { force: true }, 'kb-recheck-dismissfail-after')
+  const stateAfterFail = readKbState()
+  expect('知识库：稍后写盘失败回 saved:false、提示保留且 dismissedRev 回滚',
+    failedDismiss && failedDismiss.rev === '0ddba11' && failedDismiss.saved === false
+    && afterFailedDismiss && afterFailedDismiss.kbNotice && afterFailedDismiss.kbNotice.rev === '0ddba11'
+    && stateBeforeFail && stateBeforeFail.dismissedRev !== '0ddba11'
+    && stateWhileBroken === null
+    && stateAfterFail && stateAfterFail.dismissedRev === stateBeforeFail.dismissedRev,
+    JSON.stringify({
+      value: failedDismiss,
+      notice: afterFailedDismiss && afterFailedDismiss.kbNotice,
+      before: stateBeforeFail && stateBeforeFail.dismissedRev,
+      after: stateAfterFail && stateAfterFail.dismissedRev,
+    }))
 
   // ⑨ panel 0：提示里的面板数字为 0，客户端据此不提「重启 DSH」。
   const noPanel = newKbHarness(kbPayload({
