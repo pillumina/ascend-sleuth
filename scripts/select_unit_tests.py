@@ -289,6 +289,15 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         notes.append(f"分片 {args.shard}：{len(items)} 个测试模块")
         result = items
+    # Windows 的 Python 文本 stdout 会把 \n 翻成 \r\n。CI 用 $(...) 取这份模块列表时每行会带
+    # \r，unittest 报 `No module named 'tests.x\r'`（本仓 Windows job 实测）。这份输出是给机器
+    # 消费的，钉成 LF；控制台/管道都按 LF 处理，不影响人读。
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if reconfigure is not None:
+        try:
+            reconfigure(newline="\n")
+        except (AttributeError, ValueError):
+            pass
     for note in notes:
         print(f"select_unit_tests: {note}", file=sys.stderr)
     if result == "ALL":
