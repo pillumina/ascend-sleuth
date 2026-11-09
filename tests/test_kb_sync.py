@@ -1,4 +1,5 @@
-"""kb_sync 的口径测试：默认配置、fetch、落后计算、改动面、合并四条条件、降级与缓存。
+"""kb_sync 的口径测试：默认配置、fetch、落后计算、改动面、合并四条条件、降级与缓存、
+`--check` 模式与提醒检查配置。
 
 为什么不联网：远端一律用本地裸仓。超时用 mock 掉 `run_git` 的 fetch 调用，避免依赖真实网络。
 断言打在 JSON 结果字段上，不打私有实现。
@@ -106,8 +107,27 @@ class ConfigTest(RepoCase):
         self.assertEqual(problem, "")
         self.assertEqual(data["sync"],
                          {"remote": "origin", "branch": "main",
-                          "enabled": True, "auto_merge": True})
+                          "enabled": True, "auto_merge": True,
+                          "check_enabled": True, "check_minutes": 30})
         self.assertIsNone(data["target"])
+
+    def test_old_settings_file_gets_default_check_fields(self):
+        # 旧配置只有四个 sync 键：读侧补齐，写回时保留（否则 --set-sync 会把它们丢掉）。
+        path = self.repo / ".local" / "settings.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "schema": "ascend-sleuth-settings/1",
+            "sync": {"remote": "origin", "branch": "main",
+                     "enabled": True, "auto_merge": True},
+        }), encoding="utf-8")
+        data, config, _problem = kb_sync.load_settings(self.repo)
+        self.assertEqual(config, "file")
+        self.assertTrue(data["sync"]["check_enabled"])
+        self.assertEqual(data["sync"]["check_minutes"], 30)
+        kb_sync.save_settings(self.repo, data)
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        self.assertTrue(saved["sync"]["check_enabled"])
+        self.assertEqual(saved["sync"]["check_minutes"], 30)
 
     def test_broken_settings_falls_back_without_raising(self):
         path = self.repo / ".local" / "settings.json"
@@ -160,6 +180,33 @@ class ConfigTest(RepoCase):
         self.write_settings()
         self.assertEqual(kb_sync.settings_path(self.repo),
                          (self.repo / ".local" / "settings.json").resolve())
+
+
+class NormalizeSyncTest(unittest.TestCase):
+    """sync 段的提醒检查两键：缺省、夹取、类型不对时取默认。"""
+
+    def test_missing_check_fields_use_defaults(self):
+        sync = kb_sync.normalize_sync({"remote": "origin", "branch": "main"})
+        self.assertTrue(sync["check_enabled"])
+        self.assertEqual(sync["check_minutes"], 30)
+
+    def test_check_enabled_false_forms(self):
+        for raw in (False, "off", "false", "0"):
+            with self.subTest(raw=raw):
+                self.assertFalse(kb_sync.normalize_sync({"check_enabled": raw})["check_enabled"])
+
+    def test_check_minutes_clamps_to_bounds(self):
+        cases = {1: 5, 4: 5, 5: 5, 15: 15, 45: 45, 720: 720, 721: 720, 100000: 720}
+        for raw, expected in cases.items():
+            with self.subTest(raw=raw):
+                self.assertEqual(
+                    kb_sync.normalize_sync({"check_minutes": raw})["check_minutes"], expected)
+
+    def test_check_minutes_non_integer_uses_default(self):
+        for raw in ("15", None, True, 15.5, [], {}):
+            with self.subTest(raw=raw):
+                self.assertEqual(
+                    kb_sync.normalize_sync({"check_minutes": raw})["check_minutes"], 30)
 
 
 class FetchTest(ConfiguredCase):
@@ -659,6 +706,124 @@ class MergeTest(ConfiguredCase):
         self.assertEqual(result["merge"], "none")
         self.assertEqual(result["reason"], "auto-merge-off")
         self.assertEqual(result["behind"], 1)
+
+
+class CheckModeTest(ConfiguredCase):
+    """`--check`：只 fetch、不合并、不看 sync.enabled；离线与失败冷却仍拦。"""
+
+    def seed_failure(self, reason="timeout"):
+        state = {"schema": "ascend-sleuth-kb-sync-state/1", "last_ok_at": "",
+                 "attempted_at": kb_sync.now_iso(), "reason": reason,
+                 "remote": "origin", "branch": "main"}
+        path = self.repo / ".local" / "kb-sync-state.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(state), encoding="utf-8")
+
+    def test_check_fetches_when_sync_disabled(self):
+        self.write_settings({"enabled": False})
+        upstream = self.upstream({"knowledge/new.yaml": "cases: []\n"})
+        code, doc = self.run_cli("--check", "--json")
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["ok"])
+        self.assertEqual(doc["reason"], "")
+        # enabled 仍照实上报，只是不拦这一种模式。
+        self.assertFalse(doc["enabled"])
+        self.assertEqual(doc["merge"], "none")
+        self.assertEqual(doc["remote_rev"], upstream)
+        self.assertEqual(doc["behind"], 1)
+        self.assertEqual(doc["surface"]["knowledge"], 1)
+
+    def test_check_does_not_merge(self):
+        self.upstream({"knowledge/a.yaml": "cases: []\n"})
+        before = git(self.repo, "rev-parse", "HEAD")
+        _code, doc = self.run_cli("--check", "--json")
+        self.assertEqual(doc["merge"], "none")
+        self.assertEqual(git(self.repo, "rev-parse", "HEAD"), before)
+        self.assertFalse((self.repo / "knowledge" / "a.yaml").exists())
+
+    def test_check_is_silent_when_offline(self):
+        self.write_settings({"enabled": False})
+        (self.repo / "deployment.yaml").write_text(
+            'evolution:\n  mode: "full"\nsync:\n  mode: "offline"\n', encoding="utf-8")
+        real = kb_sync.run_git
+        calls = []
+
+        def spy(args, cwd, timeout):
+            calls.append(list(args))
+            if "fetch" in args:
+                raise AssertionError("offline 时 --check 也不应 fetch")
+            return real(args, cwd, timeout)
+
+        with mock.patch.object(kb_sync, "run_git", side_effect=spy):
+            code, doc = self.run_cli("--check", "--json")
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["offline"])
+        self.assertFalse(doc["ok"])
+        self.assertEqual(doc["reason"], "offline")
+        self.assertFalse(any("fetch" in call for call in calls))
+
+    def test_check_respects_failure_cooldown(self):
+        self.seed_failure()
+        self.upstream({"knowledge/a.yaml": "cases: []\n"})
+        real = kb_sync.run_git
+        calls = []
+
+        def spy(args, cwd, timeout):
+            calls.append(list(args))
+            if "fetch" in args:
+                raise AssertionError("冷却窗口内 --check 不应 fetch")
+            return real(args, cwd, timeout)
+
+        with mock.patch.object(kb_sync, "run_git", side_effect=spy):
+            code, doc = self.run_cli("--check", "--json")
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["skipped"])
+        self.assertFalse(any("fetch" in call for call in calls))
+
+    def test_check_force_retries_within_cooldown(self):
+        self.seed_failure()
+        upstream = self.upstream({"knowledge/a.yaml": "cases: []\n"})
+        code, doc = self.run_cli("--check", "--json", "--force")
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["ok"])
+        self.assertFalse(doc["skipped"])
+        self.assertEqual(doc["remote_rev"], upstream)
+
+
+class ManualMergeBypassesEnabledTest(ConfiguredCase):
+    """手动「立即同步」`--merge --force` 不受 sync.enabled 拦；不带 force 仍按关闭处理。"""
+
+    def test_merge_force_merges_when_sync_disabled(self):
+        self.write_settings({"enabled": False})
+        upstream = self.upstream({"knowledge/a.yaml": "cases: []\n"})
+        code, doc = self.run_cli("--merge", "--json", "--force")
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["ok"])
+        self.assertFalse(doc["enabled"])
+        self.assertEqual(doc["merge"], "ff-only")
+        self.assertEqual(doc["local_rev"], upstream)
+        self.assertTrue((self.repo / "knowledge" / "a.yaml").is_file())
+
+    def test_merge_without_force_stays_disabled(self):
+        self.write_settings({"enabled": False})
+        self.upstream({"knowledge/a.yaml": "cases: []\n"})
+        real = kb_sync.run_git
+        calls = []
+
+        def spy(args, cwd, timeout):
+            calls.append(list(args))
+            if "fetch" in args:
+                raise AssertionError("sync.enabled=false 且无 force 时 --merge 不应 fetch")
+            return real(args, cwd, timeout)
+
+        with mock.patch.object(kb_sync, "run_git", side_effect=spy):
+            code, doc = self.run_cli("--merge", "--json")
+        self.assertEqual(code, 0)
+        self.assertFalse(doc["ok"])
+        self.assertFalse(doc["enabled"])
+        self.assertEqual(doc["reason"], "disabled")
+        self.assertEqual(doc["merge"], "none")
+        self.assertFalse(any("fetch" in call for call in calls))
 
 
 class IdentityTest(ConfiguredCase):

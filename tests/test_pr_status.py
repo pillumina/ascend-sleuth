@@ -319,6 +319,83 @@ class SettingsCasTest(RepoCase):
         self.assertFalse(settings["sync"]["enabled"])
 
 
+class SetSyncCheckFieldsTest(RepoCase):
+    """`--set-sync` 的提醒检查两键：只改 check 字段、越界拒绝、CAS 照旧。"""
+
+    def seed_sync(self):
+        pr.kb_sync.save_settings(self.repo, {"sync": {
+            "remote": "origin", "branch": "release", "enabled": False, "auto_merge": False}})
+
+    def test_only_check_fields_leave_others_untouched(self):
+        self.seed_sync()
+        code, payload = run_cli("--root", str(self.repo), "--set-sync",
+                                "--check-reminders", "off", "--check-minutes", "45")
+        self.assertEqual(code, 0, payload)
+        self.assertTrue(payload["ok"], payload)
+        sync = payload["sync"]
+        self.assertFalse(sync["check_enabled"])
+        self.assertEqual(sync["check_minutes"], 45)
+        self.assertEqual((sync["remote"], sync["branch"]), ("origin", "release"))
+        self.assertFalse(sync["enabled"])
+        self.assertFalse(sync["auto_merge"])
+        # 落盘与读侧（--status 给面板的 settings.sync）都带这两键。
+        settings, _source, _problem = pr.kb_sync.load_settings(self.repo)
+        self.assertFalse(settings["sync"]["check_enabled"])
+        self.assertEqual(settings["sync"]["check_minutes"], 45)
+        code, status = run_cli("--root", str(self.repo))
+        self.assertEqual(code, 0, status)
+        self.assertFalse(status["settings"]["sync"]["check_enabled"])
+        self.assertEqual(status["settings"]["sync"]["check_minutes"], 45)
+
+    def test_check_field_alone_counts_as_a_change(self):
+        self.seed_sync()
+        code, payload = run_cli("--root", str(self.repo), "--set-sync",
+                                "--check-reminders", "on")
+        self.assertEqual(code, 0, payload)
+        self.assertTrue(payload["ok"], payload)
+        self.assertTrue(payload["sync"]["check_enabled"])
+
+    def test_check_minutes_out_of_range_is_arg_error(self):
+        self.seed_sync()
+        for value in ("0", "4", "721"):
+            with self.subTest(value=value):
+                code, payload = run_cli("--root", str(self.repo), "--set-sync",
+                                        "--check-minutes", value)
+                self.assertEqual(code, pr.EXIT_ARGS, payload)
+                self.assertFalse(payload["ok"])
+                self.assertEqual(payload["error"]["code"], "E_ARGS")
+        # 被拒绝的写没有落盘：分钟数还是默认值。
+        settings, _source, _problem = pr.kb_sync.load_settings(self.repo)
+        self.assertEqual(settings["sync"]["check_minutes"], 30)
+
+    def test_check_minutes_bounds_are_accepted(self):
+        for value in (5, 720):
+            with self.subTest(value=value):
+                code, payload = run_cli("--root", str(self.repo), "--set-sync",
+                                        "--check-minutes", str(value))
+                self.assertEqual(code, 0, payload)
+                self.assertTrue(payload["ok"], payload)
+                self.assertEqual(payload["sync"]["check_minutes"], value)
+
+    def test_check_fields_write_respects_cas(self):
+        self.seed_sync()
+        stale = pr.kb_sync.settings_sha256(self.repo)
+        # 另一个写者在读完指纹之后改了配置。
+        pr.kb_sync.save_settings(self.repo, {"sync": {
+            "remote": "origin", "branch": "main", "enabled": True, "auto_merge": True,
+            "check_enabled": False, "check_minutes": 60}})
+        before = pr.kb_sync.settings_path(self.repo).read_bytes()
+        code, payload = run_cli("--root", str(self.repo), "--set-sync",
+                                "--check-reminders", "on", "--expect-sha256", stale)
+        self.assertEqual(code, 0, payload)
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["error"]["code"], "E_CAS")
+        self.assertEqual(pr.kb_sync.settings_path(self.repo).read_bytes(), before)
+        settings, _source, _problem = pr.kb_sync.load_settings(self.repo)
+        self.assertFalse(settings["sync"]["check_enabled"])
+        self.assertEqual(settings["sync"]["check_minutes"], 60)
+
+
 # ---------------------------------------------------------------- 目标与推荐
 
 class TargetTest(RepoCase):

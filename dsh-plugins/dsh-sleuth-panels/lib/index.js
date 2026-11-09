@@ -1,7 +1,7 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:0fdaa5ebd254)
-//   dsh-plugins/ev-panel/panel-host.js  (sha256:78b97a834399)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:c7d9672fc72d)
+//   dsh-plugins/ev-panel/panel-host.js  (sha256:14c0313391b5)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
 // 面板源码是动态插件方言（文件是函数体，靠沙箱提供的 harness 通信）；这里原文嵌入常驻
@@ -105,7 +105,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:0fdaa5ebd254) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:c7d9672fc72d) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -117,7 +117,7 @@ return {
 
     // 本插件加载时的那一版面板包版本。构建常驻包时生成器把占位符换成 package.json 的 version；
     // 热加载路直接读源文件，占位符不会被替换，这时按"版本未知"处理，不据此判新旧。
-    const PANEL_VERSION = '0.9.3'
+    const PANEL_VERSION = '0.10.0'
     const PANEL_VERSION_KNOWN = /^\d+\.\d+/.test(PANEL_VERSION)
 
     // fs 缺失时**只降级依赖它的功能**，不再让整个插件静默不注册。
@@ -3056,7 +3056,7 @@ return {
     id: 'ev-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ev-panel/panel-host.js (sha256:78b97a834399) 原文开始 ----
+// ---- dsh-plugins/ev-panel/panel-host.js (sha256:14c0313391b5) 原文开始 ----
 // ev-panel host —— 自演进看板数据服务（EV 卡 / 容量 / 归因聚合 / timeline）
 // 用法：cordis_define kind:new → code.host 用本文件全文；code.client 用 panel-client.js 全文。
 // host 侧通过 shell 跑 scripts/ev_board_data.py 汇总 JSON（确定性逻辑在脚本，遵循原则二）。
@@ -3493,11 +3493,11 @@ return {
       if (doc.ok === false && reason === 'not-a-repo') {
         return { ok: false, code: 'E_NOT_GIT', message: '当前目录不是 git 检出', detail: '' }
       }
-      // 脚本的真实字段；旧脚本没带这两个开关时按"开"处理，不把缺字段读成关闭。
+      // 脚本的真实字段；旧脚本没带这两个字段时按"开"处理，不把缺字段读成关闭。
       const enabled = doc.enabled !== false && doc.enabled !== 'false'
       let offline = doc.offline === true || doc.offline === 'true'
         || (doc.offline !== null && typeof doc.offline === 'object' && doc.offline.declared === true)
-      // 兼容只给 reason 的旧脚本：两个开关字段缺席时，reason 是唯一能判断状态的来源。
+      // 兼容只给 reason 的旧脚本：这些字段缺席时，reason 是唯一能判断状态的来源。
       if (reason === 'offline') offline = true
       const offlineSource = offline ? 'deployment.yaml' : ''
       const sameRepoRaw = doc.same_repo
@@ -3589,17 +3589,22 @@ return {
           branch: syncStr(sync.branch),
           enabled: sync.enabled !== false,
           auto_merge: sync.auto_merge !== false,
+          check_enabled: sync.check_enabled !== false,
+          check_minutes: Number(sync.check_minutes) || 30,
         } : null,
         target: target ? { remote: syncStr(target.remote), base: syncStr(target.base) } : null,
       } }
     }
-    // 两个开关与配置来源：优先本机设置（`pr_status.py --json`），脚本自带 config 对象时也认。
+    // 三个开关与配置来源：优先本机设置（`pr_status.py --json`），脚本自带 config 对象时也认。
     function syncConfigOf(settingsPart, syncData) {
       if (settingsPart && settingsPart.ok === true && settingsPart.data.sync) {
         const cfgSync = settingsPart.data.sync
         return {
           auto_check: cfgSync.enabled !== false,
           auto_merge: cfgSync.auto_merge !== false,
+          // 提醒检查与间隔：缺字段按脚本的默认值（开、30 分钟），不把旧设置读成关闭。
+          check_enabled: cfgSync.check_enabled !== false,
+          check_minutes: Number(cfgSync.check_minutes) || 30,
           source: settingsPart.data.config === 'file' ? 'personal' : 'default',
           path: settingsPart.data.path || '.local/settings.json',
         }
@@ -3659,7 +3664,7 @@ return {
     })
 
     // 一次读全：同步状态 + 本机设置 + 远端清单。三段各自成败——kb_sync.py 缺失时
-    // 仍要能列远端、读到两个开关，而不是整页只剩一句"读不到"。
+    // 仍要能列远端、读到三个开关，而不是整页只剩一句"读不到"。
     const kbShowDisposer = harness.handle('ascend-kb-sync-show', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
       const syncRaw = await runSyncScript(sessionId, KB_SYNC_SCRIPT, '--show --json', 20000)
@@ -3724,9 +3729,11 @@ return {
       }
     })
 
-    // 「保存」：写 `.local/settings.json` 的 sync 段（远端 / 分支 / 两个开关）。
-    // 两个开关在脚本里的名字：自动检查更新 = `sync.enabled`（--enable / --disable），
-    // 自动合并 = `sync.auto_merge`（--auto-merge on|off）。CAS 令牌用读到的那份设置指纹。
+    // 「保存」：写 `.local/settings.json` 的 sync 段（远端 / 分支 / 三个开关与检查间隔）。
+    // 三个开关在脚本里的名字：自动检查更新 = `sync.enabled`（--enable / --disable），
+    // 自动合并 = `sync.auto_merge`（--auto-merge on|off），提醒检查 = `sync.check_enabled`
+    // （--check-reminders on|off）；检查间隔 = `sync.check_minutes`（--check-minutes N）。
+    // CAS 令牌用读到的那份设置指纹。
     const kbSaveDisposer = harness.handle('ascend-kb-sync-save', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
       const remote = args && args.remote ? String(args.remote).trim() : ''
@@ -3741,10 +3748,20 @@ return {
       }
       const autoCheck = args && args.autoCheck === true
       const autoMerge = args && args.autoMerge === true
+      // 提醒检查默认开；间隔默认 30 分钟，落到脚本接受的 5..720 区间。
+      const checkEnabled = !(args && args.checkEnabled === false)
+      const minutesArg = args && args.checkMinutes !== undefined && args.checkMinutes !== null
+        ? Number(args.checkMinutes)
+        : NaN
+      const checkMinutes = Number.isFinite(minutesArg)
+        ? Math.min(720, Math.max(5, Math.round(minutesArg)))
+        : 30
       const argv = ['--set-sync', '--remote', remote]
       if (branch) argv.push('--branch', branch)
       argv.push(autoCheck ? '--enable' : '--disable')
       argv.push('--auto-merge', autoMerge ? 'on' : 'off')
+      argv.push('--check-reminders', checkEnabled ? 'on' : 'off')
+      argv.push('--check-minutes', String(checkMinutes))
       if (expect) argv.push('--expect-sha256', expect)
       argv.push('--json')
       const r = await runSyncScript(sessionId, PR_STATUS_SCRIPT, argv.join(' '), 20000)
@@ -3757,7 +3774,10 @@ return {
         cwd: r.cwd || null,
         config_path: syncStr(doc.settings) || '.local/settings.json',
         settings_sha256: syncStr(doc.sha256),
-        saved: { remote: remote, branch: branch, auto_check: autoCheck, auto_merge: autoMerge },
+        saved: {
+          remote: remote, branch: branch, auto_check: autoCheck, auto_merge: autoMerge,
+          check_reminders: checkEnabled, check_minutes: checkMinutes,
+        },
       }
     })
 

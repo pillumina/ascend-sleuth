@@ -126,6 +126,7 @@ writeFileSync(join(KB_REPO, 'scripts', 'kb_sync.py'), '', 'utf8')
 // 必须在任何 mod.apply() 之前设置：插件在 apply 时就开始读状态文件。
 process.env.DSH_SLEUTH_KB_ROOT = KB_REPO
 const KB_STATE = join(KB_REPO, '.local', 'kb-sync-notify.json')
+const KB_SETTINGS = join(KB_REPO, '.local', 'settings.json')
 
 function runCommand(spec) {
   return new Promise((resolve) => {
@@ -231,9 +232,11 @@ function makeResultShell(result) {
 // （解释器探测走真实 python3；不 fetch、不跑 git、不联网）。
 function makeKbShell() {
   const calls = []
+  const specs = []
   let payload = kbPayload({})
   return {
     calls,
+    specs,
     setPayload(next) {
       payload = next
     },
@@ -243,6 +246,7 @@ function makeKbShell() {
     async execute(spec) {
       const command = String(spec.command || '')
       calls.push(command)
+      specs.push(spec)
       if (!command.includes('kb_sync.py')) return { result: () => runCommand(spec) }
       return {
         result: () => Promise.resolve({
@@ -275,11 +279,16 @@ function kbPayload(overrides) {
 }
 
 // 假 timer 服务：只记下注册的延迟与回调，由用例自己点火；不挂真实定时器，进程不会被滞留。
+// 和真 timer 一样：到点触发后这条定时器自己就没了（entry.disposed 记 true），未触发的由卸载清理。
 function makeFakeTimers() {
   const timeouts = []
   const intervals = []
   const record = (list) => (fn, ms) => {
-    const entry = { fn, ms, disposed: false }
+    const entry = { fn: null, ms, disposed: false }
+    entry.fn = async () => {
+      entry.disposed = true
+      return fn()
+    }
     list.push(entry)
     return () => {
       entry.disposed = true
@@ -303,6 +312,20 @@ function readKbState() {
   } catch {
     return null
   }
+}
+
+// 写主检出的 .local/settings.json：调度（提醒检查开关 / 间隔）由 host 自己读这一份。
+function writeKbSettings(sync) {
+  mkdirSync(join(KB_REPO, '.local'), { recursive: true })
+  writeFileSync(KB_SETTINGS, JSON.stringify({ schema: 'ascend-sleuth-settings/1', sync }, null, 2) + '\n', 'utf8')
+}
+
+function clearKbSettings() {
+  rmSync(KB_SETTINGS, { force: true })
+}
+
+function kbSyncCalls(shell) {
+  return shell.calls.filter((command) => command.includes('kb_sync.py')).length
 }
 
 function makeHarness(ctxExtra) {
@@ -1135,18 +1158,15 @@ const kbHarnesses = []
 let kbTimers = null
 let kbTimerHarness = null
 
-function newKbHarness(payload, withTimers) {
+function newKbHarness(payload, timers) {
   const shell = makeKbShell()
   shell.setPayload(payload)
   const options = { shell }
-  if (withTimers) {
-    kbTimers = makeFakeTimers()
-    options.timer = kbTimers
-  }
+  if (timers) options.timer = timers
   const harness = makeHarness(options)
   kbHarnesses.push(harness)
   mod.apply(harness.ctx)
-  return { harness, shell }
+  return { harness, shell, timers: timers || null }
 }
 
 {
@@ -1156,32 +1176,46 @@ function newKbHarness(payload, withTimers) {
     JSON.stringify(mod.inject))
 
   // ① 落后 3 个提交、含 1 处面板代码：启动检查跑完，copilot-state 带 kbNotice。
-  const first = newKbHarness(kbPayload({}), true)
+  const first = newKbHarness(kbPayload({}), makeFakeTimers())
+  kbTimers = first.timers
   kbTimerHarness = first.harness
   expect('知识库：可选注入拿到 timer 替身',
     first.harness.injected.some((item) => item.services.indexOf('timer') >= 0),
     JSON.stringify(first.harness.injected.map((item) => item.services)))
-  expect('知识库：启动检查 3 秒后跑、周期 30 分钟',
+  // 启动只排一次 3 秒首查；间隔检查不再用固定 interval。
+  expect('知识库：启动排一次 3 秒首查、不用固定 interval',
     kbTimers.timeouts.length === 1 && kbTimers.timeouts[0].ms === 3000
-    && kbTimers.intervals.length === 1 && kbTimers.intervals[0].ms === 30 * 60 * 1000,
+    && kbTimers.intervals.length === 0,
     JSON.stringify({
       timeouts: kbTimers.timeouts.map((entry) => entry.ms),
       intervals: kbTimers.intervals.map((entry) => entry.ms),
     }))
   await kbTimers.fireTimer()
   const kbCommands = first.shell.calls.filter((command) => command.includes('kb_sync.py'))
-  expect('知识库：只调 kb_sync.py 的 --sync --json 并指定主检出',
-    kbCommands.length === 1 && /--sync/.test(kbCommands[0]) && /--json/.test(kbCommands[0])
+  expect('知识库：检测走 kb_sync.py --check --json 并指定主检出',
+    kbCommands.length === 1 && /--check/.test(kbCommands[0]) && !/--sync/.test(kbCommands[0])
+    && /--json/.test(kbCommands[0])
     && kbCommands[0].includes(join(KB_REPO, 'scripts', 'kb_sync.py'))
     && kbCommands[0].includes("--root '" + KB_REPO + "'"),
     JSON.stringify(kbCommands))
-  // 周期检查要真被执行一次：点火 interval 回调，kb_sync 子进程计数应 +1。
-  await kbTimers.intervals[0].fn()
+  // 真机 bug：部署默认是 workspace-write + launch-root，后台 fetch 会 EPERM；这里显式收窄到主检出。
+  const kbSpec = first.shell.specs.filter((spec) => String(spec.command || '').includes('kb_sync.py')).pop()
+  expect('知识库：后台 fetch 的沙箱档位收窄到 workspace-write + 主检出',
+    kbSpec && kbSpec.sandboxPolicy && kbSpec.sandboxPolicy.mode === 'workspace-write'
+    && kbSpec.sandboxPolicy.workspaceRoot === KB_REPO,
+    JSON.stringify(kbSpec && kbSpec.sandboxPolicy))
+  // 默认 settings 缺省：下一次排 30 分钟后。
+  expect('知识库：默认下一次 30 分钟后',
+    kbTimers.timeouts.length === 2 && kbTimers.timeouts[1].ms === 30 * 60 * 1000,
+    JSON.stringify(kbTimers.timeouts.map((entry) => entry.ms)))
+  // 周期检查要真被执行一次：点火下一次 timeout，kb_sync 子进程计数应 +1。
+  await kbTimers.timeouts[1].fn()
   const commandsAfterInterval = first.shell.calls.filter((command) => command.includes('kb_sync.py'))
-  expect('知识库：周期检查按 30 分钟触发一次子进程',
+  expect('知识库：到点再跑一次检查并继续排下一次',
     commandsAfterInterval.length === kbCommands.length + 1
-    && commandsAfterInterval.every((command) => /--sync/.test(command) && /--json/.test(command)),
-    JSON.stringify(commandsAfterInterval))
+    && commandsAfterInterval.every((command) => /--check/.test(command) && /--json/.test(command))
+    && kbTimers.timeouts.length === 3 && kbTimers.timeouts[2].ms === 30 * 60 * 1000,
+    JSON.stringify({ calls: commandsAfterInterval.length, timeouts: kbTimers.timeouts.map((entry) => entry.ms) }))
   expect('知识库：不自己拼 git 命令',
     first.shell.calls.every((command) => !/(^|\s)git(\s|$)/.test(command)), JSON.stringify(first.shell.calls))
   // 没有 timer 能力的 harness（前面那些）完全不装定时器，也就没跑过后台检查。
@@ -1237,6 +1271,76 @@ function newKbHarness(payload, withTimers) {
     && recheckForce.notice.behind === 3 && commandsAfterForce.length === 3,
     JSON.stringify({ value: recheckForce, kbCalls: commandsAfterForce.length }))
 
+  // ①b 沙箱档位：部署默认已是完全权限时原样透传（不再包一层）。
+  const fullShell = makeKbShell()
+  fullShell.setPayload(kbPayload({}))
+  const full = makeHarness({ shell: fullShell, sandboxPolicy: { resolve: () => ({ mode: 'danger-full-access' }) } })
+  kbHarnesses.push(full)
+  mod.apply(full.ctx)
+  await kbRpc(full, 'copilot-kb-recheck', { force: true }, 'kb-recheck-full')
+  const fullSpec = fullShell.specs.filter((spec) => String(spec.command || '').includes('kb_sync.py')).pop()
+  expect('知识库：部署默认完全权限时沙箱档位原样透传',
+    fullSpec && fullSpec.sandboxPolicy && fullSpec.sandboxPolicy.mode === 'danger-full-access',
+    JSON.stringify(fullSpec && fullSpec.sandboxPolicy))
+
+  // ①c 按 settings 调度：check_minutes=15 → 下一次 15 分钟。
+  writeKbSettings({ check_enabled: true, check_minutes: 15 })
+  const fifteen = newKbHarness(kbPayload({ remote_rev: 'abc1234', behind: 2 }), makeFakeTimers())
+  await fifteen.timers.timeouts[0].fn()
+  expect('知识库：check_minutes=15 时下一次 15 分钟',
+    fifteen.timers.timeouts.length === 2 && fifteen.timers.timeouts[1].ms === 15 * 60 * 1000,
+    JSON.stringify(fifteen.timers.timeouts.map((entry) => entry.ms)))
+  clearKbSettings()
+
+  // ①d check_enabled=false：不跑 kb_sync、60 秒后再读、提示置空；重开恢复检查。
+  writeKbSettings({ check_enabled: false, check_minutes: 30 })
+  const paused = newKbHarness(kbPayload({}), makeFakeTimers())
+  await paused.timers.timeouts[0].fn()
+  const pausedState = (await kbRpc(paused.harness, 'copilot-state', {
+    sessionId: 'kb-paused', cwd: SANDBOX,
+  }, 'kb-state-paused')).envelope.result.value
+  expect('知识库：check_enabled=false 时首查不跑 kb_sync、60 秒后再读、notice 置空',
+    kbSyncCalls(paused.shell) === 0
+    && paused.timers.timeouts.length === 2 && paused.timers.timeouts[1].ms === 60 * 1000
+    && pausedState && pausedState.kbNotice === null,
+    JSON.stringify({
+      calls: kbSyncCalls(paused.shell),
+      timeouts: paused.timers.timeouts.map((entry) => entry.ms),
+      notice: pausedState && pausedState.kbNotice,
+    }))
+  // 手动重查是用户主动动作，不看 check_enabled，仍立即跑。
+  const manualWhilePaused = (await kbRpc(paused.harness, 'copilot-kb-recheck', {
+    force: true,
+  }, 'kb-recheck-paused-manual')).envelope.result.value
+  expect('知识库：关着提醒时手动重查仍可立即跑',
+    kbSyncCalls(paused.shell) === 1
+    && manualWhilePaused && manualWhilePaused.notice && manualWhilePaused.notice.rev === '9f8e7d',
+    JSON.stringify({ calls: kbSyncCalls(paused.shell), value: manualWhilePaused }))
+  await paused.timers.timeouts[1].fn()
+  const pausedAgain = (await kbRpc(paused.harness, 'copilot-state', {
+    sessionId: 'kb-paused', cwd: SANDBOX,
+  }, 'kb-state-paused-2')).envelope.result.value
+  expect('知识库：关闭期间 60 秒轮询不跑子进程、提示收掉',
+    kbSyncCalls(paused.shell) === 1
+    && paused.timers.timeouts.length === 3 && paused.timers.timeouts[2].ms === 60 * 1000
+    && pausedAgain && pausedAgain.kbNotice === null,
+    JSON.stringify({ calls: kbSyncCalls(paused.shell), timeouts: paused.timers.timeouts.map((entry) => entry.ms) }))
+  writeKbSettings({ check_enabled: true, check_minutes: 30 })
+  await paused.timers.timeouts[2].fn()
+  const reopened = (await kbRpc(paused.harness, 'copilot-state', {
+    sessionId: 'kb-paused', cwd: SANDBOX,
+  }, 'kb-state-reopened')).envelope.result.value
+  expect('知识库：重新打开后恢复检查并按间隔续排',
+    kbSyncCalls(paused.shell) === 2
+    && reopened && reopened.kbNotice && reopened.kbNotice.rev === '9f8e7d'
+    && paused.timers.timeouts.length === 4 && paused.timers.timeouts[3].ms === 30 * 60 * 1000,
+    JSON.stringify({
+      calls: kbSyncCalls(paused.shell),
+      notice: reopened && reopened.kbNotice,
+      timeouts: paused.timers.timeouts.map((entry) => entry.ms),
+    }))
+  clearKbSettings()
+
   // ② 稍后：notice 置空，记录落盘；同一 rev 换个进程（新 harness）也不再提示。
   const dismissFirst = (await kbRpc(first.harness, 'copilot-kb-dismiss', {
     rev: '9f8e7d',
@@ -1280,10 +1384,11 @@ function newKbHarness(payload, withTimers) {
     fileSynced && fileSynced.behind === 0 && fileSynced.lastError === '',
     JSON.stringify(fileSynced))
 
-  // ⑤ 关闭同步：先有提示，再关掉 → 静默、不算错误且提示变 null；离线部署同样静默。
+  // ⑤ 降级路径：脚本报 disabled 时静默（--check 正常不会给这个 reason，旧脚本/自动路径兜底）；
+  // 离线部署同样静默；sync.enabled=false 不影响 --check 的提醒（enabled 只作为状态上报）。
   const disabled = newKbHarness(kbPayload({ remote_rev: 'c0ffee1', behind: 2 }), false)
   const disabledBefore = (await kbRpc(disabled.harness, 'copilot-kb-recheck', {}, 'kb-recheck-disabled-before')).envelope.result.value
-  expect('知识库：关闭同步用例先有提示',
+  expect('知识库：disabled 降级用例先有提示',
     disabledBefore && disabledBefore.notice && disabledBefore.notice.rev === 'c0ffee1',
     JSON.stringify(disabledBefore && disabledBefore.notice))
   disabled.shell.setPayload(kbPayload({
@@ -1294,12 +1399,20 @@ function newKbHarness(payload, withTimers) {
     sessionId: 'kb-disabled', cwd: SANDBOX,
   }, 'kb-state-disabled')).envelope.result.value
   const fileDisabled = readKbState()
-  expect('知识库：关闭同步时静默、不算错误且 notice 变 null',
+  expect('知识库：脚本报 disabled 时静默、不算错误且 notice 变 null',
     disabledValue && disabledValue.notice === null && disabledValue.reason === 'disabled'
     && disabledValue.error === ''
     && disabledState && disabledState.kbNotice === null
     && fileDisabled && fileDisabled.lastError === '',
     JSON.stringify({ value: disabledValue, notice: disabledState && disabledState.kbNotice, file: fileDisabled }))
+
+  // --check 不看 sync.enabled：脚本照常给 behind，host 不能把 enabled:false 当静默。
+  const syncOff = newKbHarness(kbPayload({ enabled: false, remote_rev: 'e1e1e1', behind: 2 }), false)
+  const syncOffValue = (await kbRpc(syncOff.harness, 'copilot-kb-recheck', {}, 'kb-recheck-sync-off')).envelope.result.value
+  expect('知识库：sync.enabled=false 不影响提醒检查（有落后就提示）',
+    syncOffValue && syncOffValue.notice && syncOffValue.notice.rev === 'e1e1e1'
+    && syncOffValue.notice.behind === 2,
+    JSON.stringify(syncOffValue))
 
   const offline = newKbHarness(kbPayload({
     ok: false, reason: 'offline', enabled: true, offline: true, behind: 1, remote_rev: 'def5678',
@@ -1368,7 +1481,7 @@ function newKbHarness(payload, withTimers) {
   }))
   const quietValue = (await kbRpc(restoring.harness, 'copilot-kb-recheck', { force: true }, 'kb-recheck-seed-quiet')).envelope.result.value
   const fileQuiet = readKbState()
-  expect('知识库：关闭同步清提示并保留 rev/behind 供排查',
+  expect('知识库：disabled 降级时清提示并保留 rev/behind 供排查',
     quietValue && quietValue.notice === null
     && fileQuiet && fileQuiet.rev === 'beef001' && fileQuiet.behind === 2,
     JSON.stringify({ value: quietValue, file: fileQuiet }))
@@ -1384,7 +1497,7 @@ function newKbHarness(payload, withTimers) {
     if (silentNotice) break
     await new Promise((resolve) => setTimeout(resolve, 20))
   }
-  expect('知识库：关闭同步后重启不闪旧提示',
+  expect('知识库：disabled 降级后重启不闪旧提示',
     silentNotice === null && silent.shell.calls.every((command) => !command.includes('kb_sync.py')),
     JSON.stringify({ notice: silentNotice, calls: silent.shell.calls }))
 
@@ -1481,10 +1594,11 @@ for (const harness of [rw, incHarness, internalHarness, ro, timeoutHarness, abor
     }
   }
 }
-expect('知识库：卸载时清掉两个定时器',
-  kbTimers !== null && kbTimers.timeouts.length === 1 && kbTimers.timeouts[0].disposed === true
-  && kbTimers.intervals.length === 1 && kbTimers.intervals[0].disposed === true,
-  JSON.stringify(kbTimers && { timeouts: kbTimers.timeouts, intervals: kbTimers.intervals }))
+expect('知识库：卸载时清掉排定的定时器',
+  kbTimers !== null && kbTimers.timeouts.length === 3
+  && kbTimers.timeouts.every((entry) => entry.disposed === true)
+  && kbTimers.intervals.length === 0,
+  JSON.stringify(kbTimers && { timeouts: kbTimers.timeouts.map((entry) => ({ ms: entry.ms, disposed: entry.disposed })) }))
 expect('知识库：卸载时收回可选注入的 timer fiber',
   kbTimerHarness !== null
   && kbTimerHarness.injected.filter((item) => item.services.indexOf('timer') >= 0).length === 1

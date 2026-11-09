@@ -152,6 +152,9 @@ function switchesOf(tree) {
 function switchByLabel(tree, label) {
   return switchesOf(tree).filter(el => el.props['aria-label'] === label)[0] || null
 }
+function selectByLabel(tree, label) {
+  return selectsOf(tree).filter(el => el.props['aria-label'] === label)[0] || null
+}
 function optionsOf(tree) {
   const out = []
   walk(tree, el => { if (el.type === 'option') out.push(textOf(el)) })
@@ -254,7 +257,7 @@ function showPayload(over) {
     settings_sha256: SETTINGS_SHA,
     settings: { ok: true, data: {
       config: 'file', problem: '', path: '.local/settings.json', sha256: SETTINGS_SHA,
-      sync: { remote: 'origin', branch: 'main', enabled: true, auto_merge: true },
+      sync: { remote: 'origin', branch: 'main', enabled: true, auto_merge: true, check_enabled: true, check_minutes: 30 },
       target: { remote: 'origin', base: 'main' },
     } },
     sync: { ok: true, state: 'ok', error: null, data: {
@@ -267,7 +270,7 @@ function showPayload(over) {
       same_repo: true,
       identity_remote: 'origin', identity_url: 'git@github.com:org/repo.git',
       identity_explicit: false, identity_resolved: true,
-      config: { auto_check: true, auto_merge: true, source: 'personal', path: '.local/settings.json' },
+      config: { auto_check: true, auto_merge: true, check_enabled: true, check_minutes: 30, source: 'personal', path: '.local/settings.json' },
     } },
     targets: { ok: true, data: {
       remotes: [
@@ -302,10 +305,15 @@ section('[知识库 · 客户端] 默认态（落后 12）')
   const opts = optionsOf(tree)
   check(opts.some(t => t.indexOf('origin · github.com') >= 0), '远端下拉列出名字与 host', JSON.stringify(opts).slice(0, 200))
   check(text.indexOf('上次使用：') >= 0, '同步源给「上次使用」')
-  check(text.indexOf('自动检查更新') >= 0 && text.indexOf('自动合并') >= 0, '两个开关都在')
+  check(text.indexOf('自动检查更新') >= 0 && text.indexOf('自动合并') >= 0 && text.indexOf('提醒检查') >= 0
+    && text.indexOf('检查间隔') >= 0, '三个开关与检查间隔都在')
   check(text.indexOf('来源：个人设置') >= 0, '开关来源标「个人设置」')
   check(switchByLabel(tree, '自动检查更新') && switchByLabel(tree, '自动检查更新').props['aria-checked'] === 'true',
     '自动检查更新默认开（aria-checked=true）')
+  check(switchByLabel(tree, '提醒检查') && switchByLabel(tree, '提醒检查').props['aria-checked'] === 'true',
+    '提醒检查默认开（aria-checked=true）')
+  check(selectByLabel(tree, '检查间隔') && selectByLabel(tree, '检查间隔').props.value === '30',
+    '检查间隔默认 30 分钟')
   check(text.indexOf('.local/settings.json') >= 0 && text.indexOf('修改下次开单生效') >= 0, '页脚给配置路径与生效时点')
   check(text.indexOf('打开本页不联网') >= 0, '页脚说明打开本页不联网')
   // 归属仓：页脚常驻一行，默认 origin 未显式配置时标「默认」。
@@ -334,7 +342,9 @@ section('[知识库 · 客户端] 默认态（落后 12）')
   check(!!saveCall && saveCall.payload.remote === 'origin' && saveCall.payload.branch === 'main',
     '保存带上远端与分支', JSON.stringify(saveCall && saveCall.payload))
   check(!!saveCall && saveCall.payload.autoCheck === false && saveCall.payload.autoMerge === true,
-    '保存带上两个开关的当前值', JSON.stringify(saveCall && saveCall.payload))
+    '保存带上自动检查更新与自动合并的当前值', JSON.stringify(saveCall && saveCall.payload))
+  check(!!saveCall && saveCall.payload.checkEnabled === true && saveCall.payload.checkMinutes === 30,
+    '保存带上提醒检查与检查间隔的当前值', JSON.stringify(saveCall && saveCall.payload))
   check(!!saveCall && saveCall.payload.expectSha256 === SETTINGS_SHA,
     '保存带上设置指纹（CAS）', JSON.stringify(saveCall && saveCall.payload))
   check(textOf(saved).indexOf('.local/settings.json') >= 0, '保存后仍显示配置落点')
@@ -343,6 +353,63 @@ section('[知识库 · 客户端] 默认态（落后 12）')
   await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
   check(calls.some(c => c.endpoint === 'ascend-kb-sync-merge'), '点「立即同步」发 ascend-kb-sync-merge',
     JSON.stringify(calls.map(c => c.endpoint)))
+}
+
+section('[知识库 · 客户端] 提醒检查开关与检查间隔')
+{
+  // 间隔从 config 读回（60），关掉提醒检查后下拉禁用；保存 payload 带这两个字段。
+  const payload = showPayload()
+  payload.sync.data.config = {
+    auto_check: true, auto_merge: true, check_enabled: true, check_minutes: 60,
+    source: 'personal', path: '.local/settings.json',
+  }
+  const { runtime, main, calls } = await bootClient({ 'ascend-kb-sync-show': () => payload })
+  let tree = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
+  const checkSwitch = switchByLabel(tree, '提醒检查')
+  check(!!checkSwitch && checkSwitch.props['aria-checked'] === 'true', '提醒检查按 config 回读为开',
+    JSON.stringify(checkSwitch && checkSwitch.props))
+  const interval = selectByLabel(tree, '检查间隔')
+  check(!!interval && interval.props.value === '60' && interval.props.disabled === false,
+    '检查间隔按 config 回读 60 分钟且可改', JSON.stringify(interval && interval.props))
+  const minuteOpts = optionsOf(tree)
+  check(minuteOpts.some(t => t.indexOf('15 分钟') >= 0) && minuteOpts.some(t => t.indexOf('30 分钟') >= 0)
+    && minuteOpts.some(t => t.indexOf('60 分钟') >= 0) && minuteOpts.some(t => t.indexOf('120 分钟') >= 0),
+    '检查间隔下拉给 15/30/60/120', JSON.stringify(minuteOpts))
+
+  // 改间隔 → dirty；保存带 120。
+  interval.props.onChange({ target: { value: '120' } })
+  tree = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
+  check(textOf(tree).indexOf('有未保存的改动') >= 0, '改检查间隔后提示未保存')
+  check(selectByLabel(tree, '检查间隔').props.value === '120', '检查间隔草稿更新为 120')
+  clickButton(tree, '保存')
+  tree = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
+  let saveCall = calls.filter(c => c.endpoint === 'ascend-kb-sync-save').pop()
+  check(!!saveCall && saveCall.payload.checkEnabled === true && saveCall.payload.checkMinutes === 120,
+    '保存 payload 带提醒检查打开与 120 分钟', JSON.stringify(saveCall && saveCall.payload))
+
+  // 关掉提醒检查 → 间隔下拉禁用；保存 payload checkEnabled=false。
+  switchByLabel(tree, '提醒检查').props.onClick()
+  tree = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
+  check(switchByLabel(tree, '提醒检查').props['aria-checked'] === 'false', '提醒检查可关（aria-checked=false）')
+  check(selectByLabel(tree, '检查间隔').props.disabled === true, '提醒检查关闭时间隔下拉禁用')
+  clickButton(tree, '保存')
+  tree = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
+  saveCall = calls.filter(c => c.endpoint === 'ascend-kb-sync-save').pop()
+  check(!!saveCall && saveCall.payload.checkEnabled === false && saveCall.payload.checkMinutes === 120,
+    '保存 payload 带提醒检查关闭', JSON.stringify(saveCall && saveCall.payload))
+}
+
+{
+  // 设置里是下拉之外的整数（命令行写的 45）：照实显示并放进选项，不静默改成 30。
+  const payload = showPayload()
+  payload.sync.data.config = {
+    auto_check: true, auto_merge: true, check_enabled: true, check_minutes: 45,
+    source: 'personal', path: '.local/settings.json',
+  }
+  const { runtime, main } = await bootClient({ 'ascend-kb-sync-show': () => payload })
+  const tree = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
+  check(selectByLabel(tree, '检查间隔').props.value === '45', '非预设间隔照实显示为 45')
+  check(optionsOf(tree).some(t => t.indexOf('45 分钟') >= 0), '非预设间隔放进下拉选项', JSON.stringify(optionsOf(tree)))
 }
 
 section('[知识库 · 客户端] 已是最新 / 开关关闭')
@@ -534,21 +601,24 @@ section('[知识库 · 客户端] 状态：离线授权 / 已关闭 / 从未核�
     const text = textOf(tree)
     check(text.indexOf('离线部署（deployment.yaml）') >= 0, '离线部署给一句状态', text.slice(0, 200))
     check(text.indexOf('来源：部署声明（offline）') >= 0, '开关来源标「部署声明（offline）」')
-    check(switchesOf(tree).every(el => el.props.disabled === true), '离线时两个开关都禁用')
+    check(switchesOf(tree).every(el => el.props.disabled === true), '离线时三个开关都禁用')
   }
   const disabled = showPayload()
   disabled.sync.state = 'disabled'
   disabled.sync.error = { code: 'E_DISABLED', message: '同步已关闭（个人设置）' }
   disabled.sync.data.enabled = false
   disabled.sync.data.reason = 'disabled'
-  disabled.sync.data.config = { auto_check: false, auto_merge: true, source: 'personal' }
+  disabled.sync.data.config = { auto_check: false, auto_merge: true, check_enabled: true, check_minutes: 30, source: 'personal' }
   {
     const { runtime, main } = await bootClient({ 'ascend-kb-sync-show': () => disabled })
     const tree = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
     const text = textOf(tree)
     check(text.indexOf('已关闭（个人设置）') >= 0, '个人设置关闭时给「已关闭」状态', text.slice(0, 200))
     check(switchByLabel(tree, '自动检查更新').props['aria-checked'] === 'false', '关闭时开关显示关闭')
-    check(!findButton(tree, '立即同步'), '已关闭时不给「立即同步」（脚本会拒绝手动同步）')
+    // 「自动检查更新」只管自动路径：手动同步走 --merge --force，不受它拦。
+    check(!!findButton(tree, '立即同步'), '已关闭仍给「立即同步」（手动同步不受这个开关影响）')
+    check(text.indexOf('后台提醒检查与「立即同步」不受这个开关影响') >= 0,
+      '已关闭时说明提醒检查与手动同步不受影响', text.slice(0, 320))
   }
   const never = showPayload()
   never.sync.data.last_checked = null
@@ -800,7 +870,7 @@ const settingsDoc = {
   sha256: null,
   settings: {
     path: '.local/settings.json', config: 'file', problem: '',
-    sync: { remote: 'origin', branch: 'main', enabled: true, auto_merge: true },
+    sync: { remote: 'origin', branch: 'main', enabled: true, auto_merge: true, check_enabled: false, check_minutes: 15 },
     target: { remote: 'origin', base: 'main' },
   },
   settings_sha256: SETTINGS_SHA,
@@ -872,7 +942,11 @@ section('[知识库 · host] 正常读取')
     && value.sync.data.identity_explicit === false, 'show：默认 origin 标为未显式配置（面板显示「默认」）')
   check(!!value && value.sync.data.config && value.sync.data.config.auto_check === true
     && value.sync.data.config.auto_merge === true && value.sync.data.config.source === 'personal',
-    'show：两个开关取自设置文件的 sync 段', JSON.stringify(value && value.sync.data.config))
+    'show：自动检查更新与自动合并取自设置文件的 sync 段', JSON.stringify(value && value.sync.data.config))
+  check(!!value && value.sync.data.config && value.sync.data.config.check_enabled === false
+    && value.sync.data.config.check_minutes === 15,
+    'show：提醒检查与检查间隔取自设置文件的 sync 段（关闭 / 15 分钟）',
+    JSON.stringify(value && value.sync.data.config))
   check(!!value && value.settings_sha256 === SETTINGS_SHA, 'show：带出设置指纹（保存时做 CAS）')
   check(!!value && value.targets.ok === true && value.targets.data.remotes.length === 1
     && value.targets.data.remotes[0].host === 'github.com',
@@ -913,6 +987,50 @@ section('[知识库 · host] 正常读取')
   check(saveCmd.indexOf('--disable') >= 0 && saveCmd.indexOf('--auto-merge on') >= 0,
     'save：自动检查更新关 → --disable，自动合并开 → --auto-merge on', saveCmd)
   check(saveCmd.indexOf('--expect-sha256 ' + SETTINGS_SHA) >= 0, 'save：带上 CAS 指纹', saveCmd)
+  // 没传提醒检查参数时按缺省（开 / 30 分钟）写进 argv 与 saved。
+  check(!!savedValue && savedValue.saved && savedValue.saved.check_reminders === true
+    && savedValue.saved.check_minutes === 30,
+    'save：返回 saved 带提醒检查缺省值（开 / 30 分钟）', JSON.stringify(savedValue && savedValue.saved))
+  check(saveCmd.indexOf('--check-reminders on') >= 0 && saveCmd.indexOf('--check-minutes 30') >= 0,
+    'save：argv 带 --check-reminders on 与 --check-minutes 30', saveCmd)
+}
+
+section('[知识库 · host] 保存提醒检查设置')
+{
+  const host = await bootHost(defaultPlan())
+  const out = valueOf(await host.call('ascend-kb-sync-save', {
+    sessionId: 's1', remote: 'origin', branch: 'main', autoCheck: true, autoMerge: true,
+    checkEnabled: false, checkMinutes: 15, expectSha256: SETTINGS_SHA,
+  }))
+  const cmd = host.shell.commands.filter(c => /--set-sync/.test(c)).pop() || ''
+  check(!!out && out.ok === true && out.saved && out.saved.check_reminders === false
+    && out.saved.check_minutes === 15, 'save：返回 saved 带关闭与 15 分钟', JSON.stringify(out && out.saved))
+  check(cmd.indexOf('--check-reminders off') >= 0 && cmd.indexOf('--check-minutes 15') >= 0,
+    'save：argv 带 --check-reminders off 与 --check-minutes 15', cmd)
+
+  // 间隔越界夹到 5..720；非整数按 30。
+  const lowHost = await bootHost(defaultPlan())
+  const low = valueOf(await lowHost.call('ascend-kb-sync-save', {
+    sessionId: 's1', remote: 'origin', checkMinutes: 1,
+  }))
+  const lowCmd = lowHost.shell.commands.filter(c => /--set-sync/.test(c)).pop() || ''
+  check(!!low && low.saved && low.saved.check_minutes === 5 && lowCmd.indexOf('--check-minutes 5') >= 0,
+    'save：间隔低于 5 分钟夹到 5', lowCmd)
+
+  const highHost = await bootHost(defaultPlan())
+  const high = valueOf(await highHost.call('ascend-kb-sync-save', {
+    sessionId: 's1', remote: 'origin', checkMinutes: 9999,
+  }))
+  const highCmd = highHost.shell.commands.filter(c => /--set-sync/.test(c)).pop() || ''
+  check(!!high && high.saved && high.saved.check_minutes === 720 && highCmd.indexOf('--check-minutes 720') >= 0,
+    'save：间隔高于 720 分钟夹到 720', highCmd)
+
+  const badHost = await bootHost(defaultPlan())
+  const bad = valueOf(await badHost.call('ascend-kb-sync-save', {
+    sessionId: 's1', remote: 'origin', checkMinutes: 'abc',
+  }))
+  check(!!bad && bad.saved && bad.saved.check_minutes === 30, 'save：非整数间隔按 30',
+    JSON.stringify(bad && bad.saved))
 }
 
 section('[知识库 · host] 设归属仓端点')

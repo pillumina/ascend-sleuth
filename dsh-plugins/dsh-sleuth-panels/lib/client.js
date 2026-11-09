@@ -1,8 +1,8 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:2915942e7575)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:0d296a3a0192)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:2faf50d5daad)
-//   dsh-plugins/sleuth-console/console-client.js  (sha256:35093e25d079)
+//   dsh-plugins/sleuth-console/console-client.js  (sha256:97ba86bd3155)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
 // 面板源码是动态插件方言（靠沙箱提供的 host 通信）；这里原文嵌入页面产物，并补一层适配：
@@ -70,7 +70,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:2915942e7575) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:0d296a3a0192) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -474,7 +474,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.9.3'
+    const PANEL_VERSION = '0.10.0'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -6368,7 +6368,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       id: 'sleuth-console',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/sleuth-console/console-client.js (sha256:35093e25d079) 原文开始 ----
+// ---- dsh-plugins/sleuth-console/console-client.js (sha256:97ba86bd3155) 原文开始 ----
 // sleuth-console/console-client.js —— 常驻包里的整页「Ascend Sleuth」（client-only）
 //
 // 为什么单有这一页：指标与自演进读的是**全库**（`metrics/`、`proposals/`、`knowledge/`），
@@ -6418,7 +6418,7 @@ return {
       .sleu-console-empty{padding:20px 0;font-size:var(--t-md);color:var(--dsw-alias-label-secondary)}
 
       /* ── 知识库子页 ─────────────────────────────────────────────────────
-         四块：读数、状态提示条、同步源、两个开关。配色沿用两个面板的角色
+         四块：读数、状态提示条、同步源、三个开关与检查间隔。配色沿用两个面板的角色
          （--c-* 文字 / --tint-* 大块底 / --hair 描边），不新增色值。 */
       .sleu-kb{padding-top:14px}
       .sleu-kb-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
@@ -6611,7 +6611,15 @@ return {
       if (d > 7) return kbStamp(value)
       return d + ' 天前'
     }
-    // 草稿：界面上的选择与开关。配置没读到就按"都没开"显示，不假装是默认值。
+    // 检查间隔的可选项（分钟）：默认 30。设置里是别的整数（命令行写的）时照实显示，
+    // 不静默换成 30——那会让下次保存把读者的设置改掉。
+    const KB_CHECK_MINUTES = [15, 30, 60, 120]
+    function kbCheckMinutesOf(value) {
+      const n = Number(value)
+      return Number.isInteger(n) && n >= 5 && n <= 720 ? n : 30
+    }
+    // 草稿：界面上的选择与开关。配置没读到就按"都没开"显示，不假装是默认值；
+    // 提醒检查例外：脚本的缺省是开，缺字段时按生效值显示为开。
     function kbDraftOf(payload) {
       const sync = payload && payload.sync && payload.sync.ok === true ? payload.sync.data : null
       const targets = payload && payload.targets && payload.targets.ok === true ? payload.targets.data : null
@@ -6627,6 +6635,8 @@ return {
         branch: String(branch || ''),
         autoCheck: !!(cfg && cfg.auto_check),
         autoMerge: !!(cfg && cfg.auto_merge),
+        checkEnabled: !(cfg && cfg.check_enabled === false),
+        checkMinutes: kbCheckMinutesOf(cfg && cfg.check_minutes),
       }
     }
     // 合并/保存的结果 → 一条提示。成功要给到"到了哪一版、从哪一版来、差多少"。
@@ -6800,6 +6810,8 @@ return {
           branch: draft.branch,
           autoCheck: !!draft.autoCheck,
           autoMerge: !!draft.autoMerge,
+          checkEnabled: !!draft.checkEnabled,
+          checkMinutes: kbCheckMinutesOf(draft.checkMinutes),
           expectSha256: status && status.settings_sha256 ? String(status.settings_sha256) : '',
         })
           .then((r) => {
@@ -6882,6 +6894,10 @@ return {
         setDraft(Object.assign({}, draft, { [key]: value }))
         setDirty(true)
       }
+      function setCheckMinutes(value) {
+        setDraft(Object.assign({}, draft, { checkMinutes: kbCheckMinutesOf(value) }))
+        setDirty(true)
+      }
 
       if (loading) {
         return React.createElement('div', { className: 'sleu-kb' },
@@ -6923,8 +6939,9 @@ return {
       } else if (syncState === 'offline' || offline) {
         banner = { kind: 'muted', text: '离线部署（' + (data.offline_source || 'deployment.yaml') + '）：不检查更新，也不合并。诊断照常。' }
       } else if (syncState === 'disabled' || disabled) {
-        banner = { kind: 'muted', text: '已关闭（个人设置）：启动诊断时不检查更新，也不合并。',
-          hint: '打开「自动检查更新」并保存后，才能手动同步。' }
+        // 「自动检查更新」只管开单自动拉取 / 自动合并；后台提醒检查与手动同步不受它影响。
+        banner = { kind: 'muted', text: '已关闭（个人设置）：开单时不自动拉取，也不自动合并。',
+          hint: '后台提醒检查与「立即同步」不受这个开关影响。' }
       } else if (syncState === 'error') {
         const errCode = syncError && syncError.code
         banner = errCode === 'E_SAME_REPO' ? identityPrompt('same')
@@ -6972,8 +6989,8 @@ return {
       } else {
         banner = { kind: 'ok', text: '本机与远端一致。' }
       }
-      const canSync = !offline && !disabled && syncState !== 'disabled' && remotes.length > 0
-        && sync && sync.ok === true
+      // 手动同步走 `--merge --force`，不受「自动检查更新」（sync.enabled）拦：关着也给按钮。
+      const canSync = !offline && remotes.length > 0 && sync && sync.ok === true
       // 同步进行中也保留这颗按钮（文案变「同步中」+ spinner，禁用），页面不换骨架屏。
       if (banner && !banner.action && canSync) {
         banner.action = syncAction('quiet')
@@ -7058,9 +7075,24 @@ return {
           onChange: (v) => setSwitch(key, v),
         }))
 
+      const checkChoices = KB_CHECK_MINUTES.slice()
+      if (draft && checkChoices.indexOf(draft.checkMinutes) < 0) checkChoices.push(draft.checkMinutes)
       const switches = React.createElement('div', { className: 'sleu-kb-card' },
-        switchRow('自动检查更新', '诊断开单时 fetch 一次。关闭后不再检查，doctor 会显示「已关闭」；不影响 groom 周批。', 'autoCheck'),
+        switchRow('自动检查更新', '诊断开单时 fetch 一次，并按配置自动合并。关闭后不自动拉取、不自动合并；不影响后台提醒检查与手动同步。', 'autoCheck'),
         switchRow('自动合并', '仅当工作区干净、当前在配置分支上、且可快进时合并。不满足只提示，不 rebase。', 'autoMerge'),
+        switchRow('提醒检查', '后台定期检查知识库是否落后，落后时在诊断状态条提示。关闭后不检查、不提示；不影响开单自动拉取与手动同步。', 'checkEnabled'),
+        React.createElement('div', { className: 'sleu-kb-switch-row', key: 'checkMinutes' },
+          React.createElement('div', { className: 'sleu-kb-switch-main' },
+            React.createElement('div', { className: 'sleu-kb-switch-t' }, '检查间隔'),
+            React.createElement('div', { className: 'sleu-kb-switch-d' }, '「提醒检查」打开时按这个间隔检查一次。'),
+            React.createElement('div', { className: 'sleu-kb-switch-src' }, '来源：' + cfgSource)),
+          React.createElement('select', {
+            className: 'sleu-kb-select',
+            'aria-label': '检查间隔',
+            value: draft ? String(draft.checkMinutes) : '30',
+            disabled: offline || !draft || !!busy || !(draft && draft.checkEnabled),
+            onChange: (e) => setCheckMinutes(e.target.value),
+          }, checkChoices.map(n => React.createElement('option', { key: 'm-' + n, value: String(n) }, n + ' 分钟')))),
       )
 
       // 页脚常驻的归属仓一行：读事实；「修改」在同排展开远端下拉，写入走新端点。

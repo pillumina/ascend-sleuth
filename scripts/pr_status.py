@@ -1054,10 +1054,14 @@ def cmd_set_sync(root, args) -> int:
 
     没给 `--expect-sha256` 时用读配置那一刻的指纹：面板一直显式给令牌，命令行手写
     也走同一条「读 sha → 比对 → 写」路径，读后被别人改过就拒绝覆盖。
+    `--check-reminders` / `--check-minutes` 只动提醒检查的两键，不碰 remote / branch /
+    enabled / auto_merge。
     """
     if not any((args.remote is not None, args.branch is not None, args.enable,
-                args.disable, args.auto_merge is not None)):
-        return _arg_fail("--set-sync 至少给一个 --remote / --branch / --enable / --disable / --auto-merge")
+                args.disable, args.auto_merge is not None,
+                args.check_reminders is not None, args.check_minutes is not None)):
+        return _arg_fail("--set-sync 至少给一个 --remote / --branch / --enable / --disable / "
+                         "--auto-merge / --check-reminders / --check-minutes")
     settings_sha = _settings_sha_or_none(root)
     settings, source, problem = kb_sync.load_settings(Path(root))
     sync = dict(settings.get("sync") or {})
@@ -1080,6 +1084,14 @@ def cmd_set_sync(root, args) -> int:
         sync["enabled"] = False
     if args.auto_merge is not None:
         sync["auto_merge"] = args.auto_merge == "on"
+    if args.check_reminders is not None:
+        sync["check_enabled"] = args.check_reminders == "on"
+    if args.check_minutes is not None:
+        minutes = args.check_minutes
+        if not (kb_sync.CHECK_MINUTES_MIN <= minutes <= kb_sync.CHECK_MINUTES_MAX):
+            return _arg_fail(f"--check-minutes 需要在 {kb_sync.CHECK_MINUTES_MIN}.."
+                             f"{kb_sync.CHECK_MINUTES_MAX} 之间：{minutes}")
+        sync["check_minutes"] = minutes
     settings["sync"] = sync
     try:
         digest = kb_sync.save_settings(
@@ -1477,6 +1489,11 @@ def build_parser() -> argparse.ArgumentParser:
     enable_group.add_argument("--disable", action="store_true", help="sync.enabled = false")
     ap.add_argument("--auto-merge", choices=("on", "off"), default=None,
                     help="sync.auto_merge 开关")
+    ap.add_argument("--check-reminders", choices=("on", "off"), default=None,
+                    dest="check_reminders", help="sync.check_enabled 开关（后台提醒检查）")
+    ap.add_argument("--check-minutes", type=int, default=None, dest="check_minutes",
+                    help=f"sync.check_minutes：提醒检查间隔（分钟，"
+                         f"{kb_sync.CHECK_MINUTES_MIN}..{kb_sync.CHECK_MINUTES_MAX}）")
     ap.add_argument("--note", default="")
     ap.add_argument("--labels", default=None, help="目标标签映射，JSON 对象")
     # --set

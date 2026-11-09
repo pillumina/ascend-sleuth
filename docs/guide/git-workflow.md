@@ -40,7 +40,7 @@ git worktree remove ../ascend-sleuth-s<session>
 
 ### 诊断读侧的同步
 
-诊断开单时同步一次知识库：`trace_begin.py` 读 `.local/settings.json` 的 `sync` 段，fetch 远端分支（超时 10 秒）。落后时按四条条件试 ff-only 合并（快进合并，不产生合并提交）：
+诊断开单时同步一次知识库：`trace_begin.py` 读 `.local/settings.json` 的 `sync` 段，fetch 远端分支（超时 10 秒）。`sync.enabled` 关掉时这一步跳过，开单不联网。落后时按四条条件试 ff-only 合并（快进合并，不产生合并提交）：
 
 - 当前分支 = 配置 `branch`；
 - HEAD 是远端祖先；
@@ -64,13 +64,15 @@ worktree 与 detached HEAD 不自动合并。worktree 里通常在做提 PR 的�
 
 诊断侧这次 fetch 只保证候选集来自较新的知识库；它不改提交、不推送，也不处理与本地未提交改动的冲突。一次合并同时更新知识与流程：`knowledge/` 在运行时读取立即生效，`skills/` 要下一次会话才重新加载。
 
-配置在 `.local/settings.json`（主检出那一份，`.gitignore` 已挡在 git 外），schema `ascend-sleuth-settings/1`。`sync` 段含 `remote` / `branch` / `enabled` / `auto_merge`，`identity` 段记归属仓（`{"remote": "origin"}`）。
+配置在 `.local/settings.json`（主检出那一份，`.gitignore` 已挡在 git 外），schema `ascend-sleuth-settings/1`。`sync` 段含 `remote` / `branch` / `enabled` / `auto_merge` / `check_enabled` / `check_minutes`，`identity` 段记归属仓（`{"remote": "origin"}`）。
 
 默认 `origin`、当前分支上游（取不到用 `main`）、同步开、自动合并开；`sync.remote` 未显式配置时跟随归属仓。没有该文件时按默认值同步，groom 回到原有的选源流程（单个远端直接用，多个才问）。
 
-查看配置与状态用 `python3 scripts/kb_sync.py --show`（只读，不联网）；改配置用 `python3 scripts/pr_status.py --set-sync`（`--remote` / `--branch` / `--disable` / `--auto-merge off`），改归属仓用 `--set-identity --remote <名字>`，不要手改 JSON。
+查看配置与状态用 `python3 scripts/kb_sync.py --show`（只读，不联网）；改配置用 `python3 scripts/pr_status.py --set-sync`（`--remote` / `--branch` / `--disable` / `--auto-merge off` / `--check-reminders on|off` / `--check-minutes 分钟`），改归属仓用 `--set-identity --remote <名字>`，不要手改 JSON。
 
-`sync.enabled` 与 `sync.auto_merge` 只管诊断读侧的自动检查与自动合并。groom 是显式动作，不受这两个开关影响——关掉自动检查后周批仍会 fetch。要让整机不联网，用 `deployment.yaml` 的 `sync.mode: "offline"`。
+`sync.enabled` 只拦自动路径：开单时 `trace_begin.py` 的自动 fetch 与自动合并看它。后台提醒检查与手动同步不受它影响：提醒检查走 `python3 scripts/kb_sync.py --check`（只 fetch、不合并），手动「立即同步」走 `--merge --force`。关掉 `sync.enabled` 后提醒检查与手动同步照常联网。`sync.auto_merge` 只管自动路径里的合并；groom 是显式动作，不看 `sync.enabled` 与 `sync.auto_merge`，关掉自动检查后周批仍会 fetch。要让整机不联网，用 `deployment.yaml` 的 `sync.mode: "offline"`。
+
+`sync.check_enabled` 与 `sync.check_minutes` 管后台提醒检查。`check_enabled` 默认 true，关掉后不再检查，也不在诊断状态条提示知识库落后。`check_minutes` 是检查间隔，默认 30 分钟，取值夹在 5 到 720 分钟之间。两者不影响开单自动拉取与手动同步。
 
 fetch 失败时标 `kb_sync: failed`，原因写进 `kb_sync_reason`。
 
@@ -78,7 +80,7 @@ fetch 失败时标 `kb_sync: failed`，原因写进 `kb_sync_reason`。
 
 失败结果缓存在 `.local/kb-sync-state.json`：自动同步在 10 分钟内不重试，避免每次开单都等满 10 秒超时。手动同步（`--force`，面板「立即同步」走这条）跳过窗口立即重试。
 
-离线部署在 `deployment.yaml` 声明 `sync.mode: "offline"`：`--sync` 与 `--merge` 都不联网，`--show` 仍可读本地状态。
+离线部署在 `deployment.yaml` 声明 `sync.mode: "offline"`：`--sync` / `--check` / `--merge` 都不联网，`--show` 仍可读本地状态。
 
 ### 部署形态
 
