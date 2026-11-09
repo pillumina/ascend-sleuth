@@ -35,7 +35,8 @@ jobs:
   #   docs-index           ← docs（含 README；skill 名单取自 docs/_manifest.yaml，不扫 skills/）、code
   #   holdout-integrity    ← eval、code
   #   eval-scorecard       ← eval、knowledge（case↔夹具的负载类型覆盖算在 case 上）、code
-  #   unit-tests           ← scripts、tests、source-catalog.d（跑哪些测试按改动选，见强度让步）  #   test-portability     ← tests（被扫对象）、scripts（检查器自身）
+  #   unit-tests           ← scripts、tests、source-catalog.d（跑哪些测试按改动选，见强度让步）
+  #   test-portability     ← tests（被扫对象）、scripts（检查器自身）
   #   unit-tests-windows   ← scripts、tests、source-catalog.d（与 unit-tests 同一份选择）
   #   panel-checks         ← dsh-plugins、scripts、metrics、skills、docs、trace-status.yaml
   #   skill-self-contained ← skills（只 grep skills/，不执行脚本，故不吃 code）
@@ -462,8 +463,9 @@ jobs:
 
   # 测试可移植性静态检查：编码、路径分隔符、字节级换行夹具、平台专有 API、解释器字面量。
   # 这些写法在 Linux 上不触发失败，只会在 Windows 上暴露；Linux 单测没有 Windows 执行环境，
-  # 此前只能等维护者在 Windows 上手动跑。编码类的同类不变量已有 tests/test_subprocess_encoding.py
-  # 覆盖 scripts/ 面，本 job 补 tests/ 面。判定口径见 docs/spec/test-portability.md。
+  # 此前只能等维护者在 Windows 上手动跑。编码类（R2）已有 tests/test_subprocess_encoding.py
+  # 在 scripts/ 与 tests/ 两面钉住；本 job 在 tests/ 面补 R1、R3–R6（R2 与它重复覆盖）。
+  # 判定口径见 docs/spec/test-portability.md。
   # 准入判据（CLAUDE.md）：①机械可判（AST 扫描，不联网、不装包）②后果确定（命中即红；误报靠
   # 行内豁免逐条处理）③复发（Windows 上编码/路径类问题已出现两轮）。
   test-portability:

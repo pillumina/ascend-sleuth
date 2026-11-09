@@ -17,7 +17,7 @@
 
 ## 3 条目
 
-R1–R6 是硬要求。机器检查（下称机检）只覆盖每条「怎么判定」里写明的形态；要求句比判据宽的部分靠评审与 `unit-tests-windows`。R7 也是硬要求，但机器判不了，强度按原则十的三档标成约定（硬 / 半硬 / 约定）。
+R1–R6 是硬要求。机器检查（下称机检）覆盖的形态在 §5 表与 `scripts/check_test_portability.py` 头注里列全；每条「怎么判定」只写该条的主要判据与最常用的边界，要求句比判据宽的部分靠评审与 `unit-tests-windows`。R7 也是硬要求，但机器判不了，强度按原则十的三档标成约定（硬 / 半硬 / 约定）。
 
 编号一旦发布不重用；删掉的条目留号并标注已废弃。
 
@@ -103,12 +103,12 @@ R1–R6 是硬要求。机器检查（下称机检）只覆盖每条「怎么判
 |---|---|---|
 | R1 | 文本 IO 调用没有 `encoding=`（含 `encoding=None`） | 指定的值不是 utf-8；`open()` 用位置参数传 encoding；`Path.open()` 这类非模块级调用 |
 | R2 | `subprocess` 以 `text=True` / `universal_newlines=True` 调用但没有 `encoding=` | `text` 不是字面量 True 的调用 |
-| R3 | 子进程命令首项或 argv 列表首项是解释器字面量（含 `*args` 转发） | 经变量拼接、helper 间接传递的解释器名 |
+| R3 | 子进程命令首项、argv 列表首项、或带 `*args` 转发的调用参数是解释器字面量（普通数据列表与 `print("python3", *names)` 这类调用会误报，用豁免） | 经变量拼接、helper 间接传递的解释器名；`shell=True` 的整串命令 |
 | R4 | `startswith` / `endswith` 的单个字符串字面量以 `/` 开头 | `assertEqual(str(p), "a/b")` 等其它字符串比较形态 |
 | R5 | `read_bytes()` 同一表达式里直接 `replace(b"\n", b"\r\n")` | 先赋变量再二次转换 |
-| R6 | 列出的平台专有模块导入与 `os.fork` / `os.symlink` / `os.chmod` 调用，未被 skip 装饰器或平台分支覆盖 | 其它平台专有调用（如 `os.geteuid()`）；skip 条件方向写反（检查器只看装饰器名） |
+| R6 | 列出的平台专有模块导入与 `os.fork` / `os.symlink` / `os.chmod` 调用，未被 skip 装饰器或平台分支覆盖 | 其它平台专有调用（如 `os.geteuid()`）；`try/except ImportError` 降级与 monkeypatch 掉模块的写法；skip 条件方向写反（检查器只看装饰器名） |
 
-R7 不在机检范围。`tests/test_subprocess_encoding.py` 已在 `scripts/` 面钉住编码不变量；本检查器补的是 `tests/` 面。
+`tests/test_subprocess_encoding.py` 已在 `scripts/` 与 `tests/` 两面钉住 R2 的编码不变量；本检查器在 `tests/` 面补 R1、R3–R6（R2 与它重复覆盖）。R7 不在机检范围。完整形态边界以检查器头注为准。
 
 能写但没进：R7 的「网络用例必须带 skip」可以扫描模块里的 `urlopen`、`git clone` 调用，但用 monkeypatch 打桩网络调用的用例会被误报，未进 CI。
 
