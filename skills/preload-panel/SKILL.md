@@ -186,6 +186,53 @@ stderr（面板包冒烟会打 `RPC 路由已注册`），以退出码为准；�
    `sleuth-copilot-palette`。诊断画布没有 tab，看侧栏「诊断画布」图标与页面右下脚注的版本串。
 4. **卸载**：在插件页里移除该包。
 
+## 装不上：`dsh plugin add` 报 registry 元数据拉取失败
+
+触发条件：profile 已带 registry 依赖（如既有插件包），或 add 的 spec 是包名。只 add 本地绝对
+路径的 link 依赖时 pnpm 不联网，不报这类错。
+
+症状：`dsh plugin add` 报元数据拉取失败。node 系 pnpm（DSH Desktop 捆绑版）报
+`ERR_PNPM_META_FETCH_FAIL` / `ERR_PNPM_PING_ERROR`；Rust 原生 pnpm 12 报
+`ERR_PNPM_PACKAGE_MANAGER_ADD_RESOLVE_LATEST` 或 `Failed to fetch metadata` 字样。
+现象：node / curl 直连同一 registry URL 返回 200，pnpm 的拉取却失败。
+原因：pnpm 的 fetch 走了不可达的代理。
+
+代理来源：`~/.npmrc` 的 `proxy` / `https-proxy`，或环境变量 `HTTP_PROXY` / `HTTPS_PROXY`。
+`pnpm config get proxy` 显示 undefined 不等于没走代理，以实际连接目标为准。
+
+按顺序查：
+
+1. 看 pnpm 实际连到哪。node 系 pnpm（DSH Desktop 捆绑版）用
+   `$env:NODE_DEBUG="net"; <dsh> plugin --profile <profile> add "<仓库绝对路径>/dsh-plugins/<包名>"`
+   或 bash 的 `NODE_DEBUG=net <dsh> plugin ...`，stderr 出现
+   `connect: attempting to connect to <地址>:<端口>`：代理在生效。
+   Rust 原生 pnpm 12 不发 node 的 NET 日志行，跳过本步直接验代理。
+2. 跑 `node -e "fetch('<registry URL>').then(r=>console.log(r.status))"`。
+   直连返回 200 而 pnpm 失败：代理是原因。
+
+修法按代理来源：
+
+- npmrc 来源（`~/.npmrc` 有 proxy 行）：profile 目录的 `.npmrc` 追加空值覆盖，不碰用户级
+  `~/.npmrc`：
+
+  ```
+  proxy=
+  https-proxy=
+  ```
+
+- env 来源（环境变量有 HTTP_PROXY）：`.npmrc` 空值覆盖压不住 env，要清变量再跑。
+  PowerShell 只列大写名（env 大小写不敏感，重复列出会报找不到路径）：
+  `Remove-Item Env:HTTP_PROXY,Env:HTTPS_PROXY,Env:ALL_PROXY`；
+  bash 用 `unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY`。
+  只影响当前会话，不改持久配置。
+
+再跑 `<dsh> plugin --profile <profile> add "<仓库绝对路径>/dsh-plugins/<包名>"`。
+代理地址是本机环境事实，修环境，不写进 skill。
+
+`offline=true` 的 profile 另报离线解析失败：本地 pnpm 缓存缺该包元数据，报错带缺的
+jsonl 路径。错误码随 pnpm 版本变，node 系是 `ERR_PNPM_NO_OFFLINE_META`。这不是代理
+问题。让 pnpm 在线拉一次再切回离线。
+
 ## 装上了但 tab 不出现
 
 按这个顺序查，一步一个证据。
