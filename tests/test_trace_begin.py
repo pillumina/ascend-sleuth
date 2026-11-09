@@ -121,7 +121,8 @@ def sync_result(**overrides):
         "ok": True, "remote": "origin", "branch": "main",
         "local_rev": "aaa1111", "remote_rev": "bbb2222",
         "behind": 0, "ahead": 0,
-        "surface": {"knowledge": 0, "routing": 0, "reference": 0, "methodology": 0, "other": 0},
+        "surface": {"knowledge": 0, "routing": 0, "reference": 0, "methodology": 0,
+                    "panel": 0, "other": 0},
         "merge": "none", "reason": "", "skipped": False, "offline": False,
         "config": "file", "same_repo": True,
         "local_rev_before": "aaa1111", "behind_before": "unknown",
@@ -409,6 +410,13 @@ class LocalRepoHintTest(unittest.TestCase):
         self.assertIn("知识库落后 1 个提交", out)
         self.assertIn("当前不在配置分支 main", out)
         self.assertNotIn("stash", out)
+
+    def test_merge_with_panel_changes_says_to_restart_dsh(self):
+        self.upstream("dsh-plugins/dsh-sleuth-panels/package.json", "{}\n")
+        code, out, _ = self.run_main("2026-11-04-panel")
+        self.assertEqual(code, 0)
+        self.assertIn("面板代码也更新了", out)
+        self.assertIn("重启 DSH", out)
 
 
 if __name__ == "__main__":

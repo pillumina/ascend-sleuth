@@ -10,9 +10,11 @@
 // 用法：
 //   node scripts/panel_install.js                  # 装面板包并使能（先 inspect，已装则补使能）
 //   node scripts/panel_install.js --check          # 只读：报本包的安装与使能状态（要能定到包名）
-//   node scripts/panel_install.js --sync           # 拉完代码跑这一条：版本一致就什么都不做，
-//                                                  # 不一致就换装，并明确告诉你"要不要重启"（换装必须重启）；
-//                                                  # 配 --all 才对四个包都生效（单跑只处理面板包）
+//   node scripts/panel_install.js --sync           # 拉完代码跑这一条：版本一致就按安装方式给结论
+//                                                  # （link 安装只差重启，快照安装不用重装），不一致就换装，
+//                                                  # 换装必须重启；配 --all 才对四个包都生效（单跑只处理面板包）。
+//                                                  # link 安装下它比的是同一份磁盘版本，判不出 host 半新旧；
+//                                                  # 真新旧看诊断 tab 顶部的提示；重启后核对工具与 RPC。
 //   node scripts/panel_install.js --remove         # 卸载
 //   node scripts/panel_install.js --spec <spec>    # 换包：绝对路径 / 包名 / git 地址 / tarball
 //   node scripts/panel_install.js --all            # 一次装四个包：面板包 + vllm-kb 接入插件 + 诊断状态条 + 诊断画布
@@ -36,7 +38,13 @@ const fs = require('fs')
 const http = require('node:http')
 const path = require('path')
 const { resolveTarget, noTargetLines, sessionCookie, rpcCall } = require('./lib/panel_endpoint')
-const { PANEL_PACKAGES } = require('./lib/panel_desktop')
+const {
+  PANEL_PACKAGES,
+  resolveDshHome,
+  resolveActiveProfile,
+  isValidProfileName,
+  packageStatus,
+} = require('./lib/panel_desktop')
 
 const API_CHANNEL = '/api'
 // 包清单只有一份（scripts/lib/panel_desktop.js 的 PANEL_PACKAGES）：`--all` 与快检、临时实例验证共用，
@@ -75,6 +83,34 @@ function localPackageName(spec) {
   try {
     const manifest = JSON.parse(fs.readFileSync(path.join(spec, 'package.json'), 'utf8'))
     return typeof manifest.name === 'string' && manifest.name !== '' ? manifest.name : null
+  } catch (e) {
+    return null
+  }
+}
+
+// 版本一致时给"要不要重启"的结论：link 与快照的更新方式不同，判不出安装方式时给通用结论。
+// 纯函数便于自测：kind 只认 'link' / '快照' / '版本'，其余（含 null）都按判不出处理。
+function upToDateText(kind, name, version) {
+  const head = '已是最新（' + String(name) + ' ' + String(version) + '）：'
+  if (kind === 'link') return head + 'link 安装，代码随仓库更新；重启 DSH 后加载（不用重装）。要强制换装加 --force。'
+  if (kind === '快照') return head + '快照安装，版本一致，不用重装。要强制换装加 --force。'
+  if (kind === '版本') return head + '按版本安装，版本一致，不用重装。要强制换装加 --force。'
+  return head + '不用重装。面板代码刚更新过时，要重启 DSH 才加载。要强制换装加 --force。'
+}
+
+// 判本机是哪种安装方式：只读 DSH_HOME 里的 profile 登记。判不出（没有 DSH_HOME / profile、
+// 包名对不上、profile 读不到、或未登记）就返回 null。任何失败都当判不出，永不抛错。
+// 安装方式按本机 profile 判；`--url` 指向另一实例时这里可能判不出，结论会退成通用文案。
+function localInstallKind(name) {
+  try {
+    const home = resolveDshHome(null)
+    if (home === null || home.home === null) return null
+    const active = resolveActiveProfile(home.home, null)
+    if (active === null || !isValidProfileName(active.profile)) return null
+    const status = packageStatus(home.home, active.profile, name)
+    if (status === null || status === undefined || status.error) return null
+    if (status.kind === 'link' || status.kind === '快照' || status.kind === '版本') return status.kind
+    return null
   } catch (e) {
     return null
   }
@@ -192,9 +228,9 @@ async function runInstall(args, io) {
   // 更新判定：**默认就走这里**，不额外要用户记一条命令。
   // 判据是版本号相等，与插件管理器自己的去重口径一致（它按 name+version 判"已装"，同版本
   // 重装返回 changed=false、产物根本不换）。所以：
-  //   已装且版本相同 → 只补使能，明说"不用重装也不用重启"；
+  //   已装且版本相同 → 只补使能，并按本机是 link 还是快照说清"要不要重启"；
   //   已装但版本不同 → 卸了换装，并明说要重启（host 半在进程启动时装载，刷新页面只换浏览器那一半）。
-  // 这样"用户更新代码后跑 preload-panel"与"用户手跑本脚本"是同一条路，不需要懂版本号。
+  // link 安装下比的是同一份磁盘版本，判不出 host 半新旧，所以结论按安装方式给，判不出时给通用结论。
   async function versionState(target, io, inspection, spec) {
     const listed = classify(await apiCall('pluginManager/listBundles', {}, target, target.cookie))
     if (listed.value === undefined) return { code: describeGuard(listed, io, 'pluginManager/listBundles') }
@@ -208,7 +244,7 @@ async function runInstall(args, io) {
     const st = await versionState(target, io, inspection, args.spec)
     if (st.code !== undefined) return st.code
     if (args.force !== true && st.installed !== null && st.local !== null && st.installed === st.local) {
-      say('  已是最新（' + st.name + ' ' + st.local + '）：不用重装，也不用重启。要强制换装加 --force。\n')
+      say('  ' + upToDateText(localInstallKind(st.name), st.name, st.local) + '\n')
       if (st.rows.length && st.rows[0].enabled !== true) return ensureEnabled(st.name, target, io)
       return 0
     }
@@ -227,7 +263,7 @@ async function runInstall(args, io) {
     }
     // application 在换版本时不可靠（实测报 applied 却仍加载旧包），结论按"文件换没换"给。
     if (ch.changed) say('  **要重启 DSH Desktop 才生效**（host 半在启动时装载；刷新页面只换浏览器那一半）。\n')
-    say('  重启后核对：node scripts/panel_install.js --check，以及诊断 tab 右上角的版本串。\n')
+    say('  重启后核对：面板顶部不再显示「面板有新版」；要查登记再跑 node scripts/panel_install.js --check。\n')
     return 0
   }
 
@@ -349,6 +385,18 @@ async function selftest() {
   }
   const { server, port } = await startFakeServer(specPaths)
   const base = 'http://127.0.0.1:' + port
+  // 安装方式判定的夹具：现有用例里"版本一致"那条会读它，自测不碰真实 DSH 环境。
+  const home = path.join(dir, 'home')
+  fs.mkdirSync(path.join(home, 'profiles', 'selftest'), { recursive: true })
+  fs.writeFileSync(path.join(home, 'profiles', 'selftest', 'package.json'), JSON.stringify({
+    name: 'dsh-profile-selftest',
+    dependencies: { 'selftest-bundle': 'link:' + dir },
+    dsh: { profile: { bundles: ['selftest-bundle'] } },
+  }), 'utf8')
+  const savedHome = process.env.DSH_HOME
+  const savedProfile = process.env.DSH_PROFILE
+  process.env.DSH_HOME = home
+  process.env.DSH_PROFILE = 'selftest'
   const cases = [
     { name: '正常安装', spec: specPaths.accepted, want: 0 },
     { name: '已装则补使能', spec: specPaths.already, want: 0 },
@@ -378,13 +426,30 @@ async function selftest() {
       process.stdout.write('  ' + (ok ? 'ok  ' : 'FAIL') + ' ' + item.name + '：exit=' + got + '（期望 ' + item.want + '）\n')
     }
   } finally {
+    if (savedHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = savedHome
+    if (savedProfile === undefined) delete process.env.DSH_PROFILE
+    else process.env.DSH_PROFILE = savedProfile
     await new Promise((resolve) => server.close(resolve))
+  }
+  // 版本一致时的文案只测纯函数：三种安装方式各一条，不读真实 DSH 环境。
+  const textCases = [
+    { name: 'link 安装的文案', kind: 'link', want: ['link 安装', '重启'] },
+    { name: '快照安装的文案', kind: '快照', want: ['快照安装', '不用重装'] },
+    { name: '按版本安装的文案', kind: '版本', want: ['按版本安装', '不用重装'] },
+    { name: '判不出安装方式的文案', kind: null, want: ['重启 DSH'] },
+  ]
+  for (const item of textCases) {
+    const text = upToDateText(item.kind, 'selftest-bundle', '1.0.0')
+    const ok = item.want.every((word) => text.includes(word))
+    if (!ok) bad += 1
+    process.stdout.write('  ' + (ok ? 'ok  ' : 'FAIL') + ' ' + item.name + '：' + text + '\n')
   }
   if (bad > 0) {
     process.stderr.write('panel-install 自测未通过：' + bad + ' 例\n')
     return 1
   }
-  process.stdout.write('panel-install selftest ok（10 例：安装 / 已装使能 / spec 被拒 / 安装失败 / 查状态 / 查状态定不到包名 / 卸载 / 端点没认领 / 拿不到地址 / 地址连不上）\n')
+  process.stdout.write('panel-install selftest ok（10 例：安装 / 已装使能 / spec 被拒 / 安装失败 / 查状态 / 查状态定不到包名 / 卸载 / 端点没认领 / 拿不到地址 / 地址连不上；文案 4 例：link / 快照 / 版本 / 判不出）\n')
   return 0
 }
 

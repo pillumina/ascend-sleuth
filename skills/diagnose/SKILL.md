@@ -63,7 +63,7 @@ description: >
 >
 > 合并成功、落后未合并、首次 fetch 失败各打印一行；已是最新、失败缓存期内（10 分钟）、同步关闭或部署声明离线时不打印。
 >
-> 失败不阻塞开单；一次合并对 `knowledge/` 立即生效，对 `skills/` 下次会话生效。
+> 失败不阻塞开单；一次合并对 `knowledge/` 立即生效，对 `skills/` 下次会话生效。合并带进 `dsh-plugins/` 下的面板代码时，重启 DSH 后生效。
 
 > **先验 trace 相似检测**（收集症状后、路由前）：扫 `traces/*.yaml`（**全部 status**——进行中+已闭环都留在 `traces/`），按症状里的模型/框架/配置名/category 对每个 state 文件的 `summary`/`detected_framework`/`detected_category` 做**词法 grep 匹配**。
 > - **陈述，不提问**：命中就**说一句**——"本地有 `<session_id>`，停在 <哪一步 / 结论一行>"——然后**在同一条消息里继续按本次问题往下走**。工程师回"就是这个"再切 `/skill:resume-diagnosis`。**不要写成"要续接吗？"**：那是把判断推给一个手上没有上下文的人，还把新问题卡在路由之前等答复。

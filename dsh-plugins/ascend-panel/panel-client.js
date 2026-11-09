@@ -3309,6 +3309,12 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             React.createElement('span', { className: 'sleu-title', style: { fontSize: 'var(--t-2xl)', fontWeight: 700 } }, '诊断状态'),
           ),
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+            (r.build && r.build.drift) ? React.createElement('span', {
+              title: '当前加载 v' + String(r.build.loaded_version || PANEL_VERSION)
+                + '，仓库里那份已是 v' + String(r.build.repo_version)
+                + '。重启 DSH 后加载新代码；重启后这一行仍在，说明加载的仍是旧版本：从插件页装的话要用同一路径重装，否则检查仓库产物是否重建（node scripts/build_panel_bundle.js）。',
+              style: { fontSize: 'var(--t-sm)', color: T.text, background: 'var(--tint-amber)', border: '1px solid var(--hair)', borderRadius: 'var(--r-pill)', padding: '3px 11px' },
+            }, '面板有新版 v' + String(r.build.repo_version) + '（重启后生效）') : null,
             React.createElement('button', { type: 'button', title: '重新读取 traces/——复制闭环指令去对话执行后，回来点这里', onClick: () => setReloadAt(n => n + 1), style: { ...btnGhost, padding: '3px 10px' } }, '刷新'),
             React.createElement('span', { title: badge + (typeof r.elapsedMs === 'number' ? ' · 列表耗时 ' + r.elapsedMs + ' ms（解析 ' + (r.parsed || 0) + ' 条 / 命中缓存 ' + (r.cached || 0) + ' 条' + (r.skipped ? ' / 跳过 ' + r.skipped + ' 条' : '') + '）' : ''), style: { fontSize: 'var(--t-sm)', color: T.text2, background: T.bg2, border: '1px solid var(--hair)', borderRadius: 'var(--r-pill)', padding: '3px 11px' } },
               nFollow ? (nFollow + ' 项待跟进') : ((r.sessions || []).length + ' 个会话')),
@@ -3338,7 +3344,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           nClose ? followChip(nClose, '待标收尾', 'close-pending') : null,
           React.createElement('span', { style: { color: T.text2, marginLeft: 'auto', fontSize: 'var(--t-sm)' } },
             '在查=诊断没结论（含等现场补材料）；等回报=结论已给、fix 没验证；待标收尾=回报已生效、状态还停在进行中｜卡片里点按钮生成指令 → 复制 → 粘到对话执行'),
-          React.createElement('span', { className: 'sleu-mono', title: '面板包版本：与 dsh-plugins/dsh-sleuth-panels/package.json 一致。看到的不是这个版本 = 装的还是旧包，或浏览器缓存了旧 bundle', style: { color: T.text2, fontSize: 'var(--t-md2)', opacity: 0.75 } }, PANEL_VERSION),
+          React.createElement('span', { className: 'sleu-mono', title: '面板包版本：与构建它的 package.json 一致。看到的不是这个版本 = 装的还是旧包，或浏览器缓存了旧 bundle；仓库已更新时，顶部会给「面板有新版」提示', style: { color: T.text2, fontSize: 'var(--t-md2)', opacity: 0.75 } }, PANEL_VERSION),
         ) : null,
         // 工具栏（筛选 + 搜索 + 列头）**吸顶**：会话一多就得往下滚，工具与列头都不该滚走。
         // 列头进吸顶容器后，滚到任意位置都知道每列是什么（此前列头随列表一起滚掉）。
