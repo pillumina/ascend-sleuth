@@ -157,6 +157,23 @@ function optionsOf(tree) {
   walk(tree, el => { if (el.type === 'option') out.push(textOf(el)) })
   return out
 }
+function selectsOf(tree) {
+  const out = []
+  walk(tree, el => { if (el.type === 'select') out.push(el) })
+  return out
+}
+function findByProp(tree, prop, value) {
+  let hit = null
+  walk(tree, el => { if (el.props && String(el.props[prop]) === String(value)) hit = el })
+  return hit
+}
+function hasClass(tree, cls) {
+  let hit = false
+  walk(tree, el => {
+    if (el.props && typeof el.props.className === 'string' && el.props.className.split(/\s+/).includes(cls)) hit = true
+  })
+  return hit
+}
 
 // ── 客户端：装配整页并渲染知识库子页 ────────────────────────────────────────
 const styleTags = []
@@ -247,6 +264,8 @@ function showPayload(over) {
       last_checked: minutesAgo(3), last_reason: '',
       enabled: true, offline: false, offline_source: '', reason: '',
       same_repo: true,
+      identity_remote: 'origin', identity_url: 'git@github.com:org/repo.git',
+      identity_explicit: false, identity_resolved: true,
       config: { auto_check: true, auto_merge: true, source: 'personal', path: '.local/settings.json' },
     } },
     targets: { ok: true, data: {
@@ -286,6 +305,16 @@ section('[知识库 · 客户端] 默认态（落后 12）')
     '自动检查更新默认开（aria-checked=true）')
   check(text.indexOf('.local/settings.json') >= 0 && text.indexOf('修改下次开单生效') >= 0, '页脚给配置路径与生效时点')
   check(text.indexOf('打开本页不联网') >= 0, '页脚说明打开本页不联网')
+  // 归属仓：页脚常驻一行，默认 origin 未显式配置时标「默认」。
+  check(text.indexOf('归属仓：origin（git@github.com:org/repo.git） · 默认') >= 0,
+    '页脚常驻归属仓一行（名字 + 地址 + 默认）', text.slice(-320))
+  check(!!findButton(tree, '修改'), '归属仓行给「修改」入口')
+  clickButton(tree, '修改')
+  const identityOpen = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
+  const idSelect = selectsOf(identityOpen).filter(el => el.props['aria-label'] === '归属仓远端')[0]
+  check(!!idSelect && optionsOf(identityOpen).some(t => t.indexOf('gitcode · gitcode.com') >= 0),
+    '「修改」在同排展开远端下拉（名字 · host）', JSON.stringify(optionsOf(identityOpen)))
+  check(!!findButton(identityOpen, '设为归属仓'), '展开后给「设为归属仓」按钮')
 
   // 保存：没有改动时禁用；改一个开关后可用，并把草稿与 CAS 指纹原样发出去。
   const saveBefore = findButton(tree, '保存')
@@ -330,12 +359,118 @@ section('[知识库 · 客户端] 同源校验：不是同一个仓')
 {
   const payload = showPayload()
   payload.sync.data.same_repo = false
+  const { runtime, main, calls } = await bootClient({
+    'ascend-kb-sync-show': () => payload,
+    'ascend-kb-sync-identity': () => ({ ok: true, identity: { remote: 'origin' }, sha256: SETTINGS_SHA }),
+  })
+  const tree = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
+  const text = textOf(tree)
+  check(text.indexOf('同步源与归属仓不同源') >= 0, '同源校验不一致时给一行说明', text.slice(0, 240))
+  check((text.match(/同步源与归属仓不同源/g) || []).length === 1,
+    '同源校验不一致只出一条提示（不再叠第二条）', text.slice(0, 320))
+  check(text.indexOf('这个远端不是同一个仓') < 0, '不再有第二条重复提示')
+  check(text.indexOf('把同步源设为归属仓，或把同步源换到与归属仓同源的远端。') >= 0,
+    '提示里给一句可执行的下一步')
+  check(!!findButton(tree, '把 origin 设为归属仓'), '提示里给「把 origin 设为归属仓」按钮')
+  check(text.indexOf('归属仓：origin（git@github.com:org/repo.git） · 默认') >= 0,
+    '页脚常驻归属仓一行仍读事实')
+  check(text.indexOf('与同步源不同源') >= 0, '页脚这行标出与同步源不同源')
+  check(text.indexOf('未知错误') < 0, '同源校验不一致不写「未知错误」')
+
+  clickButton(tree, '把 origin 设为归属仓')
+  const afterSet = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
+  const idCall = calls.filter(c => c.endpoint === 'ascend-kb-sync-identity').pop()
+  check(!!idCall && idCall.payload.remote === 'origin' && idCall.payload.expectSha256 === SETTINGS_SHA,
+    '按钮发 ascend-kb-sync-identity，带上远端与 CAS 指纹', JSON.stringify(idCall && idCall.payload))
+  check(textOf(afterSet).indexOf('已把 origin 设为归属仓。') >= 0, '设置成功后给一条成功提示')
+}
+
+section('[知识库 · 客户端] 归属仓解析不到')
+{
+  // `--show` 的读端形状：ok=true、same_repo=null，identity_explicit=true 且 identity_resolved=false
+  // （reason identity-unresolved 只在合并结果里出现）。
+  const payload = showPayload()
+  payload.sync.data.same_repo = null
+  payload.sync.data.identity_remote = 'gitcode'
+  payload.sync.data.identity_url = ''
+  payload.sync.data.identity_explicit = true
+  payload.sync.data.identity_resolved = false
+  const { runtime, main, calls } = await bootClient({
+    'ascend-kb-sync-show': () => payload,
+    'ascend-kb-sync-identity': () => ({ ok: true, identity: { remote: 'origin' }, sha256: SETTINGS_SHA }),
+  })
+  const tree = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
+  const text = textOf(tree)
+  check(text.indexOf('归属仓解析不到，未自动合并') >= 0, '解析不到给一句原因', text.slice(0, 240))
+  check(text.indexOf('改回 origin（默认），或把该远端补回来。') >= 0, '解析不到给可执行的下一步')
+  check(!!findButton(tree, '改回 origin'), '解析不到给「改回 origin」按钮')
+  check(text.indexOf('归属仓：gitcode（git@gitcode.com:org/repo.git）') >= 0
+    && text.indexOf('解析不到') >= 0, '页脚归属仓一行标出解析不到', text.slice(-260))
+  clickButton(tree, '改回 origin')
+  await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
+  const idCall = calls.filter(c => c.endpoint === 'ascend-kb-sync-identity').pop()
+  check(!!idCall && idCall.payload.remote === 'origin', '「改回 origin」走同一个设置端点',
+    JSON.stringify(idCall && idCall.payload))
+}
+
+section('[知识库 · 客户端] 默认 origin 不存在：不误报解析不到')
+{
+  // 单远端检出（同步源叫 gitcode，没有 origin）：默认 origin 解析不到但未显式配置，
+  // 后端按设计放行合并；面板不能报「归属仓解析不到，未自动合并」。
+  const payload = showPayload()
+  payload.sync.data.remote = 'gitcode'
+  payload.sync.data.same_repo = null
+  payload.sync.data.identity_remote = 'origin'
+  payload.sync.data.identity_url = ''
+  payload.sync.data.identity_explicit = false
+  payload.sync.data.identity_resolved = false
+  payload.sync.data.behind = 0
+  payload.targets.data.remotes = [
+    { name: 'gitcode', url: 'git@gitcode.com:org/repo.git', host: 'gitcode.com', base: 'main', last_used: '' },
+  ]
+  payload.targets.data.target = { remote: 'gitcode', base: 'main' }
+  payload.targets.data.recommendation = { remote: 'gitcode', base: 'main', reason: '上次选择的目标' }
   const { runtime, main } = await bootClient({ 'ascend-kb-sync-show': () => payload })
   const tree = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
   const text = textOf(tree)
-  check(text.indexOf('这个远端不是同一个仓，未自动合并') >= 0,
-    '同源校验不一致时给一行说明', text.slice(0, 240))
-  check(text.indexOf('未知错误') < 0, '同源校验不一致不写「未知错误」')
+  check(text.indexOf('归属仓解析不到') < 0, '默认 origin 解析不到不报身份异常', text.slice(0, 260))
+  check(!findButton(tree, '改回 origin'), '默认 origin 解析不到不给「改回 origin」')
+  check(text.indexOf('解析不到') < 0, '页脚不标「解析不到」', text.slice(-260))
+  check(text.indexOf('归属仓：origin（地址未知） · 默认') >= 0,
+    '页脚仍如实写默认归属仓（地址未知）', text.slice(-260))
+  check(text.indexOf('本机与远端一致') >= 0, '其余状态照常显示', text.slice(0, 200))
+}
+
+section('[知识库 · 客户端] 同步进行中：保留页面，不换骨架屏')
+{
+  let resolveMerge = null
+  const mergePromise = new Promise((resolve) => { resolveMerge = resolve })
+  const { runtime, main } = await bootClient({
+    'ascend-kb-sync-show': () => showPayload(),
+    'ascend-kb-sync-merge': () => mergePromise,
+  })
+  let tree = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
+  clickButton(tree, '立即同步')
+  tree = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
+  const busyText = textOf(tree)
+  check(busyText.indexOf('读取本机状态') < 0, '同步进行中不显示骨架屏', busyText.slice(0, 200))
+  check(busyText.indexOf('本机版本') >= 0 && busyText.indexOf('v1a2b3c') >= 0,
+    '同步进行中已有读数还在', busyText.slice(0, 240))
+  check(busyText.indexOf('同步中') >= 0, '进行中按钮文案为「同步中」', busyText.slice(-320))
+  check(hasClass(tree, 'sleu-kb-spin'), '进行中按钮带 spinner', JSON.stringify(collectButtons(tree).map(b => textOf(b).slice(0, 20))))
+  check(!!findByProp(tree, 'aria-busy', 'true'), '进行中整块标 aria-busy')
+  check(switchByLabel(tree, '自动检查更新').props.disabled === true, '进行中禁用开关')
+  check(selectsOf(tree).every(el => el.props.disabled === true), '进行中禁用下拉')
+  check(!!findButton(tree, '保存') && findButton(tree, '保存').props.disabled === true, '进行中禁用保存')
+  check(!findButton(tree, '设为归属仓'), '进行中不展开归属仓设置')
+
+  resolveMerge({ ok: true, merged: false, reason_code: '', reason_text: '' })
+  tree = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
+  const doneText = textOf(tree)
+  check(doneText.indexOf('已经是最新，没有要合并的提交') >= 0, '动作结束后结果提示落到页面上',
+    doneText.slice(0, 240))
+  check(doneText.indexOf('v1a2b3c') >= 0 && doneText.indexOf('读取本机状态') < 0,
+    '动作后的刷新不再闪骨架屏')
 }
 
 section('[知识库 · 客户端] 空态：没有远端')
@@ -480,8 +615,9 @@ section('[知识库 · 客户端] 同步结果：成功 / 未自动合并 / 失�
   let t5 = await sameRepoMerge.runtime.render(sameRepoMerge.main.component, { view: 'knowledge', sessionId: 's1' })
   clickButton(t5, '立即同步')
   t5 = await sameRepoMerge.runtime.render(sameRepoMerge.main.component, { view: 'knowledge', sessionId: 's1' })
-  check(textOf(t5).indexOf('没有自动合并：配置远端与 origin 不同源') >= 0,
+  check(textOf(t5).indexOf('同步源与归属仓不同源，未自动合并') >= 0,
     '同源校验不一致时不给合并，并写清原因', textOf(t5).slice(0, 240))
+  check(!!findButton(t5, '把 origin 设为归属仓'), '同源校验不一致的提示带「设为归属仓」按钮')
 
   const nothing = await bootClient({
     'ascend-kb-sync-show': () => showPayload(),
@@ -646,6 +782,8 @@ const showDoc = {
   surface: { knowledge: 3, references: 1 },
   merge: 'none', skipped: false, config: 'file',
   same_repo: true,
+  identity_remote: 'origin', identity_url: 'git@github.com:org/repo.git',
+  identity_explicit: false, identity_resolved: true,
   local_rev_before: '1a2b3c', behind_before: 12,
   last_ok_at: '2026-11-04T14:30:00+08:00', attempted_at: '2026-11-04T14:30:00+08:00',
   last_reason: '', config_error: '',
@@ -684,11 +822,17 @@ function defaultPlan(overrides) {
       ok: true, sync: { remote: 'origin', branch: 'main', enabled: true, auto_merge: true },
       config: 'file', config_problem: '', settings: '.local/settings.json', sha256: 'b'.repeat(64),
     })),
+    'pr_status --set-identity': () => okStdout(JSON.stringify({
+      ok: true,
+      identity: { remote: 'gitcode', url: 'git@gitcode.com:org/repo.git', explicit: true, resolved: true },
+      sha256: 'c'.repeat(64),
+    })),
   }, overrides || {})
   return (command) => {
     // `pr_status --list-targets` 也带 --json，先判更长的那个。
     if (/pr_status\.py --list-targets/.test(command)) return map['pr_status --list-targets'](command)
     if (/pr_status\.py --set-sync/.test(command)) return map['pr_status --set-sync'](command)
+    if (/pr_status\.py --set-identity/.test(command)) return map['pr_status --set-identity'](command)
     if (/pr_status\.py --json/.test(command)) return map['pr_status --json'](command)
     if (/kb_sync\.py --show/.test(command)) return map['kb_sync --show'](command)
     if (/kb_sync\.py --merge/.test(command)) return map['kb_sync --merge'](command)
@@ -711,6 +855,12 @@ section('[知识库 · host] 正常读取')
     && value.sync.data.reason === '' && value.sync.data.same_repo === true,
     'show：enabled / offline / reason / same_repo 按脚本字段带出',
     JSON.stringify(value && value.sync.data).slice(0, 260))
+  check(!!value && value.sync.data.identity_remote === 'origin'
+    && value.sync.data.identity_url === 'git@github.com:org/repo.git'
+    && value.sync.data.identity_explicit === false && value.sync.data.identity_resolved === true,
+    'show：归属仓四项原样带出（不改名）', JSON.stringify(value && value.sync.data).slice(0, 320))
+  check(!!value && value.sync.data.identity_remote
+    && value.sync.data.identity_explicit === false, 'show：默认 origin 标为未显式配置（面板显示「默认」）')
   check(!!value && value.sync.data.config && value.sync.data.config.auto_check === true
     && value.sync.data.config.auto_merge === true && value.sync.data.config.source === 'personal',
     'show：两个开关取自设置文件的 sync 段', JSON.stringify(value && value.sync.data.config))
@@ -754,6 +904,54 @@ section('[知识库 · host] 正常读取')
   check(saveCmd.indexOf('--disable') >= 0 && saveCmd.indexOf('--auto-merge on') >= 0,
     'save：自动检查更新关 → --disable，自动合并开 → --auto-merge on', saveCmd)
   check(saveCmd.indexOf('--expect-sha256 ' + SETTINGS_SHA) >= 0, 'save：带上 CAS 指纹', saveCmd)
+}
+
+section('[知识库 · host] 设归属仓端点')
+{
+  const host = await bootHost(defaultPlan())
+  const out = valueOf(await host.call('ascend-kb-sync-identity', {
+    sessionId: 's1', remote: 'gitcode', expectSha256: SETTINGS_SHA,
+  }))
+  check(!!out && out.ok === true && out.identity && out.identity.remote === 'gitcode'
+    && out.identity.resolved === true && out.sha256 === 'c'.repeat(64),
+    '设归属仓：返回 identity 与指纹', JSON.stringify(out).slice(0, 240))
+  const cmd = host.shell.commands.filter(c => /--set-identity/.test(c))[0] || ''
+  check(cmd.indexOf('--remote gitcode') >= 0 && cmd.indexOf('--expect-sha256 ' + SETTINGS_SHA) >= 0,
+    '设归属仓：把远端与 CAS 指纹原样传给脚本', cmd)
+  check(cmd.indexOf('--json') >= 0, '设归属仓：照样要 JSON 输出', cmd)
+
+  const noRemote = valueOf(await host.call('ascend-kb-sync-identity', { sessionId: 's1' }))
+  check(!!noRemote && noRemote.ok === false && noRemote.code === 'E_ARGS',
+    '设归属仓：没给远端 → E_ARGS，不起子进程', JSON.stringify(noRemote))
+  const unsafe = valueOf(await host.call('ascend-kb-sync-identity', { sessionId: 's1', remote: 'git code' }))
+  check(!!unsafe && unsafe.ok === false && unsafe.code === 'E_ARGS',
+    '设归属仓：远端名含空白 → E_ARGS', JSON.stringify(unsafe))
+  const badSha = valueOf(await host.call('ascend-kb-sync-identity', {
+    sessionId: 's1', remote: 'origin', expectSha256: 'not-a-sha',
+  }))
+  check(!!badSha && badSha.ok === false && badSha.code === 'E_ARGS',
+    '设归属仓：指纹不是 64 位十六进制 → E_ARGS', JSON.stringify(badSha))
+  check(host.shell.commands.filter(c => /--set-identity/.test(c)).length === 1,
+    '参数不合法的三次调用都没有真的起子进程')
+
+  const legacy = await bootHost(defaultPlan({
+    'pr_status --set-identity': () => failStdout(2, 'error: unrecognized arguments: --set-identity'),
+  }))
+  const legacyValue = valueOf(await legacy.call('ascend-kb-sync-identity', { sessionId: 's1', remote: 'origin' }))
+  check(!!legacyValue && legacyValue.ok === false && legacyValue.code === 'E_UNSUPPORTED',
+    '旧脚本不认 --set-identity：归到 E_UNSUPPORTED', JSON.stringify(legacyValue))
+
+  // 远端不存在：脚本用非 0 退出 + JSON 信封报 E_ARGS（_arg_fail），信封里的码要认。
+  const missing = await bootHost(defaultPlan({
+    'pr_status --set-identity': () => ({
+      exitCode: 2, stderr: { text: '' }, timedOut: false,
+      stdout: { text: JSON.stringify({ ok: false, error: { code: 'E_ARGS', message: '远端不存在：team' } }) },
+    }),
+  }))
+  const missingValue = valueOf(await missing.call('ascend-kb-sync-identity', { sessionId: 's1', remote: 'team' }))
+  check(!!missingValue && missingValue.ok === false && missingValue.code === 'E_ARGS'
+    && String(missingValue.message || '').indexOf('远端不存在') >= 0,
+    '设归属仓：远端不存在 → E_ARGS（读脚本的 JSON 信封，不猜成脚本报错）', JSON.stringify(missingValue))
 }
 
 section('[知识库 · host] 降级：缺配置 / 缺脚本 / 非 git 检出')
@@ -852,6 +1050,16 @@ section('[知识库 · host] 状态与失败分类')
     const value = valueOf(await host.call('ascend-kb-sync-merge', {}))
     check(!!value && value.ok === true && value.merged === false && value.reason_code === 'E_SAME_REPO',
       '同源校验不一致：合并被拦下，归到 E_SAME_REPO', JSON.stringify(value))
+  }
+
+  const identityMerge = Object.assign({}, showDoc, { ok: false, reason: 'identity-unresolved' })
+  {
+    const host = await bootHost(defaultPlan({
+      'kb_sync --merge': () => okStdout(JSON.stringify(identityMerge)),
+    }))
+    const value = valueOf(await host.call('ascend-kb-sync-merge', {}))
+    check(!!value && value.ok === false && value.code === 'E_IDENTITY',
+      '归属仓解析不到：归到 E_IDENTITY', JSON.stringify(value))
   }
 
   const unsupported = await bootHost(defaultPlan({

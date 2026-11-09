@@ -1,7 +1,7 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
 //   dsh-plugins/ascend-panel/panel-host.js  (sha256:f1fa8ffbec6a)
-//   dsh-plugins/ev-panel/panel-host.js  (sha256:a17169748b08)
+//   dsh-plugins/ev-panel/panel-host.js  (sha256:a2d65694e447)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
 // 面板源码是动态插件方言（文件是函数体，靠沙箱提供的 harness 通信）；这里原文嵌入常驻
@@ -3012,7 +3012,7 @@ return {
     id: 'ev-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ev-panel/panel-host.js (sha256:a17169748b08) 原文开始 ----
+// ---- dsh-plugins/ev-panel/panel-host.js (sha256:a2d65694e447) 原文开始 ----
 // ev-panel host —— 自演进看板数据服务（EV 卡 / 容量 / 归因聚合 / timeline）
 // 用法：cordis_define kind:new → code.host 用本文件全文；code.client 用 panel-client.js 全文。
 // host 侧通过 shell 跑 scripts/ev_board_data.py 汇总 JSON（确定性逻辑在脚本，遵循原则二）。
@@ -3370,8 +3370,18 @@ return {
       const failed = !r || r.timedOut || r.aborted || Number(r.exitCode) !== 0
       if (failed) {
         const why = syncFailureOf(scriptName, (stderr || stdout), r && r.exitCode, !!(r && r.timedOut))
-        return { ok: false, code: why.code, message: why.message, cwd: cwd, command: command,
-          exitCode: r && r.exitCode, detail: String(stderr || stdout || '').trim().slice(0, 600) }
+        // 脚本的参数错误也用 JSON 信封，只是退出码非 0（如 pr_status 的 _arg_fail）：
+        // 信封里的 code / message 比按 stderr 猜更准，照它给面板的失败码。
+        const envelope = syncJsonOf(stdout)
+        const envErr = envelope && envelope.ok === false
+          && envelope.error && typeof envelope.error === 'object' ? envelope.error : null
+        return {
+          ok: false,
+          code: envErr ? String(envErr.code || why.code) : why.code,
+          message: envErr ? String(envErr.message || why.message) : why.message,
+          cwd: cwd, command: command,
+          exitCode: r && r.exitCode, detail: String(stderr || stdout || '').trim().slice(0, 600),
+        }
       }
       const data = syncJsonOf(stdout)
       if (data === null) {
@@ -3409,7 +3419,10 @@ return {
       if (r === 'branch-mismatch') return { code: 'E_BRANCH', message: '当前不在配置分支上' }
       if (r === 'merge-in-progress') return { code: 'E_MERGE_IN_PROGRESS', message: '上一次合并还没结束' }
       if (r === 'auto-merge-off') return { code: 'E_AUTO_MERGE_OFF', message: '自动合并已关闭' }
-      if (r === 'same-repo') return { code: 'E_SAME_REPO', message: '配置远端与 origin 不同源' }
+      if (r === 'same-repo') return { code: 'E_SAME_REPO', message: '同步源与归属仓不同源' }
+      if (r === 'identity-unresolved') {
+        return { code: 'E_IDENTITY', message: '归属仓解析不到，未自动合并' }
+      }
       if (r === 'status-failed') return { code: 'E_SCRIPT', message: 'git status 读取失败' }
       if (/^exit-\d+$/.test(r)) return { code: 'E_FETCH', message: 'fetch 退出码 ' + r.slice(5) }
       return { code: 'E_SCRIPT', message: '同步脚本报错：' + r }
@@ -3462,6 +3475,12 @@ return {
         offline_source: offlineSource,
         reason: reason,
         same_repo: sameRepo,
+        // 归属仓四项：`--show` 直接给的字段名原样带出（旧脚本没有时留空/null，面板如实说读不到）。
+        identity_remote: syncStr(doc.identity_remote),
+        identity_url: syncStr(doc.identity_url),
+        identity_explicit: doc.identity_explicit === true,
+        identity_resolved: doc.identity_resolved === true ? true
+          : (doc.identity_resolved === false ? false : null),
         config: null,
       }
       // 上一次 fetch 的失败（脚本从状态文件读出 last_reason / last_error）：页面重新打开后
@@ -3691,6 +3710,39 @@ return {
       }
     })
 
+    // 「设为归属仓」：写 `.local/identity.remote`，走 `pr_status.py --set-identity`。
+    // 与保存同一条写边界（设置文件 + CAS 指纹）；面板不自己改 git 远端。
+    const kbIdentityDisposer = harness.handle('ascend-kb-sync-identity', async (args) => {
+      const sessionId = args && args.sessionId ? String(args.sessionId) : null
+      const remote = args && args.remote ? String(args.remote).trim() : ''
+      const expect = args && args.expectSha256 ? String(args.expectSha256).trim() : ''
+      if (!remote) return { ok: false, code: 'E_ARGS', message: '没有选远端' }
+      if (!syncSafeRef(remote)) return { ok: false, code: 'E_ARGS', message: '远端名含不支持的字符' }
+      if (expect && !/^[0-9a-f]{64}$/i.test(expect)) {
+        return { ok: false, code: 'E_ARGS', message: '设置指纹不是 64 位十六进制' }
+      }
+      const argv = ['--set-identity', '--remote', remote]
+      if (expect) argv.push('--expect-sha256', expect)
+      argv.push('--json')
+      const r = await runSyncScript(sessionId, PR_STATUS_SCRIPT, argv.join(' '), 20000)
+      if (!r.ok) return { ok: false, code: r.code, message: r.message, cwd: r.cwd || null, detail: r.detail || '' }
+      const doc = syncDocOf(r) || {}
+      const env = syncEnvelopeError(doc)
+      if (env) return { ok: false, code: env.code, message: env.message, cwd: r.cwd || null, detail: '' }
+      const id = doc.identity && typeof doc.identity === 'object' ? doc.identity : null
+      return {
+        ok: true,
+        cwd: r.cwd || null,
+        identity: {
+          remote: id ? syncStr(id.remote) || remote : remote,
+          url: id ? syncStr(id.url) : '',
+          explicit: id ? id.explicit !== false : true,
+          resolved: id ? id.resolved !== false : true,
+        },
+        sha256: syncStr(doc.sha256),
+      }
+    })
+
     return () => {
       if (handleDisposer) handleDisposer()
       if (healthDisposer) healthDisposer()
@@ -3698,6 +3750,7 @@ return {
       if (kbShowDisposer) kbShowDisposer()
       if (kbMergeDisposer) kbMergeDisposer()
       if (kbSaveDisposer) kbSaveDisposer()
+      if (kbIdentityDisposer) kbIdentityDisposer()
     }
   },
 }
