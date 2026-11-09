@@ -1341,6 +1341,19 @@ function newKbHarness(payload, timers) {
     }))
   clearKbSettings()
 
+  // ①e 手改设置写成字符串（"off"）也按关处理：与 scripts/kb_sync.py 的 _as_bool 同口径。
+  writeKbSettings({ check_enabled: 'off', check_minutes: 30 })
+  const stringOff = newKbHarness(kbPayload({}), makeFakeTimers())
+  await stringOff.timers.timeouts[0].fn()
+  expect('知识库：check_enabled 写成字符串 "off" 也按关处理',
+    kbSyncCalls(stringOff.shell) === 0
+    && stringOff.timers.timeouts.length === 2 && stringOff.timers.timeouts[1].ms === 60 * 1000,
+    JSON.stringify({
+      calls: kbSyncCalls(stringOff.shell),
+      timeouts: stringOff.timers.timeouts.map((entry) => entry.ms),
+    }))
+  clearKbSettings()
+
   // ② 稍后：notice 置空，记录落盘；同一 rev 换个进程（新 harness）也不再提示。
   const dismissFirst = (await kbRpc(first.harness, 'copilot-kb-dismiss', {
     rev: '9f8e7d',

@@ -1008,7 +1008,7 @@ def build_parser() -> argparse.ArgumentParser:
                       help="fetch 后按条件试 ff-only")
     ap.add_argument("--json", action="store_true", help="输出 JSON")
     ap.add_argument("--force", action="store_true",
-                    help="跳过失败缓存立即重试（手动同步用；自动同步仍按 10 分钟窗口）")
+                    help="跳过失败缓存立即重试（手动路径；也不看 sync.enabled）")
     ap.add_argument("--timeout", type=_positive_float, default=DEFAULT_TIMEOUT,
                     help=f"单条 git 命令的超时秒数（默认 {DEFAULT_TIMEOUT:g}）")
     ap.add_argument("--root", default=None, help="仓库根（默认脚本上一级）")

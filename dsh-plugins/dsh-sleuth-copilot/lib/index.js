@@ -1335,6 +1335,19 @@ export function apply(ctx) {
     return { mode: 'workspace-write', workspaceRoot: mainRoot }
   }
 
+  // 与 scripts/kb_sync.py 的 _as_bool 同口径：手改设置写成 "off"/"0" 也算关，
+  // 否则面板（经 Python 规范化）显示关闭、后台却照跑。
+  function kbAsBool(value, fallback) {
+    if (value === true || value === false) return value
+    if (value === null || value === undefined) return fallback
+    if (typeof value === 'string') {
+      const text = value.trim().toLowerCase()
+      if (text === 'true' || text === 'on' || text === 'yes' || text === '1') return true
+      if (text === 'false' || text === 'off' || text === 'no' || text === '0') return false
+    }
+    return fallback
+  }
+
   function kbReadState(raw) {
     if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
     const behind = Number(raw.behind)
@@ -1447,7 +1460,7 @@ export function apply(ctx) {
       : {}
     const minutes = Number.isInteger(sync.check_minutes) ? sync.check_minutes : KB_CHECK_DEFAULT_MINUTES
     return {
-      enabled: sync.check_enabled !== false,
+      enabled: kbAsBool(sync.check_enabled, true),
       minutes: Math.min(KB_CHECK_MAX_MINUTES, Math.max(KB_CHECK_MIN_MINUTES, minutes)),
     }
   }

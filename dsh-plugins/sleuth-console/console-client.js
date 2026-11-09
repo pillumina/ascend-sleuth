@@ -707,9 +707,9 @@ return {
       const checkChoices = KB_CHECK_MINUTES.slice()
       if (draft && checkChoices.indexOf(draft.checkMinutes) < 0) checkChoices.push(draft.checkMinutes)
       const switches = React.createElement('div', { className: 'sleu-kb-card' },
-        switchRow('自动检查更新', '诊断开单时 fetch 一次，并按配置自动合并。关闭后不自动拉取、不自动合并；不影响后台提醒检查与手动同步。', 'autoCheck'),
+        switchRow('自动检查更新', '诊断开单时 fetch 一次，并按配置自动合并。关闭后开单不自动拉取、不自动合并；不影响「提醒检查」与「立即同步」。', 'autoCheck'),
         switchRow('自动合并', '仅当工作区干净、当前在配置分支上、且可快进时合并。不满足只提示，不 rebase。', 'autoMerge'),
-        switchRow('提醒检查', '后台定期检查知识库是否落后，落后时在诊断状态条提示。关闭后不检查、不提示；不影响开单自动拉取与手动同步。', 'checkEnabled'),
+        switchRow('提醒检查', '后台定期检查知识库是否落后，落后时在诊断状态条提示。关闭后后台不再检查、不再提示；不影响开单自动拉取与「立即同步」。', 'checkEnabled'),
         React.createElement('div', { className: 'sleu-kb-switch-row', key: 'checkMinutes' },
           React.createElement('div', { className: 'sleu-kb-switch-main' },
             React.createElement('div', { className: 'sleu-kb-switch-t' }, '检查间隔'),
