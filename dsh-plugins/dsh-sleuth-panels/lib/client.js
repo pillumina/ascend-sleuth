@@ -2,7 +2,7 @@
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
 //   dsh-plugins/ascend-panel/panel-client.js  (sha256:3e92088ea7bb)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:f684735469ce)
-//   dsh-plugins/sleuth-console/console-client.js  (sha256:04fdfb52c2d6)
+//   dsh-plugins/sleuth-console/console-client.js  (sha256:a4c757b31740)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
 // 面板源码是动态插件方言（靠沙箱提供的 host 通信）；这里原文嵌入页面产物，并补一层适配：
@@ -6358,7 +6358,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       id: 'sleuth-console',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/sleuth-console/console-client.js (sha256:04fdfb52c2d6) 原文开始 ----
+// ---- dsh-plugins/sleuth-console/console-client.js (sha256:a4c757b31740) 原文开始 ----
 // sleuth-console/console-client.js —— 常驻包里的整页「Ascend Sleuth」（client-only）
 //
 // 为什么单有这一页：指标与自演进读的是**全库**（`metrics/`、`proposals/`、`knowledge/`），
@@ -6759,8 +6759,9 @@ return {
       const identityRemoteObj = remotes.filter(r => r && r.name === identityRemote)[0] || null
       const identityWhere = identityUrl || (identityRemoteObj
         ? String(identityRemoteObj.url || identityRemoteObj.host || '') : '')
-      // 显式配置的归属仓解析不到：`--show` 会以 reason=identity-unresolved 返回，两种形状都认。
-      const identityUnresolved = identityResolved === false
+      // 只有**显式配置**的归属仓解析不到才算异常：默认 origin 在本机不存在（单远端检出）时
+      // 后端按设计放行合并，identity_resolved 同样是 false，不能误报成「未自动合并」。
+      const identityUnresolved = (identityExplicit && identityResolved === false)
         || !!(syncState === 'error' && syncError && syncError.code === 'E_IDENTITY')
       const identityIssue = sameRepoMismatch || identityUnresolved
       const syncRemoteForIdentity = (data && data.remote) || (draft && draft.remote) || ''

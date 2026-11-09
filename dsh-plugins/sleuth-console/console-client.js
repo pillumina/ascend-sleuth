@@ -398,8 +398,9 @@ return {
       const identityRemoteObj = remotes.filter(r => r && r.name === identityRemote)[0] || null
       const identityWhere = identityUrl || (identityRemoteObj
         ? String(identityRemoteObj.url || identityRemoteObj.host || '') : '')
-      // 显式配置的归属仓解析不到：`--show` 会以 reason=identity-unresolved 返回，两种形状都认。
-      const identityUnresolved = identityResolved === false
+      // 只有**显式配置**的归属仓解析不到才算异常：默认 origin 在本机不存在（单远端检出）时
+      // 后端按设计放行合并，identity_resolved 同样是 false，不能误报成「未自动合并」。
+      const identityUnresolved = (identityExplicit && identityResolved === false)
         || !!(syncState === 'error' && syncError && syncError.code === 'E_IDENTITY')
       const identityIssue = sameRepoMismatch || identityUnresolved
       const syncRemoteForIdentity = (data && data.remote) || (draft && draft.remote) || ''

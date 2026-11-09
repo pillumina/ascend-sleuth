@@ -413,6 +413,34 @@ section('[知识库 · 客户端] 归属仓解析不到')
     JSON.stringify(idCall && idCall.payload))
 }
 
+section('[知识库 · 客户端] 默认 origin 不存在：不误报解析不到')
+{
+  // 单远端检出（同步源叫 gitcode，没有 origin）：默认 origin 解析不到但未显式配置，
+  // 后端按设计放行合并；面板不能报「归属仓解析不到，未自动合并」。
+  const payload = showPayload()
+  payload.sync.data.remote = 'gitcode'
+  payload.sync.data.same_repo = null
+  payload.sync.data.identity_remote = 'origin'
+  payload.sync.data.identity_url = ''
+  payload.sync.data.identity_explicit = false
+  payload.sync.data.identity_resolved = false
+  payload.sync.data.behind = 0
+  payload.targets.data.remotes = [
+    { name: 'gitcode', url: 'git@gitcode.com:org/repo.git', host: 'gitcode.com', base: 'main', last_used: '' },
+  ]
+  payload.targets.data.target = { remote: 'gitcode', base: 'main' }
+  payload.targets.data.recommendation = { remote: 'gitcode', base: 'main', reason: '上次选择的目标' }
+  const { runtime, main } = await bootClient({ 'ascend-kb-sync-show': () => payload })
+  const tree = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
+  const text = textOf(tree)
+  check(text.indexOf('归属仓解析不到') < 0, '默认 origin 解析不到不报身份异常', text.slice(0, 260))
+  check(!findButton(tree, '改回 origin'), '默认 origin 解析不到不给「改回 origin」')
+  check(text.indexOf('解析不到') < 0, '页脚不标「解析不到」', text.slice(-260))
+  check(text.indexOf('归属仓：origin（地址未知） · 默认') >= 0,
+    '页脚仍如实写默认归属仓（地址未知）', text.slice(-260))
+  check(text.indexOf('本机与远端一致') >= 0, '其余状态照常显示', text.slice(0, 200))
+}
+
 section('[知识库 · 客户端] 同步进行中：保留页面，不换骨架屏')
 {
   let resolveMerge = null
