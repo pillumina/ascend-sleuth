@@ -7,7 +7,7 @@ DSH 会话里的一个独立交互层插件。它把诊断的状态、下一步�
 
 | 面 | 位置 | 用途 |
 |---|---|---|
-| 状态条 | 输入框上方（`conversation.input.dock`） | 本会话诊断到第几步、在等什么、下一步做什么；可收起，收起状态记住 |
+| 状态条 | 输入框上方（`conversation.input.dock`） | 本会话诊断到第几步、在等什么、下一步做什么；可收起，收起状态记住；知识库落后上游时提示同步 |
 | 工具条入口 | 输入框右侧工具条（`conversation.input.right`） | 打开诊断总览；有待回报时带角标 |
 | 诊断总览 | 全帧浮层（`shell.overlay`） | 全库诊断一屏看完、键盘操作、复制指令、直接改状态 |
 | 动作层 | 以上三个面共用 | 复制结论摘要与各类指令；收尾 / 重开 / 沉淀状态写入 |
@@ -49,6 +49,34 @@ DSH 会话里的一个独立交互层插件。它把诊断的状态、下一步�
 - 本会话有绑定轨迹时标「本会话」：原始会话号等于当前会话，或当前会话出现在某个 `resume` 事件里（标「本会话（续接）」）；都没有时兜底显示「最近一单」，并给出续接指令。
 - 工作区不是 ascend-sleuth 检出时整条不渲染；检出内缺 Python 或脚本出错时给一行原因与重试。
 - 「更多操作」与选择器浮层优先向上展开；上方空间不足时改向下并限制高度，避免被滚动容器裁掉或被顶栏盖住。点浮层里的动作不会把点开它的状态条一起收起。
+
+### 知识库更新提醒
+
+状态条还显示「本机知识库落后上游多少个提交」。
+插件在宿主进程里的那一半（下称 Host 半）每 30 分钟检查一次，DSH 启动后约 3 秒先跑一次；
+宿主进程没有定时器服务时这一段整体不启用。
+检查只 fetch、不合并，也不改工作树与 HEAD。一次检查会更新远端跟踪 ref，并让 `scripts/kb_sync.py`
+在主检出的 `.local/kb-sync-state.json` 里记一份它自己的失败冷却状态。
+检查项与字段都以 `scripts/kb_sync.py` 为准，`python3 scripts/kb_sync.py --show --json` 可以单独跑。
+检出位置从插件包目录向上两级找到仓库根。测试或非 link 安装可以用环境变量 `DSH_SLEUTH_KB_ROOT` 指定；
+插件包不在仓库内（快照安装）且没有该变量时，检查静默停用。
+
+- 落后时展开态加一行「知识库落后 N 个提交」，带「去同步」「稍后」两个动作。
+  收起态胶囊末尾加「· 知识库有更新」。
+- 「去同步」打开整页「Ascend Sleuth」，并尽力切到「知识库」子页。
+  同步由那一页的「立即同步」执行，状态条不自己合并。
+- 「稍后」记下这一版远端提交：同一提交不再提示，远端有新提交时重新出现。
+  记录写主检出的 `.local/kb-sync-notify.json`（落在主检出里，不进 git，不放 `traces/`）。
+  写不进去时提示行不收起，并说明是状态文件没写成。
+- 待同步的改动含面板代码（`dsh-plugins/` 下有改动）时补一句
+  「这批改动含面板代码：同步后重启 DSH 才能加载新面板。」；只提示，不自动重启进程。
+- 静默条件分两种后果：
+  - 清掉已显示的提示：`sync.enabled` 关闭（主检出 `.local/settings.json` 里的 `sync.enabled`）、
+    离线部署、远端已经没有落后（`behind = 0`）。
+  - 保留已显示的提示、等下一次成功检查再更新：网络或凭据失败。失败不上屏、不弹窗（首版不做系统通知），
+    失败原因在能写状态文件时落到那里供排查。
+- 检出里没有 `scripts/kb_sync.py` 时检查停用；此时已经显示的提示要等到进程重启才消失。
+- 当前会话工作区不是检出时状态条本身不显示；后台检查仍按主检出跑。
 
 ### 诊断总览
 
@@ -190,7 +218,9 @@ DSH 会话里的一个独立交互层插件。它把诊断的状态、下一步�
   ├─ copilot-state      → Host 半 → lib/copilot_state.py → scripts/_trace_state.py（状态判据）
   ├─ copilot-sediment   → Host 半 → lib/sediment_state.py → scripts/groom_status.py / groom_common.py
   ├─ copilot-pr-target  → Host 半 → scripts/pr_status.py → scripts/platforms/*
-  └─ copilot-transition → Host 半 → scripts/trace_transition.py（校验 + CAS + 事件）
+  ├─ copilot-transition → Host 半 → scripts/trace_transition.py（校验 + CAS + 事件）
+  └─ copilot-kb-dismiss / copilot-kb-recheck → Host 半 → scripts/kb_sync.py（知识库落后检查；
+       周期检查另由 Host 半定时触发，结果随 copilot-state 的 kbNotice 下发）
 ```
 
 - 读：状态名、动作可用性、「在等什么」全部来自 `scripts/_trace_state.py` 的投影（Host 半经 `lib/copilot_state.py` 调用），浏览器不判状态。
@@ -245,13 +275,14 @@ plugin_manager remove_bundle(target: 'dsh-sleuth-copilot')
 ## 验证
 
 ```
-node dsh-plugins/dsh-sleuth-copilot/test/render-smoke.mjs   # 浏览器半：四个面、折叠、点外部 / Esc 收起、常驻偏好、静置淡出（含 reduced-motion）、菜单点击不误收起、菜单语义、收尾表单默认值与必填、改 / 补收尾方式、收尾清单 / 历史 / 报告、材料 / 时间线、无候选沉淀入口、总览取数失败与不换单、沉淀队列 / 指令 / 目标选择、来源诊断跳会话、批量沉淀、撤销沉淀 / 批量撤销、填过指令后重开强制刷新、查合入逐条进度、快捷键平台文案、搜索与命令面板
-node dsh-plugins/dsh-sleuth-copilot/test/host-smoke.mjs     # Host 半：取数、证据 / 候选 / 材料、报告与时间线、沉淀 / 目标端点、查合入逐条进度、traces 越界与主检出落点、沙箱档位、子进程失败专码、PR 台账 CAS、工作区门禁、会话绑定、真实写入（临时副本）、CAS、归档缺收尾方式的回执、改 / 补收尾方式、错误码
+node dsh-plugins/dsh-sleuth-copilot/test/render-smoke.mjs   # 浏览器半：四个面、折叠、点外部 / Esc 收起、常驻偏好、静置淡出（含 reduced-motion）、菜单点击不误收起、菜单语义、收尾表单默认值与必填、改 / 补收尾方式、收尾清单 / 历史 / 报告、材料 / 时间线、无候选沉淀入口、总览取数失败与不换单、沉淀队列 / 指令 / 目标选择、来源诊断跳会话、批量沉淀、撤销沉淀 / 批量撤销、填过指令后重开强制刷新、查合入逐条进度、知识库落后提示与去同步 / 稍后、快捷键平台文案、搜索与命令面板
+node dsh-plugins/dsh-sleuth-copilot/test/host-smoke.mjs     # Host 半：取数、证据 / 候选 / 材料、报告与时间线、沉淀 / 目标端点、查合入逐条进度、traces 越界与主检出落点、沙箱档位、子进程失败专码、PR 台账 CAS、工作区门禁、会话绑定、真实写入（临时副本）、CAS、归档缺收尾方式的回执、改 / 补收尾方式、错误码、知识库落后检查与稍后去重
 ```
 
-页面上的三件事只能人工确认：状态条是否出现、排版是否贴合输入区、点按钮是否把指令写进输入框。
+页面上的四件事只能人工确认：状态条是否出现、排版是否贴合输入区、点按钮是否把指令写进输入框、
+知识库落后提示是否出现且「去同步」能落到知识库子页。
 浮层位置与「点击菜单项后状态条是否还在」也依赖真实布局，改这部分后要在页面上点一遍。
-装完刷新页面，在状态条展开页或控制台看版本串 `v0.18.0`。
+装完刷新页面，在状态条展开页或控制台看版本串 `v0.19.0`。
 
 ## 版本维护
 

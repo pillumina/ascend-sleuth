@@ -14,11 +14,13 @@
 
 import { fileURLToPath } from 'node:url'
 import { dirname, join, sep } from 'node:path'
-import { readFile, realpath, stat, writeFile, unlink } from 'node:fs/promises'
+import { mkdir, readFile, realpath, rename, stat, writeFile, unlink } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const PKG_DIR = dirname(HERE)
+// 包固定在 <repo>/dsh-plugins/dsh-sleuth-copilot：往上两级就是仓库根，知识库检出从它推。
+const PLUGIN_REPO_ROOT = dirname(dirname(PKG_DIR))
 const CHANNEL = '/sleuth-copilot'
 const MAX_BODY_BYTES = 256 * 1024
 // 浏览器半每 10 秒静默刷一次；这个窗口把同一瞬间的重复请求并成一次取数。
@@ -35,8 +37,18 @@ const MAX_REPORT_BYTES = 512 * 1024
 // 读得比轮询稍快一点，面板 500 ms 一问就能看到已到的行；done 后保留 30 秒再删，给客户端收尾一次。
 const PR_PROGRESS_READ_MS = 120
 const PR_PROGRESS_TTL_MS = 30 * 1000
+// 知识库更新提醒：每次检查都是一次 fetch，所以 30 分钟一次；启动后先等 3 秒，
+// 避开 DSH 启动时与状态取数抢子进程。手动重查按 60 秒节流，同一远端提交只提醒一次。
+const KB_CHECK_INTERVAL_MS = 30 * 60 * 1000
+const KB_CHECK_DELAY_MS = 3000
+const KB_RECHECK_MIN_MS = 60 * 1000
+const KB_CHECK_TIMEOUT_MS = 30000
+const KB_STATE_REL = '.local/kb-sync-notify.json'
+const KB_STATE_VERSION = 1
+const KB_SURFACE_KEYS = ['knowledge', 'routing', 'reference', 'methodology', 'panel', 'other']
 
 export const name = 'dsh-sleuth-copilot'
+// timer 不进必需依赖：缺它时整个 host 半仍要挂载，只在注入得到时装背景检查的定时器。
 export const inject = ['connection']
 
 // 解释器只探测一次：Python 3 的启动器在 Windows 上可能是 python3（商店空壳）/ python / py -3。
@@ -100,6 +112,71 @@ function resultFailure(result) {
     return { code: 'E_TRUNCATED', message: '子进程输出超过上限被截断，读到的 JSON 可能不完整。' }
   }
   return null
+}
+
+// ── 知识库更新提醒的数据形状 ────────────────────────────────────────────────
+// 检测只调 scripts/kb_sync.py，这里不解析 git：落后数、远端提交与改动面都来自它的 JSON。
+function emptyKbSurface() {
+  return { knowledge: 0, routing: 0, reference: 0, methodology: 0, panel: 0, other: 0 }
+}
+
+function normalizeKbSurface(value) {
+  const counts = emptyKbSurface()
+  if (value === null || typeof value !== 'object') return counts
+  for (const key of KB_SURFACE_KEYS) {
+    const count = Number(value[key])
+    if (Number.isInteger(count) && count >= 0) counts[key] = count
+  }
+  return counts
+}
+
+// 状态文件（主检出的 .local/kb-sync-notify.json）只用于去重与排查：dismissedRev 决定同一
+// 远端提交还提不提示，rev / behind / surface / checkedAt / lastError 留给人看。它不恢复提示，
+// 也不记「最近一次检查成不成功」——提示只由本次进程的检查给出。
+function emptyKbState() {
+  return {
+    version: KB_STATE_VERSION,
+    rev: '',
+    behind: 0,
+    surface: emptyKbSurface(),
+    dismissedRev: '',
+    checkedAt: '',
+    lastError: '',
+  }
+}
+
+function kbPad2(value) {
+  return String(value).padStart(2, '0')
+}
+
+// 状态文件的 checkedAt 与 scripts 侧 now_iso 同一形状：本地时区、带偏移、精确到秒。
+function kbNowIso() {
+  const date = new Date()
+  const offset = -date.getTimezoneOffset()
+  const sign = offset >= 0 ? '+' : '-'
+  const abs = Math.abs(offset)
+  return date.getFullYear() + '-' + kbPad2(date.getMonth() + 1) + '-' + kbPad2(date.getDate())
+    + 'T' + kbPad2(date.getHours()) + ':' + kbPad2(date.getMinutes()) + ':' + kbPad2(date.getSeconds())
+    + sign + kbPad2(Math.floor(abs / 60)) + ':' + kbPad2(abs % 60)
+}
+
+// 内存里给界面的提示：只带界面要显示的数字。reference 与底层 surface.reference 同名，
+// 客户端不用再记两套字段名。
+function kbNoticeView(state) {
+  if (state === null || typeof state !== 'object') return null
+  const rev = typeof state.rev === 'string' ? state.rev : ''
+  const behind = Number(state.behind)
+  if (!rev || !Number.isInteger(behind) || behind <= 0) return null
+  if (rev === state.dismissedRev) return null
+  const surface = normalizeKbSurface(state.surface)
+  return {
+    rev,
+    behind,
+    panel: surface.panel,
+    knowledge: surface.knowledge,
+    reference: surface.reference,
+    checkedAt: typeof state.checkedAt === 'string' ? state.checkedAt : '',
+  }
 }
 
 export function apply(ctx) {
@@ -1204,6 +1281,284 @@ export function apply(ctx) {
     return runJsonHelper(root, python, script, argv, timeoutMs, writePolicy)
   }
 
+  // ── 知识库更新提醒 ─────────────────────────────────────────────────────────
+  // 后台检查本机检出是否落后上游，结果随 copilot-state 下发。检查只调 scripts/kb_sync.py：
+  // --sync 只 fetch、不合并，离线部署 / 关闭同步 / 失败冷却都由脚本处理。失败一律静默，
+  // 原文只落主检出的 .local/kb-sync-notify.json，供排查；界面上的提示只由本次进程的检查给出。
+  let kbState = emptyKbState()
+  let kbNotice = null
+  let kbLastError = ''
+  let kbLastReason = ''
+  let kbLastCheckAt = ''
+  let kbLastCheckStart = 0
+  let kbCheckFlight = null
+  let kbWriteChain = Promise.resolve()
+
+  // 测试与非常规安装可以用环境变量指定检出；正常安装从插件包位置往上两级推。
+  function kbRootCandidate() {
+    const override = typeof process.env.DSH_SLEUTH_KB_ROOT === 'string'
+      ? process.env.DSH_SLEUTH_KB_ROOT.trim()
+      : ''
+    return override || PLUGIN_REPO_ROOT
+  }
+
+  // 主检出解析与 traces/ 同一个判据（mainRootOf）。检出里没有 scripts/kb_sync.py 时静默停用
+  // 检测，不报错：旧版本检出或装在插件目录里都走这条。
+  async function resolveKbRoot() {
+    const mainRoot = await mainRootOf(kbRootCandidate())
+    if (!mainRoot) return null
+    if (!(await isFile(join(mainRoot, 'scripts', 'kb_sync.py')))) return null
+    return mainRoot
+  }
+
+  function kbReadState(raw) {
+    if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null
+    const behind = Number(raw.behind)
+    return {
+      version: KB_STATE_VERSION,
+      rev: typeof raw.rev === 'string' ? raw.rev : '',
+      behind: Number.isInteger(behind) && behind >= 0 ? behind : 0,
+      surface: normalizeKbSurface(raw.surface),
+      dismissedRev: typeof raw.dismissedRev === 'string' ? raw.dismissedRev : '',
+      checkedAt: typeof raw.checkedAt === 'string' ? raw.checkedAt : '',
+      lastError: typeof raw.lastError === 'string' ? raw.lastError : '',
+    }
+  }
+
+  // 启动时读一次：只恢复「稍后」记录与排查字段（dismissedRev / rev / behind / lastError）。
+  // 提示不从这里恢复：状态文件里的落后数可能是很久以前、早已不适用的，界面等第一次检查给出。
+  const kbStateLoaded = (async () => {
+    const mainRoot = await resolveKbRoot()
+    if (!mainRoot) return
+    let text = ''
+    try {
+      text = await readFile(join(mainRoot, KB_STATE_REL), 'utf8')
+    } catch {
+      return
+    }
+    let raw
+    try {
+      raw = JSON.parse(text)
+    } catch {
+      return
+    }
+    const state = kbReadState(raw)
+    if (!state) return
+    kbState = state
+    kbLastError = state.lastError
+    kbLastCheckAt = state.checkedAt
+  })().catch(() => {})
+
+  // 落盘结果回传给调用方：「稍后」要据此决定清不清提示、回 saved 真假。
+  // 先写同目录临时文件再 rename 覆盖：进程崩在写一半时，旧文件（含 dismissedRev）仍是合法 JSON。
+  async function writeKbState(mainRoot) {
+    const file = join(mainRoot, KB_STATE_REL)
+    const temp = file + '.tmp'
+    try {
+      // .local/ 可能还不存在（新检出、刚清理过运行时件）；被占成文件时这里会抛，按写失败处理。
+      await mkdir(dirname(file), { recursive: true })
+      await writeFile(temp, JSON.stringify(kbState, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 })
+      await rename(temp, file)
+      return true
+    } catch {
+      // 写不进去只失去去重与排查信息；内存里的提示照常可用，下次检查重试。
+      await unlink(temp).catch(() => {})
+      return false
+    }
+  }
+
+  // 串行落盘：定时检查与「稍后」挨得近时，后一次不能覆盖前一次写下的 dismissedRev。
+  function persistKbState(mainRoot) {
+    kbWriteChain = kbWriteChain.then(() => writeKbState(mainRoot))
+    return kbWriteChain
+  }
+
+  // 「重新检查」与 copilot-state 共用的快照：notice 可能是 null（没落后 / 静默条件命中）。
+  function kbSnapshot() {
+    return {
+      notice: kbNotice ? Object.assign({}, kbNotice) : null,
+      checkedAt: kbLastCheckAt,
+      error: kbLastError,
+      reason: kbLastReason,
+    }
+  }
+
+  // 静默收场（离线部署 / 关闭同步）：清 lastError 与提示（用户关了同步就该消失），
+  // 保留上次 rev/behind 供排查。
+  function kbQuiet(mainRoot, checkedAt, reason) {
+    kbState.checkedAt = checkedAt
+    kbState.lastError = ''
+    kbLastError = ''
+    kbLastCheckAt = checkedAt
+    kbLastReason = reason || ''
+    kbNotice = null
+    return persistKbState(mainRoot)
+  }
+
+  // 失败收场：只更新 checkedAt / lastError，上次的 rev 与 behind 留着供排查；
+  // 已显示的提示不动——网络抖动不该让一个仍然成立的「落后 N 个提交」消失，
+  // 它由下一次成功检查更新或清空。
+  function kbFailed(mainRoot, checkedAt, text, reason) {
+    kbState.checkedAt = checkedAt
+    kbState.lastError = text
+    kbLastError = text
+    kbLastCheckAt = checkedAt
+    kbLastReason = reason || ''
+    return persistKbState(mainRoot)
+  }
+
+  async function runKbCheck() {
+    await kbStateLoaded
+    kbLastCheckStart = Date.now()
+    kbLastReason = ''
+    const mainRoot = await resolveKbRoot()
+    if (!mainRoot) {
+      kbLastReason = 'unavailable'
+      return kbSnapshot()
+    }
+    const python = await resolvePython(mainRoot, null)
+    if (python === null) {
+      await kbFailed(mainRoot, kbNowIso(), noPythonMessage(), 'no-python')
+      return kbSnapshot()
+    }
+    const doc = await runJsonHelper(
+      mainRoot,
+      python,
+      join(mainRoot, 'scripts', 'kb_sync.py'),
+      ['--sync', '--json', '--root', shq(mainRoot)],
+      KB_CHECK_TIMEOUT_MS,
+      null,
+    )
+    // host 级失败（子进程起不来 / 超时 / 输出不是 JSON）没有 behind 字段；
+    // 脚本自己的业务失败三项齐全，按下面的静默规则处理。
+    if (doc === null || typeof doc !== 'object' || !Object.prototype.hasOwnProperty.call(doc, 'behind')) {
+      const message = doc !== null && typeof doc === 'object' && doc.message
+        ? String(doc.message)
+        : '知识库检查没有返回结果'
+      const code = doc !== null && typeof doc === 'object' && doc.code ? String(doc.code) : 'helper'
+      await kbFailed(mainRoot, kbNowIso(), message, code)
+      return kbSnapshot()
+    }
+    const reason = typeof doc.reason === 'string' ? doc.reason.trim() : ''
+    if (doc.enabled === false || doc.offline === true || reason === 'disabled' || reason === 'offline') {
+      await kbQuiet(mainRoot, kbNowIso(), reason || (doc.offline === true ? 'offline' : 'disabled'))
+      return kbSnapshot()
+    }
+    if (doc.ok === false || reason !== '') {
+      const text = [doc.fetch_error, doc.config_error, doc.last_error, reason]
+        .map((item) => (typeof item === 'string' ? item.trim() : ''))
+        .filter(Boolean)
+        .join('；')
+      await kbFailed(mainRoot, kbNowIso(), text || '知识库检查失败', reason || 'failed')
+      return kbSnapshot()
+    }
+    const behind = Number(doc.behind)
+    const remoteRev = typeof doc.remote_rev === 'string' ? doc.remote_rev.trim() : ''
+    if (!Number.isInteger(behind) || behind < 0) {
+      await kbFailed(mainRoot, kbNowIso(), '知识库检查结果里的落后数不可用', 'unknown-behind')
+      return kbSnapshot()
+    }
+    // 成功：覆盖 rev / behind / surface / checkedAt 并清 lastError；已「稍后」的远端提交继续静默。
+    kbState = {
+      version: KB_STATE_VERSION,
+      rev: remoteRev,
+      behind,
+      surface: normalizeKbSurface(doc.surface),
+      dismissedRev: kbState.dismissedRev,
+      checkedAt: kbNowIso(),
+      lastError: '',
+    }
+    kbLastError = ''
+    kbLastCheckAt = kbState.checkedAt
+    kbLastReason = ''
+    kbNotice = kbNoticeView(kbState)
+    await persistKbState(mainRoot)
+    return kbSnapshot()
+  }
+
+  // 单个 inflight：定时检查与手动重查撞在一起时只跑一次子进程。
+  function startKbCheck() {
+    if (kbCheckFlight) return kbCheckFlight
+    const pending = runKbCheck().finally(() => {
+      if (kbCheckFlight === pending) kbCheckFlight = null
+    })
+    kbCheckFlight = pending
+    return pending
+  }
+
+  // 手动重查：有在跑的先等它结束（force 不能拿到同步前的旧快照）；距上次检查开始不足
+  // 60 秒时回当前快照，不重复起子进程。force=true 跳过这个节流：浏览器半「去同步」后
+  // 要立刻拿到新的落后数，否则提示行停在旧值。
+  async function kbRecheck(payload) {
+    await kbStateLoaded
+    if (kbCheckFlight) await kbCheckFlight.catch(() => {})
+    const force = payload !== null && typeof payload === 'object' && payload.force === true
+    const now = Date.now()
+    if (!force && kbLastCheckStart && now - kbLastCheckStart < KB_RECHECK_MIN_MS) return kbSnapshot()
+    return startKbCheck()
+  }
+
+  // 「稍后」：记住这一版远端提交，同一 rev 不再提示；换 rev 才会重新出现。
+  // 落盘成功才清提示并回 saved:true；写不进去（例如 .local/ 被占成文件）时回滚记录、
+  // 保留提示，让界面能把「没记住」告诉用户，而不是假装点了没生效。
+  // 回滚只在 dismissedRev 还是本次写的值时做：后一次失败不能覆盖前一次已经写成功的记录。
+  async function kbDismiss(payload) {
+    await kbStateLoaded
+    const requested = payload !== null && typeof payload === 'object' && typeof payload.rev === 'string'
+      ? payload.rev.trim()
+      : ''
+    const rev = requested || (kbNotice ? kbNotice.rev : '') || kbState.rev
+    if (!rev) return { rev: '', saved: true }
+    const previousDismissed = kbState.dismissedRev
+    kbState.dismissedRev = rev
+    const mainRoot = await resolveKbRoot()
+    const saved = mainRoot ? await persistKbState(mainRoot) : false
+    if (!saved) {
+      if (kbState.dismissedRev === rev) kbState.dismissedRev = previousDismissed
+      return { rev, saved: false }
+    }
+    if (kbNotice && kbNotice.rev === rev) kbNotice = null
+    return { rev, saved: true }
+  }
+
+  // timer 是可选服务：缺它时整个 host 半照常挂载，只是不装定时器、不跑后台检查。
+  // 用 ctx.inject 按依赖挂载：注入到的上下文里服务名就是属性（timerCtx.timer），
+  // 取不到时退回 get('timer')；两种写法都没有就不装。
+  ctx.effect(() => {
+    const fiber = ctx.inject(['timer'], (timerCtx) => {
+      const timer = timerCtx.timer || (typeof timerCtx.get === 'function' ? timerCtx.get('timer') : undefined)
+      if (!timer || typeof timer.timeout !== 'function' || typeof timer.interval !== 'function') return
+      timerCtx.effect(() => {
+        const disposers = [
+          // 回调返回检查的 promise：宿主不用它，测试替身可以 await 一次检查跑完。
+          timer.timeout(() => startKbCheck().catch(() => {}), KB_CHECK_DELAY_MS),
+          timer.interval(() => startKbCheck().catch(() => {}), KB_CHECK_INTERVAL_MS),
+        ]
+        return () => {
+          for (const dispose of disposers) {
+            if (typeof dispose !== 'function') continue
+            try {
+              dispose()
+            } catch {
+              // 卸载时单个 disposer 失败不影响其他清理
+            }
+          }
+        }
+      }, 'dsh-sleuth-copilot: kb notice check')
+    })
+    // 注入的 fiber 会随父级一起回收；这里再显式收回一次，避免宿主只回收 effect 时留下定时器。
+    return () => {
+      const dispose = fiber && typeof fiber.dispose === 'function' ? fiber : null
+      if (!dispose) return
+      try {
+        const pending = dispose.dispose()
+        if (pending && typeof pending.then === 'function') pending.catch(() => {})
+      } catch {
+        // 已随父级收回
+      }
+    }
+  }, 'dsh-sleuth-copilot: kb timer inject')
+
   function stateFor(sessionId, cwd, refresh) {
     const key = String(sessionId || '') + '\u0000' + String(cwd || '')
     const now = Date.now()
@@ -1263,7 +1618,7 @@ export function apply(ctx) {
         let result
         if (endpoint !== 'copilot-state' && endpoint !== 'copilot-transition' && endpoint !== 'copilot-report'
           && endpoint !== 'copilot-timeline' && endpoint !== 'copilot-sediment' && endpoint !== 'copilot-pr-target'
-          && endpoint !== 'copilot-pr-progress') {
+          && endpoint !== 'copilot-pr-progress' && endpoint !== 'copilot-kb-dismiss' && endpoint !== 'copilot-kb-recheck') {
           result = { ok: false, error: { code: 'not-found', message: '未知的 RPC 端点: ' + endpoint, details: {} } }
         } else {
           try {
@@ -1289,14 +1644,20 @@ export function apply(ctx) {
               result = { ok: true, value: readPrProgress(payload) }
             } else if (endpoint === 'copilot-pr-target') {
               result = { ok: true, value: await prTarget(payload) }
+            } else if (endpoint === 'copilot-kb-dismiss') {
+              result = { ok: true, value: await kbDismiss(payload) }
+            } else if (endpoint === 'copilot-kb-recheck') {
+              result = { ok: true, value: await kbRecheck(payload) }
             } else {
+              // 知识库提示随状态下发，不在 computeState 内部拼：那条取数链路与检出无关。
+              const value = await stateFor(
+                typeof payload.sessionId === 'string' ? payload.sessionId : '',
+                typeof payload.cwd === 'string' ? payload.cwd : '',
+                payload.refresh === true,
+              )
               result = {
                 ok: true,
-                value: await stateFor(
-                  typeof payload.sessionId === 'string' ? payload.sessionId : '',
-                  typeof payload.cwd === 'string' ? payload.cwd : '',
-                  payload.refresh === true,
-                ),
+                value: Object.assign({}, value, { kbNotice: kbNotice ? Object.assign({}, kbNotice) : null }),
               }
             }
           } catch (error) {

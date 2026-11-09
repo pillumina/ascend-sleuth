@@ -20,12 +20,18 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.18.0'
+    const PLUGIN_VERSION = '0.19.0'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。
     const PR_PROGRESS_POLL_MS = 500
     const PR_PROGRESS_MAX_FAILURES = 3
+    // 去同步后点开「知识库」标签：整页是异步挂载的，查早了没有标签，短轮询等它出现。
+    const KB_TAB_OPEN_POLL_MS = 100
+    const KB_TAB_OPEN_WAIT_MS = 1500
+    // 同步要跑一会儿：点「去同步」后隔 30 秒复查一次，还落后再隔 60 秒复查（共约 90 秒）。
+    // 每次带 force 让 host 跳过 60 秒节流；行还在才挂下一次。
+    const KB_RECHECK_DELAYS_MS = [30000, 60000]
     const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
     const FILTER_KEYS = ['all', 'open', 'pending', 'sediment']
     // PR 台账允许的状态（与 scripts/pr_status.py 的 STATES 一致）。
@@ -461,6 +467,16 @@ window.__ModuleLoader__.load({
       'sediment.noTarget': '推送目标未设置',
       'sediment.targetNote': '远端用途不做预设',
       'none': '未记录',
+      // 知识库落后提醒：host 半定时检测后由 copilot-state 带下来。
+      'kb.behind': '知识库落后 {n} 个提交',
+      'kb.panel': '这批改动含面板代码：同步后重启 DSH 才能加载新面板。',
+      'kb.go': '去同步',
+      'kb.later': '稍后',
+      'kb.laterDone': '这一版不再提醒。',
+      'kb.laterFailed': '稍后没记上：本地状态文件写不进去。',
+      'kb.laterUnavailable': '稍后没记上：状态条连不上后台，稍后再试。',
+      'kb.missing': '没找到 Ascend Sleuth 整页；确认面板包已安装，或稍后再试。',
+      'kb.collapsed': '知识库有更新',
     }
     const EN = {
       'region': 'Diagnosis status bar',
@@ -887,6 +903,16 @@ window.__ModuleLoader__.load({
       'sediment.noTarget': 'Push target not set',
       'sediment.targetNote': 'Remote roles are not assumed',
       'none': 'not recorded',
+      // Knowledge base behind notice: attached by the host half after a check.
+      'kb.behind': 'Knowledge base is {n} commit(s) behind',
+      'kb.panel': 'These changes include panel code: restart DSH after syncing to load the new panel.',
+      'kb.go': 'Sync',
+      'kb.later': 'Later',
+      'kb.laterDone': 'This revision will not be shown again.',
+      'kb.laterFailed': 'Could not record the later reminder: the local state file is not writable.',
+      'kb.laterUnavailable': 'Could not record the later reminder: the status bar cannot reach the host. Try again later.',
+      'kb.missing': 'Ascend Sleuth page not found. Check that the panel package is installed, or try again later.',
+      'kb.collapsed': 'Knowledge base has updates',
     }
     const DICTS = { zh: ZH, en: EN }
     let translate = (key, params) => formatText(ZH[key] !== undefined ? ZH[key] : key, params)
@@ -1317,6 +1343,18 @@ body[data-ds-dark-theme] .scp-veil,[data-theme="dark"] .scp-veil{background:rgba
 .scp-dock-sed-days{color:var(--scp-warn);font-weight:650;flex:none;font-variant-numeric:tabular-nums;}
 .scp-dock-sed-next{color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
 .scp-dock-sed-open{flex:none;border:0;background:var(--scp-accent-soft);color:var(--scp-accent);font:inherit;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:6px;cursor:pointer;}
+/* 知识库落后提示：琥珀是「欠账」色，沿用现有 warn 变量，不新增全局变量。 */
+.scp-kb-notice{display:flex;align-items:center;gap:8px;min-width:0;padding:3px 6px 3px 9px;border:1px solid color-mix(in srgb,var(--scp-warn) 28%,var(--scp-border));border-radius:9px;background:var(--scp-warn-soft);color:var(--scp-warn);font-size:11px;line-height:1.7;}
+.scp-kb-notice-dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--scp-warn);}
+.scp-kb-notice-main{display:flex;flex-direction:column;gap:1px;min-width:0;}
+.scp-kb-notice-text{font-weight:600;white-space:nowrap;}
+.scp-kb-notice-note{font-size:10.5px;line-height:1.6;color:color-mix(in srgb,var(--scp-warn) 76%,var(--scp-text));white-space:normal;overflow-wrap:anywhere;}
+.scp-kb-notice .scp-btn{flex:none;font-size:11px;line-height:1.7;padding:2px 8px;}
+.scp-kb-notice .scp-kb-go{border-color:color-mix(in srgb,var(--scp-warn) 32%,var(--scp-border));background:var(--scp-surface);color:var(--scp-warn);font-weight:600;}
+.scp-kb-notice .scp-kb-go:hover{background:var(--scp-surface-2);border-color:color-mix(in srgb,var(--scp-warn) 46%,var(--scp-border));}
+.scp-kb-notice .scp-kb-later{color:var(--scp-warn);opacity:.78;}
+.scp-kb-notice .scp-kb-later:hover{background:color-mix(in srgb,var(--scp-warn) 12%,transparent);color:var(--scp-warn);opacity:1;}
+@container (max-width: 720px){.scp-kb-notice{flex-wrap:wrap;}.scp-kb-notice-text{white-space:normal;}}
 body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,[data-theme="dark"] .scp-actions,[data-theme="dark"] .scp-sed-actions{box-shadow:0 -8px 16px -12px rgba(0,0,0,.55);}
 @media (max-width:760px){.scp-batch{flex-wrap:wrap;gap:6px 8px;}.scp-batch .scp-spacer{display:none;}.scp-sed-step-label,.scp-sed-step-note{font-size:var(--scp-fs-cap);}.scp-target-row{flex-wrap:wrap;}}`,
     ].join('\n')
@@ -1487,6 +1525,94 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         store.message = message
         emit()
       }
+    }
+
+    // 「去同步」的两个后续动作放在插件闭包而不是状态条组件里：点「去同步」会把会话输入区
+    // 连同状态条一起卸载（整页切换），组件一卸载，挂在 ref 上的轮询与复查定时器就全被清掉，
+    // 复查不跑、知识库标签也点不到。提示是全局的，不随会话走，所以只在插件卸载时清。
+    let kbRecheckTimer = null
+    let kbTabTimer = null
+
+    function clearKbTimers() {
+      if (kbRecheckTimer) {
+        clearTimeout(kbRecheckTimer)
+        kbRecheckTimer = null
+      }
+      if (kbTabTimer) {
+        clearTimeout(kbTabTimer)
+        kbTabTimer = null
+      }
+    }
+
+    // 切到整页后不一定落在「知识库」子页：按可见标签名找，1.5 秒内轮询等页面挂载。
+    // 没有 querySelectorAll 的宿主（测试替身）直接跳过这一层。
+    function openKbTab() {
+      if (typeof document === 'undefined' || typeof document.querySelectorAll !== 'function') return
+      if (kbTabTimer) clearTimeout(kbTabTimer)
+      const startedAt = Date.now()
+      function tick() {
+        kbTabTimer = null
+        let tabs = null
+        try {
+          tabs = document.querySelectorAll('[role="tab"]')
+        } catch {
+          tabs = null
+        }
+        if (tabs && typeof tabs.length === 'number') {
+          for (let index = 0; index < tabs.length; index += 1) {
+            const tab = tabs[index]
+            if (!tab) continue
+            let label = ''
+            try {
+              label = String(tab.textContent || '').trim()
+            } catch {
+              label = ''
+            }
+            if (label !== '知识库') continue
+            let inside = false
+            try {
+              inside = typeof tab.closest === 'function' && !!tab.closest('.sleu-console')
+            } catch {
+              inside = false
+            }
+            if (!inside) continue
+            try {
+              if (typeof tab.click === 'function') tab.click()
+            } catch {
+              // 点不开就停在整页，读者自己点标签
+            }
+            return
+          }
+        }
+        if (Date.now() - startedAt >= KB_TAB_OPEN_WAIT_MS) return
+        kbTabTimer = setTimeout(tick, KB_TAB_OPEN_POLL_MS)
+      }
+      tick()
+    }
+
+    // 同步要时间：隔 30 秒复查一次，还落后再隔 60 秒复查（共约 90 秒）。
+    // 每次刷新后提示行还在才挂下一次（同步完则行消失、不再定时）。
+    function scheduleKbRecheck(attempt) {
+      if (kbRecheckTimer) {
+        clearTimeout(kbRecheckTimer)
+        kbRecheckTimer = null
+      }
+      const delay = KB_RECHECK_DELAYS_MS[attempt]
+      if (delay === undefined) return
+      kbRecheckTimer = setTimeout(() => {
+        kbRecheckTimer = null
+        Promise.resolve()
+          .then(() => rpcCall('copilot-kb-recheck', { force: true }))
+          .then(() => refresh(true))
+          .then(() => {
+            if (!store.data || !store.data.kbNotice) return
+            scheduleKbRecheck(attempt + 1)
+          })
+          .catch(() => {
+            // 这里只兜 RPC 抛错：不改提示行，等下一轮定时检查。
+            // host 业务失败不抛错，它按静默规则回空，随后的 refresh 可能把行清掉。
+          })
+      }, delay)
     }
 
     // 沉淀队列：按需读取。展开状态条或打开沉淀视图时才跑（groom_status 要读 git 与 inbox，
@@ -3429,6 +3555,12 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const collapsed = s.prefs.dockCollapsed
         const keepOpen = !!s.prefs.dockKeepOpen
         const data = s.data
+        // 知识库落后提示：host 只在一轮检查有结果时带下来，字段缺失按「没有提示」处理。
+        const kbNotice = data && data.ok !== false && data.kbNotice && typeof data.kbNotice === 'object'
+          ? data.kbNotice
+          : null
+        const kbBehind = kbNotice ? Math.max(0, Number(kbNotice.behind) || 0) : 0
+        const kbPanel = kbNotice ? Math.max(0, Number(kbNotice.panel) || 0) : 0
 
         function toggleCollapsed() {
           // 展开是新一轮交互：上一次「关菜单」的标记不该带到现在
@@ -3594,6 +3726,63 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             IconChevron({ open: true }))
         }
 
+        // 「去同步」：切到 Ascend Sleuth 整页，再尽力点开该页的「知识库」标签，最后挂复查。
+        // 切页的后续动作在插件闭包里（见 openKbTab / scheduleKbRecheck）：这次点击会卸载状态条，
+        // 动作不能绑在组件生命周期上。拿不到 layout 服务时只 flash 一句装面板的指引，不抛。
+        function goSync() {
+          let switched = false
+          try {
+            switched = selectPanelImpl('ascend-sleuth-console') === true
+          } catch {
+            switched = false
+          }
+          if (!switched) flash(tr('kb.missing'))
+          openKbTab()
+          scheduleKbRecheck(0)
+        }
+
+        // 「稍后」：写进本地状态文件成功后才收起提示行。
+        // 写失败时保留行并说明原因，否则重开页面还会提示同一版，读者会以为上次点没生效。
+        function dismissKbNotice() {
+          if (!kbNotice) return
+          const rev = String(kbNotice.rev || '')
+          rpcCall('copilot-kb-dismiss', { rev }).then((value) => {
+            // host 写不进状态文件时回 saved:false（这次只记在内存里），不能收起行。
+            if (value && value.saved === false) {
+              flash(tr('kb.laterFailed'))
+              return
+            }
+            // 先作废在飞的 10 秒刷新响应，再清本地状态：旧响应会把刚收起的行又贴回来。
+            store.seq += 1
+            if (store.data) store.data.kbNotice = null
+            emit()
+            flash(tr('kb.laterDone'))
+          }, () => {
+            // RPC 抛错是连不上后台，和「落盘失败」不是一回事，分开说。
+            flash(tr('kb.laterUnavailable'))
+          })
+        }
+
+        function renderKbNotice() {
+          if (!kbNotice) return null
+          return h('div', { className: 'scp-kb-notice', role: 'group', 'aria-label': tr('kb.collapsed') },
+            h('span', { className: 'scp-kb-notice-dot', 'aria-hidden': 'true' }),
+            h('span', { className: 'scp-kb-notice-main' },
+              h('span', { className: 'scp-kb-notice-text' }, tr('kb.behind', { n: kbBehind })),
+              kbPanel > 0 ? h('span', { className: 'scp-kb-notice-note' }, tr('kb.panel')) : null),
+            h('span', { className: 'scp-spacer' }),
+            h('button', {
+              type: 'button',
+              className: 'scp-btn scp-kb-go',
+              onClick: goSync,
+            }, tr('kb.go')),
+            h('button', {
+              type: 'button',
+              className: 'scp-btn scp-btn--ghost scp-kb-later',
+              onClick: dismissKbNotice,
+            }, tr('kb.later')))
+        }
+
         const failed = s.phase === 'error' || (data && data.ok === false)
         if (failed) {
           const message = s.phase === 'error' ? s.message : (data && data.message ? data.message : tr('title.error'))
@@ -3621,7 +3810,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         if (!primary) {
           if (collapsed) {
             return h('section', Object.assign({}, rootProps, { className: 'scp-root', 'data-mode': 'empty', 'data-tone': 'idle' }),
-              renderHandle(tr('empty.collapsed'), null, false))
+              renderHandle(tr('empty.collapsed'), kbNotice ? tr('kb.collapsed') : null, false))
           }
           return h('section', Object.assign({}, rootProps, { ref: rootRef, className: 'scp-root', 'data-mode': 'empty', 'data-tone': 'idle', onKeyDown: onRootKeyDown }),
             h('div', { className: 'scp-surface' },
@@ -3636,8 +3825,11 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 }, tr('action.start')),
                 renderKeepOpen(),
                 renderCollapse()),
+              renderKbNotice(),
               collapsed ? null : h('div', { className: 'scp-foot' },
-                h('span', { className: 'scp-empty-note' }, tr('empty.body')))))
+                h('span', { className: 'scp-empty-note' }, tr('empty.body')))),
+            // 这个分支也要挂 hint：没有诊断单时点「去同步 / 稍后」的结果得看得见。
+            hint ? h('div', { className: 'scp-hint', role: 'status' }, hint) : null)
         }
 
         const bound = !!data.bound && primary.sessionId === data.bound.sessionId
@@ -3796,7 +3988,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             'data-flash': flashStep ? 'true' : 'false',
           }), renderHandle(
             caseTitle(primary),
-            (flashStep || stepsShort(extra)) + (s.stale ? ' · ' + tr('chip.stale') : ''),
+            (flashStep || stepsShort(extra)) + (s.stale ? ' · ' + tr('chip.stale') : '')
+              + (kbNotice ? ' · ' + tr('kb.collapsed') : ''),
             isPending(primary)))
         }
 
@@ -3844,6 +4037,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               }, IconMore()),
               renderKeepOpen(),
               renderCollapse()),
+            renderKbNotice(),
             collapsed ? null : h('div', { className: 'scp-foot' },
               StepRail({ extra }),
               metaBits.length ? h('span', { className: 'scp-meta', title: metaBits.join(' · ') }, metaBits.join(' · ')) : null,
@@ -5997,6 +6191,41 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       return openSessionImpl(id)
     }
 
+    // ── 切到 Ascend Sleuth 整页（去同步用）──────────────────────────────────
+    // layout 是侧栏 shell 的服务，但不写进 exports.inject：声明成必需服务会让整条状态条在
+    // 缺它的宿主上进入 waiting，「去同步」这一个动作不该拖垮状态条。写法与 ascend-panel 取
+    // sessions 一致：先探针，再用 ctx.inject 动态注册；都拿不到就保持 null，调用方降级成
+    // 一句装面板的指引。
+    let layoutService = null
+    function noteLayout(value) {
+      if (layoutService) return
+      if (!value || typeof value !== 'object') return
+      layoutService = value
+    }
+    function probeLayout(ctx) {
+      layoutService = null
+      try { noteLayout(ctx.get('layout')) } catch { /* 未声明时可能抛 */ }
+      try {
+        if (typeof ctx.inject === 'function') {
+          ctx.inject(['layout'], (scope) => {
+            try { noteLayout(scope.get('layout')) } catch { /* 子 fiber 也没有就保持 null */ }
+          })
+        }
+      } catch { /* 注册失败就只靠前面的探针 */ }
+    }
+    let selectPanelImpl = () => false
+    function makeSelectPanel() {
+      return function selectPanel(id) {
+        try {
+          if (!layoutService || typeof layoutService.selectPanel !== 'function') return false
+          layoutService.selectPanel(String(id))
+          return true
+        } catch {
+          return false
+        }
+      }
+    }
+
     const surfaceInputs = []
     function findInputActions() {
       for (const surface of surfaceInputs) {
@@ -6143,15 +6372,20 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       // 显式声明用到的服务：cordis 只对声明过的服务名建键，未声明的 ctx.get 返回 undefined。
       // 「切到该诊断的会话」必须有 sessions；uiWorkspace 只是后备，继续用 ctx.get 探测——
       // 声明一个旧发行版没有的服务会让整条状态条一直等它，代价高于收益。
+      // layout（去同步切整页）同理不声明，走 probeLayout 的探针 + 动态注册。
       inject: ['connection', 'slots', 'sessions'],
       apply(ctx) {
         const slots = ctx.get('slots')
         if (slots === undefined) return
         rpcCall = makeRpc(ctx)
         openSessionImpl = makeOpenSession(ctx)
+        probeLayout(ctx)
+        selectPanelImpl = makeSelectPanel()
         ctx.effect(() => registerLocale(ctx), 'sleuth-copilot: locale')
         ctx.effect(() => stopTimer, 'sleuth-copilot: poll timer')
         ctx.effect(() => insertStyles(), 'sleuth-copilot: styles')
+        // 知识库提示的复查与标签轮询挂在插件生命周期：状态条会随整页切换被卸载，不能绑在组件上。
+        ctx.effect(() => () => clearKbTimers(), 'sleuth-copilot: kb timers')
 
         const Dock = withInputActions(makeDock())
         const Toolbar = withInputActions(ToolbarButton)
