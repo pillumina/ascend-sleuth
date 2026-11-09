@@ -500,6 +500,11 @@ async function main() {
   // 空态文案。写死成"永远期待空态"会让这条断言只在干净检出里成立——本地复跑必红，红的原因
   // 却不是回归（实测代价：端到端演练因此常年一红，7 张以演练为判据的卡跟着一直 FAIL）。
   // 全 0 行由面板客户端按同一判据过滤（见 dsh-plugins/ev-panel/panel-client.js 的 TallySection）。
+  // 源码层钉住 tally 渲染：全 0 行过滤与 mis 字段名只在有数据的分支才执行，CI 的干净检出
+  // 走不到；用源文件断言防止回退成「按 tally.length 占位」或读不存在的 misdiagnoses 字段。
+  expect('tally 行按非零计数过滤，mis 读 trace_mis',
+    /const tallyRows = \(tally \|\| \[\]\)\.filter\(c => \(c\.trace_mis \|\| 0\) > 0 \|\| \(c\.s2_candidate \|\| 0\) > 0\)/.test(evSrc) &&
+    /'mis=' \+ \(c\.trace_mis \|\| 0\)/.test(evSrc))
   const tallyRows = (board && board.tally) || []
   const tallyHasSignal = tallyRows.some(r => (r.trace_mis || 0) > 0 || (r.s2_candidate || 0) > 0)
   if (tallyHasSignal) {
