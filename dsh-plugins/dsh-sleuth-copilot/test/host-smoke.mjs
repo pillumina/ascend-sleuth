@@ -231,11 +231,13 @@ function makeResultShell(result) {
 // 知识库检查的假 shell：凡调 scripts/kb_sync.py 的命令都回夹具 JSON，其余命令真跑
 // （解释器探测走真实 python3；不 fetch、不跑 git、不联网）。setForcePayload 模拟脚本的
 // 失败冷却：带 --force 的命令回另一份夹具（脚本靠 --force 跳过冷却，回真实结果）。
+// setResult 直接替换子进程结果，用来模拟超时 / 中止这类没有 JSON 的收场。
 function makeKbShell() {
   const calls = []
   const specs = []
   let payload = kbPayload({})
   let forcedPayload = null
+  let rawResult = null
   return {
     calls,
     specs,
@@ -245,6 +247,9 @@ function makeKbShell() {
     setForcePayload(next) {
       forcedPayload = next
     },
+    setResult(next) {
+      rawResult = next
+    },
     resolve(request) {
       return request
     },
@@ -253,6 +258,7 @@ function makeKbShell() {
       calls.push(command)
       specs.push(spec)
       if (!command.includes('kb_sync.py')) return { result: () => runCommand(spec) }
+      if (rawResult !== null) return { result: () => Promise.resolve(rawResult) }
       const body = forcedPayload !== null && /(^|\s)--force(\s|$)/.test(command) ? forcedPayload : payload
       return {
         result: () => Promise.resolve({
@@ -1066,6 +1072,31 @@ const timeoutState = await request(timeoutHarness, {
 })
 const timeoutValue = timeoutState.envelope.result.value
 expect('子进程超时：E_TIMEOUT', timeoutValue && timeoutValue.ok === false && timeoutValue.code === 'E_TIMEOUT', JSON.stringify(timeoutValue))
+// 超时原文按调用点给：面板取数会读 traces/，这里保留那句线索（知识库检查不读 traces/，见 ⑥b2）。
+expect('子进程超时：面板取数的原文带 traces/ 线索',
+  timeoutValue && /^诊断状态取数超时（20 秒内没有返回；traces\/ 很大时可能偏慢）/.test(timeoutValue.message || ''),
+  JSON.stringify(timeoutValue))
+// 其余取数路径也按调用对象给原文，秒数各自对上（时间线/沉淀队列 20/30 秒、PR 台账 30 秒）。
+const timeoutKinds = [
+  ['轨迹时间线', 'copilot-timeline', {
+    cwd: SANDBOX, tracesDir: TRACES, traceFile: TRACE_FILE,
+  }, /^轨迹时间线读取超时（20 秒内没有返回）。$/],
+  ['沉淀队列', 'copilot-sediment', {
+    cwd: SANDBOX, sessionId: 'smoke-timeout',
+  }, /^沉淀队列取数超时（30 秒内没有返回）。$/],
+  ['PR 台账', 'copilot-pr-target', {
+    cwd: SANDBOX, action: 'list',
+  }, /^PR 台账读取超时（30 秒内没有返回）。$/],
+]
+for (const [label, method, payload, pattern] of timeoutKinds) {
+  const resp = await request(timeoutHarness, {
+    type: 'client-request', rpcId: 'timeout-' + method, method, payload,
+  }, '/sleuth-copilot/' + method)
+  const value = resp.envelope && resp.envelope.result && resp.envelope.result.value
+  expect('子进程超时：' + label + '的原文按调用对象给',
+    value && value.ok === false && value.code === 'E_TIMEOUT' && pattern.test(value.message || ''),
+    JSON.stringify(value))
+}
 
 const abortHarness = makeHarness({
   shell: makeResultShell({ exitCode: null, timedOut: false, aborted: true, stdout: { text: '' }, stderr: { text: '' } }),
@@ -1650,6 +1681,51 @@ function newKbHarness(payload, timers) {
     && clearedState && clearedState.kbError === null
     && fileCleared && fileCleared.failures === 0,
     JSON.stringify({ value: clearedValue && clearedValue.kbError, state: clearedState && clearedState.kbError, file: fileCleared }))
+
+  // ⑥b2 子进程超时：错误原文由调用点给——知识库检查只跑 git，不再套面板取数的 traces/ 猜测。
+  const timeoutCheck = newKbHarness(kbPayload({ remote_rev: 'slow001', behind: 3 }), false)
+  await kbRpc(timeoutCheck.harness, 'copilot-kb-recheck', {}, 'kb-timeout-seed')
+  timeoutCheck.shell.setResult({
+    exitCode: null, timedOut: true, aborted: false, stdout: { text: '' }, stderr: { text: '' },
+  })
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await kbRpc(timeoutCheck.harness, 'copilot-kb-recheck', { force: true }, 'kb-timeout-' + attempt)
+  }
+  const timeoutView = (await kbRpc(timeoutCheck.harness, 'copilot-state', {
+    sessionId: 'kb-timeout', cwd: SANDBOX,
+  }, 'kb-state-timeout')).envelope.result.value
+  expect('知识库：检查子进程超时的原文按检查对象给、不提 traces/',
+    timeoutView && timeoutView.kbError
+    && timeoutView.kbError.reason === 'E_TIMEOUT'
+    && /^知识库检查超时（30 秒内没有返回/.test(timeoutView.kbError.message || '')
+    && !/traces\//.test(timeoutView.kbError.message || ''),
+    JSON.stringify({ error: timeoutView && timeoutView.kbError, file: readKbState() }))
+
+  // ⑥b3 升级前的旧失败原文不原样上屏：状态文件里存着「数据脚本超时（可能 traces/ 很大）」，
+  // 显示时丢掉原文、退化成失败次数兜底句，等下一次检查覆盖。
+  writeFileSync(KB_STATE, JSON.stringify({
+    version: 1,
+    rev: 'old0001',
+    behind: 0,
+    surface: { knowledge: 0, routing: 0, reference: 0, methodology: 0, panel: 0, other: 0 },
+    dismissedRev: '',
+    checkedAt: '2026-11-10T06:56:14+08:00',
+    lastError: '数据脚本超时（可能 traces/ 很大）。',
+    degraded: '',
+    updateAvailable: false,
+    failures: 9,
+  }, null, 2) + '\n', 'utf8')
+  const legacyError = newKbHarness(kbPayload({ remote_rev: 'old0001', behind: 0 }), false)
+  // kbDismiss 会等状态文件读完再落盘：用它把「启动读一次」这一步等到位。
+  await kbRpc(legacyError.harness, 'copilot-kb-dismiss', { rev: 'old0001' }, 'kb-legacy-dismiss')
+  const legacyState = (await kbRpc(legacyError.harness, 'copilot-state', {
+    sessionId: 'kb-legacy', cwd: SANDBOX,
+  }, 'kb-state-legacy')).envelope.result.value
+  expect('知识库：升级前的旧超时句不再原样上屏、次数按状态文件给',
+    legacyState && legacyState.kbError && legacyState.kbError.message === ''
+    && legacyState.kbError.failures === 9
+    && /^数据脚本超时（可能 traces\/ 很大）/.test((readKbState() || {}).lastError || ''),
+    JSON.stringify({ error: legacyState && legacyState.kbError, file: readKbState() }))
 
   // ⑥c 关掉提醒检查也要收掉失败上屏与失败计数：只清内存不写盘的话，重启后仍会显示。
   // 关着期间的轮询不再重复写状态文件。

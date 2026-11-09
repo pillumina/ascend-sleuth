@@ -26,6 +26,7 @@ const MAX_BODY_BYTES = 256 * 1024
 // 浏览器半每 10 秒静默刷一次；这个窗口把同一瞬间的重复请求并成一次取数。
 const CACHE_TTL_MS = 4000
 const PY_TIMEOUT_MS = 20000
+const TRANSITION_TIMEOUT_MS = 60000
 const PY_PROBE_TIMEOUT_MS = 4000
 // 解释器探测失败只记很短一段：环境修好后下一次刷新就该自愈，但不至于让 10 秒轮询每轮都起三个子进程。
 const PY_NEGATIVE_TTL_MS = 30000
@@ -96,12 +97,27 @@ function looksLikeSpawnFailure(exitCode, text) {
   return false
 }
 
+// 超时文案由调用点给：各脚本的超时上限与读的数据面不同，共用一句会把「traces/ 很大」
+// 这类猜测安到不读 traces 的检查上（知识库检查只跑 git fetch）。hint 只在确有线索时给。
+// timeoutMs 取不到有效值时只说「没有在超时上限内返回」，不输出 NaN 秒。
+function timeoutMessage(label, timeoutMs, hint) {
+  const ms = Number(timeoutMs)
+  const budget = Number.isFinite(ms) && ms > 0
+    ? Math.max(1, Math.round(ms / 1000)) + ' 秒内没有返回'
+    : '没有在超时上限内返回'
+  return label + '超时（' + budget + (hint ? '；' + hint : '') + '）。'
+}
+
 // 子进程结果的四种非正常收场，各给一个专码：调用方按 code 给一句人话，不靠解析 stderr。
 // 退出码不在这里判：写脚本业务失败时也以非 0 退出，但它会照常吐出 JSON。
-function resultFailure(result) {
+// timeoutText 也由调用点给（见 timeoutMessage）：这里不替调用点猜超时原因。
+function resultFailure(result, timeoutText) {
   if (!result || typeof result !== 'object') return null
   if (result.timedOut) {
-    return { code: 'E_TIMEOUT', message: '数据脚本超时（可能 traces/ 很大）。' }
+    return {
+      code: 'E_TIMEOUT',
+      message: typeof timeoutText === 'string' && timeoutText ? timeoutText : '数据脚本超时。',
+    }
   }
   if (result.aborted) {
     return { code: 'E_ABORT', message: '数据脚本被中止（会话或任务被中断）。' }
@@ -602,7 +618,7 @@ export function apply(ctx) {
       }
     }
 
-    const failure = resultFailure(result)
+    const failure = resultFailure(result, timeoutMessage('诊断状态取数', PY_TIMEOUT_MS, 'traces/ 很大时可能偏慢'))
     if (failure) return { ok: false, code: failure.code, message: failure.message, repoRoot: root }
     const stdout = result && result.stdout && typeof result.stdout.text === 'string' ? result.stdout.text : ''
     const stderr = result && result.stderr && typeof result.stderr.text === 'string' ? result.stderr.text : ''
@@ -753,7 +769,7 @@ export function apply(ctx) {
     } catch (error) {
       return { ok: false, code: 'E_SPAWN', message: '数据脚本执行失败：' + errorText(error) }
     }
-    const failure = resultFailure(result)
+    const failure = resultFailure(result, timeoutMessage('轨迹时间线读取', PY_TIMEOUT_MS))
     if (failure) return { ok: false, code: failure.code, message: failure.message }
     const stdout = result && result.stdout && typeof result.stdout.text === 'string' ? result.stdout.text : ''
     const trimmed = stdout.trim()
@@ -880,7 +896,7 @@ export function apply(ctx) {
         result = await runShell(resolveSpec({
           command: argv.join(' '),
           workdir: root,
-          timeoutMs: 60000,
+          timeoutMs: TRANSITION_TIMEOUT_MS,
           stdoutMaxBytes: 262144,
           env: { PYTHONIOENCODING: 'utf-8' },
           sandboxPolicy: writeSandboxPolicy(caps.policy, writeRoot),
@@ -888,7 +904,7 @@ export function apply(ctx) {
       } catch (error) {
         return transitionFailure('E_IO', '写状态脚本执行失败：' + errorText(error))
       }
-      const failure = resultFailure(result)
+      const failure = resultFailure(result, timeoutMessage('状态写入', TRANSITION_TIMEOUT_MS))
       if (failure) return transitionFailure(failure.code, failure.message)
       const stdout = result && result.stdout && typeof result.stdout.text === 'string' ? result.stdout.text.trim() : ''
       const stderr = result && result.stderr && typeof result.stderr.text === 'string' ? result.stderr.text : ''
@@ -912,7 +928,8 @@ export function apply(ctx) {
   }
 
   // ── 沉淀队列与提 PR 目标：按需读取，不进 10 秒轮询 ─────────────────────
-  async function runJsonHelper(root, python, script, args, timeoutMs, policy) {
+  // timeoutText：本次调用的超时文案（调用点用 timeoutMessage 拼）；不传时只说脚本超时，不猜原因。
+  async function runJsonHelper(root, python, script, args, timeoutMs, policy, timeoutText) {
     let result
     try {
       result = await runShell(resolveSpec({
@@ -926,7 +943,7 @@ export function apply(ctx) {
     } catch (error) {
       return { ok: false, code: 'E_SPAWN', message: '数据脚本执行失败：' + errorText(error) }
     }
-    const failure = resultFailure(result)
+    const failure = resultFailure(result, timeoutText || timeoutMessage('数据脚本', timeoutMs))
     if (failure) return { ok: false, code: failure.code, message: failure.message }
     const stdout = result && result.stdout && typeof result.stdout.text === 'string' ? result.stdout.text : ''
     const stderr = result && result.stderr && typeof result.stderr.text === 'string' ? result.stderr.text : ''
@@ -1200,7 +1217,7 @@ export function apply(ctx) {
       }
       finishPrProgress(key, entry)
     }
-    const failure = resultFailure(result)
+    const failure = resultFailure(result, timeoutMessage('查合入状态', timeoutMs))
     if (failure) return { ok: false, code: failure.code, message: failure.message }
     const stdout = result && result.stdout && typeof result.stdout.text === 'string' ? result.stdout.text : ''
     const stderr = result && result.stderr && typeof result.stderr.text === 'string' ? result.stderr.text : ''
@@ -1224,7 +1241,7 @@ export function apply(ctx) {
     const script = join(PKG_DIR, 'lib', 'sediment_state.py')
     if (!(await isFile(script))) return { ok: false, code: 'E_NO_HELPER', message: '装进来的包缺少 lib/sediment_state.py' }
     const args = ['--root', shq(root), '--json']
-    const doc = await runJsonHelper(root, python, script, args, 30000, policy)
+    const doc = await runJsonHelper(root, python, script, args, 30000, policy, timeoutMessage('沉淀队列取数', 30000))
     doc.repoRoot = root
     return doc
   }
@@ -1253,7 +1270,8 @@ export function apply(ctx) {
     if (action === 'list') {
       // 一次调用就带出台账指纹（pr_status.py 的 list-targets 返回 sha256，台账不存在为 null）：
       // 写动作的 CAS 令牌由客户端从这里取，不再单起一次 --status。
-      return runJsonHelper(root, python, script, [...rootArgs, '--list-targets', '--json'], 30000, policy)
+      return runJsonHelper(root, python, script, [...rootArgs, '--list-targets', '--json'], 30000, policy,
+        timeoutMessage('PR 台账读取', 30000))
     }
     const caps = await writeCaps(payload.sessionId)
     if (!caps.canWrite) return { ok: false, code: caps.reasonCode || 'E_PERM', message: caps.reason }
@@ -1297,7 +1315,8 @@ export function apply(ctx) {
     if (action === 'check-all') {
       return runCheckAll(root, python, script, argv, timeoutMs, writePolicy, payload)
     }
-    return runJsonHelper(root, python, script, argv, timeoutMs, writePolicy)
+    return runJsonHelper(root, python, script, argv, timeoutMs, writePolicy,
+      timeoutMessage('PR 台账写入', timeoutMs))
   }
 
   // ── 知识库更新提醒 ─────────────────────────────────────────────────────────
@@ -1438,7 +1457,10 @@ export function apply(ctx) {
     return {
       checkedAt: kbLastCheckAt,
       reason,
-      message: kbLastError,
+      failures,
+      // 升级前落盘的旧超时原文（都带 traces/ 猜测）不再代表真实原因，显示时丢掉原文，
+      // 退化成按失败次数给的兜底句，等下一次检查覆盖；状态文件里的原文保留供排查。
+      message: /^数据脚本超时.*traces\//.test(kbLastError) ? '' : kbLastError,
     }
   }
 
@@ -1536,7 +1558,7 @@ export function apply(ctx) {
   }
 
   // 关掉提醒检查时把失败上屏也收掉：只清内存不写盘的话，重启后 failures 还在，
-  // 展开态会继续显示「后台检查被拒绝」。只在确有要清的内容时落一次盘：
+  // 展开态会继续显示「后台检查失败」。只在确有要清的内容时落一次盘：
   // 关着期间的每 60 秒轮询不再反复写状态文件。
   async function clearKbFailureOnDisabled(mainRoot) {
     const failures = Number.isInteger(kbState.failures) ? kbState.failures : 0
@@ -1611,6 +1633,8 @@ export function apply(ctx) {
       argv,
       KB_CHECK_TIMEOUT_MS,
       policy,
+      // 这条检查只跑 git（fetch / rev-list），不读 traces/：超时文案不能套面板取数那句猜测。
+      timeoutMessage('知识库检查', KB_CHECK_TIMEOUT_MS, '网络慢或机器休眠时可能偏慢'),
     )
     // host 级失败（子进程起不来 / 超时 / 输出不是 JSON）没有 behind 字段；
     // 脚本自己的业务失败三项齐全，按下面的静默规则处理。失败冷却里的跳过不计入连败。

@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.21.0'
+    const PLUGIN_VERSION = '0.21.1'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。
@@ -480,9 +480,10 @@ window.__ModuleLoader__.load({
       // 受限档位 fetch 被拒、退回只读探测：远端有新提交、落后数未知。
       'kb.degraded': '远端有新提交（落后数未知）',
       // 连败上屏：连续失败 3 次或权限拒绝时才出现，成功检查后消失。
-      'kb.error': '后台检查被拒绝：{time} {reason}',
+      'kb.error': '后台检查失败：{time} {reason}',
       'kb.errorDenied': '权限被拒',
-      'kb.errorFailed': '检查连续失败',
+      'kb.errorFailed': '已连续失败 3 次',
+      'kb.errorFailedCount': '已连续失败 {n} 次',
     }
     const EN = {
       'region': 'Diagnosis status bar',
@@ -920,9 +921,10 @@ window.__ModuleLoader__.load({
       'kb.missing': 'Ascend Sleuth page not found. Check that the panel package is installed, or try again later.',
       'kb.collapsed': 'Knowledge base has updates',
       'kb.degraded': 'The remote has new commits (behind count unknown)',
-      'kb.error': 'Background check was rejected: {time} {reason}',
+      'kb.error': 'Background check failed: {time} {reason}',
       'kb.errorDenied': 'permission denied',
-      'kb.errorFailed': 'the check has failed 3 times in a row',
+      'kb.errorFailed': '3 failures in a row',
+      'kb.errorFailedCount': '{n} failures in a row',
     }
     const DICTS = { zh: ZH, en: EN }
     let translate = (key, params) => formatText(ZH[key] !== undefined ? ZH[key] : key, params)
@@ -3814,7 +3816,11 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             .filter(Boolean)[0] || ''
           if (raw) return raw.length > 80 ? raw.slice(0, 79) + '…' : raw
           const reason = String((error && error.reason) || '')
-          return reason === 'permission-denied' || reason === 'E_PERM' ? tr('kb.errorDenied') : tr('kb.errorFailed')
+          if (reason === 'permission-denied' || reason === 'E_PERM') return tr('kb.errorDenied')
+          // 没有失败原文时按失败次数给一句（状态文件里可能是升级前的连败计数，不写死 3）。
+          const failures = Number(error && error.failures)
+          if (Number.isInteger(failures) && failures > 0) return tr('kb.errorFailedCount', { n: failures })
+          return tr('kb.errorFailed')
         }
 
         // 「重试」：强制让 host 立刻再检查一次，再拉一次状态；成功后 kbError 随新数据清空。

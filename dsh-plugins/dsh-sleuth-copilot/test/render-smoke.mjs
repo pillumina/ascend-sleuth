@@ -3380,26 +3380,73 @@ const KB_ERROR = {
     prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
   })
   let view = t.view()
-  expect('后台检查被拒：展开态出现 kb-error 行', byClass(view, 'scp-kb-error').length === 1, view.text.slice(0, 400))
+  expect('后台检查失败：展开态出现 kb-error 行', byClass(view, 'scp-kb-error').length === 1, view.text.slice(0, 400))
   const errorRow = byClass(view, 'scp-kb-error')[0]
   const errorText = errorRow ? nodeText(errorRow) : ''
-  expect('后台检查被拒：文案带时间与原因',
-    /后台检查被拒绝：\d\d-\d\d \d\d:\d\d 沙箱拒绝了这次调用/.test(errorText), errorText)
-  expect('后台检查被拒：给「去同步」', !!findButton(view, '去同步'), view.text.slice(0, 400))
+  expect('后台检查失败：文案带时间与原因',
+    /后台检查失败：\d\d-\d\d \d\d:\d\d 沙箱拒绝了这次调用/.test(errorText), errorText)
+  expect('后台检查失败：给「去同步」', !!findButton(view, '去同步'), view.text.slice(0, 400))
   const retryButton = byClass(view, 'scp-kb-retry')[0]
-  expect('后台检查被拒：给「重试」', !!retryButton && nodeText(retryButton) === '重试', view.text.slice(0, 400))
+  expect('后台检查失败：给「重试」', !!retryButton && nodeText(retryButton) === '重试', view.text.slice(0, 400))
   const statesBefore = t.rpcCalls.filter((call) => call.endpoint === 'copilot-state').length
   click(retryButton)
   await t.settle()
   await t.settle()
   await t.settle()
   const recheckCall = t.rpcCalls.filter((call) => call.endpoint === 'copilot-kb-recheck').pop()
-  expect('后台检查被拒：重试发出 copilot-kb-recheck 且 force=true',
+  expect('后台检查失败：重试发出 copilot-kb-recheck 且 force=true',
     !!recheckCall && recheckCall.args && recheckCall.args.force === true, JSON.stringify(recheckCall && recheckCall.args))
   const statesAfter = t.rpcCalls.filter((call) => call.endpoint === 'copilot-state').length
-  expect('后台检查被拒：重试后重新拉状态', statesAfter > statesBefore,
+  expect('后台检查失败：重试后重新拉状态', statesAfter > statesBefore,
     JSON.stringify({ before: statesBefore, after: statesAfter }))
-  expect('后台检查被拒：成功刷新后行消失', byClass(await t.settle(), 'scp-kb-error').length === 0)
+  expect('后台检查失败：成功刷新后行消失', byClass(await t.settle(), 'scp-kb-error').length === 0)
+}
+
+{
+  // 超时失败：原因句由 host 按检查对象给，原样上屏；不能再带 traces/ 的猜测（这条检查不读 traces/）。
+  const t = await mount('recent', {
+    kbError: {
+      checkedAt: '2026-11-10T06:56:00+08:00',
+      reason: 'E_TIMEOUT',
+      message: '知识库检查超时（30 秒内没有返回；网络慢或机器休眠时可能偏慢）。',
+    },
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  const view = t.view()
+  const row = byClass(view, 'scp-kb-error')[0]
+  const text = row ? nodeText(row) : ''
+  expect('后台检查失败：超时原因原样上屏',
+    /后台检查失败：\d\d-\d\d \d\d:\d\d 知识库检查超时（30 秒内没有返回/.test(text), text)
+  expect('后台检查失败：超时原因不提 traces/', !text.includes('traces/'), text)
+  t.dispose()
+}
+
+{
+  // 没有失败原文时按原因码给一句：连续失败与权限拒绝分清，不写「被拒绝」。
+  const t = await mount('recent', {
+    kbError: { checkedAt: '2026-11-10T06:56:00+08:00', reason: 'E_TIMEOUT', message: '' },
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  const view = t.view()
+  const row = byClass(view, 'scp-kb-error')[0]
+  const text = row ? nodeText(row) : ''
+  expect('后台检查失败：无原文且没有次数时给阈值兜底句',
+    /后台检查失败：\d\d-\d\d \d\d:\d\d 已连续失败 3 次/.test(text), text)
+  t.dispose()
+}
+
+{
+  // 无原文但带连败次数：按状态文件里的次数上屏（升级前留下的 failures 可能是 9）。
+  const t = await mount('recent', {
+    kbError: { checkedAt: '2026-11-10T06:56:00+08:00', reason: 'E_TIMEOUT', message: '', failures: 9 },
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  const view = t.view()
+  const row = byClass(view, 'scp-kb-error')[0]
+  const text = row ? nodeText(row) : ''
+  expect('后台检查失败：无原文时按连败次数上屏',
+    /后台检查失败：\d\d-\d\d \d\d:\d\d 已连续失败 9 次/.test(text), text)
+  t.dispose()
 }
 
 {
@@ -3410,7 +3457,7 @@ const KB_ERROR = {
   })
   click(findButton(t.view(), '去同步'))
   await t.settle()
-  expect('后台检查被拒：「去同步」切到 Ascend Sleuth 整页',
+  expect('后台检查失败：「去同步」切到 Ascend Sleuth 整页',
     t.selectedPanels.includes('ascend-sleuth-console'), JSON.stringify(t.selectedPanels))
   t.dispose()
 }
@@ -3421,7 +3468,7 @@ const KB_ERROR = {
     kbError: KB_ERROR,
     prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
   })
-  expect('后台检查被拒：空态也出现 kb-error 行', byClass(t.view(), 'scp-kb-error').length === 1)
+  expect('后台检查失败：空态也出现 kb-error 行', byClass(t.view(), 'scp-kb-error').length === 1)
 }
 
 {
@@ -3430,7 +3477,7 @@ const KB_ERROR = {
     kbError: KB_ERROR,
     prefs: { dockCollapsed: true, paletteFilter: 'all', pins: {} },
   })
-  expect('后台检查被拒：收起态不渲染 kb-error 行', byClass(t.view(), 'scp-kb-error').length === 0)
+  expect('后台检查失败：收起态不渲染 kb-error 行', byClass(t.view(), 'scp-kb-error').length === 0)
 }
 
 {
@@ -3440,8 +3487,8 @@ const KB_ERROR = {
     prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
   })
   const view = t.view()
-  expect('后台检查被拒：没有失败时不渲染 kb-error 行', byClass(view, 'scp-kb-error').length === 0)
-  expect('后台检查被拒：正常提示行照旧', byClass(view, 'scp-kb-notice').length === 1)
+  expect('后台检查失败：没有失败时不渲染 kb-error 行', byClass(view, 'scp-kb-error').length === 0)
+  expect('后台检查失败：正常提示行照旧', byClass(view, 'scp-kb-notice').length === 1)
 }
 
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')
