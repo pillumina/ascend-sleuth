@@ -217,12 +217,19 @@ class ShardTest(unittest.TestCase):
         self.assertEqual(out, "")
 
     def test_invalid_or_out_of_range_shard_is_usage_error(self):
-        for spec in ("2", "0/2", "3/2", "a/b"):
+        for spec in ("2", "", "0/2", "3/2", "a/b"):
             with self.subTest(spec=spec):
                 rc, out, err = self.run_main(["--root", str(self.root), "--all", "--shard", spec])
                 self.assertEqual(rc, 2)
                 self.assertEqual(out, "")
                 self.assertIn("--shard", err)
+
+    def test_all_matches_discover_pattern_not_only_test_underscore(self):
+        """discover 默认 pattern 是 test*.py；testfoo.py 也要进全量，不能静默漏掉。"""
+        self.write("tests/testfoo.py", "x = 1\n")
+        rc, out, err = self.run_main(["--root", str(self.root), "--all", "--shard", "1/1"])
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out.splitlines(), ["tests.testfoo"])
 
     def test_main_pins_lf_on_stdout_for_machine_consumers(self):
         """Windows 上 Python 文本 stdout 会把 \n 翻成 \r\n，模块名会被 CI 读成带 \r。
