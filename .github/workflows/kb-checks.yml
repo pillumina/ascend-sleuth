@@ -489,13 +489,14 @@ jobs:
   # 「最慢的那条 16 分钟」降到「最慢的那片 5 分钟左右」。代价是 runner 分钟数与 job 数变多
   # （公开仓标准 runner 免费），以及切完可能有的片为空——空片照常上报成功。
   unit-tests-windows:
-    name: unit-tests-windows (${{ matrix.shard }}/4)
+    name: unit-tests-windows (${{ matrix.shard }})
     needs: changes
     if: needs.changes.outputs.code == 'true'
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        # 值同时用于 job 名与 --shard 参数，分母只在这里定义一次，避免两处改岔。
+        shard: ["1/4", "2/4", "3/4", "4/4"]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -522,7 +523,7 @@ jobs:
           extra=""
           if [ "$ALL" = "true" ]; then extra="--all"; fi
           # `--shard` 恒输出模块列表（全量会先展开再切），因此这里不再有 ALL 分支。
-          selected=$(printf '%s\n' "$CODE_FILES" | python scripts/select_unit_tests.py $extra --shard ${{ matrix.shard }}/4)
+          selected=$(printf '%s\n' "$CODE_FILES" | python scripts/select_unit_tests.py $extra --shard ${{ matrix.shard }})
           if [ -z "$selected" ]; then
             echo "本片没有测试模块——跳过（改动不在 Python 测试面，或选中数少于分片数）"
             exit 0

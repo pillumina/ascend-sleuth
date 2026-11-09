@@ -225,30 +225,28 @@ class ShardTest(unittest.TestCase):
                 self.assertIn("--shard", err)
 
     def test_main_pins_lf_on_stdout_for_machine_consumers(self):
-        """Windows 上 Python 文本 stdout 会把 \n 翻成 \r\n，模块名会被 CI 读成带 \r。"""
+        """Windows 上 Python 文本 stdout 会把 \n 翻成 \r\n，模块名会被 CI 读成带 \r。
+
+        用 `TextIOWrapper(newline="\\r\\n")` 模拟那个翻译；断言输出字节里没有 `\r`。
+        只断言「调用过 reconfigure」抓不住「调用位置在 print 之后」这类回退。
+        """
         self.write("tests/test_a.py", "x = 1\n")
-        calls = []
-
-        class FakeStdout:
-            def write(self, text):
-                pass
-
-            def reconfigure(self, **kwargs):
-                calls.append(kwargs)
-
         import contextlib
         import io
 
+        raw = io.BytesIO()
+        fake = io.TextIOWrapper(raw, encoding="utf-8", newline="\r\n")
         err = io.StringIO()
         stdin = sys.stdin
         try:
             sys.stdin = type("FakeStdin", (), {"read": lambda self: ""})()
-            with contextlib.redirect_stdout(FakeStdout()), contextlib.redirect_stderr(err):
+            with contextlib.redirect_stdout(fake), contextlib.redirect_stderr(err):
                 rc = sut.main(["--root", str(self.root), "--all", "--shard", "1/1"])
         finally:
             sys.stdin = stdin
+            fake.flush()
         self.assertEqual(rc, 0, err.getvalue())
-        self.assertEqual(calls, [{"newline": "\n"}])
+        self.assertEqual(raw.getvalue(), b"tests.test_a\n")
 
     def run_main(self, argv, stdin_text=""):
         import contextlib

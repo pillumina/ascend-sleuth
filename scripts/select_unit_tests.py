@@ -234,11 +234,16 @@ def select(
 
 
 def all_test_modules(root: Path) -> list[str]:
-    """`tests/` 下全部测试模块（供 `--shard` 切全量）。"""
+    """`tests/` 顶层的测试模块（供 `--shard` 切全量）。
+
+    只取顶层 `test*.py`：与仓库现有的测试文件布局（全部在 `tests/` 顶层、`test_*.py`
+    命名）一致，也与 `unittest discover` 的默认 pattern 一致。子目录里若将来新增测试，
+    需要先扩展这里，否则 `--all --shard` 会漏掉它们（Linux 的 discover 仍会跑到）。
+    """
     directory = root / TEST_DIR
     if not directory.is_dir():
         raise _Unparseable(directory, FileNotFoundError("tests/ 不存在"))
-    return sorted(f"tests.{path.stem}" for path in directory.glob("test_*.py") if path.is_file())
+    return sorted(f"tests.{path.stem}" for path in directory.glob("test*.py") if path.is_file())
 
 
 def shard(items: list[str], spec: str) -> list[str]:
@@ -280,7 +285,7 @@ def main(argv: list[str] | None = None) -> int:
         changed = Path(args.changed_from).read_text(encoding="utf-8").splitlines()
 
     result, notes = select(Path(args.root), changed, force_all=args.force_all)
-    if args.shard:
+    if args.shard is not None:
         try:
             items = all_test_modules(Path(args.root)) if result == "ALL" else result
             items = shard(items, args.shard)
