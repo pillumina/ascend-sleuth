@@ -341,7 +341,10 @@ class WriterTest(unittest.TestCase):
     def test_crlf_preserved(self):
         self.make()
         path = self.traces / "s1.yaml"
-        path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
+        # Windows 上 make() 用 write_text 写出的文件已是 CRLF，直接替换会得到 \r\r\n。
+        # 先归一成 LF，再统一转成 CRLF。
+        raw = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+        path.write_bytes(raw.replace(b"\n", b"\r\n"))
         tt.apply_transition(ROOT, self.traces, "s1", args(to="resolved"))
         self.assertIn(b"\r\n", path.read_bytes())
 

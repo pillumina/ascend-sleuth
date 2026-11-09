@@ -95,7 +95,7 @@ class ReviewRegressionTest(unittest.TestCase):
         for code, data in [(128, ''), (0, 'cases: ['), (0, 'cases: []')]:
             with self.subTest(code=code, data=data):
                 def fail_show(args, **kwargs):
-                    if args[0] == 'show' and args[1].endswith('/CASE-B.yaml'):
+                    if args[0] == 'show' and args[1].endswith('/CASE-B.yaml'):  # portability-check: allow git show 输出恒用 /
                         return subprocess.CompletedProcess(args, code, data, 'simulated read failure')
                     return original(args, **kwargs)
                 with patch.object(recheck, 'run_git', side_effect=fail_show):
