@@ -29,7 +29,7 @@ python3 scripts/enable_agent_skills.py
 
 诊断开单会自动同步知识库：`trace_begin.py` 建单时 fetch 远端，条件满足时做一次快进合并。
 
-配置与开关（`sync.remote` / `sync.branch` / `sync.enabled` / `sync.auto_merge`）在 `.local/settings.json`；这两个开关只管诊断读侧，groom 不受影响。没有这个文件时用默认值：`origin`、当前分支上游（取不到用 `main`）、同步开、自动合并开。
+配置与开关（`sync.remote` / `sync.branch` / `sync.enabled` / `sync.auto_merge` / `sync.check_enabled` / `sync.check_minutes`）在 `.local/settings.json`。`sync.enabled` 与 `sync.auto_merge` 只管诊断读侧的自动路径，groom 不受影响；`sync.check_enabled` / `sync.check_minutes` 是诊断状态条的知识库提醒开关与检查间隔（可在「Ascend Sleuth · 知识库」页设置）。没有这个文件时用默认值：`origin`、当前分支上游（取不到用 `main`）、同步开、自动合并开。
 
 当前状态用 `python3 scripts/kb_sync.py --show` 查看（只读，不联网）。
 

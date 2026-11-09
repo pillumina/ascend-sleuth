@@ -37,12 +37,17 @@ const MAX_REPORT_BYTES = 512 * 1024
 // 读得比轮询稍快一点，面板 500 ms 一问就能看到已到的行；done 后保留 30 秒再删，给客户端收尾一次。
 const PR_PROGRESS_READ_MS = 120
 const PR_PROGRESS_TTL_MS = 30 * 1000
-// 知识库更新提醒：每次检查都是一次 fetch，所以 30 分钟一次；启动后先等 3 秒，
-// 避开 DSH 启动时与状态取数抢子进程。手动重查按 60 秒节流，同一远端提交只提醒一次。
-const KB_CHECK_INTERVAL_MS = 30 * 60 * 1000
+// 知识库更新提醒：间隔与开关来自主检出的 .local/settings.json；启动后先等 3 秒，
+// 避开 DSH 启动时与状态取数抢子进程。关闭提醒时每 60 秒只重读设置、不起子进程。
+// 手动重查按 60 秒节流，同一远端提交只提醒一次。
 const KB_CHECK_DELAY_MS = 3000
+const KB_DISABLED_POLL_MS = 60 * 1000
+const KB_CHECK_DEFAULT_MINUTES = 30
+const KB_CHECK_MIN_MINUTES = 5
+const KB_CHECK_MAX_MINUTES = 720
 const KB_RECHECK_MIN_MS = 60 * 1000
 const KB_CHECK_TIMEOUT_MS = 30000
+const KB_SETTINGS_REL = '.local/settings.json'
 const KB_STATE_REL = '.local/kb-sync-notify.json'
 const KB_STATE_VERSION = 1
 const KB_SURFACE_KEYS = ['knowledge', 'routing', 'reference', 'methodology', 'panel', 'other']
@@ -1283,8 +1288,9 @@ export function apply(ctx) {
 
   // ── 知识库更新提醒 ─────────────────────────────────────────────────────────
   // 后台检查本机检出是否落后上游，结果随 copilot-state 下发。检查只调 scripts/kb_sync.py：
-  // --sync 只 fetch、不合并，离线部署 / 关闭同步 / 失败冷却都由脚本处理。失败一律静默，
-  // 原文只落主检出的 .local/kb-sync-notify.json，供排查；界面上的提示只由本次进程的检查给出。
+  // --check 只 fetch、不合并、不受 sync.enabled 影响，离线部署 / 失败冷却都由脚本处理。
+  // 失败一律静默，原文只落主检出的 .local/kb-sync-notify.json，供排查；界面上的提示只由
+  // 本次进程的检查给出。开关与间隔读主检出 .local/settings.json，一次只排一个 timeout。
   let kbState = emptyKbState()
   let kbNotice = null
   let kbLastError = ''
@@ -1293,6 +1299,9 @@ export function apply(ctx) {
   let kbLastCheckStart = 0
   let kbCheckFlight = null
   let kbWriteChain = Promise.resolve()
+  // 后台调度的单一句柄（timer.timeout 返回的 disposer）与注入到的 timer 服务。
+  let kbTimer = null
+  let kbTimerSvc = null
 
   // 测试与非常规安装可以用环境变量指定检出；正常安装从插件包位置往上两级推。
   function kbRootCandidate() {
@@ -1309,6 +1318,34 @@ export function apply(ctx) {
     if (!mainRoot) return null
     if (!(await isFile(join(mainRoot, 'scripts', 'kb_sync.py')))) return null
     return mainRoot
+  }
+
+  // 后台 fetch 的沙箱档位：部署默认档位的工作区根是 DSH launch-root（不是仓库），
+  // 直接跑子进程会被 EPERM 拒掉。部署已是完全权限时原样透传；否则显式把工作区根收成
+  // 主检出，只放开这一个仓库。解析不到档位时也按 workspace-write + 主检出给。
+  function kbSandboxPolicy(mainRoot) {
+    const svc = ctx.get('sandboxPolicy')
+    let base
+    try {
+      base = svc && typeof svc.resolve === 'function' ? svc.resolve() : undefined
+    } catch {
+      base = undefined
+    }
+    if (base && base.mode === 'danger-full-access') return base
+    return { mode: 'workspace-write', workspaceRoot: mainRoot }
+  }
+
+  // 与 scripts/kb_sync.py 的 _as_bool 同口径：手改设置写成 "off"/"0" 也算关，
+  // 否则面板（经 Python 规范化）显示关闭、后台却照跑。
+  function kbAsBool(value, fallback) {
+    if (value === true || value === false) return value
+    if (value === null || value === undefined) return fallback
+    if (typeof value === 'string') {
+      const text = value.trim().toLowerCase()
+      if (text === 'true' || text === 'on' || text === 'yes' || text === '1') return true
+      if (text === 'false' || text === 'off' || text === 'no' || text === '0') return false
+    }
+    return fallback
   }
 
   function kbReadState(raw) {
@@ -1407,6 +1444,74 @@ export function apply(ctx) {
     return persistKbState(mainRoot)
   }
 
+  // 后台检查的开关与间隔：主检出的 .local/settings.json，sync.check_enabled（默认 true）、
+  // sync.check_minutes（默认 30，夹取 5..720）。文件缺失、坏 JSON、字段不合规都按默认值，
+  // 一个坏文件不该把提醒永久关掉。
+  async function readKbSchedule(mainRoot) {
+    let raw = null
+    try {
+      raw = JSON.parse(await readFile(join(mainRoot, KB_SETTINGS_REL), 'utf8'))
+    } catch {
+      raw = null
+    }
+    const sync = raw !== null && typeof raw === 'object' && !Array.isArray(raw)
+      && raw.sync !== null && typeof raw.sync === 'object' && !Array.isArray(raw.sync)
+      ? raw.sync
+      : {}
+    const minutes = Number.isInteger(sync.check_minutes) ? sync.check_minutes : KB_CHECK_DEFAULT_MINUTES
+    return {
+      enabled: kbAsBool(sync.check_enabled, true),
+      minutes: Math.min(KB_CHECK_MAX_MINUTES, Math.max(KB_CHECK_MIN_MINUTES, minutes)),
+    }
+  }
+
+  function clearKbTimer() {
+    const dispose = kbTimer
+    kbTimer = null
+    if (typeof dispose !== 'function') return
+    try {
+      const pending = dispose()
+      if (pending && typeof pending.then === 'function') pending.catch(() => {})
+    } catch {
+      // 已随注入 fiber 收回
+    }
+  }
+
+  // 一次只排一个 timeout：到点先读设置，关着就每 60 秒重读（不起子进程），开着才跑检查。
+  function scheduleKb(delayMs) {
+    clearKbTimer()
+    const timer = kbTimerSvc
+    if (!timer || typeof timer.timeout !== 'function') return
+    const entry = timer.timeout(() => kbTick().catch(() => {}), delayMs)
+    kbTimer = typeof entry === 'function' ? entry : null
+  }
+
+  async function kbTick() {
+    kbTimer = null
+    const mainRoot = await resolveKbRoot()
+    if (!mainRoot) {
+      // 没有可检查的检出：静默停用后台检查，不排下一次（手动重查仍会试）。
+      kbNotice = null
+      return
+    }
+    const schedule = await readKbSchedule(mainRoot)
+    if (!schedule.enabled) {
+      // 关着提醒：不跑子进程，只把提示收掉，60 秒后再读设置。
+      kbNotice = null
+      scheduleKb(KB_DISABLED_POLL_MS)
+      return
+    }
+    await startKbCheck().catch(() => {})
+    // 检查可能跑了很久，结束后再读一次设置：期间被关掉就转 60 秒轮询。
+    const after = await readKbSchedule(mainRoot)
+    if (!after.enabled) {
+      kbNotice = null
+      scheduleKb(KB_DISABLED_POLL_MS)
+      return
+    }
+    scheduleKb(after.minutes * 60 * 1000)
+  }
+
   async function runKbCheck() {
     await kbStateLoaded
     kbLastCheckStart = Date.now()
@@ -1416,7 +1521,9 @@ export function apply(ctx) {
       kbLastReason = 'unavailable'
       return kbSnapshot()
     }
-    const python = await resolvePython(mainRoot, null)
+    // 探测与取数同一档位：否则子进程在部署默认沙箱里会因工作区根不是仓库被拒。
+    const policy = kbSandboxPolicy(mainRoot)
+    const python = await resolvePython(mainRoot, policy)
     if (python === null) {
       await kbFailed(mainRoot, kbNowIso(), noPythonMessage(), 'no-python')
       return kbSnapshot()
@@ -1425,9 +1532,9 @@ export function apply(ctx) {
       mainRoot,
       python,
       join(mainRoot, 'scripts', 'kb_sync.py'),
-      ['--sync', '--json', '--root', shq(mainRoot)],
+      ['--check', '--json', '--root', shq(mainRoot)],
       KB_CHECK_TIMEOUT_MS,
-      null,
+      policy,
     )
     // host 级失败（子进程起不来 / 超时 / 输出不是 JSON）没有 behind 字段；
     // 脚本自己的业务失败三项齐全，按下面的静默规则处理。
@@ -1440,8 +1547,9 @@ export function apply(ctx) {
       return kbSnapshot()
     }
     const reason = typeof doc.reason === 'string' ? doc.reason.trim() : ''
-    if (doc.enabled === false || doc.offline === true || reason === 'disabled' || reason === 'offline') {
-      await kbQuiet(mainRoot, kbNowIso(), reason || (doc.offline === true ? 'offline' : 'disabled'))
+    // --check 不受 sync.enabled 影响，enabled 只作为状态上报；disabled 只可能是旧脚本或自动路径的降级。
+    if (doc.offline === true || reason === 'disabled' || reason === 'offline') {
+      await kbQuiet(mainRoot, kbNowIso(), reason || 'offline')
       return kbSnapshot()
     }
     if (doc.ok === false || reason !== '') {
@@ -1523,31 +1631,20 @@ export function apply(ctx) {
 
   // timer 是可选服务：缺它时整个 host 半照常挂载，只是不装定时器、不跑后台检查。
   // 用 ctx.inject 按依赖挂载：注入到的上下文里服务名就是属性（timerCtx.timer），
-  // 取不到时退回 get('timer')；两种写法都没有就不装。
+  // 取不到时退回 get('timer')；两种写法都没有就不装。定时器一次只排一个 timeout，
+  // 每次到点按 settings 决定跑不跑检查、下一次什么时候。
   ctx.effect(() => {
     const fiber = ctx.inject(['timer'], (timerCtx) => {
       const timer = timerCtx.timer || (typeof timerCtx.get === 'function' ? timerCtx.get('timer') : undefined)
-      if (!timer || typeof timer.timeout !== 'function' || typeof timer.interval !== 'function') return
-      timerCtx.effect(() => {
-        const disposers = [
-          // 回调返回检查的 promise：宿主不用它，测试替身可以 await 一次检查跑完。
-          timer.timeout(() => startKbCheck().catch(() => {}), KB_CHECK_DELAY_MS),
-          timer.interval(() => startKbCheck().catch(() => {}), KB_CHECK_INTERVAL_MS),
-        ]
-        return () => {
-          for (const dispose of disposers) {
-            if (typeof dispose !== 'function') continue
-            try {
-              dispose()
-            } catch {
-              // 卸载时单个 disposer 失败不影响其他清理
-            }
-          }
-        }
-      }, 'dsh-sleuth-copilot: kb notice check')
+      if (!timer || typeof timer.timeout !== 'function') return
+      kbTimerSvc = timer
+      // 启动 3 秒后第一次；之后由 kbTick 按 settings 排下一次。回调返回 promise：测试替身可以 await。
+      scheduleKb(KB_CHECK_DELAY_MS)
     })
     // 注入的 fiber 会随父级一起回收；这里再显式收回一次，避免宿主只回收 effect 时留下定时器。
     return () => {
+      clearKbTimer()
+      kbTimerSvc = null
       const dispose = fiber && typeof fiber.dispose === 'function' ? fiber : null
       if (!dispose) return
       try {

@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.19.0'
+    const PLUGIN_VERSION = '0.20.0'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。

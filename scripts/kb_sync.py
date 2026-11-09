@@ -7,7 +7,8 @@
 配置在主检出的 `.local/settings.json`（schema `ascend-sleuth-settings/1`，不进 git）：
 
     {"schema": "ascend-sleuth-settings/1",
-     "sync": {"remote": "origin", "branch": "main", "enabled": true, "auto_merge": true},
+     "sync": {"remote": "origin", "branch": "main", "enabled": true, "auto_merge": true,
+              "check_enabled": true, "check_minutes": 30},
      "identity": {"remote": "origin"},
      "target": {...}}
 
@@ -20,6 +21,11 @@
 不重试，避免每次开单都等满超时。手动同步加 `--force` 跳过窗口立即重试（面板「立即同步」走这条），
 否则刚失败过的网络在 10 分钟内点几次都只会拿回同一份缓存。
 
+`sync.enabled` 只拦自动路径（开单时的自动 fetch 与自动合并）：`--check` 只 fetch、不合并，
+也不看它；带 `--force` 的手动路径（`--merge --force`）同样不看它。后台提醒检查用 `--check`，
+它的开关与间隔是 `sync.check_enabled`（默认 true）与 `sync.check_minutes`（默认 30，
+夹在 5..720 之间）。
+
 自动合并只在这些条件同时成立时发生：当前分支 = 配置 `branch`、HEAD 是远端分支的祖先、
 `git status --porcelain -uno` 为空、无进行中 merge / rebase / cherry-pick。worktree 与
 detached HEAD 不自动合并——合并会改当前检出的 HEAD，而 worktree 可能正被另一单使用。
@@ -29,8 +35,9 @@ detached HEAD 不自动合并——合并会改当前检出的 HEAD，而 worktr
 用法：
   python3 scripts/kb_sync.py --show          # 只读，不联网：配置、HEAD、本地远端 ref、上次核对
   python3 scripts/kb_sync.py --sync          # fetch；不合并
+  python3 scripts/kb_sync.py --check         # 只 fetch、不合并；不看 sync.enabled（后台提醒检查用）
   python3 scripts/kb_sync.py --merge         # fetch，条件满足时试 ff-only
-  python3 scripts/kb_sync.py --merge --force # 跳过失败缓存立即重试（手动同步用）
+  python3 scripts/kb_sync.py --merge --force # 跳过失败缓存立即重试（手动同步用；也不看 sync.enabled）
   python3 scripts/kb_sync.py --show --json   # 所有子命令都可加 --json
   python3 scripts/kb_sync.py --sync --timeout 3 --root <检出>
 
@@ -46,6 +53,7 @@ detached HEAD 不自动合并——合并会改当前检出的 HEAD，而 worktr
            ff-only 合并成功时表示本次合并带进来的改动面，没有合并时表示本地落后于远端的改动面
   config   file | default
   enabled  true / false（settings 的 sync.enabled；--show 也照实给）
+          只拦自动路径：--check 与带 --force 的手动路径不看它，结果里仍照实上报
   offline  true / false（deployment.yaml 声明 sync.mode: offline）
   identity_remote     归属仓远端名（默认 origin）
   identity_url        归属仓解析到的 URL；取不到为空串
@@ -82,6 +90,10 @@ FAILURE_COOLDOWN_S = 600
 FETCH_ERROR_LIMIT = 300
 DEFAULT_REMOTE = "origin"
 DEFAULT_BRANCH = "main"
+#: 后台提醒检查的间隔缺省值与合法区间（分钟）。
+DEFAULT_CHECK_MINUTES = 30
+CHECK_MINUTES_MIN = 5
+CHECK_MINUTES_MAX = 720
 SURFACE_KEYS = ("knowledge", "routing", "reference", "methodology", "panel", "other")
 
 
@@ -135,7 +147,8 @@ def default_settings() -> dict:
     return {
         "schema": SCHEMA_SETTINGS,
         "sync": {"remote": DEFAULT_REMOTE, "branch": DEFAULT_BRANCH,
-                 "enabled": True, "auto_merge": True},
+                 "enabled": True, "auto_merge": True,
+                 "check_enabled": True, "check_minutes": DEFAULT_CHECK_MINUTES},
         "identity": {"remote": DEFAULT_REMOTE},
         "target": None,
     }
@@ -155,14 +168,27 @@ def _as_bool(value, default: bool) -> bool:
     return default
 
 
+def clamp_check_minutes(value) -> int:
+    """提醒检查间隔 → 5..720 的整数。非整数取默认 30，越界夹到边界。
+
+    读侧只夹取不报错：坏配置不该让后台检查失败，写侧（`pr_status --set-sync`）在落盘前
+    另行校验并拒绝越界值。
+    """
+    if isinstance(value, bool) or not isinstance(value, int):
+        return DEFAULT_CHECK_MINUTES
+    return max(CHECK_MINUTES_MIN, min(CHECK_MINUTES_MAX, value))
+
+
 def normalize_sync(raw) -> dict:
-    """`sync` 段 → 四个字段。缺项与类型不对的项取默认值。"""
+    """`sync` 段 → 六个字段。缺项与类型不对的项取默认值。"""
     raw = raw if isinstance(raw, dict) else {}
     return {
         "remote": str(raw.get("remote") or DEFAULT_REMOTE).strip() or DEFAULT_REMOTE,
         "branch": str(raw.get("branch") or DEFAULT_BRANCH).strip() or DEFAULT_BRANCH,
         "enabled": _as_bool(raw.get("enabled"), True),
         "auto_merge": _as_bool(raw.get("auto_merge"), True),
+        "check_enabled": _as_bool(raw.get("check_enabled"), True),
+        "check_minutes": clamp_check_minutes(raw.get("check_minutes")),
     }
 
 
@@ -598,14 +624,15 @@ def _empty_base(remote: str, branch: str, config: str, config_error: str = "") -
 
 def local_snapshot(root: Path, remote: str, branch: str, *, timeout: float = DEFAULT_TIMEOUT,
                    config: str = "file", config_error: str = "", enabled: bool = True,
-                   identity: dict = None) -> dict:
+                   identity: dict = None, ignore_disabled: bool = False) -> dict:
     """只读本机 git 状态（不联网），填 local_rev / 远端 ref / 落后数 / 改动面。
 
     `identity` 是 settings 的归属仓（`{"remote", "explicit"}`，缺省按 origin 且未显式）；
     `same_repo` 拿它的 URL 与 `remote` 的 URL 比。`enabled` 由调用方从 settings 的 sync 段
     带进来，`offline` 就地读 deployment.yaml；两者只读本地文件，`--show` 因此能给出真实
     状态而不联网。关闭或离线时 `ok: false` 并写对应 reason，但仍照常算落后数与改动面
-    （面板要显示"落后多少、为什么没同步"）。
+    （面板要显示"落后多少、为什么没同步"）。`ignore_disabled=True` 时不因关闭写 reason
+    （`--check` 与带 `--force` 的手动路径用），`enabled` 字段仍照实上报。
     """
     root = Path(root)
     identity = identity if isinstance(identity, dict) else {}
@@ -622,7 +649,7 @@ def local_snapshot(root: Path, remote: str, branch: str, *, timeout: float = DEF
     def finish(res: dict) -> dict:
         if res["offline"]:
             res.update(ok=False, reason="offline", merge="none")
-        elif not res["enabled"]:
+        elif not res["enabled"] and not ignore_disabled:
             res.update(ok=False, reason="disabled", merge="none")
         return res
 
@@ -665,22 +692,29 @@ def local_snapshot(root: Path, remote: str, branch: str, *, timeout: float = DEF
 
 def sync(root: Path, *, do_fetch: bool = True, do_merge: bool = False,
          honor_auto_merge: bool = False, timeout: float = DEFAULT_TIMEOUT,
-         force: bool = False) -> dict:
+         force: bool = False, ignore_enabled: bool = False) -> dict:
     """fetch（可选条件 ff-only 合并）→ 结果映射。任何失败都返回结果，不抛给调用方。
 
     `force=True` 跳过失败缓存：手动同步要能立刻重试，否则刚失败过的网络在 10 分钟内
     点几次都只会拿回同一份缓存。自动同步（建单、续接漂移检查）不加这个参数。
+    `ignore_enabled=True`（`--check` 用）与 `force=True`（手动路径）不看 `sync.enabled`：
+    两种情况照常联网，结果里的 `enabled` 仍按设置照实上报。离线声明仍拦下它们。
     """
     root = Path(root)
     settings, config, config_error = load_settings(root)
     sync_cfg = settings["sync"]
     identity = settings.get("identity")
     remote, branch = sync_cfg["remote"], sync_cfg["branch"]
+    # force 只跳失败缓存，但手动路径也靠它绕过 enabled——面板「立即同步」就是
+    # `--merge --force`，两个语义在同一个参数上。
+    ignore_disabled = bool(force or ignore_enabled)
     result = local_snapshot(root, remote, branch, timeout=timeout, config=config,
                             config_error=config_error, enabled=sync_cfg["enabled"],
-                            identity=identity)
+                            identity=identity, ignore_disabled=ignore_disabled)
 
-    if result["offline"] or not result["enabled"]:
+    if result["offline"]:
+        return result
+    if not result["enabled"] and not ignore_disabled:
         return result
     if do_fetch and not force and _cooling_down(load_state(root)):
         state = load_state(root)
@@ -711,7 +745,7 @@ def sync(root: Path, *, do_fetch: bool = True, do_merge: bool = False,
     _record_fetch_ok(root, remote, branch)
     fresh = local_snapshot(root, remote, branch, timeout=timeout, config=config,
                            config_error=config_error, enabled=sync_cfg["enabled"],
-                           identity=identity)
+                           identity=identity, ignore_disabled=ignore_disabled)
     result.update(fresh)
     result.update(ok=True, reason="", skipped=False, offline=False,
                   local_rev_before=fresh.get("local_rev_before", "unknown"),
@@ -758,7 +792,7 @@ def sync(root: Path, *, do_fetch: bool = True, do_merge: bool = False,
 
     after = local_snapshot(root, remote, branch, timeout=timeout, config=config,
                            config_error=config_error, enabled=sync_cfg["enabled"],
-                           identity=identity)
+                           identity=identity, ignore_disabled=ignore_disabled)
     before_rev, before_behind = result["local_rev_before"], result["behind_before"]
     result.update(after)
     result.update(ok=True, reason="", merge="ff-only",
@@ -935,7 +969,11 @@ def render_sync(result: dict) -> str:
     elif isinstance(result.get("behind"), int) and result["behind"] > 0:
         lines.append(f"已 fetch {remote_ref} {result.get('remote_rev')}"
                      f"（本机落后 {result['behind']} 个提交）。")
-        lines.append(f"未合并（{merge_reason_text(result.get('reason'))}）。")
+        # fetch-only（--sync / --check）时 reason 为空：不写成「未合并（未合并）」。
+        if result.get("reason"):
+            lines.append(f"未合并（{merge_reason_text(result['reason'])}）。")
+        else:
+            lines.append("未合并。")
     else:
         lines.append(f"知识库已是 {remote_ref} {result.get('remote_rev')}。")
     if result.get("identity_explicit") and not result.get("identity_resolved"):
@@ -964,11 +1002,13 @@ def build_parser() -> argparse.ArgumentParser:
                       help="只读，不联网（默认）")
     mode.add_argument("--sync", action="store_const", const="sync", dest="mode",
                       help="fetch 远端分支")
+    mode.add_argument("--check", action="store_const", const="check", dest="mode",
+                      help="只 fetch、不合并；不看 sync.enabled（后台提醒检查用）")
     mode.add_argument("--merge", action="store_const", const="merge", dest="mode",
                       help="fetch 后按条件试 ff-only")
     ap.add_argument("--json", action="store_true", help="输出 JSON")
     ap.add_argument("--force", action="store_true",
-                    help="跳过失败缓存立即重试（手动同步用；自动同步仍按 10 分钟窗口）")
+                    help="跳过失败缓存立即重试（手动路径；也不看 sync.enabled）")
     ap.add_argument("--timeout", type=_positive_float, default=DEFAULT_TIMEOUT,
                     help=f"单条 git 命令的超时秒数（默认 {DEFAULT_TIMEOUT:g}）")
     ap.add_argument("--root", default=None, help="仓库根（默认脚本上一级）")
@@ -990,7 +1030,8 @@ def main(argv=None) -> int:
                                 config_error=config_error, enabled=sync_cfg["enabled"],
                                 identity=settings.get("identity"))
     else:
-        result = sync(root, do_fetch=True, do_merge=(mode == "merge"), timeout=args.timeout,
+        result = sync(root, do_fetch=True, do_merge=(mode == "merge"),
+                      ignore_enabled=(mode == "check"), timeout=args.timeout,
                       force=args.force)
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
