@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.21.1'
+    const PLUGIN_VERSION = '0.22.0'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。
@@ -51,7 +51,8 @@ window.__ModuleLoader__.load({
       'picker.title': '跟踪哪一单',
       'picker.search': '搜索标题或单号',
       'picker.empty': '没有匹配的诊断。',
-      'picker.follow': '跟随会话（自动）',
+      'picker.current': '当前',
+      'picker.followOff': '取消固定，跟随最近一单',
       'picker.open': '打开诊断总览',
       'action.pin': '固定到状态条',
       'action.unpin': '取消固定',
@@ -135,7 +136,7 @@ window.__ModuleLoader__.load({
       'hint.copied': '已复制。',
       'hint.copiedIssue': 'issue 文本已复制。',
       'hint.copyFailed': '这个界面不允许写剪贴板，请手动选择文本。',
-      'hint.stale': '状态取不到最新数据，显示的是上次成功读取的内容；点「刷新」重试。',
+      'hint.stale': '状态取不到最新数据，显示的是上次成功读取的内容（{time}）；点「刷新」重试。',
       'hint.noInput': '这个界面没有提供写入输入框的接口，指令已复制到剪贴板。',
       'hint.failed': '填入输入框失败：{message}',
       'hint.copiedFallback': '这个界面没有提供写入输入框的接口，指令已复制。',
@@ -145,6 +146,7 @@ window.__ModuleLoader__.load({
       'group.state': '改状态',
       'group.copy': '复制',
       'group.nav': '导航',
+      'group.frequent': '常用',
       'action.upstream': '查 case 上游状态',
       'action.reportDoc': '产出 / 修订定位报告',
       'action.handoff': '导出交接包',
@@ -178,9 +180,9 @@ window.__ModuleLoader__.load({
       'hint.sessionRemote': '这个会话不在本机（旧环境或交接包），只能看归属。',
       'hint.sessionService': '当前界面没有切会话的接口。',
       'hint.sessionNoId': '没有会话号，补写后再试。',
-      'section.materials': '在等材料',
+      'section.missing': '还缺什么',
       'section.timeline': '步骤时间线',
-      'materials.hint': '来自 trace 的缺失记录；拿到后贴回会话，或带着这份清单续接。',
+      'materials.none': '没有记下具体材料，按上面的「在等」继续。',
       'action.copyMaterials': '复制清单',
       'action.materialResume': '填入续接指令',
       'action.loadTimeline': '展开步骤',
@@ -193,6 +195,7 @@ window.__ModuleLoader__.load({
       'copy.issue': '复制为 issue 文本',
       'search.placeholder': '搜索单号 / case / 关键词',
       'cmd.placeholder': '输入命令…',
+      'cmd.where': '作用于：',
       'cmd.hint': '↑↓ 选择 · Enter 执行 · Esc 关闭',
       'cmd.empty': '没有匹配的命令',
       'command.primary': '主操作',
@@ -294,6 +297,7 @@ window.__ModuleLoader__.load({
       'palette.loading': '正在读 traces/…',
       'palette.unavailable': '读不到 traces/：{message}',
       'palette.count': '共 {n} 单',
+      'palette.loadFailed': '读取失败',
       'palette.close': '关闭诊断总览',
       'tool.title': '诊断总览',
       'tool.pending': '{n} 单待回报',
@@ -414,6 +418,9 @@ window.__ModuleLoader__.load({
       'sediment.detail.openQueue': '打开沉淀队列',
       'sediment.detail.decision': '人决定',
       'sediment.detail.decisionValue': '决定',
+      'sediment.decisionValue.new_pattern': '新模式',
+      'sediment.decisionValue.variant_of': '已有案例的变体',
+      'sediment.decisionValue.covered_by': '已有案例覆盖',
       'sediment.batch.next': '下一步',
       'sediment.dock.missingDraft': '已交草稿 · 未找到草稿',
       'sediment.detail.promotion': '落点与 PR',
@@ -494,7 +501,8 @@ window.__ModuleLoader__.load({
       'picker.title': 'Track which diagnosis',
       'picker.search': 'Search title or id',
       'picker.empty': 'No matching diagnosis.',
-      'picker.follow': 'Follow the session (auto)',
+      'picker.current': 'Current',
+      'picker.followOff': 'Unpin and follow the recent one',
       'picker.open': 'Open diagnosis overview',
       'action.pin': 'Pin to the status bar',
       'action.unpin': 'Unpin',
@@ -578,7 +586,7 @@ window.__ModuleLoader__.load({
       'hint.copied': 'Copied.',
       'hint.copiedIssue': 'Issue text copied.',
       'hint.copyFailed': 'Clipboard is unavailable here; select the text manually.',
-      'hint.stale': 'Cannot read fresh state; showing the last successful read. Use Refresh to retry.',
+      'hint.stale': 'Cannot read fresh state; showing the last successful read ({time}). Use Refresh to retry.',
       'hint.noInput': 'This page exposes no composer input; the instruction was copied instead.',
       'hint.failed': 'Could not write the composer: {message}',
       'hint.copiedFallback': 'This page exposes no composer input; the instruction was copied.',
@@ -588,6 +596,7 @@ window.__ModuleLoader__.load({
       'group.state': 'State',
       'group.copy': 'Copy',
       'group.nav': 'Navigate',
+      'group.frequent': 'Common',
       'action.upstream': 'Check case upstream status',
       'action.reportDoc': 'Write / revise the report',
       'action.handoff': 'Export a handoff package',
@@ -621,9 +630,9 @@ window.__ModuleLoader__.load({
       'hint.sessionRemote': 'That session is not on this machine (old environment or handoff package); only its attribution is available.',
       'hint.sessionService': 'This interface has no session-switch hook.',
       'hint.sessionNoId': 'No session id; write one back and retry.',
-      'section.materials': 'Waiting for material',
+      'section.missing': 'Still missing',
       'section.timeline': 'Step timeline',
-      'materials.hint': 'Recorded gaps from the trace; paste the missing pieces back, or resume with this list.',
+      'materials.none': 'No specific material recorded; continue from Waiting above.',
       'action.copyMaterials': 'Copy list',
       'action.materialResume': 'Fill resume command',
       'action.loadTimeline': 'Show steps',
@@ -636,6 +645,7 @@ window.__ModuleLoader__.load({
       'copy.issue': 'Copy as issue text',
       'search.placeholder': 'Search id / case / keyword',
       'cmd.placeholder': 'Type a command…',
+      'cmd.where': 'Acting on: ',
       'cmd.hint': '↑↓ select · Enter run · Esc close',
       'cmd.empty': 'No matching command',
       'command.primary': 'Primary',
@@ -737,6 +747,7 @@ window.__ModuleLoader__.load({
       'palette.loading': 'Reading traces/…',
       'palette.unavailable': 'Cannot read traces/: {message}',
       'palette.count': '{n} total',
+      'palette.loadFailed': 'Read failed',
       'palette.close': 'Close the diagnosis overview',
       'tool.title': 'Diagnosis overview',
       'tool.pending': '{n} pending outcomes',
@@ -857,6 +868,9 @@ window.__ModuleLoader__.load({
       'sediment.detail.openQueue': 'Open sediment queue',
       'sediment.detail.decision': 'Human decision',
       'sediment.detail.decisionValue': 'Decision',
+      'sediment.decisionValue.new_pattern': 'New pattern',
+      'sediment.decisionValue.variant_of': 'Variant of an existing case',
+      'sediment.decisionValue.covered_by': 'Covered by an existing case',
       'sediment.batch.next': 'next',
       'sediment.dock.missingDraft': 'draft submitted, not found',
       'sediment.detail.promotion': 'Landing and PR',
@@ -971,8 +985,9 @@ window.__ModuleLoader__.load({
       '.scp-root *,.scp-pal *{box-sizing:border-box;}',
       '.scp-handle-wrap{display:flex;justify-content:center;width:100%;}',
       '.scp-handle{display:inline-flex;align-items:center;gap:7px;max-width:min(72%,560px);height:22px;padding:0 10px;border-radius:999px;border:1px solid var(--scp-border);background:color-mix(in srgb,var(--scp-surface) 62%,transparent);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:var(--scp-muted);font:inherit;font-size:11px;line-height:1;cursor:pointer;transition:background-color 160ms ease,color 160ms ease,border-color 160ms ease,opacity 360ms ease;}',
-      '.scp-handle[data-idle="true"]{opacity:.34;}',
-      '.scp-handle[data-idle="true"]:hover,.scp-handle[data-idle="true"]:focus-visible{opacity:1;}',
+      '.scp-handle-title,.scp-handle-meta{transition:opacity 360ms ease;}',
+      '.scp-handle[data-idle="true"] .scp-handle-title,.scp-handle[data-idle="true"] .scp-handle-meta{opacity:.42;}',
+      '.scp-handle[data-idle="true"]:hover .scp-handle-title,.scp-handle[data-idle="true"]:hover .scp-handle-meta,.scp-handle[data-idle="true"]:focus-visible .scp-handle-title,.scp-handle[data-idle="true"]:focus-visible .scp-handle-meta{opacity:1;}',
       '.scp-handle:hover{background:var(--scp-surface-2);color:var(--scp-text);border-color:var(--scp-border-strong);}',
       '.scp-handle .scp-ring{width:7px;height:7px;}',
       '.scp-handle-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;color:var(--scp-text);}',
@@ -982,35 +997,35 @@ window.__ModuleLoader__.load({
       '.scp-surface{display:flex;flex-direction:column;gap:6px;padding:6px 10px;border:1px solid var(--scp-border);border-radius:12px;background:color-mix(in srgb, var(--scp-surface) 76%, transparent);transition:border-color 180ms ease,background-color 180ms ease;}',
       '.scp-root[data-mode="bound"] .scp-surface,.scp-root[data-mode="recent"] .scp-surface{padding:7px 10px;}',
       '.scp-root[data-live="true"] .scp-surface{border-color:color-mix(in srgb, var(--scp-tone) 22%, var(--scp-border));}',
-      '.scp-head{display:flex;align-items:center;gap:8px;min-width:0;}',
+      '.scp-head{display:flex;align-items:center;gap:6px;min-width:0;}',
       '.scp-ring{flex:none;width:8px;height:8px;border-radius:50%;background:var(--scp-tone);}',
       '.scp-root[data-live="true"] .scp-ring{animation:scp-pulse 2.8s ease-out infinite;}',
       '@keyframes scp-pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--scp-tone) 30%, transparent)}70%{box-shadow:0 0 0 6px transparent}100%{box-shadow:0 0 0 0 transparent}}',
-      '.scp-scope{flex:none;display:inline-flex;align-items:center;gap:2px;padding:1px 5px;border:none;border-radius:6px;background:transparent;font:inherit;font-size:10.5px;line-height:1.6;color:var(--scp-muted);cursor:pointer;transition:background-color 120ms ease,color 120ms ease;}',
+      '.scp-scope{flex:none;display:inline-flex;align-items:center;gap:1px;padding:1px 3px;border:none;border-radius:6px;background:transparent;font:inherit;font-size:10.5px;line-height:1.6;color:var(--scp-muted);cursor:pointer;transition:background-color 120ms ease,color 120ms ease;}',
       '.scp-scope:hover{background:var(--scp-surface-2);color:var(--scp-text);}',
       '.scp-scope svg{opacity:.7;}',
       '.scp-case{flex:1 1 auto;min-width:0;padding:0;border:none;background:transparent;font:inherit;font-size:13px;font-weight:600;line-height:1.55;letter-spacing:.005em;text-align:left;color:var(--scp-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;border-radius:6px;}',
       '.scp-case:hover{color:var(--scp-accent);}',
-      '.scp-status-text{flex:none;font-size:11px;line-height:1.6;color:var(--scp-muted);}',
       '.scp-season{flex:none;font-size:11px;color:var(--scp-faint);}',
       '.scp-spacer{flex:1 1 auto;min-width:6px;}',
       '.scp-step{flex:none;font-size:10.5px;font-variant-numeric:tabular-nums;color:var(--scp-muted);}',
-      '.scp-foot{display:flex;align-items:center;gap:9px;min-width:0;padding:0 2px;overflow:hidden;}',
-      '.scp-track{flex:none;display:inline-flex;align-items:center;gap:3px;}',
-      '.scp-tick{width:11px;height:3px;border-radius:2px;background:var(--scp-surface-3);transition:background-color 180ms ease;}',
+      '.scp-foot{display:flex;align-items:center;gap:8px;min-width:0;padding:0 2px;overflow:hidden;}',
+      '.scp-track{flex:none;display:inline-flex;align-items:center;gap:2px;}',
+      '.scp-tick{width:7px;height:3px;border-radius:2px;background:var(--scp-surface-3);transition:background-color 180ms ease;}',
       '.scp-tick[data-state="done"]{background:color-mix(in srgb, var(--scp-tone) 32%, transparent);}',
       '.scp-tick[data-state="now"]{background:var(--scp-tone);}',
-      '.scp-now{font-size:10.5px;line-height:1.6;color:var(--scp-faint);margin-left:3px;font-variant-numeric:tabular-nums;}',
+      '.scp-now{font-size:11px;line-height:1.6;color:var(--scp-muted);margin-left:2px;font-variant-numeric:tabular-nums;}',
       '.scp-meta{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:11px;line-height:1.6;color:var(--scp-muted);white-space:nowrap;}',
-      '.scp-wait{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11.5px;line-height:1.6;color:var(--scp-muted);}',
-      '.scp-wait b{font-weight:500;color:var(--scp-text);}',
+      '.scp-wait{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:1.6;color:var(--scp-text);}',
+      '.scp-wait b{font-weight:600;color:var(--scp-text);}',
+      '.scp-wait-tag{color:var(--scp-muted);font-weight:500;}',
       '.scp-chips{flex:none;display:inline-flex;align-items:center;gap:5px;}',
-      '.scp-chip{flex:none;font-size:10.5px;line-height:1.7;padding:0 6px;border-radius:5px;white-space:nowrap;color:var(--scp-muted);background:var(--scp-surface-2);}',
-      '.scp-chip[data-tone="brand"]{color:var(--scp-accent);background:var(--scp-accent-soft);}',
-      '.scp-chip[data-tone="warn"]{color:var(--scp-warn);background:var(--scp-warn-soft);}',
-      '.scp-chip[data-tone="success"]{color:var(--scp-ok);background:var(--scp-ok-soft);}',
-      '.scp-chip[data-tone="error"]{color:var(--scp-bad);background:var(--scp-bad-soft);}',
-      '.scp-badge{flex:none;font-size:10.5px;line-height:1.6;font-weight:600;padding:1px 7px;border-radius:5px;color:var(--scp-tone);background:color-mix(in srgb, var(--scp-tone) 10%, transparent);}',
+      '.scp-chip{flex:none;font-size:11px;line-height:1.6;padding:0 5px;border-radius:5px;white-space:nowrap;color:var(--scp-muted);background:var(--scp-surface-2);}',
+      '.scp-chip[data-tone="brand"]{color:color-mix(in srgb,var(--scp-accent) 66%,var(--scp-text));background:var(--scp-accent-soft);}',
+      '.scp-chip[data-tone="warn"]{color:color-mix(in srgb,var(--scp-warn) 66%,var(--scp-text));background:var(--scp-warn-soft);}',
+      '.scp-chip[data-tone="success"]{color:color-mix(in srgb,var(--scp-ok) 66%,var(--scp-text));background:var(--scp-ok-soft);}',
+      '.scp-chip[data-tone="error"]{color:color-mix(in srgb,var(--scp-bad) 66%,var(--scp-text));background:var(--scp-bad-soft);}',
+      '.scp-badge{flex:none;font-size:10.5px;line-height:1.6;font-weight:600;padding:1px 7px;border-radius:5px;color:color-mix(in srgb,var(--scp-tone) 66%,var(--scp-text));background:color-mix(in srgb, var(--scp-tone) 9%, transparent);}',
       '.scp-btn{font:inherit;font-size:12.5px;line-height:1.7;padding:3px 10px;border-radius:8px;border:1px solid var(--scp-border);background:var(--scp-surface);color:var(--scp-text);cursor:pointer;white-space:nowrap;transition:background-color 120ms ease,border-color 120ms ease,color 120ms ease;}',
       '.scp-btn:hover{background:var(--scp-surface-2);border-color:var(--scp-border-strong);}',
       '.scp-btn:disabled{opacity:.45;cursor:not-allowed;}',
@@ -1025,15 +1040,19 @@ window.__ModuleLoader__.load({
       '.scp-icon:focus-visible,.scp-collapse:focus-visible,.scp-btn:focus-visible,.scp-tool-btn:focus-visible,.scp-case:focus-visible,.scp-scope:focus-visible,.scp-pal-row:focus-visible,.scp-filter-item:focus-visible,.scp-picker-row:focus-visible{outline:2px solid var(--scp-accent);outline-offset:2px;}',
       '.scp-icon svg{display:block;}',
       '.scp-pin[data-on="true"]{background:var(--scp-accent-soft);color:var(--scp-accent);}',
-      '.scp-collapse{flex:none;display:inline-flex;align-items:center;gap:2px;height:24px;padding:0 6px;border:none;border-radius:7px;background:transparent;color:var(--scp-muted);font:inherit;font-size:11px;line-height:1;cursor:pointer;transition:background-color 120ms ease,color 120ms ease;}',
+      '.scp-collapse{flex:none;display:inline-flex;align-items:center;gap:2px;height:24px;padding:0 4px;border:none;border-radius:7px;background:transparent;color:var(--scp-muted);font:inherit;font-size:11px;line-height:1;cursor:pointer;transition:background-color 120ms ease,color 120ms ease;}',
       '.scp-collapse:hover{background:var(--scp-surface-2);color:var(--scp-text);}',
       '.scp-collapse .scp-chevron{opacity:.7;}',
+      '.scp-collapse-text{display:none;}',
       '.scp-chevron{transition:transform 180ms ease;}',
       '.scp-chevron[data-open="true"]{transform:rotate(180deg);}',
       '.scp-empty-note{font-size:11px;line-height:1.6;color:var(--scp-faint);}',
-      '.scp-pal-notice{margin:0 0 8px;padding:6px 9px;border-radius:8px;border:1px solid color-mix(in srgb, var(--scp-warn) 30%, var(--scp-border));background:var(--scp-warn-soft);color:var(--scp-text);font-size:11.5px;line-height:1.6;}',
+      '.scp-pal-notice{margin:0 0 8px;padding:6px 9px;border-radius:8px;border:1px solid color-mix(in srgb, var(--scp-warn) 30%, var(--scp-border));background:var(--scp-warn-soft);color:var(--scp-text);font-size:11.5px;line-height:1.6;display:flex;align-items:center;gap:10px;}',
+      '.scp-pal-notice-text{flex:1 1 auto;min-width:0;}',
+      '.scp-pal-notice .scp-btn{flex:none;height:24px;padding:0 10px;font-size:var(--scp-fs-label);}',
       '.scp-pal-error{display:flex;align-items:center;gap:10px;padding:18px 22px;color:var(--scp-muted);font-size:12.5px;line-height:1.7;border-top:1px solid var(--scp-border);border-bottom:1px solid var(--scp-border);}',
-      '.scp-pal-error-title{flex:1 1 auto;min-width:0;}',
+      '.scp-pal-error-title{flex:0 1 auto;min-width:0;text-align:center;}',
+      '.scp-pal-error--center{flex-direction:column;justify-content:center;gap:var(--scp-sp-3);border:0;padding:var(--scp-sp-6);}',
       '.scp-hint{padding:2px 4px 0;font-size:11px;line-height:1.6;color:var(--scp-muted);}',
       '.scp-picker{position:absolute;left:8px;bottom:calc(100% + 8px);z-index:45;width:340px;max-height:min(52vh,380px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--scp-border-strong);border-radius:14px;background:var(--scp-surface);box-shadow:var(--scp-shadow);animation:scp-pop 150ms ease-out;}',
       '.scp-picker-head{padding:9px 10px;border-bottom:1px solid var(--scp-border);}',
@@ -1044,12 +1063,14 @@ window.__ModuleLoader__.load({
       '.scp-picker-row{display:flex;align-items:center;gap:8px;width:100%;padding:7px 8px;border:none;border-radius:8px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 100ms ease;}',
       '.scp-picker-row:hover{background:var(--scp-surface-2);}',
       '.scp-picker-row[data-on="true"]{background:var(--scp-accent-soft);}',
+      '.scp-picker-current{flex:none;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);line-height:1;padding:2px 6px;border-radius:4px;color:var(--scp-accent);background:var(--scp-accent-soft);}',
+      '.scp-picker-foot-note{flex:1 1 auto;min-width:0;font-size:var(--scp-fs-label);color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
       '.scp-picker-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px;}',
       '.scp-picker-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;font-weight:550;line-height:1.5;}',
       '.scp-picker-meta{font-size:11px;line-height:1.5;color:var(--scp-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
       '.scp-picker-foot{display:flex;align-items:center;gap:8px;padding:8px 10px;border-top:1px solid var(--scp-border);}',
       '.scp-picker-empty{padding:18px 10px;text-align:center;font-size:11.5px;color:var(--scp-faint);}',
-      '.scp-menu{position:absolute;right:8px;bottom:calc(100% + 8px);z-index:50;width:302px;max-height:min(64vh,540px);overflow:auto;padding:6px;border:1px solid var(--scp-border-strong);border-radius:14px;background:var(--scp-surface);box-shadow:var(--scp-shadow);animation:scp-pop 150ms ease-out;}',
+      '.scp-menu{position:absolute;right:8px;bottom:calc(100% + 8px);z-index:50;width:302px;max-height:min(64vh,540px);overflow:auto;padding:6px;border:1px solid var(--scp-border-strong);border-radius:14px;background:var(--scp-surface);box-shadow:var(--scp-shadow);animation:scp-pop 150ms ease-out;-webkit-mask-image:linear-gradient(180deg,transparent,#000 8px,#000 calc(100% - 12px),transparent);mask-image:linear-gradient(180deg,transparent,#000 8px,#000 calc(100% - 12px),transparent);}',
       '@keyframes scp-pop{from{opacity:0;transform:translateY(6px) scale(.99)}to{opacity:1;transform:none}}',
       '.scp-menu-head{display:flex;align-items:center;justify-content:space-between;padding:2px 6px 6px;}',
       '.scp-menu-title{font-size:11px;line-height:1.7;color:var(--scp-muted);}',
@@ -1058,12 +1079,13 @@ window.__ModuleLoader__.load({
       '.scp-menu-item{display:flex;width:100%;align-items:center;gap:8px;padding:7px 9px;border:none;border-radius:7px;background:transparent;color:var(--scp-text);font:inherit;font-size:12.5px;line-height:1.6;text-align:left;cursor:pointer;transition:background-color 100ms ease;}',
       '.scp-menu-item:hover{background:var(--scp-surface-2);}',
       '.scp-menu-item:disabled{opacity:.45;cursor:not-allowed;}',
+      '.scp-menu-item[data-danger="true"]{color:var(--scp-bad);}',
       '.scp-form{display:flex;flex-direction:column;gap:9px;padding:4px 8px 8px;}',
       '.scp-field{display:flex;flex-direction:column;gap:4px;}',
       '.scp-field-label{font-size:11.5px;line-height:1.6;color:var(--scp-muted);}',
       '.scp-input,.scp-select,.scp-textarea{font:inherit;font-size:12.5px;line-height:1.6;padding:5px 9px;border-radius:8px;border:1px solid var(--scp-border);background:var(--scp-surface-2);color:var(--scp-text);width:100%;}',
       '.scp-input:focus,.scp-select:focus,.scp-textarea:focus{outline:2px solid var(--scp-accent-line);outline-offset:0;}',
-      '.scp-textarea{resize:vertical;min-height:54px;}',
+      '.scp-textarea{resize:vertical;min-height:96px;}',
       '.scp-form-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:4px;}',
       '.scp-form-error{font-size:11.5px;line-height:1.6;color:var(--scp-bad);}',
       '.scp-form-hint{font-size:11px;line-height:1.6;color:var(--scp-muted);}',
@@ -1109,7 +1131,9 @@ window.__ModuleLoader__.load({
 .scp-view-tab[data-on="true"] b{color:var(--scp-accent);}
 .scp-pal .scp-icon{width:28px;height:28px;border-radius:8px;}
 .scp-pal-main{display:flex;min-height:0;flex:1 1 auto;}
-.scp-pal-list{flex:0 0 42%;max-width:400px;min-width:290px;overflow:auto;padding:var(--scp-sp-3);border-right:1px solid var(--scp-border);}
+.scp-pal-main--empty{display:flex;align-items:center;justify-content:center;}
+.scp-pal-main--empty .scp-pal-empty{flex:0 1 auto;}
+.scp-pal-list{flex:0 0 clamp(280px,34%,380px);max-width:380px;min-width:280px;overflow:auto;padding:var(--scp-sp-3);border-right:1px solid var(--scp-border);}
 .scp-search{display:flex;align-items:center;gap:6px;margin:0 0 var(--scp-sp-2);padding:0 10px;height:var(--scp-ctl-h-input);border:1px solid var(--scp-border);border-radius:9px;background:var(--scp-surface);}
 .scp-search input{flex:1;min-width:0;border:0;outline:none;background:transparent;color:var(--scp-text);font:inherit;font-size:var(--scp-fs-body);line-height:1.5;}
 .scp-search input::placeholder{color:var(--scp-faint);}
@@ -1123,14 +1147,15 @@ window.__ModuleLoader__.load({
 .scp-pal-row{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:none;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 120ms ease;}
 .scp-pal-row:hover{background:var(--scp-surface-2);}
 .scp-pal-row[data-on="true"]{background:var(--scp-accent-soft);}
+.scp-pal-row[data-pending="true"]{box-shadow:inset 2px 0 0 var(--scp-warn);}
 .scp-pal-row .scp-ring{width:8px;height:8px;}
 .scp-pal-row-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:4px;}
 .scp-pal-row-line{display:flex;align-items:baseline;gap:8px;min-width:0;}
 .scp-pal-row-meta-main{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.scp-pal-row-time{flex:none;font-size:var(--scp-fs-meta);font-variant-numeric:tabular-nums;color:var(--scp-faint);}
+.scp-pal-row-time{flex:none;font-size:var(--scp-fs-meta);font-variant-numeric:tabular-nums;color:var(--scp-muted);}
 .scp-pal-row-title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--scp-fs-row);font-weight:var(--scp-fw-semi);line-height:var(--scp-lh-base);color:var(--scp-text);}
 .scp-pal-row-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);white-space:nowrap;}
-.scp-pal-row-step{flex:none;font-size:var(--scp-fs-meta);font-weight:var(--scp-fw-medium);font-variant-numeric:tabular-nums;color:var(--scp-faint);}
+.scp-pal-row-step{flex:none;font-size:var(--scp-fs-meta);font-weight:var(--scp-fw-medium);font-variant-numeric:tabular-nums;color:var(--scp-muted);}
 .scp-pal-side{flex:1 1 auto;min-width:0;overflow:auto;padding:var(--scp-sp-5) var(--scp-side-pad-x) 0;display:flex;flex-direction:column;background:var(--scp-surface-2);}
 .scp-pal-side>*:not(.scp-pal-empty){flex:none;}
 .scp-pal-side>.scp-callout{margin-top:var(--scp-sp-3);}
@@ -1145,25 +1170,27 @@ window.__ModuleLoader__.load({
    真机 trace 的 summary 首句常见一两百到七八百字，当标题放大加粗会占掉详情的大半屏；这里把它降到
    正文层级，只让错误码、路径、函数调用走等宽字，靠字符宽度差异而不是字重区分。 */
 .scp-identity{display:flex;align-items:center;gap:6px;flex-wrap:wrap;min-width:0;}
+.scp-pal-titlecase{display:block;margin:0 0 var(--scp-sp-2);font-size:var(--scp-fs-row);font-weight:var(--scp-fw-semi);line-height:var(--scp-lh-base);color:var(--scp-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .scp-identity .scp-badge,.scp-identity .scp-chip{height:20px;padding:0 8px;border-radius:5px;font-size:var(--scp-fs-meta);line-height:1;}
-.scp-identity-meta{margin-left:auto;flex:none;font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);font-variant-numeric:tabular-nums;color:var(--scp-faint);white-space:nowrap;}
+.scp-identity-meta{margin-left:auto;flex:none;font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);font-variant-numeric:tabular-nums;color:var(--scp-muted);white-space:nowrap;}
 .scp-lede{margin:var(--scp-sp-3) 0 0;font-size:var(--scp-fs-row);font-weight:var(--scp-fw-regular);line-height:var(--scp-lh-prose);color:var(--scp-text);overflow-wrap:break-word;display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;}
 .scp-lede[data-open="true"]{display:block;}
-.scp-icode{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-label);line-height:1;padding:1.5px 4px;border-radius:4px;background:var(--scp-surface-3);color:var(--scp-text);overflow-wrap:anywhere;}
+.scp-icode{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:inherit;line-height:inherit;padding:1px 4px;border-radius:4px;background:var(--scp-surface-3);color:var(--scp-text);overflow-wrap:anywhere;}
 .scp-more{display:inline-flex;align-items:center;gap:4px;margin-top:var(--scp-sp-1);padding:0;border:0;background:transparent;font:inherit;font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);line-height:var(--scp-lh-base);color:var(--scp-accent);cursor:pointer;}
 .scp-more:hover{text-decoration:underline;text-underline-offset:2px;}
-.scp-waitline{display:flex;align-items:baseline;gap:8px;margin-top:var(--scp-sp-3);padding:var(--scp-sp-2) 10px;border-radius:8px;background:var(--scp-accent-soft);}
-.scp-waitline-tag{flex:none;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);letter-spacing:.04em;line-height:var(--scp-lh-base);color:var(--scp-accent);}
-.scp-waitline-text{flex:1 1 auto;min-width:0;font-size:var(--scp-fs-body);line-height:var(--scp-lh-prose);color:var(--scp-text);overflow-wrap:break-word;}
+.scp-missing-lead{display:flex;align-items:baseline;gap:var(--scp-sp-2);}
+.scp-missing-tag{flex:none;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);line-height:var(--scp-lh-base);color:var(--scp-accent);}
+.scp-missing-text{flex:1 1 auto;min-width:0;font-size:var(--scp-fs-body);line-height:var(--scp-lh-prose);color:var(--scp-text);overflow-wrap:break-word;}
 .scp-callout{display:flex;flex-direction:column;gap:var(--scp-sp-1);padding:var(--scp-sp-3) var(--scp-sp-4);border-radius:10px;background:var(--scp-accent-soft);border:1px solid var(--scp-accent-line);}
 .scp-callout-label{font-size:var(--scp-fs-label);font-weight:var(--scp-fw-semi);line-height:var(--scp-lh-base);letter-spacing:0;color:var(--scp-accent);}
 .scp-callout-text{font-size:var(--scp-fs-body);font-weight:var(--scp-fw-regular);line-height:var(--scp-lh-prose);color:var(--scp-text);overflow-wrap:anywhere;}
-.scp-section-label{margin:var(--scp-sp-5) 0 var(--scp-sp-2);font-size:var(--scp-fs-label);font-weight:var(--scp-fw-semi);line-height:var(--scp-lh-tight);letter-spacing:.02em;color:var(--scp-muted);}
+.scp-section-label{margin:var(--scp-sp-5) 0 var(--scp-sp-2);font-size:var(--scp-fs-sm);font-weight:var(--scp-fw-semi);line-height:var(--scp-lh-tight);letter-spacing:.02em;color:var(--scp-muted);}
 .scp-check,.scp-upstream,.scp-list-block,.scp-history{display:flex;flex-direction:column;gap:var(--scp-sp-2);padding:var(--scp-sp-3) var(--scp-sp-4);border-radius:10px;background:var(--scp-surface);border:1px solid color-mix(in srgb,var(--scp-border) 72%,transparent);}
 .scp-list-block>.scp-section-label:first-child{margin-top:0;}
 .scp-check-item{display:flex;align-items:center;gap:10px;min-width:0;font-size:var(--scp-fs-body);line-height:var(--scp-lh-base);}
 .scp-check-dot{flex:none;display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1.5px solid var(--scp-border-strong);color:var(--scp-on-accent);font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);line-height:1;}
-.scp-check-item[data-done="true"] .scp-check-dot{background:var(--scp-ok);border-color:var(--scp-ok);}
+.scp-check-item[data-done="true"] .scp-check-dot{background:var(--scp-ok-soft);border-color:color-mix(in srgb,var(--scp-ok) 40%,var(--scp-border-strong));color:var(--scp-ok);}
+.scp-check-item[data-done="true"] .scp-check-label{color:var(--scp-muted);font-weight:var(--scp-fw-regular);}
 .scp-check-item[data-optional="true"] .scp-check-dot{border-style:dashed;}
 .scp-check-item[data-na="true"] .scp-check-dot{opacity:.4;}
 .scp-check-item[data-na="true"] .scp-check-label{color:var(--scp-muted);}
@@ -1198,6 +1225,7 @@ window.__ModuleLoader__.load({
 .scp-history-text{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--scp-text);}
 .scp-history-note{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--scp-faint);}
 .scp-actions{position:sticky;bottom:0;display:flex;flex-wrap:wrap;align-items:center;gap:var(--scp-sp-2);margin:var(--scp-sp-5) calc(-1 * var(--scp-side-pad-x)) 0;padding:var(--scp-sp-3) var(--scp-side-pad-x) var(--scp-sp-4);border-top:1px solid var(--scp-border);background:var(--scp-surface-2);box-shadow:0 -8px 16px -12px color-mix(in srgb,var(--scp-text) 24%,transparent);}
+.scp-actions::before,.scp-sed-actions::before{content:"";position:absolute;left:0;right:0;top:-14px;height:14px;pointer-events:none;background:linear-gradient(to bottom,transparent,var(--scp-surface-2));}
 .scp-pal .scp-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--scp-ctl-h);padding:0 14px;border:1px solid var(--scp-border);border-radius:var(--scp-ctl-r);background:var(--scp-surface);color:var(--scp-text);font:inherit;font-size:var(--scp-fs-sm);font-weight:var(--scp-fw-medium);line-height:1;white-space:nowrap;cursor:pointer;transition:background-color 120ms ease,border-color 120ms ease,color 120ms ease;}
 .scp-pal .scp-btn:hover{background:var(--scp-surface-2);border-color:var(--scp-border-strong);}
 .scp-pal .scp-btn:disabled{opacity:.45;cursor:not-allowed;}
@@ -1211,6 +1239,8 @@ window.__ModuleLoader__.load({
 .scp-pal .scp-cmd{width:min(520px,calc(100% - 32px));max-height:58vh;display:flex;flex-direction:column;border:1px solid var(--scp-border-strong);border-radius:12px;background:var(--scp-surface);box-shadow:var(--scp-shadow);overflow:hidden;}
 .scp-pal .scp-cmd:focus-within{border-color:var(--scp-accent-line);box-shadow:0 0 0 2px var(--scp-accent-line);}
 .scp-pal .scp-cmd input{border:0;border-bottom:1px solid var(--scp-border);outline:none;padding:var(--scp-sp-3) var(--scp-sp-4);font:inherit;font-size:var(--scp-fs-row);background:transparent;color:var(--scp-text);}
+.scp-pal .scp-cmd-where{padding:var(--scp-sp-2) var(--scp-sp-4) 0;font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.scp-pal[data-cmd="true"]>.scp-pal-foot{visibility:hidden;}
 .scp-pal .scp-cmd-list{overflow:auto;padding:6px;}
 .scp-pal .scp-cmd-item{display:flex;align-items:center;gap:8px;width:100%;padding:7px 9px;border:0;border-radius:var(--scp-ctl-r);background:transparent;color:var(--scp-text);font:inherit;font-size:var(--scp-fs-body);line-height:var(--scp-lh-base);text-align:left;cursor:pointer;}
 .scp-pal .scp-cmd-item[data-on="true"]{background:var(--scp-accent-soft);color:var(--scp-accent);}
@@ -1231,6 +1261,7 @@ window.__ModuleLoader__.load({
 .scp-write-side .scp-menu-item:disabled{opacity:.45;cursor:not-allowed;}
 .scp-write-side .scp-form{padding:0;}
 .scp-write-side .scp-form-actions{justify-content:flex-start;padding-top:var(--scp-sp-2);}
+.scp-write-side .scp-textarea{min-height:132px;}
 .scp-link{border:0;background:transparent;padding:0;font:inherit;font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);line-height:var(--scp-lh-base);color:var(--scp-accent);cursor:pointer;text-align:left;overflow-wrap:anywhere;}
 .scp-link:hover{text-decoration:underline;}
 .scp-pal-foot{display:flex;align-items:center;gap:var(--scp-sp-3);min-width:0;padding:10px var(--scp-sp-5);border-top:1px solid var(--scp-border);font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);background:var(--scp-surface);}
@@ -1249,8 +1280,8 @@ window.__ModuleLoader__.load({
 .scp-root[data-tone="idle"]{--scp-tone:var(--scp-idle);}
 .scp-pal button:focus-visible,.scp-view-tab:focus-visible,.scp-check-action:focus-visible,.scp-sed-row:focus-visible,.scp-cmd-item:focus-visible,.scp-pick:focus-visible,.scp-details-toggle:focus-visible,.scp-link:focus-visible{outline:2px solid var(--scp-accent);outline-offset:2px;}
 .scp-pal ::selection{background:var(--scp-accent-line);}
-@container (max-width: 720px){.scp-meta,.scp-chips{display:none;}.scp-case{font-size:12px;}.scp-status-text{display:none;}.scp-collapse-text{display:none;}}
-@media (max-width: 760px){
+@container (max-width: 720px){.scp-meta,.scp-chips{display:none;}.scp-case{font-size:12px;}.scp-collapse-text{display:none;}}
+@media (max-width: 900px){
   .scp-pal{--scp-side-pad-x:16px;}
   .scp-pal-main{flex-direction:column;}
   .scp-pal-list{flex:0 0 auto;max-width:none;min-width:0;max-height:38vh;border-right:none;border-bottom:1px solid var(--scp-border);}
@@ -1339,6 +1370,8 @@ body[data-ds-dark-theme] .scp-veil,[data-theme="dark"] .scp-veil{background:rgba
 .scp-sed-kv-row{display:grid;grid-template-columns:64px 1fr;gap:var(--scp-sp-2);min-width:0;}
 .scp-sed-kv-row dt{font-size:var(--scp-fs-label);color:var(--scp-muted);}
 .scp-sed-kv-row dd{margin:0;color:var(--scp-text);overflow-wrap:anywhere;}
+.scp-sed-link{display:block;margin-top:2px;color:var(--scp-accent);text-decoration:none;overflow-wrap:anywhere;word-break:break-all;}
+.scp-sed-link:hover{text-decoration:underline;}
 .scp-sed-actions{position:sticky;bottom:0;display:flex;align-items:center;gap:var(--scp-sp-2);flex-wrap:wrap;margin:var(--scp-sp-5) calc(-1 * var(--scp-side-pad-x)) 0;padding:var(--scp-sp-3) var(--scp-side-pad-x) var(--scp-sp-4);border-top:1px solid var(--scp-border);background:var(--scp-surface-2);box-shadow:0 -8px 16px -12px color-mix(in srgb,var(--scp-text) 24%,transparent);}
 .scp-sed-hint{font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);color:var(--scp-muted);}
 .scp-sed-history{display:flex;flex-direction:column;gap:6px;width:100%;margin-top:10px;padding-top:var(--scp-sp-2);border-top:1px solid var(--scp-border);}
@@ -1355,24 +1388,24 @@ body[data-ds-dark-theme] .scp-veil,[data-theme="dark"] .scp-veil{background:rgba
 .scp-dock-sed-days{color:var(--scp-warn);font-weight:650;flex:none;font-variant-numeric:tabular-nums;}
 .scp-dock-sed-next{color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
 .scp-dock-sed-open{flex:none;border:0;background:var(--scp-accent-soft);color:var(--scp-accent);font:inherit;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:6px;cursor:pointer;}
-/* 知识库落后提示：琥珀是「欠账」色，沿用现有 warn 变量，不新增全局变量。 */
-.scp-kb-notice{display:flex;align-items:center;gap:8px;min-width:0;padding:3px 6px 3px 9px;border:1px solid color-mix(in srgb,var(--scp-warn) 28%,var(--scp-border));border-radius:9px;background:var(--scp-warn-soft);color:var(--scp-warn);font-size:11px;line-height:1.7;}
-.scp-kb-notice-dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--scp-warn);}
-.scp-kb-notice-main{display:flex;flex-direction:column;gap:1px;min-width:0;}
-.scp-kb-notice-text{font-weight:600;white-space:nowrap;}
-.scp-kb-notice-note{font-size:10.5px;line-height:1.6;color:color-mix(in srgb,var(--scp-warn) 76%,var(--scp-text));white-space:normal;overflow-wrap:anywhere;}
-.scp-kb-notice .scp-btn{flex:none;font-size:11px;line-height:1.7;padding:2px 8px;}
-.scp-kb-notice .scp-kb-go{border-color:color-mix(in srgb,var(--scp-warn) 32%,var(--scp-border));background:var(--scp-surface);color:var(--scp-warn);font-weight:600;}
-.scp-kb-notice .scp-kb-go:hover{background:var(--scp-surface-2);border-color:color-mix(in srgb,var(--scp-warn) 46%,var(--scp-border));}
-.scp-kb-notice .scp-kb-later{color:var(--scp-warn);opacity:.78;}
-.scp-kb-notice .scp-kb-later:hover{background:color-mix(in srgb,var(--scp-warn) 12%,transparent);color:var(--scp-warn);opacity:1;}
-/* 连败上屏：后台检查连续失败或权限拒绝时的一行，与「有更新」不同色。 */
-.scp-kb-error{display:flex;align-items:center;gap:8px;min-width:0;padding:3px 6px 3px 9px;border:1px solid color-mix(in srgb,var(--scp-bad) 24%,var(--scp-border));border-radius:9px;background:var(--scp-bad-soft);color:var(--scp-bad);font-size:11px;line-height:1.7;}
-.scp-kb-error-dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--scp-bad);}
-.scp-kb-error-main{display:flex;min-width:0;}
+/* 知识库落后提示：一行内联提示，不占诊断状态的位置；琥珀是「欠账」色，沿用 warn 变量。 */
+.scp-kb-notice{display:flex;align-items:center;gap:6px;min-width:0;padding:0 2px;color:var(--scp-warn);font-size:11px;line-height:1.6;}
+.scp-kb-notice-dot{flex:none;width:5px;height:5px;border-radius:50%;background:var(--scp-warn);}
+.scp-kb-notice-main{flex:0 1 auto;min-width:0;display:flex;align-items:baseline;gap:6px;overflow:hidden;}
+.scp-kb-notice-text{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.scp-kb-notice-note{font-size:10.5px;line-height:1.6;color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.scp-kb-notice .scp-btn{flex:none;font-size:11px;line-height:1.5;padding:0 4px;border:0;background:transparent;color:var(--scp-warn);font-weight:600;}
+.scp-kb-notice .scp-kb-go:hover{background:var(--scp-warn-soft);}
+.scp-kb-notice .scp-kb-later{color:var(--scp-muted);font-weight:500;}
+.scp-kb-notice .scp-kb-later:hover{background:var(--scp-surface-2);color:var(--scp-text);}
+/* 连败上屏：同样是一行内联提示，用错误色与「有更新」区分。 */
+.scp-kb-error{display:flex;align-items:center;gap:6px;min-width:0;padding:0 2px;color:var(--scp-bad);font-size:11px;line-height:1.6;}
+.scp-kb-error-dot{flex:none;width:5px;height:5px;border-radius:50%;background:var(--scp-bad);}
+.scp-kb-error-main{flex:1 1 auto;min-width:0;display:flex;}
 .scp-kb-error-text{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.scp-kb-error .scp-btn{flex:none;font-size:11px;line-height:1.7;padding:2px 8px;}
-@container (max-width: 720px){.scp-kb-notice,.scp-kb-error{flex-wrap:wrap;}.scp-kb-notice-text,.scp-kb-error-text{white-space:normal;}}
+.scp-kb-error .scp-btn{flex:none;font-size:11px;line-height:1.5;padding:0 4px;border:0;background:transparent;color:var(--scp-bad);font-weight:600;}
+.scp-kb-error .scp-btn:hover{background:var(--scp-bad-soft);}
+@container (max-width: 720px){.scp-kb-notice,.scp-kb-error{flex-wrap:wrap;}.scp-kb-notice-note{display:none;}}
 body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,[data-theme="dark"] .scp-actions,[data-theme="dark"] .scp-sed-actions{box-shadow:0 -8px 16px -12px rgba(0,0,0,.55);}
 @media (max-width:760px){.scp-batch{flex-wrap:wrap;gap:6px 8px;}.scp-batch .scp-spacer{display:none;}.scp-sed-step-label,.scp-sed-step-note{font-size:var(--scp-fs-cap);}.scp-target-row{flex-wrap:wrap;}}`,
     ].join('\n')
@@ -1389,11 +1422,11 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
     const SEDIMENT_STATE_KEYS = ['none', 'submitted', 'knowledge', 'archived']
     const ARCHIVED_ENDING_KEYS = ['not_reproducible', 'duplicate', 'no_diagnosis', 'withdrawn']
     const TONE_VAR = {
-      brand: 'var(--dsw-alias-brand-primary)',
-      success: 'var(--dsw-alias-state-success-primary)',
-      warn: 'var(--dsw-alias-state-warn-primary)',
-      error: 'var(--dsw-alias-state-error-primary)',
-      idle: 'var(--dsw-alias-state-idle-primary)',
+      brand: 'var(--scp-accent)',
+      success: 'var(--scp-ok)',
+      warn: 'var(--scp-warn)',
+      error: 'var(--scp-bad)',
+      idle: 'var(--scp-idle)',
     }
     const REPORT_OUTCOME_TEXT = {
       from_report: { label: '按报告的修复解决', outcome: 'resolved' },
@@ -1463,6 +1496,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       data: null,
       message: '',
       stale: false,
+      lastOkAt: 0,
       staleMessage: '',
       paletteOpen: false,
       paletteSelect: '',
@@ -1527,6 +1561,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         store.phase = 'ready'
         store.message = ''
         store.stale = false
+        store.lastOkAt = Date.now()
         store.staleMessage = ''
         emit()
       } catch (error) {
@@ -1936,6 +1971,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const summary = String((row && row.summary) || '').trim()
       if (summary) {
         const first = summary.split(/[。；;!?！？\n]/)[0].trim()
+        // trace 的 summary 常以「现象：」这类字段名开头；它是数据里的标签，不是标题的一部分。
+        const unlabeled = first.replace(/^(现网现象|现象|问题|背景|症状)\s*[：:]\s*/, '').trim()
+        if (unlabeled) return unlabeled
         if (first) return first
         return summary
       }
@@ -2475,6 +2513,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       return 'groom'
     }
 
+    // 决策枚举是台账里的机器值，展开视图里给人看时换成中文；未知值原样保留。
+    function sedDecisionLabel(value) {
+      const key = String(value || '')
+      if (!key) return tr('label.none')
+      const text = tr('sediment.decisionValue.' + key)
+      return text && text !== 'sediment.decisionValue.' + key ? text : key
+    }
+
     function sedAgeText(draft) {
       const age = draft && draft.ageDays
       if (age === null || age === undefined || Number.isNaN(Number(age))) return tr('sediment.ageUnknown')
@@ -2498,7 +2544,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       return [
         { key: 'draft', label: tr('sediment.stepper.draft'), state: 'done', note: created },
         { key: 'assessed', label: tr('sediment.stepper.assessed'), state: rerun ? 'blocked' : (assessed ? 'done' : (state === 'unassessed' ? 'current' : 'unknown')), note: assessedNote },
-        { key: 'decided', label: tr('sediment.stepper.decided'), state: decisionValid ? 'done' : (state === 'need_decision' ? 'current' : 'unknown'), note: decisionValid && draft.decision ? String(draft.decision) : '' },
+        { key: 'decided', label: tr('sediment.stepper.decided'), state: decisionValid ? 'done' : (state === 'need_decision' ? 'current' : 'unknown'), note: decisionValid && draft.decision ? sedDecisionLabel(draft.decision) : '' },
         { key: 'pr', label: tr('sediment.stepper.pr'), state: pr ? 'done' : (state === 'decided' ? 'current' : 'unknown'), note: pr && pr.number ? '#' + pr.number : '' },
         { key: 'promoted', label: tr('sediment.stepper.promoted'), state: promoted ? 'done' : (prState === 'merged' ? 'current' : 'unknown'), note: prState === 'merged' && !promoted ? tr('sediment.stepper.pending') : '' },
       ]
@@ -2702,6 +2748,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             return h('label', { key: field.name, className: 'scp-field' }, label,
               h('textarea', {
                 className: 'scp-textarea',
+                rows: field.rows || undefined,
                 autoFocus: field === firstVisible,
                 value: values[field.name],
                 placeholder: field.placeholder || '',
@@ -2823,7 +2870,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             options: endingOptions(target.endingChoices),
           },
           {
-            name: 'summary', type: 'textarea', label: tr('form.summary'), required: true,
+            name: 'summary', type: 'textarea', rows: 6, label: tr('form.summary'), required: true,
             value: row.summary || '', placeholder: tr('form.summaryHint'),
           },
         ]
@@ -3080,7 +3127,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             note: (row.activeCase || derived.caseKind === 'case') && !String(feedback.outcome || '').trim()
               ? tr('form.feedbackFirst') : '',
             fields: [
-              { name: 'summary', type: 'textarea', label: tr('form.summary'), required: true, value: row.summary || '', placeholder: tr('form.summaryHint') },
+              { name: 'summary', type: 'textarea', rows: 6, label: tr('form.summary'), required: true, value: row.summary || '', placeholder: tr('form.summaryHint') },
               {
                 name: 'severity', type: 'select', label: tr('form.severity'), required: true,
                 emptyValue: true, placeholder: tr('form.pick'),
@@ -3100,7 +3147,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             kind: 'close:escalated',
             title: tr('close.escalated'),
             fields: [
-              { name: 'summary', type: 'textarea', label: tr('form.summary'), required: true, value: row.summary || '', placeholder: tr('form.summaryHint') },
+              { name: 'summary', type: 'textarea', rows: 6, label: tr('form.summary'), required: true, value: row.summary || '', placeholder: tr('form.summaryHint') },
               { name: 'handedTo', type: 'text', label: tr('form.handedTo'), required: true, hint: tr('form.handedToHint') },
             ],
           }),
@@ -3111,7 +3158,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             kind: 'close:archived',
             title: tr('close.archived'),
             fields: [
-              { name: 'summary', type: 'textarea', label: tr('form.summary'), required: true, value: row.summary || '', placeholder: tr('form.summaryHint') },
+              { name: 'summary', type: 'textarea', rows: 6, label: tr('form.summary'), required: true, value: row.summary || '', placeholder: tr('form.summaryHint') },
               {
                 name: 'ending', type: 'select', label: tr('form.ending'), required: true,
                 options: archivedEndingOptions(),
@@ -3189,6 +3236,22 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       })
 
       const navItems = []
+      const frequentItems = [{
+        key: 'refresh',
+        label: tr('action.refresh'),
+        onSelect: () => {
+          if (onClose) onClose()
+          refresh(true)
+        },
+      }, {
+        key: 'ledger',
+        label: tr('action.ledger'),
+        onSelect: () => {
+          if (onClose) onClose()
+          setPaletteOpen(true, row.sessionId)
+        },
+      }]
+      groups.unshift({ key: 'frequent', title: tr('group.frequent'), items: frequentItems })
       if (store.sessionId) {
         navItems.push({
           key: 'pin',
@@ -3201,24 +3264,6 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           },
         })
       }
-      navItems.push(
-        {
-          key: 'ledger',
-          label: tr('action.ledger'),
-          onSelect: () => {
-            if (onClose) onClose()
-            setPaletteOpen(true, row.sessionId)
-          },
-        },
-        {
-          key: 'refresh',
-          label: tr('action.refresh'),
-          onSelect: () => {
-            if (onClose) onClose()
-            refresh(true)
-          },
-        },
-      )
       if (row.harnessSession) {
         navItems.push({
           key: 'open-origin',
@@ -3234,7 +3279,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           onSelect: () => { if (onClose) onClose(); openSessionWithFlash(resumedSessions[resumedSessions.length - 1], onFlash) },
         })
       }
-      groups.push({ key: 'nav', title: tr('group.nav'), items: navItems })
+      if (navItems.length) groups.push({ key: 'nav', title: tr('group.nav'), items: navItems })
 
       return h('div', {},
         h('div', { className: 'scp-menu-head' },
@@ -3248,6 +3293,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             type: 'button',
             role: 'menuitem',
             className: 'scp-menu-item',
+            'data-danger': item.key === 'close:archived' ? 'true' : undefined,
             disabled: !!item.disabled,
             title: item.disabled ? disabledReason : undefined,
             onClick: item.onSelect,
@@ -3789,7 +3835,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
         function renderKbNotice() {
           if (!kbNotice) return null
-          return h('div', { className: 'scp-kb-notice', role: 'group', 'aria-label': tr('kb.collapsed') },
+          return h('div', { className: 'scp-kb-notice', role: 'group', 'aria-label': tr('kb.collapsed'), title: kbPanel > 0 ? tr('kb.panel') : undefined },
             h('span', { className: 'scp-kb-notice-dot', 'aria-hidden': 'true' }),
             h('span', { className: 'scp-kb-notice-main' },
               h('span', { className: 'scp-kb-notice-text' },
@@ -3916,6 +3962,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const chips = identityChips(primary).slice(0, 3)
         if (s.stale) chips.push({ key: 'stale', tone: 'warn', text: tr('chip.stale') })
         const metaBits = []
+        if (status && status.label) metaBits.push(status.label)
         if (extra.platform) metaBits.push(extra.platform)
         if (extra.framework) metaBits.push(extra.framework)
         if (extra.category) metaBits.push(CATEGORY_LABEL[extra.category] || extra.category)
@@ -3972,6 +4019,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const pickerStyle = pickerOpen ? popoverPlacement(anchor, 160, 380) : null
         const popoverDown = !!((menuStyle && menuStyle.top) || (pickerStyle && pickerStyle.top))
 
+        const scopeLabel = pinned ? tr('scope.pinned')
+          : (bound ? ((data.bound && data.bound.boundBy === 'resume') ? tr('scope.boundResume') : tr('scope.bound')) : tr('scope.recent'))
+
         const picker = pickerOpen ? h('div', {
           className: 'scp-picker',
           role: 'dialog',
@@ -3998,6 +4048,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   type: 'button',
                   className: 'scp-picker-row',
                   'data-on': active ? 'true' : 'false',
+                  'aria-current': active ? 'true' : 'false',
                   onClick: () => {
                     setPin(s.sessionId, row.sessionId)
                     setPickerOpen(false)
@@ -4009,6 +4060,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                     'aria-hidden': 'true',
                     style: { background: TONE_VAR[toneOf(row)] || TONE_VAR.idle },
                   }),
+                  active ? h('span', { className: 'scp-picker-current' }, tr('picker.current')) : null,
                   h('span', { className: 'scp-picker-main' },
                     h('span', { className: 'scp-picker-name' }, caseTitle(row)),
                     h('span', { className: 'scp-picker-meta' },
@@ -4019,7 +4071,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                       formatTime(row.updatedAt) || tr('none'))))
               })),
           h('div', { className: 'scp-picker-foot' },
-            h('button', {
+            h('span', { className: 'scp-picker-foot-note' }, tr('picker.current') + '：' + scopeLabel),
+            pinned ? h('button', {
               type: 'button',
               className: 'scp-btn scp-btn--ghost',
               onClick: () => {
@@ -4027,7 +4080,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 setPickerOpen(false)
                 flash(tr('hint.unpinned'))
               },
-            }, tr('picker.follow')),
+            }, tr('picker.followOff')) : h('span', { className: 'scp-spacer' }),
             h('span', { className: 'scp-spacer' }),
             h('button', { type: 'button', className: 'scp-btn', onClick: () => { setPickerOpen(false); openOverview() } }, tr('picker.open')))) : null
 
@@ -4047,8 +4100,6 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             onDraft: fillDraft,
           })) : null
 
-        const scopeLabel = pinned ? tr('scope.pinned')
-          : (bound ? ((data.bound && data.bound.boundBy === 'resume') ? tr('scope.boundResume') : tr('scope.bound')) : tr('scope.recent'))
 
         if (collapsed) {
           return h('section', Object.assign({}, rootProps, {
@@ -4098,7 +4149,6 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 'aria-label': tr('action.ledger') + '：' + caseTitle(primary),
                 onClick: openOverview,
               }, caseTitle(primary)),
-              h('span', { className: 'scp-status-text' }, status.label),
               collapsed ? h('span', { className: 'scp-step' }, flashStep ? '第 ' + flashStep + ' 步' : stepsShort(extra)) : null,
               h('span', { className: 'scp-spacer' }),
               h('button', { type: 'button', className: 'scp-btn scp-btn--quiet', onClick: runPrimary }, action.label),
@@ -4116,8 +4166,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               StepRail({ extra }),
               metaBits.length ? h('span', { className: 'scp-meta', title: metaBits.join(' · ') }, metaBits.join(' · ')) : null,
               h('span', { className: 'scp-wait', title: waiting }, waiting
-                ? h('span', {}, tr('waiting') + '：', h('b', {}, waiting))
-                : h('span', {}, tr('label.updated') + ' ' + (formatTime(primary.updatedAt) || tr('none')))),
+                ? [h('span', { key: 'tag', className: 'scp-wait-tag' }, tr('waiting') + '：'), h('b', { key: 'text' }, waiting)]
+                : h('span', { className: 'scp-wait-tag' }, tr('label.updated') + ' ' + (formatTime(primary.updatedAt) || tr('none')))),
               chips.length ? h('span', { className: 'scp-chips' }, chips.map((chip) => h('span', {
                 key: chip.key, className: 'scp-chip', 'data-tone': chip.tone,
               }, chip.text))) : null),
@@ -4754,7 +4804,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         items.push({ label: tr('copy.issue'), run: () => copyAndFlash(issueText(target)) })
         items.push({ label: tr('action.viewReport'), run: () => toggleReport(target) })
         if (target.activeCase) items.push({ label: tr('action.upstream'), run: () => fillDraft(upstreamDraft(target, data.upstream)) })
-        if (target.activeCase || isPending(target)) {
+        if ((target.activeCase || isPending(target)) && primary.key !== 'feedback') {
           items.push({ label: tr('action.feedback'), run: () => { setMenuForm('feedback'); setMenuOpen(true) } })
         }
         if (canStartSediment(target)) {
@@ -4788,7 +4838,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
       const emptyMark = h('svg', {
         width: 40, height: 40, viewBox: '0 0 40 40', fill: 'none', stroke: 'currentColor',
-        strokeWidth: 1.2, 'aria-hidden': 'true', opacity: 0.55,
+          strokeWidth: 1.2, 'aria-hidden': 'true', opacity: 0.35,
       }, h('circle', { cx: 20, cy: 20, r: 13, strokeDasharray: '3 4' }),
         h('path', { d: 'M14 20h12M20 14v12', strokeLinecap: 'round' }))
 
@@ -4809,12 +4859,12 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               const metaPieces = []
               if (extra.platform) metaPieces.push(extra.platform)
               if (extra.framework) metaPieces.push(extra.framework)
-              if (extra.excludedCases && extra.excludedCases.length) metaPieces.push(tr('chip.excluded', { n: extra.excludedCases.length }))
               return h('button', {
                 key: item.sessionId,
                 type: 'button',
                 className: 'scp-pal-row',
                 'aria-current': index === selected ? 'true' : 'false',
+                'data-pending': isPending(item) ? 'true' : 'false',
                 'data-on': index === selected ? 'true' : 'false',
                 style: { '--scp-tone': TONE_VAR[toneOf(item)] || TONE_VAR.idle },
                 onClick: () => { selectIndex(index); setMenuOpen(false) },
@@ -4918,6 +4968,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             onDraft: fillDraft,
           }))
           : h('div', { className: 'scp-pal-side', style: { '--scp-tone': TONE_VAR[toneOf(row)] || TONE_VAR.brand } },
+            h('div', { className: 'scp-pal-titlecase', title: caseTitle(row) }, caseTitle(row)),
             h('div', { className: 'scp-identity' },
               h('span', { className: 'scp-badge' }, statusMeta(data.vocab, row.status).label),
               identityChips(row).slice(0, 3).map((chip) => h('span', {
@@ -4938,25 +4989,25 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               'aria-expanded': ledeOpen ? 'true' : 'false',
               onClick: () => setLedeOpenId(ledeOpen ? '' : row.sessionId),
             }, ledeOpen ? tr('lede.collapse') : tr('lede.expand')) : null,
-            waiting ? h('div', { className: 'scp-waitline' },
-              h('span', { className: 'scp-waitline-tag' }, tr('label.waiting')),
-              h('span', { className: 'scp-waitline-text' }, inlineTokens(waiting))) : null,
+            (waiting || showMaterials) ? h('div', { key: 'missing' },
+              h('div', { className: 'scp-section-label' }, tr('section.missing')),
+              h('div', { className: 'scp-list-block' },
+                waiting ? h('div', { className: 'scp-missing-lead' },
+                  h('span', { className: 'scp-missing-tag' }, tr('label.waiting')),
+                  h('span', { className: 'scp-missing-text' }, inlineTokens(waiting))) : null,
+                materials.length
+                  ? materials.map((item, index) => h('div', { key: 'mat-' + index, className: 'scp-material-row' }, item))
+                  : h('div', { className: 'scp-mono' }, tr('materials.none')),
+                h('div', { className: 'scp-upstream-row' },
+                  h('button', {
+                    type: 'button', className: 'scp-check-action',
+                    onClick: () => copyAndFlash(materialText(row)),
+                  }, tr('action.copyMaterials')),
+                  h('button', {
+                    type: 'button', className: 'scp-check-action',
+                    onClick: () => fillDraft(materialResumeDraft(row)),
+                  }, tr('action.materialResume'))))) : null,
             diagSedBlock,
-            showMaterials ? h('div', { className: 'scp-section-label' }, tr('section.materials')) : null,
-            showMaterials ? h('div', { className: 'scp-list-block' },
-              h('div', { className: 'scp-check-state' }, tr('materials.hint')),
-              materials.length
-                ? materials.map((item, index) => h('div', { key: 'mat-' + index, className: 'scp-material-row' }, item))
-                : h('div', { className: 'scp-mono' }, waiting),
-              h('div', { className: 'scp-upstream-row' },
-                h('button', {
-                  type: 'button', className: 'scp-check-action',
-                  onClick: () => copyAndFlash(materialText(row)),
-                }, tr('action.copyMaterials')),
-                h('button', {
-                  type: 'button', className: 'scp-check-action',
-                  onClick: () => fillDraft(materialResumeDraft(row)),
-                }, tr('action.materialResume')))) : null,
             checklist.length ? h('div', { className: 'scp-section-label' }, tr('section.checklist')) : null,
             checklist.length ? h('div', { className: 'scp-check' }, checklist.map((item) => h('div', {
               key: item.key,
@@ -5097,18 +5148,21 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   title: data.capabilities && data.capabilities.canWrite ? tr('hint.undo') : tr('hint.readonly'),
                   onClick: () => undoClose(row),
                 }, tr('action.undoClose'))) : null),
-            h('div', { className: 'scp-actions' },
-              h('button', {
-                type: 'button',
-                className: 'scp-btn scp-btn--primary',
-                onClick: () => runPrimary(row),
-              }, primaryFor(row, data.bound && row.sessionId === data.bound.sessionId).label),
-              h('button', { type: 'button', className: 'scp-btn', onClick: () => copyAndFlash(summaryText(row, data)) }, tr('action.copySummary')),
-              h('button', { type: 'button', className: 'scp-btn scp-btn--ghost', onClick: () => setMenuOpen(true) }, tr('action.more'))))
-        : h('div', { className: 'scp-pal-side' },
+            (() => {
+              const rowAction = primaryFor(row, data.bound && row.sessionId === data.bound.sessionId)
+              return h('div', { className: 'scp-actions' },
+                h('button', {
+                  type: 'button',
+                  className: 'scp-btn scp-btn--primary',
+                  onClick: () => runPrimary(row),
+                }, rowAction.label),
+                rowAction.key === 'copy' ? null : h('button', { type: 'button', className: 'scp-btn', onClick: () => copyAndFlash(summaryText(row, data)) }, tr('action.copySummary')),
+                h('button', { type: 'button', className: 'scp-btn scp-btn--ghost', onClick: () => setMenuOpen(true) }, tr('action.more')))
+            })())
+        : (data && filtered.length === 0 ? null : h('div', { className: 'scp-pal-side' },
           h('div', { className: 'scp-pal-empty' },
             emptyMark,
-            !data ? tr('palette.loading') : tr('palette.empty')))
+            !data ? tr('palette.loading') : tr('palette.empty'))))
 
       // ── 沉淀视图的渲染件 ────────────────────────────────────────────────
       function openPrompt(kind, resume) {
@@ -5749,7 +5803,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                             ? h('span', { className: 'scp-chip', 'data-tone': 'accent' }, tr('sediment.checking'))
                             : null),
                         draft.decision
-                          ? h('span', {}, draft.decision)
+                          ? h('span', {}, sedDecisionLabel(draft.decision))
                           : (draft.novelty ? h('span', {}, draft.novelty + (draft.confidence ? ' · ' + draft.confidence : '')) : null),
                         draft.source && draft.source.sessionId
                           ? h('span', {}, draft.source.sessionId)
@@ -5786,8 +5840,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           : String(sedPick.next.label))
         : tr('sediment.batch.none')
       const sedSideInner = !sedPick
-        ? h('div', { className: 'scp-pal-empty' },
-          h('span', {}, sedDoc ? tr('sediment.empty') : tr('palette.loading')))
+        ? (sedDoc && sedSorted.length === 0 ? null : h('div', { className: 'scp-pal-empty' },
+          h('span', {}, sedDoc ? tr('sediment.empty') : tr('palette.loading'))))
         : (() => {
           const blocks = []
           blocks.push(h('div', { className: 'scp-list-block' },
@@ -5799,7 +5853,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           const assessmentRows = [
             h('div', { key: 'suggestion', className: 'scp-sed-kv-row' },
               h('dt', {}, tr('sediment.detail.suggestion')),
-              h('dd', {}, [sedPick.novelty || '-', sedPick.confidence || '', sedPick.candidate ? '(' + sedPick.candidate + ')' : ''].filter(Boolean).join(' '))),
+              h('dd', {}, [sedPick.novelty ? sedDecisionLabel(sedPick.novelty) : tr('label.none'), sedPick.confidence || '', sedPick.candidate ? '(' + sedPick.candidate + ')' : ''].filter(Boolean).join(' '))),
           ]
           if (sedPick.rationale) {
             assessmentRows.push(h('div', { key: 'rationale', className: 'scp-sed-kv-row' },
@@ -5820,7 +5874,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           const decisionRows = []
           if (sedPick.decisionValid) {
             decisionRows.push(h('div', { key: 'decision', className: 'scp-sed-kv-row' },
-              h('dt', {}, tr('sediment.detail.decisionValue')), h('dd', {}, sedPick.decision || '-')))
+              h('dt', {}, tr('sediment.detail.decisionValue')), h('dd', {}, sedDecisionLabel(sedPick.decision))))
             if (sedPick.decisionBy) {
               decisionRows.push(h('div', { key: 'by', className: 'scp-sed-kv-row' },
                 h('dt', {}, ''), h('dd', {}, sedPick.decisionBy + (sedPick.decisionAt ? ' · ' + sedPick.decisionAt : ''))))
@@ -5846,14 +5900,16 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             ? tr('sediment.detail.lastChecked') + ' ' + (formatTime(sedPick.pr.checkedAt) || sedPick.pr.checkedAt)
             : ''
           const prText = sedPick.pr
-            ? '#' + sedPick.pr.number + ' · ' + prStateLabel + ' · ' + prSourceLabel
-              + (sedPick.pr.url ? ' · ' + sedPick.pr.url : '') + (prChecked ? ' · ' + prChecked : '')
+            ? ['#' + sedPick.pr.number, prStateLabel, prSourceLabel, prChecked].filter(Boolean).join(' · ')
             : tr('sediment.detail.noPr')
+          const prUrl = sedPick.pr && sedPick.pr.url ? String(sedPick.pr.url) : ''
           blocks.push(h('div', { className: 'scp-list-block' },
             h('div', { className: 'scp-section-label' }, tr('sediment.detail.promotion')),
             h('div', { className: 'scp-sed-kv' },
               h('div', { className: 'scp-sed-kv-row' }, h('dt', {}, tr('sediment.detail.case')), h('dd', {}, landing)),
-              h('div', { className: 'scp-sed-kv-row' }, h('dt', {}, tr('sediment.detail.pr')), h('dd', {}, prText)))))
+              h('div', { className: 'scp-sed-kv-row' }, h('dt', {}, tr('sediment.detail.pr')),
+                h('dd', {}, prText,
+                  prUrl ? h('a', { className: 'scp-sed-link', href: prUrl, target: '_blank', rel: 'noopener noreferrer' }, prUrl) : null)))))
 
           const prRowBusy = checkBusy === sedPick.key || checkBusy === '__all__'
           const prActionButtons = sedPick.pr ? [
@@ -6156,8 +6212,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               onClick: () => setManualOpen(false),
             }, tr('sediment.prompt.cancel'))))) : null
 
-      const subParts = [tr('palette.count', { n: rows.length })]
-      if (Number(counts.pendingFeedback) > 0) subParts.push(tr('queue.pending', { n: Number(counts.pendingFeedback) }))
+      const subParts = loadFailed || !data
+        ? [tr('palette.loadFailed')]
+        : [tr('palette.count', { n: rows.length })]
+      if (data && Number(counts.pendingFeedback) > 0) subParts.push(tr('queue.pending', { n: Number(counts.pendingFeedback) }))
 
       return h('div', {
         className: 'scp-pal-backdrop',
@@ -6173,6 +6231,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           tabIndex: -1,
           ref: panelRef,
           'data-version': PLUGIN_VERSION,
+          'data-cmd': cmdOpen ? 'true' : 'false',
         },
           h('div', { className: 'scp-pal-top' },
             h('div', { className: 'scp-pal-heading' },
@@ -6187,7 +6246,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 'aria-selected': view === 'diagnosis' ? 'true' : 'false',
                 'data-on': view === 'diagnosis' ? 'true' : 'false',
                 onClick: () => setPaletteView('diagnosis'),
-              }, tr('palette.view.diagnosis'), h('b', {}, String(rows.length))),
+              }, tr('palette.view.diagnosis'), h('b', {}, loadFailed || !data ? '—' : String(rows.length))),
               h('button', {
                 type: 'button', role: 'tab',
                 className: 'scp-view-tab',
@@ -6200,15 +6259,21 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               onClick: () => setPaletteOpen(false),
             }, IconClose())),
           s.stale ? h('div', { className: 'scp-pal-notice', role: 'status', title: s.staleMessage || '' },
-            tr('hint.stale')) : null,
-          loadFailed ? h('div', { className: 'scp-pal-error' },
-            h('div', { className: 'scp-pal-error-title' }, tr('palette.unavailable', { message: (s.data && s.data.message) || s.message || '' })),
-            h('button', { type: 'button', className: 'scp-btn', onClick: () => refresh(true) }, tr('action.retry'))) : null,
+            h('span', { className: 'scp-pal-notice-text' }, tr('hint.stale', { time: formatTime(store.lastOkAt) || tr('none') })),
+            h('button', { type: 'button', className: 'scp-btn scp-btn--ghost', onClick: () => refresh(true) }, tr('action.refresh'))) : null,
           loadFailed ? null : sedBatch,
           loadFailed ? null : diagBatch,
-          loadFailed ? null : h('div', { className: 'scp-pal-main' }, view === 'sediment' ? sedList : list, view === 'sediment' ? sedSide : side),
+          loadFailed
+            ? h('div', { className: 'scp-pal-main scp-pal-main--empty' },
+              h('div', { className: 'scp-pal-error scp-pal-error--center' },
+                h('div', { className: 'scp-pal-error-title' }, tr('palette.unavailable', { message: (s.data && s.data.message) || s.message || '' })),
+                h('button', { type: 'button', className: 'scp-btn', onClick: () => refresh(true) }, tr('action.retry'))))
+            : view === 'diagnosis' && rows.length === 0
+              ? h('div', { className: 'scp-pal-main scp-pal-main--empty' },
+                h('div', { className: 'scp-pal-empty' }, emptyMark, tr('palette.empty')))
+              : h('div', { className: 'scp-pal-main' }, view === 'sediment' ? sedList : list, view === 'sediment' ? sedSide : side),
           h('div', { className: 'scp-pal-foot' },
-            h('span', { className: 'scp-foot-hints' },
+            loadFailed ? null : h('span', { className: 'scp-foot-hints' },
               h('span', { className: 'scp-kbd' }, '↑'),
               h('span', { className: 'scp-kbd' }, '↓'),
               ' 选择 · ',
@@ -6221,13 +6286,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('span', { className: 'scp-kbd' }, 'Esc'),
               ' 关闭'),
             h('span', { className: 'scp-spacer' }),
-            h('span', { className: 'scp-foot-note' }, view === 'sediment'
-              ? sedTargetHint
-              : [
-                tr('queue.open', { n: Number(counts.open) || 0 }),
-                tr('queue.pending', { n: Number(counts.pendingFeedback) || 0 }),
-                tr('queue.sediment', { n: Number(counts.toSediment) || 0 }),
-              ].join(' · ')),
+            view === 'sediment' ? h('span', { className: 'scp-foot-note' }, sedTargetHint) : null,
             h('span', { className: 'scp-version' }, 'v' + PLUGIN_VERSION)),
           promptModal,
           targetModal,
@@ -6237,6 +6296,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             onMouseDown: (event) => { if (event.target === event.currentTarget) setCmdOpen(false) },
           },
             h('div', { className: 'scp-cmd', role: 'dialog', 'aria-modal': 'true', 'aria-label': tr('cmd.placeholder') },
+              h('div', { className: 'scp-cmd-where' }, tr('cmd.where') + (row ? caseTitle(row) : '')),
               h('input', {
                 ref: cmdInputRef, value: cmdQuery, placeholder: tr('cmd.placeholder'),
                 role: 'combobox', 'aria-expanded': 'true', 'aria-controls': 'scp-cmd-list',

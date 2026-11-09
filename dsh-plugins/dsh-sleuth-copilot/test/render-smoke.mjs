@@ -1329,7 +1329,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const t = await mount('recent')
   click(findToolbar(t.view()))
   const view = await t.settle()
-  expect('材料：出现「在等材料」', view.text.includes('在等材料'))
+  expect('材料：出现「还缺什么」', view.text.includes('还缺什么'))
   expect('材料：列出 trace 记的缺口', view.text.includes('device-side plog'))
   click(findButton(view, '复制清单'))
   await t.settle()
@@ -1377,6 +1377,10 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   pressKey('k', { metaKey: true })
   const cmdView = await t.settle()
   expect('命令面板：⌘K 打开', byClass(cmdView, 'scp-cmd').length === 1)
+  expect('命令面板：说明作用于哪一单',
+    byClass(cmdView, 'scp-cmd-where').length === 1
+      && nodeText(byClass(cmdView, 'scp-cmd-where')[0]).includes('作用于'),
+  nodeText(byClass(cmdView, 'scp-cmd-where')[0] || {}))
   click(findButton(cmdView, '复制为 issue 文本'))
   await t.settle()
   expect('命令面板：执行复制', copied[copied.length - 1].includes('标题：'))
@@ -1531,9 +1535,12 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('详情抬头：展开后给收起入口', byClass(open, 'scp-lede')[0].props['data-open'] === 'true'
     && !!findButton(open, '收起全文'))
   expect('详情抬头：背景只出现一处', byClass(open, 'scp-p').length === 0)
-  expect('详情抬头：在等做成一条窄行', byClass(open, 'scp-waitline').length === 1
-    && nodeText(byClass(open, 'scp-waitline')[0]).includes('在等'),
-  byClass(open, 'scp-waitline').length + ' / ' + nodeText(byClass(open, 'scp-waitline')[0] || {}))
+  expect('详情抬头：顶部有案例标题锚点', byClass(open, 'scp-pal-titlecase').length === 1
+    && nodeText(byClass(open, 'scp-pal-titlecase')[0]).includes('vllm-ascend'),
+  String(byClass(open, 'scp-pal-titlecase').length))
+  expect('详情抬头：在等并入「还缺什么」块', byClass(open, 'scp-missing-lead').length === 1
+    && nodeText(byClass(open, 'scp-missing-lead')[0]).includes('在等'),
+  byClass(open, 'scp-missing-lead').length + ' / ' + nodeText(byClass(open, 'scp-missing-lead')[0] || {}))
 }
 
 {
@@ -1636,6 +1643,14 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(findButton(view, '复制结论摘要'))
   await t.settle()
   expect('复制摘要：写进剪贴板', copied.length === before + 1 && copied[copied.length - 1].includes('诊断 ' + ID))
+}
+
+{
+  const t = await mount('closed')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  const copyButtons = view.nodes.filter((node) => node.type === 'button' && nodeText(node) === '复制结论摘要')
+  expect('终态单：底部只有一个复制摘要按钮', copyButtons.length === 1, String(copyButtons.length))
 }
 
 {
