@@ -730,12 +730,13 @@ async function mount(mode, options) {
   }
   // 侧栏 shell 的整页切换服务。宿主不把它写进必需依赖，靠 ctx.get 探针 + ctx.inject 动态注册：
   // opts.noLayout 模拟服务缺席（探针与回调都拿不到），opts.layoutScopeMissing 模拟回调触发但
-  // 子 scope 取不到。
+  // 子 scope 取不到，opts.layoutDeferred 模拟服务晚于 apply 就绪（回调先记下，用例手动触发）。
   const layoutHost = {
     selectPanel(id) {
       selectedPanels.push(String(id))
     },
   }
+  const deferredInjects = []
   const ctx = {
     effect(fn) {
       const cleanup = fn()
@@ -744,11 +745,16 @@ async function mount(mode, options) {
     inject(deps, callback) {
       if (!Array.isArray(deps) || deps.indexOf('layout') < 0) return
       if (opts.noLayout) return
-      callback({
+      const fire = () => callback({
         get(name) {
           return name === 'layout' && !opts.layoutScopeMissing ? layoutHost : undefined
         },
       })
+      if (opts.layoutDeferred) {
+        deferredInjects.push(fire)
+        return
+      }
+      fire()
     },
     get(name) {
       if (name === 'connection') {
@@ -758,8 +764,10 @@ async function mount(mode, options) {
               rpcCalls.push({ endpoint, args })
               if (endpoint === 'copilot-state') return { ok: true, value: payload }
               if (endpoint === 'copilot-kb-dismiss') {
-                if (opts.kbDismissError) throw new Error('主检出不可写，没记上这一版')
-                return { ok: true, value: { rev: args && args.rev ? String(args.rev) : '' } }
+                if (opts.kbDismissError) throw new Error('状态文件不可写，没记上这一版')
+                const rev = args && args.rev ? String(args.rev) : ''
+                // host 写不进本地状态文件时回 saved:false：这次只记在内存里，客户端不该收起行。
+                return { ok: true, value: { rev, saved: opts.dismissSaved === false ? false : true } }
               }
               if (endpoint === 'copilot-kb-recheck') {
                 // 复查端点的替身：默认返回「已没有落后」；用例可用 opts.onKbRecheck 改 state，
@@ -823,9 +831,9 @@ async function mount(mode, options) {
         }
       }
       if (name === 'slots') return slots
-      // 探针路径：服务在时直接拿得到；noLayout / layoutScopeMissing 两条降级路径都返回 undefined。
+      // 探针路径：服务在时直接拿得到；noLayout / layoutScopeMissing / layoutDeferred 都先拿不到。
       if (name === 'layout') {
-        return opts.noLayout || opts.layoutScopeMissing ? undefined : layoutHost
+        return opts.noLayout || opts.layoutScopeMissing || opts.layoutDeferred ? undefined : layoutHost
       }
       // 只有显式给了 opts.sessionsHost 才装会话服务：默认没有它，才能继续验「没有切会话接口」的降级。
       if (name === 'sessions' && opts.sessionsHost) {
@@ -901,6 +909,11 @@ async function mount(mode, options) {
       const release = releaseCheckAllGate
       releaseCheckAllGate = null
       release()
+    },
+    // 触发一次延迟注册的 layout 回调（opts.layoutDeferred 时由用例调）。
+    fireLayoutInject() {
+      const fire = deferredInjects.shift()
+      if (typeof fire === 'function') fire()
     },
     lastTransition() {
       const calls = rpcCalls.filter((call) => call.endpoint === 'copilot-transition')
@@ -3003,7 +3016,7 @@ const KB_NOTICE = {
 }
 
 {
-  // 稍后写失败：提示行保留，flash 说明没记上（否则重开页面还会提示同一版）。
+  // 稍后写失败（RPC 抛错）：提示行保留，flash 说明没记上（否则重开页面还会提示同一版）。
   const t = await mount('recent', {
     kbNotice: KB_NOTICE,
     kbDismissError: true,
@@ -3015,7 +3028,23 @@ const KB_NOTICE = {
   view = await t.settle()
   expect('稍后失败：提示行保留', byClass(view, 'scp-kb-notice').length === 1, view.text.slice(0, 300))
   expect('稍后失败：flash 说明没记上',
-    view.text.includes('稍后没记上：主检出可能不可写。'), view.text.slice(0, 400))
+    view.text.includes('稍后没记上：本地状态文件写不进去。'), view.text.slice(0, 400))
+}
+
+{
+  // 状态文件写不进去时 host 回 saved:false（内存里记了、落盘没成）：同样当失败，行不收起。
+  const t = await mount('recent', {
+    kbNotice: KB_NOTICE,
+    dismissSaved: false,
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  let view = t.view()
+  click(findButton(view, '稍后'))
+  view = await t.settle()
+  view = await t.settle()
+  expect('稍后未落盘：提示行保留', byClass(view, 'scp-kb-notice').length === 1, view.text.slice(0, 300))
+  expect('稍后未落盘：flash 说明没记上',
+    view.text.includes('稍后没记上：本地状态文件写不进去。'), view.text.slice(0, 400))
 }
 
 {
@@ -3158,6 +3187,27 @@ const KB_NOTICE = {
   expect('去同步：子 scope 没有 layout 时给出装面板指引',
     view.text.includes('没找到 Ascend Sleuth 整页'), view.text.slice(-400))
   expect('去同步：子 scope 没有 layout 时不切页', t.selectedPanels.length === 0, JSON.stringify(t.selectedPanels))
+}
+
+{
+  // layout 晚于 apply 就绪：注册回调先记下，触发前点一次只得到装面板指引，触发后再点能切页。
+  const t = await mount('recent', {
+    kbNotice: KB_NOTICE,
+    layoutDeferred: true,
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  let view = t.view()
+  click(findButton(view, '去同步'))
+  view = await t.settle()
+  expect('延迟注册：注册前只给装面板指引',
+    view.text.includes('没找到 Ascend Sleuth 整页'), view.text.slice(-400))
+  expect('延迟注册：注册前不切页', t.selectedPanels.length === 0, JSON.stringify(t.selectedPanels))
+  t.fireLayoutInject()
+  view = await t.settle()
+  click(findButton(view, '去同步'))
+  view = await t.settle()
+  expect('延迟注册：回调触发后能切到 Ascend Sleuth 整页',
+    t.selectedPanels.includes('ascend-sleuth-console'), JSON.stringify(t.selectedPanels))
 }
 
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')

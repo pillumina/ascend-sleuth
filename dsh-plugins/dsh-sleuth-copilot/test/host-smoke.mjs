@@ -308,6 +308,7 @@ function readKbState() {
 function makeHarness(ctxExtra) {
   let route = null
   const effects = []
+  const injected = []
   // 默认可写档位：真机上 sandbox-policy 服务总在；这里只给一个稳定的 workspace-write，
   // 让写断言走的是「档位可写」这条分支。传 sandboxPolicy: undefined 可以模拟解析不出的情形。
   const defaultPolicy = { resolve: () => ({ mode: 'workspace-write', workspaceRoot: SANDBOX }) }
@@ -328,6 +329,19 @@ function makeHarness(ctxExtra) {
       },
     },
   }
+  // timer 替身走可选注入：只有 harness 显式给了 ctxExtra.timer 才注册到注入上下文。
+  const timerService = ctxExtra && ctxExtra.timer
+  const timerCtx = timerService ? {
+    timer: timerService,
+    get(name) {
+      return name === 'timer' ? timerService : undefined
+    },
+    effect(fn) {
+      const cleanup = fn()
+      if (typeof cleanup === 'function') effects.push(cleanup)
+      return cleanup
+    },
+  } : null
   const ctx = Object.assign({
     effect(fn) {
       const cleanup = fn()
@@ -346,11 +360,22 @@ function makeHarness(ctxExtra) {
       if (ctxExtra && ctxExtra[name] !== undefined) return ctxExtra[name]
       return undefined
     },
-    inject(_services, callback) {
-      callback(webCtx)
+    // 按 services 分支：webServer 给 webCtx；timer 有替身才回调；其余服务不回调（真宿主会等待）。
+    inject(services, callback) {
+      const names = Array.isArray(services) ? services : Object.keys(services || {})
+      const fiber = {
+        disposed: false,
+        dispose() {
+          fiber.disposed = true
+        },
+      }
+      injected.push({ services: names, fiber })
+      if (names.indexOf('webServer') >= 0) callback(webCtx)
+      else if (names.indexOf('timer') >= 0 && timerCtx) callback(timerCtx)
+      return fiber
     },
   }, {})
-  return { ctx, webCtx, getRoute: () => route, effects }
+  return { ctx, webCtx, getRoute: () => route, effects, injected }
 }
 
 function makeRequest(body, url) {
@@ -1108,28 +1133,34 @@ expect('非检出：E_NO_ROOT', outsideState.envelope.result.value.ok === false 
 // 提交的去重与状态文件。假 timer 由用例点火，不挂真实定时器（进程不会被定时器拖住）。
 const kbHarnesses = []
 let kbTimers = null
+let kbTimerHarness = null
 
 function newKbHarness(payload, withTimers) {
   const shell = makeKbShell()
   shell.setPayload(payload)
-  const harness = makeHarness({ shell })
+  const options = { shell }
   if (withTimers) {
     kbTimers = makeFakeTimers()
-    harness.ctx.timeout = kbTimers.timeout
-    harness.ctx.interval = kbTimers.interval
+    options.timer = kbTimers
   }
+  const harness = makeHarness(options)
   kbHarnesses.push(harness)
   mod.apply(harness.ctx)
   return { harness, shell }
 }
 
 {
-  expect('知识库：inject 带上 timer 服务',
-    Array.isArray(mod.inject) && mod.inject.includes('connection') && mod.inject.includes('timer'),
+  // timer 是可选的：导出只声明 connection，装定时器靠 ctx.inject(['timer'])。
+  expect('知识库：inject 不带 timer（可选注入）',
+    Array.isArray(mod.inject) && mod.inject.length === 1 && mod.inject[0] === 'connection',
     JSON.stringify(mod.inject))
 
   // ① 落后 3 个提交、含 1 处面板代码：启动检查跑完，copilot-state 带 kbNotice。
   const first = newKbHarness(kbPayload({}), true)
+  kbTimerHarness = first.harness
+  expect('知识库：可选注入拿到 timer 替身',
+    first.harness.injected.some((item) => item.services.indexOf('timer') >= 0),
+    JSON.stringify(first.harness.injected.map((item) => item.services)))
   expect('知识库：启动检查 3 秒后跑、周期 30 分钟',
     kbTimers.timeouts.length === 1 && kbTimers.timeouts[0].ms === 3000
     && kbTimers.intervals.length === 1 && kbTimers.intervals[0].ms === 30 * 60 * 1000,
@@ -1197,7 +1228,9 @@ function newKbHarness(payload, withTimers) {
   const dismissFirst = (await kbRpc(first.harness, 'copilot-kb-dismiss', {
     rev: '9f8e7d',
   }, 'kb-dismiss-1')).envelope.result.value
-  expect('知识库：稍后返回记录的 rev', dismissFirst && dismissFirst.rev === '9f8e7d', JSON.stringify(dismissFirst))
+  expect('知识库：稍后返回记录的 rev 并报 saved:true',
+    dismissFirst && dismissFirst.rev === '9f8e7d' && dismissFirst.saved === true,
+    JSON.stringify(dismissFirst))
   const afterDismiss = (await kbRpc(first.harness, 'copilot-state', {
     sessionId: 'kb-session', cwd: SANDBOX,
   }, 'kb-state-2')).envelope.result.value
@@ -1277,10 +1310,11 @@ function newKbHarness(payload, withTimers) {
     && fileFailed.lastCheckOk === false,
     JSON.stringify({ value: failedValue, file: fileFailed }))
 
-  // ⑦ 启动恢复只看 lastCheckOk：成功时新进程能恢复提示；被 disabled 覆盖后不再恢复。
+  // ⑦ 启动不从状态文件恢复提示：文件里有上次成功的落后数，第一次检查前 kbNotice 仍是 null；
+  // 检查完成后才出现。状态文件只恢复「稍后」记录与排查字段。
   const restoring = newKbHarness(kbPayload({ remote_rev: 'beef001', behind: 2 }), false)
   const restoringValue = (await kbRpc(restoring.harness, 'copilot-kb-recheck', {}, 'kb-recheck-seed-restore')).envelope.result.value
-  expect('知识库：恢复用例先成功一次（behind 2 / rev beef001）',
+  expect('知识库：启动用例先成功一次（behind 2 / rev beef001）',
     restoringValue && restoringValue.notice && restoringValue.notice.rev === 'beef001'
     && readKbState() && readKbState().lastCheckOk === true,
     JSON.stringify(restoringValue))
@@ -1294,10 +1328,14 @@ function newKbHarness(payload, withTimers) {
     restoredNotice = polled ? polled.kbNotice : null
     if (restoredNotice) break
   }
-  expect('知识库：上次检查成功时启动恢复提示（未起子进程）',
-    restoredNotice && restoredNotice.rev === 'beef001'
-    && restored.shell.calls.every((command) => !command.includes('kb_sync.py')),
+  expect('知识库：启动后第一次检查前不提示（不恢复状态文件里的落后数）',
+    restoredNotice === null && restored.shell.calls.every((command) => !command.includes('kb_sync.py')),
     JSON.stringify({ notice: restoredNotice, calls: restored.shell.calls }))
+  const restoredCheck = (await kbRpc(restored.harness, 'copilot-kb-recheck', {}, 'kb-recheck-restore')).envelope.result.value
+  expect('知识库：检查完成后才出现提示',
+    restoredCheck && restoredCheck.notice && restoredCheck.notice.rev === 'beef001'
+    && readKbState() && readKbState().lastCheckOk === true,
+    JSON.stringify(restoredCheck))
 
   restoring.shell.setPayload(kbPayload({
     ok: false, reason: 'disabled', enabled: false, behind: 2, remote_rev: 'beef001',
@@ -1320,11 +1358,33 @@ function newKbHarness(payload, withTimers) {
     if (silentNotice) break
     await new Promise((resolve) => setTimeout(resolve, 20))
   }
-  expect('知识库：上次检查没成功时启动不闪旧提示',
+  expect('知识库：关闭同步后重启不闪旧提示',
     silentNotice === null && silent.shell.calls.every((command) => !command.includes('kb_sync.py')),
     JSON.stringify({ notice: silentNotice, calls: silent.shell.calls }))
 
-  // ⑧ panel 0：提示里的面板数字为 0，客户端据此不提「重启 DSH」。
+  // ⑧ 稍后写盘失败要能报：把临时根的 .local/ 占成普通文件，落盘必失败。
+  // 此时 dismiss 回 saved:false、dismissedRev 回滚、提示保留（界面据此说「没记住」）。
+  const dismissFail = newKbHarness(kbPayload({ remote_rev: '0ddba11', behind: 2 }), false)
+  const dismissFailSeed = (await kbRpc(dismissFail.harness, 'copilot-kb-recheck', {}, 'kb-recheck-seed-dismissfail')).envelope.result.value
+  expect('知识库：写失败用例先有提示',
+    dismissFailSeed && dismissFailSeed.notice && dismissFailSeed.notice.rev === '0ddba11',
+    JSON.stringify(dismissFailSeed && dismissFailSeed.notice))
+  const localPath = join(KB_REPO, '.local')
+  rmSync(localPath, { recursive: true, force: true })
+  writeFileSync(localPath, '占位：让状态文件写不进去\n', 'utf8')
+  const failedDismiss = (await kbRpc(dismissFail.harness, 'copilot-kb-dismiss', {
+    rev: '0ddba11',
+  }, 'kb-dismiss-failed')).envelope.result.value
+  const afterFailedDismiss = (await kbRpc(dismissFail.harness, 'copilot-state', {
+    sessionId: 'kb-dismiss-fail', cwd: SANDBOX,
+  }, 'kb-state-dismiss-fail')).envelope.result.value
+  expect('知识库：稍后写盘失败回 saved:false 且提示保留',
+    failedDismiss && failedDismiss.rev === '0ddba11' && failedDismiss.saved === false
+    && afterFailedDismiss && afterFailedDismiss.kbNotice && afterFailedDismiss.kbNotice.rev === '0ddba11',
+    JSON.stringify({ value: failedDismiss, notice: afterFailedDismiss && afterFailedDismiss.kbNotice }))
+  rmSync(localPath, { recursive: true, force: true })
+
+  // ⑨ panel 0：提示里的面板数字为 0，客户端据此不提「重启 DSH」。
   const noPanel = newKbHarness(kbPayload({
     remote_rev: 'feed123', behind: 1,
     surface: { knowledge: 1, routing: 0, reference: 0, methodology: 0, panel: 0, other: 0 },
@@ -1334,7 +1394,7 @@ function newKbHarness(payload, withTimers) {
     noPanelValue && noPanelValue.notice && noPanelValue.notice.panel === 0
     && noPanelValue.notice.knowledge === 1, JSON.stringify(noPanelValue && noPanelValue.notice))
 
-  // ⑨ 主检出解析：worktree 里的会话按主检出检查与落盘。
+  // ⑩ 主检出解析：worktree 里的会话按主检出检查与落盘。
   const worktree = join(KB_SANDBOX, 'wt')
   mkdirSync(join(KB_REPO, '.git', 'worktrees', 'kb-wt'), { recursive: true })
   mkdirSync(worktree, { recursive: true })
@@ -1351,7 +1411,7 @@ function newKbHarness(payload, withTimers) {
     && !worktreeCommand.includes("--root '" + worktree + "'"),
     JSON.stringify({ value: worktreeValue, command: worktreeCommand }))
 
-  // ⑩ 检出里没有 scripts/kb_sync.py：静默停用，不报错也不起子进程。
+  // ⑪ 检出里没有 scripts/kb_sync.py：静默停用，不报错也不起子进程。
   process.env.DSH_SLEUTH_KB_ROOT = KB_SANDBOX
   const noScript = newKbHarness(kbPayload({}), false)
   const noScriptValue = (await kbRpc(noScript.harness, 'copilot-kb-recheck', {}, 'kb-recheck-noscript')).envelope.result.value
@@ -1386,6 +1446,11 @@ expect('知识库：卸载时清掉两个定时器',
   kbTimers !== null && kbTimers.timeouts.length === 1 && kbTimers.timeouts[0].disposed === true
   && kbTimers.intervals.length === 1 && kbTimers.intervals[0].disposed === true,
   JSON.stringify(kbTimers && { timeouts: kbTimers.timeouts, intervals: kbTimers.intervals }))
+expect('知识库：卸载时收回可选注入的 timer fiber',
+  kbTimerHarness !== null
+  && kbTimerHarness.injected.filter((item) => item.services.indexOf('timer') >= 0).length === 1
+  && kbTimerHarness.injected.every((item) => item.services.indexOf('timer') < 0 || item.fiber.disposed === true),
+  JSON.stringify(kbTimerHarness && kbTimerHarness.injected.map((item) => ({ services: item.services, disposed: item.fiber.disposed }))))
 rmSync(SANDBOX, { recursive: true, force: true })
 rmSync(KB_SANDBOX, { recursive: true, force: true })
 delete process.env.DSH_SLEUTH_KB_ROOT

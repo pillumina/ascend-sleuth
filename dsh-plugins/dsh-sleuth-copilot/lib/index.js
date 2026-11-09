@@ -48,7 +48,8 @@ const KB_STATE_VERSION = 1
 const KB_SURFACE_KEYS = ['knowledge', 'routing', 'reference', 'methodology', 'panel', 'other']
 
 export const name = 'dsh-sleuth-copilot'
-export const inject = ['connection', 'timer']
+// timer 不进必需依赖：缺它时整个 host 半仍要挂载，只在注入得到时装背景检查的定时器。
+export const inject = ['connection']
 
 // 解释器只探测一次：Python 3 的启动器在 Windows 上可能是 python3（商店空壳）/ python / py -3。
 let pythonCmd
@@ -1282,7 +1283,7 @@ export function apply(ctx) {
   // ── 知识库更新提醒 ─────────────────────────────────────────────────────────
   // 后台检查本机检出是否落后上游，结果随 copilot-state 下发。检查只调 scripts/kb_sync.py：
   // --sync 只 fetch、不合并，离线部署 / 关闭同步 / 失败冷却都由脚本处理。失败一律静默，
-  // 原文只落主检出的 .local/kb-sync-notify.json，供排查与「重新检查」回显。
+  // 原文只落主检出的 .local/kb-sync-notify.json，供排查；界面上的提示只由本次进程的检查给出。
   let kbState = emptyKbState()
   let kbNotice = null
   let kbLastError = ''
@@ -1325,7 +1326,8 @@ export function apply(ctx) {
     }
   }
 
-  // 启动时读一次：恢复「稍后」记录与上次结果，第一次检查完成前界面也有数可看。
+  // 启动时读一次：只恢复「稍后」记录与排查字段（dismissedRev / rev / behind / lastError）。
+  // 提示不从这里恢复：状态文件里的落后数可能是很久以前、早已不适用的，界面等第一次检查给出。
   const kbStateLoaded = (async () => {
     const mainRoot = await resolveKbRoot()
     if (!mainRoot) return
@@ -1346,19 +1348,19 @@ export function apply(ctx) {
     kbState = state
     kbLastError = state.lastError
     kbLastCheckAt = state.checkedAt
-    // 只有上次检查成功才恢复提示：关掉同步或转离线后保留的旧 rev/behind 不冒充新提示，
-    // 否则每次启动会先闪一行旧落后数，等第一次检查回来才消失。
-    if (state.lastCheckOk === true) kbNotice = kbNoticeView(state)
   })().catch(() => {})
 
+  // 落盘结果回传给调用方：「稍后」要据此决定清不清提示、回 saved 真假。
   async function writeKbState(mainRoot) {
     const file = join(mainRoot, KB_STATE_REL)
     try {
-      // .local/ 可能还不存在（新检出、刚清理过运行时件）。
+      // .local/ 可能还不存在（新检出、刚清理过运行时件）；被占成文件时这里会抛，按写失败处理。
       await mkdir(dirname(file), { recursive: true })
       await writeFile(file, JSON.stringify(kbState, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 })
+      return true
     } catch {
-      // 状态文件写不进去只失去去重与排查信息；内存里的提示照常可用，下次检查重试。
+      // 写不进去只失去去重与排查信息；内存里的提示照常可用，下次检查重试。
+      return false
     }
   }
 
@@ -1379,7 +1381,7 @@ export function apply(ctx) {
   }
 
   // 静默收场（离线部署 / 关闭同步）：清 lastError、更新 checkedAt，保留上次 rev/behind 供排查；
-  // lastCheckOk 记 false，重启后不会拿这组数字恢复提示。
+  // lastCheckOk 记 false，让状态文件自己能区分「这组落后数是不是最近一次检查给出的」。
   function kbQuiet(mainRoot, checkedAt, reason) {
     kbState.checkedAt = checkedAt
     kbState.lastError = ''
@@ -1483,11 +1485,12 @@ export function apply(ctx) {
     return pending
   }
 
-  // 手动重查：有在跑的直接合并；距上次检查开始不足 60 秒时回当前快照，不重复起子进程。
-  // force=true 跳过这个节流（浏览器半「去同步」后要立刻拿到新的落后数，否则提示行停在旧值）。
+  // 手动重查：有在跑的先等它结束（force 不能拿到同步前的旧快照）；距上次检查开始不足
+  // 60 秒时回当前快照，不重复起子进程。force=true 跳过这个节流：浏览器半「去同步」后
+  // 要立刻拿到新的落后数，否则提示行停在旧值。
   async function kbRecheck(payload) {
     await kbStateLoaded
-    if (kbCheckFlight) return kbCheckFlight
+    if (kbCheckFlight) await kbCheckFlight.catch(() => {})
     const force = payload !== null && typeof payload === 'object' && payload.force === true
     const now = Date.now()
     if (!force && kbLastCheckStart && now - kbLastCheckStart < KB_RECHECK_MIN_MS) return kbSnapshot()
@@ -1495,39 +1498,64 @@ export function apply(ctx) {
   }
 
   // 「稍后」：记住这一版远端提交，同一 rev 不再提示；换 rev 才会重新出现。
+  // 落盘成功才清提示并回 saved:true；写不进去（例如 .local/ 被占成文件）时回滚记录、
+  // 保留提示，让界面能把「没记住」告诉用户，而不是假装点了没生效。
   async function kbDismiss(payload) {
     await kbStateLoaded
     const requested = payload !== null && typeof payload === 'object' && typeof payload.rev === 'string'
       ? payload.rev.trim()
       : ''
     const rev = requested || (kbNotice ? kbNotice.rev : '') || kbState.rev
-    if (!rev) return { rev: '' }
+    if (!rev) return { rev: '', saved: true }
+    const previousDismissed = kbState.dismissedRev
     kbState.dismissedRev = rev
-    if (kbNotice && kbNotice.rev === rev) kbNotice = null
     const mainRoot = await resolveKbRoot()
-    if (mainRoot) await persistKbState(mainRoot)
-    return { rev }
+    const saved = mainRoot ? await persistKbState(mainRoot) : false
+    if (!saved) {
+      kbState.dismissedRev = previousDismissed
+      return { rev, saved: false }
+    }
+    if (kbNotice && kbNotice.rev === rev) kbNotice = null
+    return { rev, saved: true }
   }
 
-  // 宿主没提供 timer 服务（旧宿主、测试替身）时完全不装定时器，也就不跑后台检查。
+  // timer 是可选服务：缺它时整个 host 半照常挂载，只是不装定时器、不跑后台检查。
+  // 用 ctx.inject 按依赖挂载：注入到的上下文里服务名就是属性（timerCtx.timer），
+  // 取不到时退回 get('timer')；两种写法都没有就不装。
   ctx.effect(() => {
-    if (typeof ctx.timeout !== 'function' || typeof ctx.interval !== 'function') return () => {}
-    const disposers = [
-      // 回调返回检查的 promise：宿主不用它，测试替身可以 await 一次检查跑完。
-      ctx.timeout(() => startKbCheck().catch(() => {}), KB_CHECK_DELAY_MS),
-      ctx.interval(() => startKbCheck().catch(() => {}), KB_CHECK_INTERVAL_MS),
-    ]
-    return () => {
-      for (const dispose of disposers) {
-        if (typeof dispose !== 'function') continue
-        try {
-          dispose()
-        } catch {
-          // 卸载时单个 disposer 失败不影响其他清理
+    const fiber = ctx.inject(['timer'], (timerCtx) => {
+      const timer = timerCtx.timer || (typeof timerCtx.get === 'function' ? timerCtx.get('timer') : undefined)
+      if (!timer || typeof timer.timeout !== 'function' || typeof timer.interval !== 'function') return
+      timerCtx.effect(() => {
+        const disposers = [
+          // 回调返回检查的 promise：宿主不用它，测试替身可以 await 一次检查跑完。
+          timer.timeout(() => startKbCheck().catch(() => {}), KB_CHECK_DELAY_MS),
+          timer.interval(() => startKbCheck().catch(() => {}), KB_CHECK_INTERVAL_MS),
+        ]
+        return () => {
+          for (const dispose of disposers) {
+            if (typeof dispose !== 'function') continue
+            try {
+              dispose()
+            } catch {
+              // 卸载时单个 disposer 失败不影响其他清理
+            }
+          }
         }
+      }, 'dsh-sleuth-copilot: kb notice check')
+    })
+    // 注入的 fiber 会随父级一起回收；这里再显式收回一次，避免宿主只回收 effect 时留下定时器。
+    return () => {
+      const dispose = fiber && typeof fiber.dispose === 'function' ? fiber : null
+      if (!dispose) return
+      try {
+        const pending = dispose.dispose()
+        if (pending && typeof pending.then === 'function') pending.catch(() => {})
+      } catch {
+        // 已随父级收回
       }
     }
-  }, 'dsh-sleuth-copilot: kb notice check')
+  }, 'dsh-sleuth-copilot: kb timer inject')
 
   function stateFor(sessionId, cwd, refresh) {
     const key = String(sessionId || '') + '\u0000' + String(cwd || '')

@@ -29,8 +29,8 @@ window.__ModuleLoader__.load({
     // 去同步后点开「知识库」标签：整页是异步挂载的，查早了没有标签，短轮询等它出现。
     const KB_TAB_OPEN_POLL_MS = 100
     const KB_TAB_OPEN_WAIT_MS = 1500
-    // 同步要跑一会儿：点「去同步」后按 30 秒、60 秒各复查一次；每次带 force 让 host
-    // 跳过 60 秒节流，行还在才挂下一次。
+    // 同步要跑一会儿：点「去同步」后隔 30 秒复查一次，还落后再隔 60 秒复查（共约 90 秒）。
+    // 每次带 force 让 host 跳过 60 秒节流；行还在才挂下一次。
     const KB_RECHECK_DELAYS_MS = [30000, 60000]
     const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
     const FILTER_KEYS = ['all', 'open', 'pending', 'sediment']
@@ -473,7 +473,7 @@ window.__ModuleLoader__.load({
       'kb.go': '去同步',
       'kb.later': '稍后',
       'kb.laterDone': '这一版不再提醒。',
-      'kb.laterFailed': '稍后没记上：主检出可能不可写。',
+      'kb.laterFailed': '稍后没记上：本地状态文件写不进去。',
       'kb.missing': '没找到 Ascend Sleuth 整页，先在侧栏「插件」里装面板包。',
       'kb.collapsed': '知识库有更新',
     }
@@ -903,14 +903,14 @@ window.__ModuleLoader__.load({
       'sediment.targetNote': 'Remote roles are not assumed',
       'none': 'not recorded',
       // Knowledge base behind notice: attached by the host half after a check.
-      'kb.behind': 'Knowledge base is {n} commits behind',
+      'kb.behind': 'Knowledge base is {n} commit(s) behind',
       'kb.panel': 'These changes include panel code: restart DSH after syncing to load the new panel.',
       'kb.go': 'Sync',
       'kb.later': 'Later',
       'kb.laterDone': 'This revision will not be shown again.',
-      'kb.laterFailed': 'Could not record the later reminder: the main checkout may not be writable.',
+      'kb.laterFailed': 'Could not record the later reminder: the local state file is not writable.',
       'kb.missing': 'Ascend Sleuth page not found. Install the panel package from Plugins in the sidebar first.',
-      'kb.collapsed': 'knowledge base has updates',
+      'kb.collapsed': 'Knowledge base has updates',
     }
     const DICTS = { zh: ZH, en: EN }
     let translate = (key, params) => formatText(ZH[key] !== undefined ? ZH[key] : key, params)
@@ -3716,7 +3716,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           tick()
         }
 
-        // 同步要时间，且 host 的复查端点有 60 秒节流：按 30 秒、60 秒各试一次，
+        // 同步要时间：隔 30 秒复查一次，还落后再隔 60 秒复查（共约 90 秒）。
         // 每次刷新后提示行还在才挂下一次（同步完则行消失、不再定时）。
         function scheduleKbRecheck(attempt) {
           if (kbRecheckTimer.current) {
@@ -3735,17 +3735,25 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 scheduleKbRecheck(attempt + 1)
               })
               .catch(() => {
-                // 复查失败不改提示行：下一轮定时检查照常
+                // 这里只兜 RPC 抛错：不改提示行，等下一轮定时检查。
+                // host 业务失败不抛错，它按静默规则回空，随后的 refresh 可能把行清掉。
               })
           }, delay)
         }
 
-        // 「稍后」：写进主检出的状态文件成功后才收起提示行。
+        // 「稍后」：写进本地状态文件成功后才收起提示行。
         // 写失败时保留行并说明原因，否则重开页面还会提示同一版，读者会以为上次点没生效。
         function dismissKbNotice() {
           if (!kbNotice) return
           const rev = String(kbNotice.rev || '')
-          rpcCall('copilot-kb-dismiss', { rev }).then(() => {
+          rpcCall('copilot-kb-dismiss', { rev }).then((value) => {
+            // host 写不进状态文件时回 saved:false（这次只记在内存里），不能收起行。
+            if (value && value.saved === false) {
+              flash(tr('kb.laterFailed'))
+              return
+            }
+            // 先作废在飞的 10 秒刷新响应，再清本地状态：旧响应会把刚收起的行又贴回来。
+            store.seq += 1
             if (store.data) store.data.kbNotice = null
             emit()
             flash(tr('kb.laterDone'))
