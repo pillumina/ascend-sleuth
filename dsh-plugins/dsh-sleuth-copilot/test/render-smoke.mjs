@@ -55,6 +55,8 @@ globalThis.document = {
     if (set) set.delete(fn)
   },
   execCommand: () => true,
+  // 「去同步」会找整页的「知识库」标签：替身里没有 DOM，返回空列表走兜底分支。
+  querySelectorAll: () => [],
 }
 Object.defineProperty(globalThis, 'navigator', {
   configurable: true,
@@ -702,6 +704,8 @@ async function mount(mode, options) {
   const rpcCalls = []
   const drafts = []
   const openedSessions = []
+  // 「去同步」要切到的整页面板；没有 layout 服务的降级路径由 opts.noLayout 覆盖。
+  const selectedPanels = []
   // 进度端点的调用序号与 check-all 的挂起门：用例要验「主 RPC 还没回来时轮询已能拿到行」。
   let progressIndex = 0
   let releaseCheckAllGate = null
@@ -712,6 +716,8 @@ async function mount(mode, options) {
   payload.upstream = opts.upstream === false
     ? { ready: false, reason: 'gh 未登录（gh auth login）' }
     : { ready: true, reason: '' }
+  // 知识库落后提示由 host 附加在 copilot-state 的响应里；不给就是「没有提示」。
+  if (opts.kbNotice !== undefined) payload.kbNotice = opts.kbNotice
 
   const slots = {
     inject(_name, callback) {
@@ -734,6 +740,13 @@ async function mount(mode, options) {
             async call(_channel, endpoint, args) {
               rpcCalls.push({ endpoint, args })
               if (endpoint === 'copilot-state') return { ok: true, value: payload }
+              if (endpoint === 'copilot-kb-dismiss') {
+                return { ok: true, value: { rev: args && args.rev ? String(args.rev) : '' } }
+              }
+              if (endpoint === 'copilot-kb-recheck') {
+                // 30 秒复查的替身：返回「已没有落后」，刷新后提示行消失。
+                return { ok: true, value: { notice: null, checkedAt: '', error: '', reason: '' } }
+              }
               if (endpoint === 'copilot-transition') {
                 if (opts.transitionResult) return { ok: true, value: opts.transitionResult }
                 return { ok: true, value: { ok: true, from: 'in_progress', to: 'resolved', changed: ['status'] } }
@@ -790,6 +803,14 @@ async function mount(mode, options) {
         }
       }
       if (name === 'slots') return slots
+      // 侧栏 shell 的整页切换服务；opts.noLayout 用来验「没装面板」时的降级提示。
+      if (name === 'layout' && !opts.noLayout) {
+        return {
+          selectPanel(id) {
+            selectedPanels.push(String(id))
+          },
+        }
+      }
       // 只有显式给了 opts.sessionsHost 才装会话服务：默认没有它，才能继续验「没有切会话接口」的降级。
       if (name === 'sessions' && opts.sessionsHost) {
         return { openSession(id) { openedSessions.push(String(id)) } }
@@ -835,6 +856,7 @@ async function mount(mode, options) {
     rpcCalls,
     drafts,
     openedSessions,
+    selectedPanels,
     async settle() {
       return inspect(await renderer.rerender())
     },
@@ -883,6 +905,8 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const view = t.view()
   expect('注册：inject 声明了 sessions',
     Array.isArray(t.inject) && t.inject.includes('sessions'), JSON.stringify(t.inject))
+  expect('注册：inject 声明了 layout（去同步切整页要用）',
+    Array.isArray(t.inject) && t.inject.includes('layout'), JSON.stringify(t.inject))
   expect('最近一单：标出「最近一单」', view.text.includes('最近一单'), view.text.slice(0, 160))
   expect('最近一单：显示状态名', view.text.includes('进行中'))
   expect('最近一单：显示人读案例标题', view.text.includes('vllm-ascend GLM-5.3 在 A3 跑推理时 MoE routing TopK 触发 vector core exception'))
@@ -2915,6 +2939,100 @@ function rowText(view, prNumber) {
   view = await t.settle()
   expect('沙箱拒绝：按权限模式给提示', view.text.includes('面板的子进程被拒绝'), view.text.slice(-500))
   expect('沙箱拒绝：不让人删 .lock', !view.text.includes('.lock') && !view.text.includes('访问控制列表'), view.text.slice(-500))
+}
+
+// ── 知识库更新提醒（host 定时检查，copilot-state 带 kbNotice 下来）──────────
+const KB_NOTICE = {
+  rev: '9f8e7d1', behind: 3, panel: 1, knowledge: 2, reference: 1,
+  checkedAt: '2026-11-09T13:40:00+08:00',
+}
+
+{
+  // 展开态：落后 N 个提交；含面板代码要重启；两个动作都在。
+  const t = await mount('recent', {
+    kbNotice: KB_NOTICE,
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  let view = t.view()
+  expect('知识库落后：展开态出现提示行', byClass(view, 'scp-kb-notice').length === 1, view.text.slice(0, 300))
+  expect('知识库落后：文案带提交数', view.text.includes('知识库落后 3 个提交'), view.text.slice(0, 300))
+  expect('知识库落后：panel>0 提示重启 DSH',
+    view.text.includes('含面板代码：同步后重启 DSH 才能加载新面板'), view.text.slice(0, 400))
+  expect('知识库落后：给「去同步」', !!findButton(view, '去同步'), view.text.slice(0, 400))
+  expect('知识库落后：给「稍后」', !!findButton(view, '稍后'), view.text.slice(0, 400))
+
+  // 去同步：切整页面板且不抛；替身没有标签 DOM，点标签那层走兜底。
+  let threw = null
+  try {
+    click(findButton(view, '去同步'))
+  } catch (error) {
+    threw = error
+  }
+  view = await t.settle()
+  expect('去同步：不抛', !threw, threw && String(threw.message))
+  expect('去同步：切到 Ascend Sleuth 面板',
+    t.selectedPanels.includes('ascend-sleuth-console'), JSON.stringify(t.selectedPanels))
+  expect('去同步：提示行还在（尚未确认已同步）', byClass(view, 'scp-kb-notice').length === 1)
+
+  // 稍后：带上版本号，本地立即收起。
+  click(findButton(view, '稍后'))
+  view = await t.settle()
+  view = await t.settle()
+  const dismissCall = t.rpcCalls.filter((call) => call.endpoint === 'copilot-kb-dismiss').pop()
+  expect('稍后：发出 copilot-kb-dismiss 且 rev 正确',
+    !!dismissCall && dismissCall.args.rev === '9f8e7d1', JSON.stringify(dismissCall && dismissCall.args))
+  expect('稍后：提示行消失', byClass(view, 'scp-kb-notice').length === 0, view.text.slice(0, 300))
+  expect('稍后：flash 已设为稍后提醒', view.text.includes('已设为稍后提醒'), view.text.slice(0, 300))
+}
+
+{
+  // panel 为 0：知识库文件有更新，但没有面板代码，不该提示重启。
+  const t = await mount('recent', {
+    kbNotice: { rev: 'abc1234', behind: 2, panel: 0 },
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  const view = t.view()
+  expect('知识库落后：panel=0 仍有提示行', byClass(view, 'scp-kb-notice').length === 1)
+  expect('知识库落后：panel=0 不提示重启', !view.text.includes('含面板代码'), view.text.slice(0, 400))
+}
+
+{
+  // 没有 kbNotice（字段缺失）：提示行与动作都不出现。
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  const view = t.view()
+  expect('无知识库更新：没有提示行', byClass(view, 'scp-kb-notice').length === 0)
+  expect('无知识库更新：没有「去同步」', !findButton(view, '去同步'), view.text.slice(0, 400))
+}
+
+{
+  // 收起态：一行提示追加在 meta 末尾，不展开详情。
+  const t = await mount('recent', {
+    kbNotice: KB_NOTICE,
+    prefs: { dockCollapsed: true, paletteFilter: 'all', pins: {} },
+  })
+  const view = t.view()
+  expect('知识库有更新：收起态 handle 带提示', view.text.includes('知识库有更新'), view.text.slice(0, 300))
+  expect('知识库有更新：收起态不渲染提示行', byClass(view, 'scp-kb-notice').length === 0)
+}
+
+{
+  // 没装面板（没有 layout 服务）：只 flash 一句装面板的指引，不抛。
+  const t = await mount('recent', {
+    kbNotice: KB_NOTICE,
+    noLayout: true,
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  let threw = null
+  try {
+    click(findButton(t.view(), '去同步'))
+  } catch (error) {
+    threw = error
+  }
+  const view = await t.settle()
+  expect('去同步：没有 layout 服务不抛', !threw, threw && String(threw.message))
+  expect('去同步：没有 layout 服务时给出装面板指引',
+    view.text.includes('没找到 Ascend Sleuth 面板'), view.text.slice(-400))
+  expect('去同步：没有 layout 服务时没有可切的面板', t.selectedPanels.length === 0, JSON.stringify(t.selectedPanels))
 }
 
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')

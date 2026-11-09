@@ -20,12 +20,17 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.18.0'
+    const PLUGIN_VERSION = '0.19.0'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。
     const PR_PROGRESS_POLL_MS = 500
     const PR_PROGRESS_MAX_FAILURES = 3
+    // 去同步后点开「知识库」标签：整页是异步挂载的，查早了没有标签，短轮询等它出现。
+    const KB_TAB_OPEN_POLL_MS = 100
+    const KB_TAB_OPEN_WAIT_MS = 1500
+    // 同步脚本要跑一会儿：点「去同步」后 30 秒复查一次结果。
+    const KB_RECHECK_DELAY_MS = 30000
     const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
     const FILTER_KEYS = ['all', 'open', 'pending', 'sediment']
     // PR 台账允许的状态（与 scripts/pr_status.py 的 STATES 一致）。
@@ -461,6 +466,14 @@ window.__ModuleLoader__.load({
       'sediment.noTarget': '推送目标未设置',
       'sediment.targetNote': '远端用途不做预设',
       'none': '未记录',
+      // 知识库落后提醒：host 半定时检测后由 copilot-state 带下来。
+      'kb.behind': '知识库落后 {n} 个提交',
+      'kb.panel': '含面板代码：同步后重启 DSH 才能加载新面板',
+      'kb.go': '去同步',
+      'kb.later': '稍后',
+      'kb.laterDone': '已设为稍后提醒',
+      'kb.missing': '没找到 Ascend Sleuth 面板，先在侧栏「插件」里装面板包',
+      'kb.collapsed': '知识库有更新',
     }
     const EN = {
       'region': 'Diagnosis status bar',
@@ -887,6 +900,14 @@ window.__ModuleLoader__.load({
       'sediment.noTarget': 'Push target not set',
       'sediment.targetNote': 'Remote roles are not assumed',
       'none': 'not recorded',
+      // Knowledge base behind notice: attached by the host half after a check.
+      'kb.behind': 'Knowledge base is {n} commits behind',
+      'kb.panel': 'Includes panel code: restart DSH after syncing to load the new panel',
+      'kb.go': 'Sync',
+      'kb.later': 'Later',
+      'kb.laterDone': 'Set to remind later',
+      'kb.missing': 'Ascend Sleuth panel not found. Install the panel package from Plugins in the sidebar first',
+      'kb.collapsed': 'knowledge base has updates',
     }
     const DICTS = { zh: ZH, en: EN }
     let translate = (key, params) => formatText(ZH[key] !== undefined ? ZH[key] : key, params)
@@ -1317,6 +1338,18 @@ body[data-ds-dark-theme] .scp-veil,[data-theme="dark"] .scp-veil{background:rgba
 .scp-dock-sed-days{color:var(--scp-warn);font-weight:650;flex:none;font-variant-numeric:tabular-nums;}
 .scp-dock-sed-next{color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
 .scp-dock-sed-open{flex:none;border:0;background:var(--scp-accent-soft);color:var(--scp-accent);font:inherit;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:6px;cursor:pointer;}
+/* 知识库落后提示：琥珀是「欠账」色，沿用现有 warn 变量，不新增全局变量。 */
+.scp-kb-notice{display:flex;align-items:center;gap:8px;min-width:0;padding:3px 6px 3px 9px;border:1px solid color-mix(in srgb,var(--scp-warn) 28%,var(--scp-border));border-radius:9px;background:var(--scp-warn-soft);color:var(--scp-warn);font-size:11px;line-height:1.7;}
+.scp-kb-notice-dot{flex:none;width:6px;height:6px;border-radius:50%;background:var(--scp-warn);}
+.scp-kb-notice-main{display:flex;flex-direction:column;gap:1px;min-width:0;}
+.scp-kb-notice-text{font-weight:600;white-space:nowrap;}
+.scp-kb-notice-note{font-size:10.5px;line-height:1.6;color:color-mix(in srgb,var(--scp-warn) 76%,var(--scp-text));white-space:normal;overflow-wrap:anywhere;}
+.scp-kb-notice .scp-btn{flex:none;font-size:11px;line-height:1.7;padding:2px 8px;}
+.scp-kb-notice .scp-kb-go{border-color:color-mix(in srgb,var(--scp-warn) 32%,var(--scp-border));background:var(--scp-surface);color:var(--scp-warn);font-weight:600;}
+.scp-kb-notice .scp-kb-go:hover{background:var(--scp-surface-2);border-color:color-mix(in srgb,var(--scp-warn) 46%,var(--scp-border));}
+.scp-kb-notice .scp-kb-later{color:var(--scp-warn);opacity:.78;}
+.scp-kb-notice .scp-kb-later:hover{background:color-mix(in srgb,var(--scp-warn) 12%,transparent);color:var(--scp-warn);opacity:1;}
+@container (max-width: 720px){.scp-kb-notice{flex-wrap:wrap;}.scp-kb-notice-text{white-space:normal;}}
 body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,[data-theme="dark"] .scp-actions,[data-theme="dark"] .scp-sed-actions{box-shadow:0 -8px 16px -12px rgba(0,0,0,.55);}
 @media (max-width:760px){.scp-batch{flex-wrap:wrap;gap:6px 8px;}.scp-batch .scp-spacer{display:none;}.scp-sed-step-label,.scp-sed-step-note{font-size:var(--scp-fs-cap);}.scp-target-row{flex-wrap:wrap;}}`,
     ].join('\n')
@@ -3166,6 +3199,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const inputRef = React.useRef(null)
         const rootRef = React.useRef(null)
         const handleRef = React.useRef(null)
+        // 去同步挂的两个定时器：30 秒复查与点开「知识库」标签的短轮询。切会话、卸载都要清。
+        const kbRecheckTimer = React.useRef(null)
+        const kbTabTimer = React.useRef(null)
         // 菜单/选择器刚被点击关闭的时刻：同一次手势不顺手收起状态条，过期自动失效
         const menuDismissedAtRef = React.useRef(0)
         // 这次手势是否起于状态条内部。必须在 mousedown（capture）时记：菜单项点击会把按钮
@@ -3187,6 +3223,22 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         React.useEffect(() => () => {
           if (hintTimer.current) clearTimeout(hintTimer.current)
         }, [])
+
+        function clearKbTimers() {
+          if (kbRecheckTimer.current) {
+            clearTimeout(kbRecheckTimer.current)
+            kbRecheckTimer.current = null
+          }
+          if (kbTabTimer.current) {
+            clearTimeout(kbTabTimer.current)
+            kbTabTimer.current = null
+          }
+        }
+
+        // 切会话：上一单挂的复查与点标签轮询不属于这一单，先清掉。
+        React.useEffect(() => {
+          clearKbTimers()
+        }, [s.sessionId])
 
         // 切会话时收起内层：旧菜单/表单纯属上一条单的状态，留着会在新单上重新弹出，
         // 提交时写到另一单。
@@ -3245,6 +3297,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         React.useEffect(() => () => {
           if (idleTimer.current) clearTimeout(idleTimer.current)
           if (flashTimer.current) clearTimeout(flashTimer.current)
+          clearKbTimers()
         }, [])
 
         // 步骤前进时让状态点轻闪一次；只在同一单上比较，首屏不闪。
@@ -3429,6 +3482,12 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const collapsed = s.prefs.dockCollapsed
         const keepOpen = !!s.prefs.dockKeepOpen
         const data = s.data
+        // 知识库落后提示：host 只在一轮检查有结果时带下来，字段缺失按「没有提示」处理。
+        const kbNotice = data && data.ok !== false && data.kbNotice && typeof data.kbNotice === 'object'
+          ? data.kbNotice
+          : null
+        const kbBehind = kbNotice ? Math.max(0, Number(kbNotice.behind) || 0) : 0
+        const kbPanel = kbNotice ? Math.max(0, Number(kbNotice.panel) || 0) : 0
 
         function toggleCollapsed() {
           // 展开是新一轮交互：上一次「关菜单」的标记不该带到现在
@@ -3594,6 +3653,112 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             IconChevron({ open: true }))
         }
 
+        // 「去同步」：切到 Ascend Sleuth 整页，再尽力点开该页的「知识库」标签，最后挂一次复查。
+        // 拿不到 layout 服务时只 flash 一句装面板的指引，不抛。
+        function goSync() {
+          let switched = false
+          try {
+            switched = selectPanelImpl('ascend-sleuth-console') === true
+          } catch {
+            switched = false
+          }
+          if (!switched) flash(tr('kb.missing'))
+          openKbTab()
+          scheduleKbRecheck()
+        }
+
+        // 切到整页后不一定落在「知识库」子页：按可见标签名找，1.5 秒内轮询等页面挂载。
+        // 没有 querySelectorAll 的宿主（测试替身）直接跳过这一层。
+        function openKbTab() {
+          if (typeof document === 'undefined' || typeof document.querySelectorAll !== 'function') return
+          if (kbTabTimer.current) clearTimeout(kbTabTimer.current)
+          const startedAt = Date.now()
+          function tick() {
+            kbTabTimer.current = null
+            let tabs = null
+            try {
+              tabs = document.querySelectorAll('[role="tab"]')
+            } catch {
+              tabs = null
+            }
+            if (tabs && typeof tabs.length === 'number') {
+              for (let index = 0; index < tabs.length; index += 1) {
+                const tab = tabs[index]
+                if (!tab) continue
+                let label = ''
+                try {
+                  label = String(tab.textContent || '').trim()
+                } catch {
+                  label = ''
+                }
+                if (label !== '知识库') continue
+                let inside = false
+                try {
+                  inside = typeof tab.closest === 'function' && !!tab.closest('.sleu-console')
+                } catch {
+                  inside = false
+                }
+                if (!inside) continue
+                try {
+                  if (typeof tab.click === 'function') tab.click()
+                } catch {
+                  // 点不开就停在整页，读者自己点标签
+                }
+                return
+              }
+            }
+            if (Date.now() - startedAt >= KB_TAB_OPEN_WAIT_MS) return
+            kbTabTimer.current = setTimeout(tick, KB_TAB_OPEN_POLL_MS)
+          }
+          tick()
+        }
+
+        // 同步要时间：30 秒后问一次结果，按结果刷新提示行（同步完则行消失）。
+        function scheduleKbRecheck() {
+          if (kbRecheckTimer.current) clearTimeout(kbRecheckTimer.current)
+          kbRecheckTimer.current = setTimeout(() => {
+            kbRecheckTimer.current = null
+            Promise.resolve()
+              .then(() => rpcCall('copilot-kb-recheck'))
+              .then(() => refresh(true))
+              .catch(() => {
+                // 复查失败不改提示行：下一轮定时检查照常
+              })
+          }, KB_RECHECK_DELAY_MS)
+        }
+
+        // 「稍后」：记住这个版本号，本地立即收起提示行。
+        function dismissKbNotice() {
+          if (!kbNotice) return
+          const rev = String(kbNotice.rev || '')
+          if (store.data) store.data.kbNotice = null
+          emit()
+          flash(tr('kb.laterDone'))
+          rpcCall('copilot-kb-dismiss', { rev }).catch(() => {
+            // 写不进也不把行贴回来：下一轮定时检查按状态文件重新判断
+          })
+        }
+
+        function renderKbNotice() {
+          if (!kbNotice) return null
+          return h('div', { className: 'scp-kb-notice', role: 'group', 'aria-label': tr('kb.collapsed') },
+            h('span', { className: 'scp-kb-notice-dot', 'aria-hidden': 'true' }),
+            h('span', { className: 'scp-kb-notice-main' },
+              h('span', { className: 'scp-kb-notice-text' }, tr('kb.behind', { n: kbBehind })),
+              kbPanel > 0 ? h('span', { className: 'scp-kb-notice-note' }, tr('kb.panel')) : null),
+            h('span', { className: 'scp-spacer' }),
+            h('button', {
+              type: 'button',
+              className: 'scp-btn scp-kb-go',
+              onClick: goSync,
+            }, tr('kb.go')),
+            h('button', {
+              type: 'button',
+              className: 'scp-btn scp-btn--ghost scp-kb-later',
+              onClick: dismissKbNotice,
+            }, tr('kb.later')))
+        }
+
         const failed = s.phase === 'error' || (data && data.ok === false)
         if (failed) {
           const message = s.phase === 'error' ? s.message : (data && data.message ? data.message : tr('title.error'))
@@ -3621,7 +3786,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         if (!primary) {
           if (collapsed) {
             return h('section', Object.assign({}, rootProps, { className: 'scp-root', 'data-mode': 'empty', 'data-tone': 'idle' }),
-              renderHandle(tr('empty.collapsed'), null, false))
+              renderHandle(tr('empty.collapsed'), kbNotice ? tr('kb.collapsed') : null, false))
           }
           return h('section', Object.assign({}, rootProps, { ref: rootRef, className: 'scp-root', 'data-mode': 'empty', 'data-tone': 'idle', onKeyDown: onRootKeyDown }),
             h('div', { className: 'scp-surface' },
@@ -3636,6 +3801,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 }, tr('action.start')),
                 renderKeepOpen(),
                 renderCollapse()),
+              renderKbNotice(),
               collapsed ? null : h('div', { className: 'scp-foot' },
                 h('span', { className: 'scp-empty-note' }, tr('empty.body')))))
         }
@@ -3796,7 +3962,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             'data-flash': flashStep ? 'true' : 'false',
           }), renderHandle(
             caseTitle(primary),
-            (flashStep || stepsShort(extra)) + (s.stale ? ' · ' + tr('chip.stale') : ''),
+            (flashStep || stepsShort(extra)) + (s.stale ? ' · ' + tr('chip.stale') : '')
+              + (kbNotice ? ' · ' + tr('kb.collapsed') : ''),
             isPending(primary)))
         }
 
@@ -3844,6 +4011,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               }, IconMore()),
               renderKeepOpen(),
               renderCollapse()),
+            renderKbNotice(),
             collapsed ? null : h('div', { className: 'scp-foot' },
               StepRail({ extra }),
               metaBits.length ? h('span', { className: 'scp-meta', title: metaBits.join(' · ') }, metaBits.join(' · ')) : null,
@@ -5997,6 +6165,22 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       return openSessionImpl(id)
     }
 
+    // ── 切到 Ascend Sleuth 整页（去同步用）──────────────────────────────────
+    // layout 是侧栏 shell 的服务；取不到时返回 false，调用方降级成一句装面板的指引。
+    let selectPanelImpl = () => false
+    function makeSelectPanel(ctx) {
+      return function selectPanel(id) {
+        try {
+          const layout = ctx.get('layout')
+          if (!layout || typeof layout.selectPanel !== 'function') return false
+          layout.selectPanel(String(id))
+          return true
+        } catch {
+          return false
+        }
+      }
+    }
+
     const surfaceInputs = []
     function findInputActions() {
       for (const surface of surfaceInputs) {
@@ -6141,14 +6325,17 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
     return {
       // 显式声明用到的服务：cordis 只对声明过的服务名建键，未声明的 ctx.get 返回 undefined。
-      // 「切到该诊断的会话」必须有 sessions；uiWorkspace 只是后备，继续用 ctx.get 探测——
-      // 声明一个旧发行版没有的服务会让整条状态条一直等它，代价高于收益。
-      inject: ['connection', 'slots', 'sessions'],
+      // 「切到该诊断的会话」必须有 sessions；layout 是侧栏 shell 的整页切换服务，去同步要切到
+      // Ascend Sleuth 整页，不声明就拿不到，所以这里跟着声明。取不到时 selectPanel 那层降级成
+      // 一句装面板的指引，不抛。uiWorkspace 只是后备，继续用 ctx.get 探测——声明一个旧发行版
+      // 没有的服务会让整条状态条一直等它，代价高于收益。
+      inject: ['connection', 'slots', 'sessions', 'layout'],
       apply(ctx) {
         const slots = ctx.get('slots')
         if (slots === undefined) return
         rpcCall = makeRpc(ctx)
         openSessionImpl = makeOpenSession(ctx)
+        selectPanelImpl = makeSelectPanel(ctx)
         ctx.effect(() => registerLocale(ctx), 'sleuth-copilot: locale')
         ctx.effect(() => stopTimer, 'sleuth-copilot: poll timer')
         ctx.effect(() => insertStyles(), 'sleuth-copilot: styles')

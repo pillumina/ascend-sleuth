@@ -1,6 +1,6 @@
 {
   "name": "dsh-sleuth-copilot",
-  "version": "0.18.0",
+  "version": "0.19.0",
   "private": true,
   "description": "ascend-sleuth 诊断交互层：状态条、诊断总览、沉淀队列、一键复制指令与收尾/重开/沉淀状态写入",
   "type": "module",

@@ -115,6 +115,18 @@ try {
 }
 const TRACES = realpathSync(join(SANDBOX, 'traces'))
 
+// ── 知识库更新提醒的假检出 ──────────────────────────────────────────────────
+// 检测只认主检出里的 scripts/kb_sync.py：主检出判定按 `.git` 目录走，脚本内容被假 shell
+// 顶掉，所以这里只要目录形状。状态文件落在临时根的 .local/ 下，不碰真实主检出。
+const KB_SANDBOX = mkdtempSync(join(tmpdir(), 'scp-kb-'))
+const KB_REPO = join(KB_SANDBOX, 'repo')
+mkdirSync(join(KB_REPO, 'scripts'), { recursive: true })
+mkdirSync(join(KB_REPO, '.git'), { recursive: true })
+writeFileSync(join(KB_REPO, 'scripts', 'kb_sync.py'), '', 'utf8')
+// 必须在任何 mod.apply() 之前设置：插件在 apply 时就开始读状态文件。
+process.env.DSH_SLEUTH_KB_ROOT = KB_REPO
+const KB_STATE = join(KB_REPO, '.local', 'kb-sync-notify.json')
+
 function runCommand(spec) {
   return new Promise((resolve) => {
     const child = exec(spec.command, {
@@ -215,6 +227,84 @@ function makeResultShell(result) {
   }
 }
 
+// 知识库检查的假 shell：凡调 scripts/kb_sync.py 的命令都回夹具 JSON，其余命令真跑
+// （解释器探测走真实 python3；不 fetch、不跑 git、不联网）。
+function makeKbShell() {
+  const calls = []
+  let payload = kbPayload({})
+  return {
+    calls,
+    setPayload(next) {
+      payload = next
+    },
+    resolve(request) {
+      return request
+    },
+    async execute(spec) {
+      const command = String(spec.command || '')
+      calls.push(command)
+      if (!command.includes('kb_sync.py')) return { result: () => runCommand(spec) }
+      return {
+        result: () => Promise.resolve({
+          exitCode: 0, timedOut: false, aborted: false,
+          stdout: { text: JSON.stringify(payload) }, stderr: { text: '' },
+        }),
+      }
+    },
+  }
+}
+
+// kb_sync.py --sync --json 的稳定字段（见脚本文件头）；用例只覆盖自己关心的几项。
+function kbPayload(overrides) {
+  return Object.assign({
+    ok: true,
+    reason: '',
+    enabled: true,
+    offline: false,
+    remote: 'origin',
+    branch: 'main',
+    local_rev: '1111111',
+    remote_rev: '9f8e7d',
+    behind: 3,
+    ahead: 0,
+    surface: { knowledge: 2, routing: 0, reference: 1, methodology: 0, panel: 1, other: 0 },
+    fetch_error: '',
+    config_error: '',
+    last_error: '',
+  }, overrides)
+}
+
+// 假 timer 服务：只记下注册的延迟与回调，由用例自己点火；不挂真实定时器，进程不会被滞留。
+function makeFakeTimers() {
+  const timeouts = []
+  const intervals = []
+  const record = (list) => (fn, ms) => {
+    const entry = { fn, ms, disposed: false }
+    list.push(entry)
+    return () => {
+      entry.disposed = true
+    }
+  }
+  return {
+    timeouts,
+    intervals,
+    timeout: record(timeouts),
+    interval: record(intervals),
+    async fireTimer() {
+      const entry = timeouts[0]
+      if (entry) await entry.fn()
+    },
+  }
+}
+
+function readKbState() {
+  try {
+    return JSON.parse(readFileSync(KB_STATE, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
 function makeHarness(ctxExtra) {
   let route = null
   const effects = []
@@ -311,6 +401,12 @@ async function prProgress(harness, payload, rpcId) {
   return request(harness, {
     type: 'client-request', rpcId: rpcId || 'progress', method: 'copilot-pr-progress', payload,
   }, '/sleuth-copilot/copilot-pr-progress')
+}
+
+async function kbRpc(harness, method, payload, rpcId) {
+  return request(harness, {
+    type: 'client-request', rpcId: rpcId || method, method, payload: payload || {},
+  }, '/sleuth-copilot/' + method)
 }
 
 async function request(harness, body, url) {
@@ -1007,6 +1103,191 @@ const outsideState = await request(rw, {
 })
 expect('非检出：E_NO_ROOT', outsideState.envelope.result.value.ok === false && outsideState.envelope.result.value.code === 'E_NO_ROOT')
 
+// ── 知识库更新提醒 ──────────────────────────────────────────────────────────
+// 检查唯一入口是 scripts/kb_sync.py：每个用例换一份夹具 JSON，验证静默规则、同一远端
+// 提交的去重与状态文件。假 timer 由用例点火，不挂真实定时器（进程不会被定时器拖住）。
+const kbHarnesses = []
+let kbTimers = null
+
+function newKbHarness(payload, withTimers) {
+  const shell = makeKbShell()
+  shell.setPayload(payload)
+  const harness = makeHarness({ shell })
+  if (withTimers) {
+    kbTimers = makeFakeTimers()
+    harness.ctx.timeout = kbTimers.timeout
+    harness.ctx.interval = kbTimers.interval
+  }
+  kbHarnesses.push(harness)
+  mod.apply(harness.ctx)
+  return { harness, shell }
+}
+
+{
+  expect('知识库：inject 带上 timer 服务',
+    Array.isArray(mod.inject) && mod.inject.includes('connection') && mod.inject.includes('timer'),
+    JSON.stringify(mod.inject))
+
+  // ① 落后 3 个提交、含 1 处面板代码：启动检查跑完，copilot-state 带 kbNotice。
+  const first = newKbHarness(kbPayload({}), true)
+  expect('知识库：启动检查 3 秒后跑、周期 30 分钟',
+    kbTimers.timeouts.length === 1 && kbTimers.timeouts[0].ms === 3000
+    && kbTimers.intervals.length === 1 && kbTimers.intervals[0].ms === 30 * 60 * 1000,
+    JSON.stringify({
+      timeouts: kbTimers.timeouts.map((entry) => entry.ms),
+      intervals: kbTimers.intervals.map((entry) => entry.ms),
+    }))
+  await kbTimers.fireTimer()
+  const kbCommands = first.shell.calls.filter((command) => command.includes('kb_sync.py'))
+  expect('知识库：只调 kb_sync.py 的 --sync --json 并指定主检出',
+    kbCommands.length === 1 && /--sync/.test(kbCommands[0]) && /--json/.test(kbCommands[0])
+    && kbCommands[0].includes(join(KB_REPO, 'scripts', 'kb_sync.py'))
+    && kbCommands[0].includes("--root '" + KB_REPO + "'"),
+    JSON.stringify(kbCommands))
+  expect('知识库：不自己拼 git 命令',
+    first.shell.calls.every((command) => !/(^|\s)git(\s|$)/.test(command)), JSON.stringify(first.shell.calls))
+  // 没有 timer 能力的 harness（前面那些）完全不装定时器，也就没跑过后台检查。
+  expect('知识库：没有 timer 服务时不跑后台检查',
+    rwShell.calls.every((command) => !command.includes('kb_sync.py')))
+
+  const stateFirst = (await kbRpc(first.harness, 'copilot-state', {
+    sessionId: 'kb-session', cwd: SANDBOX,
+  }, 'kb-state-1')).envelope.result.value
+  const noticeFirst = stateFirst && stateFirst.kbNotice
+  expect('知识库：落后 3 且 panel 1 时 copilot-state 带 kbNotice',
+    noticeFirst && noticeFirst.rev === '9f8e7d' && noticeFirst.behind === 3
+    && noticeFirst.panel === 1 && noticeFirst.knowledge === 2 && noticeFirst.reference === 1
+    && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d[+-]\d\d:\d\d$/.test(noticeFirst.checkedAt),
+    JSON.stringify(noticeFirst))
+  const fileFirst = readKbState()
+  expect('知识库：状态文件按 schema 落盘',
+    fileFirst && fileFirst.version === 1 && fileFirst.rev === '9f8e7d' && fileFirst.behind === 3
+    && fileFirst.surface && fileFirst.surface.panel === 1 && fileFirst.surface.knowledge === 2
+    && fileFirst.dismissedRev === '' && fileFirst.lastError === ''
+    && typeof fileFirst.checkedAt === 'string' && fileFirst.checkedAt !== '',
+    JSON.stringify(fileFirst))
+
+  const recheckFirst = (await kbRpc(first.harness, 'copilot-kb-recheck', {}, 'kb-recheck-1')).envelope.result.value
+  expect('知识库：recheck 返回同一 notice',
+    recheckFirst && recheckFirst.notice && recheckFirst.notice.rev === '9f8e7d'
+    && recheckFirst.notice.behind === 3 && recheckFirst.error === '' && recheckFirst.reason === '',
+    JSON.stringify(recheckFirst))
+  const recheckAgain = (await kbRpc(first.harness, 'copilot-kb-recheck', {}, 'kb-recheck-2')).envelope.result.value
+  expect('知识库：60 秒内重查不起新子进程',
+    recheckAgain && recheckAgain.notice && recheckAgain.notice.rev === '9f8e7d'
+    && first.shell.calls.filter((command) => command.includes('kb_sync.py')).length === 1,
+    JSON.stringify(recheckAgain))
+
+  // ② 稍后：notice 置空，记录落盘；同一 rev 换个进程（新 harness）也不再提示。
+  const dismissFirst = (await kbRpc(first.harness, 'copilot-kb-dismiss', {
+    rev: '9f8e7d',
+  }, 'kb-dismiss-1')).envelope.result.value
+  expect('知识库：稍后返回记录的 rev', dismissFirst && dismissFirst.rev === '9f8e7d', JSON.stringify(dismissFirst))
+  const afterDismiss = (await kbRpc(first.harness, 'copilot-state', {
+    sessionId: 'kb-session', cwd: SANDBOX,
+  }, 'kb-state-2')).envelope.result.value
+  expect('知识库：稍后后 notice 置空',
+    afterDismiss && afterDismiss.kbNotice === null, JSON.stringify(afterDismiss && afterDismiss.kbNotice))
+  const fileDismissed = readKbState()
+  expect('知识库：dismissedRev 落盘',
+    fileDismissed && fileDismissed.dismissedRev === '9f8e7d', JSON.stringify(fileDismissed))
+  expect('知识库：recheck 读出落盘的稍后记录',
+    (await kbRpc(first.harness, 'copilot-kb-recheck', {}, 'kb-recheck-3')).envelope.result.value.notice === null)
+
+  const sameRev = newKbHarness(kbPayload({}), false)
+  const sameRevValue = (await kbRpc(sameRev.harness, 'copilot-kb-recheck', {}, 'kb-recheck-same')).envelope.result.value
+  expect('知识库：同一 rev 不再出现（稍后记录跨进程有效）',
+    sameRevValue && sameRevValue.notice === null, JSON.stringify(sameRevValue))
+
+  // ③ 换 rev 再出现。
+  const newRev = newKbHarness(kbPayload({
+    remote_rev: 'abc1234', behind: 2,
+    surface: { knowledge: 0, routing: 0, reference: 0, methodology: 0, panel: 0, other: 2 },
+  }), false)
+  const newRevValue = (await kbRpc(newRev.harness, 'copilot-kb-recheck', {}, 'kb-recheck-new')).envelope.result.value
+  expect('知识库：换 rev 再出现',
+    newRevValue && newRevValue.notice && newRevValue.notice.rev === 'abc1234'
+    && newRevValue.notice.behind === 2 && newRevValue.notice.panel === 0 && newRevValue.notice.knowledge === 0,
+    JSON.stringify(newRevValue && newRevValue.notice))
+
+  // ④ behind 0：不提示，状态文件记 0。
+  const synced = newKbHarness(kbPayload({ remote_rev: 'abc1234', behind: 0 }), false)
+  const syncedValue = (await kbRpc(synced.harness, 'copilot-kb-recheck', {}, 'kb-recheck-synced')).envelope.result.value
+  expect('知识库：behind 0 不出现', syncedValue && syncedValue.notice === null, JSON.stringify(syncedValue))
+  const fileSynced = readKbState()
+  expect('知识库：behind 0 落到状态文件',
+    fileSynced && fileSynced.behind === 0 && fileSynced.lastError === '', JSON.stringify(fileSynced))
+
+  // ⑤ 关闭同步 / 离线部署：静默，不算错误（lastError 保持空）。
+  const disabled = newKbHarness(kbPayload({
+    ok: false, reason: 'disabled', enabled: false, behind: 1, remote_rev: 'def5678',
+  }), false)
+  const disabledValue = (await kbRpc(disabled.harness, 'copilot-kb-recheck', {}, 'kb-recheck-disabled')).envelope.result.value
+  const fileDisabled = readKbState()
+  expect('知识库：关闭同步时静默且不算错误',
+    disabledValue && disabledValue.notice === null && disabledValue.reason === 'disabled'
+    && disabledValue.error === '' && fileDisabled && fileDisabled.lastError === '',
+    JSON.stringify(disabledValue))
+
+  const offline = newKbHarness(kbPayload({
+    ok: false, reason: 'offline', enabled: true, offline: true, behind: 1, remote_rev: 'def5678',
+  }), false)
+  const offlineValue = (await kbRpc(offline.harness, 'copilot-kb-recheck', {}, 'kb-recheck-offline')).envelope.result.value
+  expect('知识库：离线部署时静默',
+    offlineValue && offlineValue.notice === null && offlineValue.reason === 'offline', JSON.stringify(offlineValue))
+
+  // ⑥ 网络失败：静默，原文落 lastError，上次的 rev/behind 保留。
+  const failed = newKbHarness(kbPayload({
+    ok: false, reason: 'network', behind: 'unknown', remote_rev: null,
+    fetch_error: 'fatal: unable to access https://example.invalid/x: Could not resolve host',
+  }), false)
+  const failedValue = (await kbRpc(failed.harness, 'copilot-kb-recheck', {}, 'kb-recheck-failed')).envelope.result.value
+  const fileFailed = readKbState()
+  expect('知识库：网络失败时静默且原文落 lastError',
+    failedValue && failedValue.notice === null && failedValue.reason === 'network'
+    && /fatal: unable to access/.test(failedValue.error || '')
+    && fileFailed && /fatal: unable to access/.test(fileFailed.lastError || '')
+    && fileFailed.behind === 0,
+    JSON.stringify({ value: failedValue, file: fileFailed }))
+
+  // ⑦ panel 0：提示里的面板数字为 0，客户端据此不提「重启 DSH」。
+  const noPanel = newKbHarness(kbPayload({
+    remote_rev: 'feed123', behind: 1,
+    surface: { knowledge: 1, routing: 0, reference: 0, methodology: 0, panel: 0, other: 0 },
+  }), false)
+  const noPanelValue = (await kbRpc(noPanel.harness, 'copilot-kb-recheck', {}, 'kb-recheck-nopanel')).envelope.result.value
+  expect('知识库：surface.panel 0 时 notice.panel 0',
+    noPanelValue && noPanelValue.notice && noPanelValue.notice.panel === 0
+    && noPanelValue.notice.knowledge === 1, JSON.stringify(noPanelValue && noPanelValue.notice))
+
+  // ⑧ 主检出解析：worktree 里的会话按主检出检查与落盘。
+  const worktree = join(KB_SANDBOX, 'wt')
+  mkdirSync(join(KB_REPO, '.git', 'worktrees', 'kb-wt'), { recursive: true })
+  mkdirSync(worktree, { recursive: true })
+  writeFileSync(join(worktree, '.git'), 'gitdir: ' + join(KB_REPO, '.git', 'worktrees', 'kb-wt') + '\n', 'utf8')
+  const savedRoot = process.env.DSH_SLEUTH_KB_ROOT
+  process.env.DSH_SLEUTH_KB_ROOT = worktree
+  const fromWorktree = newKbHarness(kbPayload({ remote_rev: 'feed123', behind: 1 }), false)
+  const worktreeValue = (await kbRpc(fromWorktree.harness, 'copilot-kb-recheck', {}, 'kb-recheck-wt')).envelope.result.value
+  process.env.DSH_SLEUTH_KB_ROOT = savedRoot
+  const worktreeCommand = fromWorktree.shell.calls.filter((command) => command.includes('kb_sync.py')).pop() || ''
+  expect('知识库：worktree 会话按主检查重',
+    worktreeValue && worktreeValue.notice
+    && worktreeCommand.includes("--root '" + KB_REPO + "'")
+    && !worktreeCommand.includes("--root '" + worktree + "'"),
+    JSON.stringify({ value: worktreeValue, command: worktreeCommand }))
+
+  // ⑨ 检出里没有 scripts/kb_sync.py：静默停用，不报错也不起子进程。
+  process.env.DSH_SLEUTH_KB_ROOT = KB_SANDBOX
+  const noScript = newKbHarness(kbPayload({}), false)
+  const noScriptValue = (await kbRpc(noScript.harness, 'copilot-kb-recheck', {}, 'kb-recheck-noscript')).envelope.result.value
+  process.env.DSH_SLEUTH_KB_ROOT = KB_REPO
+  expect('知识库：检出缺脚本时静默停用',
+    noScriptValue && noScriptValue.notice === null && noScriptValue.reason === 'unavailable'
+    && noScript.shell.calls.every((command) => !command.includes('kb_sync.py')),
+    JSON.stringify(noScriptValue))
+}
+
 // ── 信封与 HTTP 边界 ────────────────────────────────────────────────────────
 const unknown = await request(rw, {
   type: 'client-request', rpcId: 'x', method: 'nope', payload: {},
@@ -1018,7 +1299,7 @@ const wrongResponse = makeResponse()
 await rw.getRoute().handler(wrongMethod, wrongResponse)
 expect('非 POST：405', wrongResponse.captured.status === 405)
 
-for (const harness of [rw, incHarness, internalHarness, ro, timeoutHarness, abortHarness, deniedHarness, truncatedHarness, noPolicyHarness].filter(Boolean)) {
+for (const harness of [rw, incHarness, internalHarness, ro, timeoutHarness, abortHarness, deniedHarness, truncatedHarness, noPolicyHarness, ...kbHarnesses].filter(Boolean)) {
   for (const cleanup of harness.effects) {
     try {
       cleanup()
@@ -1027,7 +1308,13 @@ for (const harness of [rw, incHarness, internalHarness, ro, timeoutHarness, abor
     }
   }
 }
+expect('知识库：卸载时清掉两个定时器',
+  kbTimers !== null && kbTimers.timeouts.length === 1 && kbTimers.timeouts[0].disposed === true
+  && kbTimers.intervals.length === 1 && kbTimers.intervals[0].disposed === true,
+  JSON.stringify(kbTimers && { timeouts: kbTimers.timeouts, intervals: kbTimers.intervals }))
 rmSync(SANDBOX, { recursive: true, force: true })
+rmSync(KB_SANDBOX, { recursive: true, force: true })
+delete process.env.DSH_SLEUTH_KB_ROOT
 
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')
 process.exit(failures === 0 ? 0 : 1)
