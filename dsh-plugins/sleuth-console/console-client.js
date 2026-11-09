@@ -290,6 +290,9 @@ return {
         text += '（' + inner.join('，') + '）'
       }
       text += '。知识立即生效；流程文件下次会话生效。'
+      // 面板代码也是这份检出的一部分：同步带进来时，正在运行的旧面板要重启 DSH 才换。
+      // 从插件页装的那一份不是仓库副本，重启不会换版本，要先重装。
+      if (r.surface && Number(r.surface.panel) > 0) text += '面板代码也更新了：重启 DSH 后生效；从插件页装的要先重装再重启。'
       return { kind: 'ok', code: '', text: text, hint: '回滚：git reset --hard ORIG_HEAD' }
     }
 
@@ -587,9 +590,13 @@ return {
         banner = { kind: 'muted', text: '读不到落后的提交数（git rev-list 没有给出数字）。',
           hint: '稍后再点「立即同步」重试。' }
       } else if (typeof data.behind === 'number' && data.behind > 0) {
+        // 改动面的计数来自 kb_sync 的 --show：本次合并会带进来的目录。面板代码在 dsh-plugins/ 下，
+        // 它更新时旧面板要重启才换，所以在合并前就把这一步说清楚。
+        const panelIncoming = !!(data.surface && Number(data.surface.panel) > 0)
         banner = {
           kind: 'warn',
-          text: '落后 ' + data.behind + ' 个提交。本次合并会把 knowledge/、references/ 与 skills/ 一起更新；知识立即生效，流程文件下次会话生效。',
+          text: '落后 ' + data.behind + ' 个提交。本次合并会把 knowledge/、references/ 与 skills/ 一起更新；知识立即生效，流程文件下次会话生效。'
+            + (panelIncoming ? '面板代码也会更新：重启 DSH 后生效；从插件页装的要先重装。' : ''),
         }
       } else {
         banner = { kind: 'ok', text: '本机与远端一致。' }

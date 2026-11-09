@@ -466,6 +466,9 @@ return {
         identity_explicit: doc.identity_explicit === true,
         identity_resolved: doc.identity_resolved === true ? true
           : (doc.identity_resolved === false ? false : null),
+        // 改动面计数（含 dsh-plugins/ 的 panel）：面板据此在「落后 N 个提交」里预告这次合并
+        // 会带进面板代码、要重启 DSH。旧脚本没有这一项时给 null，面板不说。
+        surface: doc.surface && typeof doc.surface === 'object' ? doc.surface : null,
         config: null,
       }
       // 上一次 fetch 的失败（脚本从状态文件读出 last_reason / last_error）：页面重新打开后
@@ -646,6 +649,9 @@ return {
       }
       const merged = String(doc.merge || '') === 'ff-only'
       const blocked = merged ? null : syncReasonOf(doc.reason)
+      // 本次合并带进来的改动面（kb_sync 在 ff-only 成功后保留合并前的差值）：面板据此提示
+      // "面板代码也更新了，重启 DSH 后生效"。没有合并时为空。
+      const surface = doc.surface && typeof doc.surface === 'object' ? doc.surface : null
       return {
         ok: true,
         cwd: r.cwd || null,
@@ -655,6 +661,7 @@ return {
         behind: merged ? syncNum(doc.behind_before) : syncNum(doc.behind),
         reason_code: blocked ? blocked.code : '',
         reason_text: blocked ? blocked.message : '',
+        surface: surface,
       }
     })
 

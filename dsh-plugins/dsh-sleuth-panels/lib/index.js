@@ -1,7 +1,7 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:f1fa8ffbec6a)
-//   dsh-plugins/ev-panel/panel-host.js  (sha256:a2d65694e447)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:0fdaa5ebd254)
+//   dsh-plugins/ev-panel/panel-host.js  (sha256:78b97a834399)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
 // 面板源码是动态插件方言（文件是函数体，靠沙箱提供的 harness 通信）；这里原文嵌入常驻
@@ -105,7 +105,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:f1fa8ffbec6a) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:0fdaa5ebd254) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -114,6 +114,11 @@ return {
     // 会话的沙箱档位由 sandbox-policy 服务解析（显式授予 > 会话最后一条 sandbox/mode 事件 > 部署默认）。
     // 服务缺席时下面退回写死的 workspace-write，行为与改动前一致。
     const sandboxPolicySvc = ctx.get('sandboxPolicy')
+
+    // 本插件加载时的那一版面板包版本。构建常驻包时生成器把占位符换成 package.json 的 version；
+    // 热加载路直接读源文件，占位符不会被替换，这时按"版本未知"处理，不据此判新旧。
+    const PANEL_VERSION = '0.9.3'
+    const PANEL_VERSION_KNOWN = /^\d+\.\d+/.test(PANEL_VERSION)
 
     // fs 缺失时**只降级依赖它的功能**，不再让整个插件静默不注册。
     //
@@ -344,6 +349,41 @@ return {
       if (!raw) return raw
       const main = await mainCheckoutOf(raw)
       return main || raw
+    }
+
+    // 已加载的面板包与主检出里那份的版本差。诊断 tab 据此提示"有新版、重启后生效"：
+    // 面板是进程启动时装载的，git 同步后磁盘上的代码已经更新，但运行中的那一份要重启才换。
+    // 主检出的 package.json 是 link 安装的链接目标；快照安装时它是仓库那份，用来判仓库是否前进。
+    // 读不到或版本未知时返回 null，界面不提示——不拿猜测冒充版本事实。
+    // 边界：link 的链接目标不一定就是主检出（路由三允许在 worktree 里装 link），那种形态下
+    // 比的是主检出的版本，可能漏报或误报；不为此加路径解析，按常见形态取。
+    // 版本号比较只按下发版号（x.y.z）的整数段比；仓库历史版本都是纯数字，`-rc` 形式当等号处理。
+    function versionNewer(a, b) {
+      const pa = String(a || '').split('.').map(x => parseInt(x, 10))
+      const pb = String(b || '').split('.').map(x => parseInt(x, 10))
+      for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+        const na = Number.isFinite(pa[i]) ? pa[i] : 0
+        const nb = Number.isFinite(pb[i]) ? pb[i] : 0
+        if (na !== nb) return na > nb
+      }
+      return false
+    }
+    async function panelBuildInfo(cwd) {
+      if (!fs || !cwd || !PANEL_VERSION_KNOWN) return null
+      let repoVersion = ''
+      try {
+        const text = await fs.readText(await fs.resolve('dsh-plugins/dsh-sleuth-panels/package.json', { cwd: cwd }))
+        const manifest = JSON.parse(String(text || ''))
+        if (manifest && typeof manifest.version === 'string') repoVersion = manifest.version
+      } catch (e) {
+        return null
+      }
+      if (!/^\d+\.\d+/.test(repoVersion)) return null
+      return {
+        loaded_version: PANEL_VERSION,
+        repo_version: repoVersion,
+        drift: versionNewer(repoVersion, PANEL_VERSION),
+      }
     }
 
     async function openEvidence(sessionId, path) {
@@ -2796,10 +2836,14 @@ return {
       // 开在另一台机器上，命令却要在 host 这台机器上跑，所以平台由 host 报，不靠浏览器猜。
       const hostPlatform = (typeof process !== 'undefined' && process && process.platform)
         ? String(process.platform) : ''
+      // 加载版本与主检出里那份的差：客户端据此在诊断 tab 顶部提示"有新版、重启生效"。
+      // 版本读不到时给 null，界面不提示。
+      let build = null
+      try { build = await panelBuildInfo(cwd) } catch (e) { build = null }
       return { ok: true, sessions: r.sessions, inboxDrafts: r.inboxDrafts || [], elapsedMs: r.elapsedMs,
                parsed: r.parsed, cached: r.cached, skipped: r.skipped,
                vocab: r.vocab || null, capabilities: r.capabilities || null,
-               host: { platform: hostPlatform }, stateError: stateError }
+               host: { platform: hostPlatform }, stateError: stateError, build: build }
     })
 
     const detailDisposer = harness.handle('ascend-traces-detail', async (args) => {
@@ -3012,7 +3056,7 @@ return {
     id: 'ev-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ev-panel/panel-host.js (sha256:a2d65694e447) 原文开始 ----
+// ---- dsh-plugins/ev-panel/panel-host.js (sha256:78b97a834399) 原文开始 ----
 // ev-panel host —— 自演进看板数据服务（EV 卡 / 容量 / 归因聚合 / timeline）
 // 用法：cordis_define kind:new → code.host 用本文件全文；code.client 用 panel-client.js 全文。
 // host 侧通过 shell 跑 scripts/ev_board_data.py 汇总 JSON（确定性逻辑在脚本，遵循原则二）。
@@ -3481,6 +3525,9 @@ return {
         identity_explicit: doc.identity_explicit === true,
         identity_resolved: doc.identity_resolved === true ? true
           : (doc.identity_resolved === false ? false : null),
+        // 改动面计数（含 dsh-plugins/ 的 panel）：面板据此在「落后 N 个提交」里预告这次合并
+        // 会带进面板代码、要重启 DSH。旧脚本没有这一项时给 null，面板不说。
+        surface: doc.surface && typeof doc.surface === 'object' ? doc.surface : null,
         config: null,
       }
       // 上一次 fetch 的失败（脚本从状态文件读出 last_reason / last_error）：页面重新打开后
@@ -3661,6 +3708,9 @@ return {
       }
       const merged = String(doc.merge || '') === 'ff-only'
       const blocked = merged ? null : syncReasonOf(doc.reason)
+      // 本次合并带进来的改动面（kb_sync 在 ff-only 成功后保留合并前的差值）：面板据此提示
+      // "面板代码也更新了，重启 DSH 后生效"。没有合并时为空。
+      const surface = doc.surface && typeof doc.surface === 'object' ? doc.surface : null
       return {
         ok: true,
         cwd: r.cwd || null,
@@ -3670,6 +3720,7 @@ return {
         behind: merged ? syncNum(doc.behind_before) : syncNum(doc.behind),
         reason_code: blocked ? blocked.code : '',
         reason_text: blocked ? blocked.message : '',
+        surface: surface,
       }
     })
 

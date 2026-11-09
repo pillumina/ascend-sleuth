@@ -859,6 +859,34 @@ async function main() {
   expect('诊断 tab id', ascTabs[0].opts.id === 'ascend-diagnose')
   expect('指标 tab id', ascTabs[1].opts.id === 'ascend-metrics')
 
+  // ================= 版本漂移提示（同步代码后要不要重启 DSH）=================
+  // 面板是进程启动时装载的：仓库 package.json 的版本比已加载的高（link 安装的链接目标就是主检出；
+  // 快照安装时主检出是仓库那份），说明磁盘上的面板代码已更新、运行中的旧副本要重启才换。
+  // 这里钉两件事：漂移时给一行可读提示且指向重启；版本相等时不出现，避免常态噪音。
+  console.log('\n[ascend-panel 版本漂移提示]')
+  {
+    const driftHost = (method) => {
+      if (method === 'ascend-traces-list') {
+        return { ok: true, sessions: [], build: { loaded_version: '0.9.2', repo_version: '0.9.3', drift: true } }
+      }
+      return ascHost(method)
+    }
+    const drift = await renderAsync(ascSrc, { sessionId: 'sess-1' }, driftHost)
+    expect('漂移时给「面板有新版」并指向重启',
+      drift.text.includes('面板有新版') && drift.text.includes('重启'), drift.text.slice(0, 200))
+    const sameHost = (method) => {
+      if (method === 'ascend-traces-list') {
+        return { ok: true, sessions: [], build: { loaded_version: '0.9.3', repo_version: '0.9.3', drift: false } }
+      }
+      return ascHost(method)
+    }
+    const same = await renderAsync(ascSrc, { sessionId: 'sess-1' }, sameHost)
+    expect('版本相等（drift=false）时不提示有新版', !same.text.includes('面板有新版'), same.text.slice(0, 160))
+    const noBuild = await renderAsync(ascSrc, { sessionId: 'sess-1' }, ascHost)
+    expect('旧 host 不带 build 字段时照常渲染、不提示', !noBuild.text.includes('面板有新版')
+      && noBuild.text.includes('诊断状态'), noBuild.text.slice(0, 160))
+  }
+
   // ================= 会话行「待回报」标记（L1 悬停卡一行 + L2 行首空心点）=================
   // 为什么单开一节：这两处是侧栏的全局座位，取数是共享的一条瘦 RPC（N 行只读一次）。
   // 断言钉三件事：有欠账才有节点、欠多久按 feedback_pending_since 写、命中与未命中 case 分开说。

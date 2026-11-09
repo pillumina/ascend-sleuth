@@ -1,8 +1,8 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:3e92088ea7bb)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:2915942e7575)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:2faf50d5daad)
-//   dsh-plugins/sleuth-console/console-client.js  (sha256:a4c757b31740)
+//   dsh-plugins/sleuth-console/console-client.js  (sha256:35093e25d079)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
 // 面板源码是动态插件方言（靠沙箱提供的 host 通信）；这里原文嵌入页面产物，并补一层适配：
@@ -70,7 +70,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:3e92088ea7bb) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:2915942e7575) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -474,7 +474,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.9.2'
+    const PANEL_VERSION = '0.9.3'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -3382,6 +3382,12 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
             React.createElement('span', { className: 'sleu-title', style: { fontSize: 'var(--t-2xl)', fontWeight: 700 } }, '诊断状态'),
           ),
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+            (r.build && r.build.drift) ? React.createElement('span', {
+              title: '当前加载 v' + String(r.build.loaded_version || PANEL_VERSION)
+                + '，仓库里那份已是 v' + String(r.build.repo_version)
+                + '。重启 DSH 后加载新代码；重启后这一行仍在，说明加载的仍是旧版本：从插件页装的话要用同一路径重装，否则检查仓库产物是否重建（node scripts/build_panel_bundle.js）。',
+              style: { fontSize: 'var(--t-sm)', color: T.text, background: 'var(--tint-amber)', border: '1px solid var(--hair)', borderRadius: 'var(--r-pill)', padding: '3px 11px' },
+            }, '面板有新版 v' + String(r.build.repo_version) + '（重启后生效）') : null,
             React.createElement('button', { type: 'button', title: '重新读取 traces/——复制闭环指令去对话执行后，回来点这里', onClick: () => setReloadAt(n => n + 1), style: { ...btnGhost, padding: '3px 10px' } }, '刷新'),
             React.createElement('span', { title: badge + (typeof r.elapsedMs === 'number' ? ' · 列表耗时 ' + r.elapsedMs + ' ms（解析 ' + (r.parsed || 0) + ' 条 / 命中缓存 ' + (r.cached || 0) + ' 条' + (r.skipped ? ' / 跳过 ' + r.skipped + ' 条' : '') + '）' : ''), style: { fontSize: 'var(--t-sm)', color: T.text2, background: T.bg2, border: '1px solid var(--hair)', borderRadius: 'var(--r-pill)', padding: '3px 11px' } },
               nFollow ? (nFollow + ' 项待跟进') : ((r.sessions || []).length + ' 个会话')),
@@ -3411,7 +3417,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           nClose ? followChip(nClose, '待标收尾', 'close-pending') : null,
           React.createElement('span', { style: { color: T.text2, marginLeft: 'auto', fontSize: 'var(--t-sm)' } },
             '在查=诊断没结论（含等现场补材料）；等回报=结论已给、fix 没验证；待标收尾=回报已生效、状态还停在进行中｜卡片里点按钮生成指令 → 复制 → 粘到对话执行'),
-          React.createElement('span', { className: 'sleu-mono', title: '面板包版本：与 dsh-plugins/dsh-sleuth-panels/package.json 一致。看到的不是这个版本 = 装的还是旧包，或浏览器缓存了旧 bundle', style: { color: T.text2, fontSize: 'var(--t-md2)', opacity: 0.75 } }, PANEL_VERSION),
+          React.createElement('span', { className: 'sleu-mono', title: '面板包版本：与构建它的 package.json 一致。看到的不是这个版本 = 装的还是旧包，或浏览器缓存了旧 bundle；仓库已更新时，顶部会给「面板有新版」提示', style: { color: T.text2, fontSize: 'var(--t-md2)', opacity: 0.75 } }, PANEL_VERSION),
         ) : null,
         // 工具栏（筛选 + 搜索 + 列头）**吸顶**：会话一多就得往下滚，工具与列头都不该滚走。
         // 列头进吸顶容器后，滚到任意位置都知道每列是什么（此前列头随列表一起滚掉）。
@@ -6362,7 +6368,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       id: 'sleuth-console',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/sleuth-console/console-client.js (sha256:a4c757b31740) 原文开始 ----
+// ---- dsh-plugins/sleuth-console/console-client.js (sha256:35093e25d079) 原文开始 ----
 // sleuth-console/console-client.js —— 常驻包里的整页「Ascend Sleuth」（client-only）
 //
 // 为什么单有这一页：指标与自演进读的是**全库**（`metrics/`、`proposals/`、`knowledge/`），
@@ -6655,6 +6661,9 @@ return {
         text += '（' + inner.join('，') + '）'
       }
       text += '。知识立即生效；流程文件下次会话生效。'
+      // 面板代码也是这份检出的一部分：同步带进来时，正在运行的旧面板要重启 DSH 才换。
+      // 从插件页装的那一份不是仓库副本，重启不会换版本，要先重装。
+      if (r.surface && Number(r.surface.panel) > 0) text += '面板代码也更新了：重启 DSH 后生效；从插件页装的要先重装再重启。'
       return { kind: 'ok', code: '', text: text, hint: '回滚：git reset --hard ORIG_HEAD' }
     }
 
@@ -6952,9 +6961,13 @@ return {
         banner = { kind: 'muted', text: '读不到落后的提交数（git rev-list 没有给出数字）。',
           hint: '稍后再点「立即同步」重试。' }
       } else if (typeof data.behind === 'number' && data.behind > 0) {
+        // 改动面的计数来自 kb_sync 的 --show：本次合并会带进来的目录。面板代码在 dsh-plugins/ 下，
+        // 它更新时旧面板要重启才换，所以在合并前就把这一步说清楚。
+        const panelIncoming = !!(data.surface && Number(data.surface.panel) > 0)
         banner = {
           kind: 'warn',
-          text: '落后 ' + data.behind + ' 个提交。本次合并会把 knowledge/、references/ 与 skills/ 一起更新；知识立即生效，流程文件下次会话生效。',
+          text: '落后 ' + data.behind + ' 个提交。本次合并会把 knowledge/、references/ 与 skills/ 一起更新；知识立即生效，流程文件下次会话生效。'
+            + (panelIncoming ? '面板代码也会更新：重启 DSH 后生效；从插件页装的要先重装。' : ''),
         }
       } else {
         banner = { kind: 'ok', text: '本机与远端一致。' }

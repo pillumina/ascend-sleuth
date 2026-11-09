@@ -261,6 +261,7 @@ function showPayload(over) {
       remote: 'origin', branch: 'main',
       local_rev: '1a2b3c', remote_rev: '9f8e7d',
       behind: 12, ahead: 0, skipped: false,
+      surface: { knowledge: 3, routing: 0, reference: 1, methodology: 0, panel: 2, other: 0 },
       last_checked: minutesAgo(3), last_reason: '',
       enabled: true, offline: false, offline_source: '', reason: '',
       same_repo: true,
@@ -295,6 +296,8 @@ section('[知识库 · 客户端] 默认态（落后 12）')
   check(text.indexOf('上次核对') >= 0 && /3 分钟前/.test(text), '上次核对按相对时间给', text.slice(0, 240))
   check(text.indexOf('本次合并会把') >= 0 && text.indexOf('knowledge/') >= 0 && text.indexOf('skills/') >= 0,
     '落后时提示合并范围与生效时点')
+  check(text.indexOf('面板代码也会更新：重启 DSH 后生效') >= 0,
+    '落后时若带面板代码，提示要重启 DSH', text.slice(0, 320))
   check(text.indexOf('同步源') >= 0, '同步源卡片在')
   const opts = optionsOf(tree)
   check(opts.some(t => t.indexOf('origin · github.com') >= 0), '远端下拉列出名字与 host', JSON.stringify(opts).slice(0, 200))
@@ -584,7 +587,8 @@ section('[知识库 · 客户端] 同步结果：成功 / 未自动合并 / 失�
 {
   const { runtime, main } = await bootClient({
     'ascend-kb-sync-show': () => showPayload(),
-    'ascend-kb-sync-merge': () => ({ ok: true, merged: true, merged_rev: '9f8e7d', previous_rev: '1a2b3c', behind: 12 }),
+    'ascend-kb-sync-merge': () => ({ ok: true, merged: true, merged_rev: '9f8e7d', previous_rev: '1a2b3c', behind: 12,
+      surface: { knowledge: 3, routing: 0, reference: 1, methodology: 0, panel: 2, other: 0 } }),
   })
   let tree = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
   clickButton(tree, '立即同步')
@@ -593,6 +597,8 @@ section('[知识库 · 客户端] 同步结果：成功 / 未自动合并 / 失�
   check(text.indexOf('已同步到 v9f8e7d') >= 0, '成功提示给到目标版本', text.slice(0, 240))
   check(text.indexOf('原 v1a2b3c') >= 0 && text.indexOf('落后 12 个提交') >= 0, '成功提示给到原版本与差数')
   check(text.indexOf('git reset --hard ORIG_HEAD') >= 0, '成功提示给回滚命令')
+  check(text.indexOf('面板代码也更新了：重启 DSH 后生效') >= 0,
+    '同步带进面板代码时，成功提示说清要重启 DSH', text.slice(0, 320))
 
   const notMerged = await bootClient({
     'ascend-kb-sync-show': () => showPayload(),
@@ -779,7 +785,7 @@ const showDoc = {
   remote: 'origin', branch: 'main',
   local_rev: '1a2b3c', remote_rev: '9f8e7d',
   behind: 12, ahead: 0,
-  surface: { knowledge: 3, references: 1 },
+  surface: { knowledge: 3, reference: 1, methodology: 0, panel: 2 },
   merge: 'none', skipped: false, config: 'file',
   same_repo: true,
   identity_remote: 'origin', identity_url: 'git@github.com:org/repo.git',
@@ -851,6 +857,9 @@ section('[知识库 · host] 正常读取')
   check(!!value && value.sync.data.local_rev === '1a2b3c' && value.sync.data.remote_rev === '9f8e7d'
     && value.sync.data.behind === 12 && value.sync.data.last_checked === showDoc.last_ok_at,
     'show：四个读数的原值都带出来', JSON.stringify(value && value.sync.data).slice(0, 260))
+  check(!!value && value.sync.data.surface && Number(value.sync.data.surface.panel) === 2,
+    'show：改动面带出 panel 计数（面板据此预告要重启 DSH）',
+    JSON.stringify(value && value.sync.data.surface))
   check(!!value && value.sync.data.enabled === true && value.sync.data.offline === false
     && value.sync.data.reason === '' && value.sync.data.same_repo === true,
     'show：enabled / offline / reason / same_repo 按脚本字段带出',

@@ -194,11 +194,12 @@ class FetchTest(ConfiguredCase):
             "triage-tree.yaml": "natures: []\n",
             "references/facts.yaml": "items: []\n",
             "skills/demo/SKILL.md": "# demo\n",
+            "dsh-plugins/dsh-sleuth-panels/package.json": "{}\n",
             "docs/note.md": "# note\n",
         })
         _code, doc = self.run_cli("--sync", "--json")
         self.assertEqual(doc["surface"], {"knowledge": 1, "routing": 2, "reference": 1,
-                                          "methodology": 1, "other": 1})
+                                          "methodology": 1, "panel": 1, "other": 1})
 
     def test_timeout_degrades_to_zero_exit(self):
         self.upstream({"knowledge/a.yaml": "cases: []\n"})
@@ -564,6 +565,18 @@ class MergeTest(ConfiguredCase):
         self.assertEqual(doc["local_rev"], upstream)
         self.assertEqual(doc["behind_before"], 1)
         self.assertTrue((self.repo / "knowledge" / "a.yaml").is_file())
+
+    def test_ff_only_merge_keeps_incoming_surface(self):
+        # 合并后 HEAD..远端恒为 0；surface 要表示本次合并带进来的改动面，不是合并后的差。
+        self.upstream({
+            "knowledge/a.yaml": "cases: []\n",
+            "dsh-plugins/dsh-sleuth-panels/package.json": "{}\n",
+        })
+        code, doc = self.run_cli("--merge", "--json")
+        self.assertEqual(code, 0)
+        self.assertEqual(doc["merge"], "ff-only")
+        self.assertEqual(doc["surface"]["knowledge"], 1)
+        self.assertEqual(doc["surface"]["panel"], 1)
 
     def test_branch_mismatch_blocks_merge(self):
         self.upstream({"knowledge/a.yaml": "cases: []\n"})

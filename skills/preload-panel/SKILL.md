@@ -10,6 +10,7 @@ description: >
   （列出诊断会话，可按时间或按价值排序，点一行切过去）；另有独立的状态条包，一块：输入框上方的
   诊断状态条（可单独装卸）；另有独立的诊断画布包，左侧栏一个「诊断画布」图标、主区一整页，离线渲染
   `traces/`（可单独装卸）。热加载路径没有整页容器、页脚入口、状态条与画布，仍是三个 tab（诊断 / 指标 / 自演进）。
+  日常同步代码后不用调用本 skill（随仓库装的重启 DSH 生效，插件页装的重装后再重启）；只在首次装载或「装了但 tab 不出现」时用。
   仅 DSH 可用
   ——依赖 conversation.view / main / sidebar.panellist / sidebar.footer.action / shell.overlay /
   conversation.input.dock / conversation.input.right 插槽；
@@ -138,18 +139,19 @@ stderr（面板包冒烟会打 `RPC 路由已注册`），以退出码为准；�
 
 ## 路由四：HTTP 脚本安装（日志地址可用时）
 
-1. **装**：`node scripts/panel_install.js --all`。四个包各自判版本：与仓库一致就跳过，不一致才换装
-   （换装后要重启，见「更新已装的面板」）；只想装其中一个时用 `--spec <包目录>`。
+1. **装**：`node scripts/panel_install.js --all`。四个包各自判版本：与仓库一致就按安装方式说明要不要
+   重启，不一致才换装（换装后要重启，见「更新已装的面板」）；只想装其中一个时用 `--spec <包目录>`。
 2. **核对**：`node scripts/panel_install.js --all --check`，四个包的版本号都应与仓库里的一致。
 
 `node scripts/panel_install.js` 走的是界面同一条通路：先 `GET <base>/?token=<token>` 换会话 cookie，
 再 `POST <base>/api/pluginManager/<方法>`，信封是
 `{type:'client-request', rpcId, method:'pluginManager/<方法>', payload:{args:{…}}}`。先 `inspect`
 （spec 传字符串）：认了且没装就调 `installBundle(spec, {enabled:true})`；回 `already-installed`
-（这条 refused 不带包名）就从本地 `package.json` 读包名再调 `setBundleEnabled(name, true)`，spec 不是
-本地路径时读不到包名，脚本以退出码 1 收场。
+（这条 refused 不带包名）就从本地 `package.json` 读包名，按版本判要不要换装（见「更新已装的面板」），
+版本一致时再调 `setBundleEnabled(name, true)`；spec 不是本地路径时读不到包名，脚本以退出码 1 收场。
 
 - `--check` 只查状态，只对能定到包名的目标给判断（定不到包名或目标没装都退 1）。
+- `--sync` 在版本一致时按安装方式给结论；配 `--all` 才对四个包都生效，单跑只处理面板包。
 - `--remove` 卸载；`--spec <spec>` 换目标（包名、Git 地址、tarball 或本地绝对路径）；
   `--all` 处理面板包、vllm-kb 接入插件、诊断状态条与诊断画布四个包；`--force` 跳过版本判断强制换装。
 - 地址与 token 的取法同 `panel_rpc_probe.js`：先扫日志里的 `dsh web: …/?token=…` 行，取不到再传
@@ -306,30 +308,33 @@ node scripts/verify_panel_desktop.js --profile <profile>
 
 ## 更新已装的面板
 
-先判装法，两种的更新动作不同。拉完代码先跑 `node scripts/panel_install.js --all --sync`：四个包各自判
-版本，一致就什么都不做，不一致就换装并说明要不要重启。`--all` 决定处理哪几个包，`--sync` 决定
-按版本判定；只跑 `--sync` 时只处理面板包。
+日常同步代码不用调本 skill。拉完代码后，先看诊断 tab 顶部有没有「面板有新版」提示；它由仓库里的
+包版本与宿主已加载的版本比对得出。有提示就重启 DSH：加载新版本后提示消失；重启后仍在，从插件页
+装的要用同一路径重装，随仓库装的检查产物是否重建（`node scripts/build_panel_bundle.js`）。这个
+提示从带它的版本开始才有：本次升级到它之前装的旧面板不会给提示，合并后重启一次即可。
 
-- **link 安装**（路由三，`node_modules` 里是指回仓库的链接）：改完源码跑
-  `node scripts/build_panel_bundle.js` 重建产物（只对面板包；状态条包的 `lib/` 是源码，不用重建），
-  再重启宿主进程。不用重装，也不用改版本号。诊断画布的产物用
-  `node dsh-plugins/dsh-sleuth-canvas/build.mjs` 重建：改 `client-src/` 后跑它，刷新页面即可；
-  改了 `host/index.js` 要重启。
-- **快照安装**（路由二、四、五，插件管理器按 name+version 判「已装」）：同版本重装返回
-  `changed=false`、产物不换。要换版本：把 `dsh-plugins/dsh-sleuth-panels/package.json` 的 version
-  加一、重建产物，再按原路装一次；或 `node scripts/panel_install.js --force` 强制换装。
-  桌面版插件页装过的包还会在 profile 的 `pnpm.overrides` 里留一条指向 `.generations/live` 的覆盖，
-  实际加载的是那一份快照；这类包继续走插件页更新，路由三的 link 不会替换它。诊断画布的版本串在
-  页面右下脚注（`v<version>`），版本号来自 `dsh-plugins/dsh-sleuth-canvas/package.json`。
-- 两种都改不到"用户手上那个 tab"：改完必须重启宿主进程，host 半才会加载新代码。
-  面板的版本串在诊断 tab 右上角，诊断画布的在页面右下脚注，用来判断页面拿到的是哪一版。
+**link 安装**（profile 的 `dependencies` 是指向仓库的 `link:<仓库路径>`）：不用重装，重启 DSH 即加载
+新代码。热加载路（附录路由一）没有这个提示，修改后要用 `panel_from_file` 重载。
 
-改面板源码的人有三件事同一提交：重建产物、bump 版本、再跑一次生成器（版本号在构建时注入
-`lib/client.js` 的 `PANEL_VERSION`）。不 bump 时，路由二、五不会替换老版本。状态条包没有生成器：
-直接改 `dsh-plugins/dsh-sleuth-copilot/lib/` 下的源码，`package.json` 的 version 与
-`lib/client.js` 的 `PLUGIN_VERSION` 一起改。诊断画布同理：bump
-`dsh-plugins/dsh-sleuth-canvas/package.json` 的 version、跑 `node dsh-plugins/dsh-sleuth-canvas/build.mjs`
-重建产物、按原路重装；版本号在构建时写进 `lib/client.js`，只改一处会不一致。
+**快照安装**（插件页或插件管理器复制进 profile 的快照）：重启不会换版本。要用同一路径重装一次，
+再重启。桌面版插件页装过的包会在 profile 的 `pnpm.overrides` 里留一条指向 `.generations/live` 的
+覆盖，实际加载的是那一份快照；这类包继续走插件页更新，路由三的 link 不会替换它。
+
+`node scripts/panel_install.js --all --sync` 只对快照安装有意义：四个包各自比版本，不一致就换装，
+换装后要重启。link 安装下它比的是同一份磁盘版本，判不出 host 半新旧；结论按安装方式给。
+`--all` 决定处理哪几个包；不加时只处理面板包。
+
+**开发者改面板源码**：先 bump `dsh-plugins/dsh-sleuth-panels/package.json` 的 version，再跑
+`node scripts/build_panel_bundle.js` 重建产物（版本号在构建时注入 `lib/client.js` 的
+`PANEL_VERSION`），同一提交提交。不 bump 时，快照安装不会替换老版本。
+
+**诊断画布**是独立包，产物用 `node dsh-plugins/dsh-sleuth-canvas/build.mjs` 重建：改 `client-src/`
+后跑它，刷新页面即可；改了 `host/index.js` 要重启。版本号在
+`dsh-plugins/dsh-sleuth-canvas/package.json`，由构建写进 `lib/client.js`；bump 后按原路重装。
+页面右下脚注的版本串（`v<version>`）只说明浏览器半。
+
+**状态条包**没有生成器：直接改 `dsh-plugins/dsh-sleuth-copilot/lib/` 下的源码，`package.json` 的
+version 与 `lib/client.js` 的 `PLUGIN_VERSION` 一起改，再按原路重装。
 
 ## 面板清单
 
@@ -466,8 +471,8 @@ node scripts/panel_install.js --spec "<仓库绝对路径>/dsh-plugins/dsh-sleut
 - 热加载的动态定义只存在于当前 DSH 进程，重启后需重新加载；其余四条路装在 profile 层，重启后仍在。
 - 路由三装的是 link 依赖，指向仓库里那份代码。仓库换位置或 worktree 被清掉，这条链接就断了，面板
   随之加载失败（启动输出里是 `failed to import`，不是界面提示）；那时按原命令重装一次。
-- 改面板代码走仓库，装载走本 skill；两份产物由生成器保持一致。诊断画布的产物由
-  `node dsh-plugins/dsh-sleuth-canvas/build.mjs` 保持与 `client-src/` 一致。
+- 改面板代码走仓库；首次装载与换快照版本时看本 skill，日常同步代码不用调它。两份产物由生成器
+  保持一致。诊断画布的产物由 `node dsh-plugins/dsh-sleuth-canvas/build.mjs` 保持与 `client-src/` 一致。
 
 ## 附录：其他形态 DSH 的装载路
 

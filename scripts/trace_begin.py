@@ -186,8 +186,13 @@ def sync_hint(result: dict) -> str:
         before = str(result.get("local_rev_before") or "unknown")
         behind = result.get("behind_before")
         behind_text = behind if isinstance(behind, int) else 0
-        return (f"已同步知识库到 {local_rev}（原 {before}，落后 {behind_text} 个提交）。"
+        hint = (f"已同步知识库到 {local_rev}（原 {before}，落后 {behind_text} 个提交）。"
                 f"本会话的流程文件仍是旧版，下次会话生效。")
+        surface = result.get("surface")
+        if isinstance(surface, dict) and isinstance(surface.get("panel"), int) \
+                and surface["panel"] > 0:
+            hint += "面板代码也更新了：随仓库装的重启 DSH 后生效，插件页装的快照要重装后再重启。"
+        return hint
     state = kb_sync_state_of(result)
     if state == "ok" and isinstance(result.get("behind"), int) and result["behind"] > 0:
         if not _surface_worth_hint(result):

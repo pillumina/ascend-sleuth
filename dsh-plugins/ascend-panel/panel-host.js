@@ -7,6 +7,11 @@ return {
     // 服务缺席时下面退回写死的 workspace-write，行为与改动前一致。
     const sandboxPolicySvc = ctx.get('sandboxPolicy')
 
+    // 本插件加载时的那一版面板包版本。构建常驻包时生成器把占位符换成 package.json 的 version；
+    // 热加载路直接读源文件，占位符不会被替换，这时按"版本未知"处理，不据此判新旧。
+    const PANEL_VERSION = '__PANEL_VERSION__'
+    const PANEL_VERSION_KNOWN = /^\d+\.\d+/.test(PANEL_VERSION)
+
     // fs 缺失时**只降级依赖它的功能**，不再让整个插件静默不注册。
     //
     // 原先这里写的是 `if (fs === undefined) return`：后果是 fs 缺席时**两个 tab 一起死**——
@@ -236,6 +241,41 @@ return {
       if (!raw) return raw
       const main = await mainCheckoutOf(raw)
       return main || raw
+    }
+
+    // 已加载的面板包与主检出里那份的版本差。诊断 tab 据此提示"有新版、重启后生效"：
+    // 面板是进程启动时装载的，git 同步后磁盘上的代码已经更新，但运行中的那一份要重启才换。
+    // 主检出的 package.json 是 link 安装的链接目标；快照安装时它是仓库那份，用来判仓库是否前进。
+    // 读不到或版本未知时返回 null，界面不提示——不拿猜测冒充版本事实。
+    // 边界：link 的链接目标不一定就是主检出（路由三允许在 worktree 里装 link），那种形态下
+    // 比的是主检出的版本，可能漏报或误报；不为此加路径解析，按常见形态取。
+    // 版本号比较只按下发版号（x.y.z）的整数段比；仓库历史版本都是纯数字，`-rc` 形式当等号处理。
+    function versionNewer(a, b) {
+      const pa = String(a || '').split('.').map(x => parseInt(x, 10))
+      const pb = String(b || '').split('.').map(x => parseInt(x, 10))
+      for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+        const na = Number.isFinite(pa[i]) ? pa[i] : 0
+        const nb = Number.isFinite(pb[i]) ? pb[i] : 0
+        if (na !== nb) return na > nb
+      }
+      return false
+    }
+    async function panelBuildInfo(cwd) {
+      if (!fs || !cwd || !PANEL_VERSION_KNOWN) return null
+      let repoVersion = ''
+      try {
+        const text = await fs.readText(await fs.resolve('dsh-plugins/dsh-sleuth-panels/package.json', { cwd: cwd }))
+        const manifest = JSON.parse(String(text || ''))
+        if (manifest && typeof manifest.version === 'string') repoVersion = manifest.version
+      } catch (e) {
+        return null
+      }
+      if (!/^\d+\.\d+/.test(repoVersion)) return null
+      return {
+        loaded_version: PANEL_VERSION,
+        repo_version: repoVersion,
+        drift: versionNewer(repoVersion, PANEL_VERSION),
+      }
     }
 
     async function openEvidence(sessionId, path) {
@@ -2688,10 +2728,14 @@ return {
       // 开在另一台机器上，命令却要在 host 这台机器上跑，所以平台由 host 报，不靠浏览器猜。
       const hostPlatform = (typeof process !== 'undefined' && process && process.platform)
         ? String(process.platform) : ''
+      // 加载版本与主检出里那份的差：客户端据此在诊断 tab 顶部提示"有新版、重启生效"。
+      // 版本读不到时给 null，界面不提示。
+      let build = null
+      try { build = await panelBuildInfo(cwd) } catch (e) { build = null }
       return { ok: true, sessions: r.sessions, inboxDrafts: r.inboxDrafts || [], elapsedMs: r.elapsedMs,
                parsed: r.parsed, cached: r.cached, skipped: r.skipped,
                vocab: r.vocab || null, capabilities: r.capabilities || null,
-               host: { platform: hostPlatform }, stateError: stateError }
+               host: { platform: hostPlatform }, stateError: stateError, build: build }
     })
 
     const detailDisposer = harness.handle('ascend-traces-detail', async (args) => {

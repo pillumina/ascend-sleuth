@@ -42,6 +42,8 @@ detached HEAD 不自动合并——合并会改当前检出的 HEAD，而 worktr
   fetch_error  本次 fetch 失败时 git 原始输出的末行（已抹掉 URL 里的凭据）；成功与 --show 时为空
   last_error   --show 时上次失败留下的同一条原文；没有失败记录时为空
   merge    ff-only | none
+  surface  各键计数：knowledge / routing / reference / methodology / panel / other；
+           ff-only 合并成功时表示本次合并带进来的改动面，没有合并时表示本地落后于远端的改动面
   config   file | default
   enabled  true / false（settings 的 sync.enabled；--show 也照实给）
   offline  true / false（deployment.yaml 声明 sync.mode: offline）
@@ -80,7 +82,7 @@ FAILURE_COOLDOWN_S = 600
 FETCH_ERROR_LIMIT = 300
 DEFAULT_REMOTE = "origin"
 DEFAULT_BRANCH = "main"
-SURFACE_KEYS = ("knowledge", "routing", "reference", "methodology", "other")
+SURFACE_KEYS = ("knowledge", "routing", "reference", "methodology", "panel", "other")
 
 
 class SettingsError(RuntimeError):
@@ -556,6 +558,8 @@ def classify_surface(path: str) -> str:
         return "reference"
     if path.startswith("skills/"):
         return "methodology"
+    if path.startswith("dsh-plugins/"):
+        return "panel"
     return "other"
 
 
@@ -736,6 +740,9 @@ def sync(root: Path, *, do_fetch: bool = True, do_merge: bool = False,
 
     result["local_rev_before"] = fresh["local_rev"]
     result["behind_before"] = fresh["behind"]
+    # 合并后 HEAD 已前移，after 的改动面是合并后 HEAD..远端（恒为 0）；本次合并带进来的
+    # 改动面在合并前的 fresh 里，合并成功后放回去。
+    incoming_surface = dict(fresh.get("surface") or {})
     remote_ref = f"{remote}/{branch}"
     try:
         merged = run_git(["merge", "--ff-only", remote_ref], root, timeout)
@@ -755,7 +762,8 @@ def sync(root: Path, *, do_fetch: bool = True, do_merge: bool = False,
     before_rev, before_behind = result["local_rev_before"], result["behind_before"]
     result.update(after)
     result.update(ok=True, reason="", merge="ff-only",
-                  local_rev_before=before_rev, behind_before=before_behind)
+                  local_rev_before=before_rev, behind_before=before_behind,
+                  surface=incoming_surface)
     return result
 
 
