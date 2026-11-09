@@ -1,8 +1,8 @@
 """kb_sync 的口径测试：默认配置、fetch、落后计算、改动面、合并四条条件、降级与缓存、
-`--check` 模式与提醒检查配置。
+`--check` 模式与提醒检查配置、fetch 被权限拒绝时的只读探测。
 
-为什么不联网：远端一律用本地裸仓。超时用 mock 掉 `run_git` 的 fetch 调用，避免依赖真实网络。
-断言打在 JSON 结果字段上，不打私有实现。
+为什么不联网：远端一律用本地裸仓。超时与权限拒绝用 mock 掉 `run_git` 的 fetch 调用，
+`ls-remote` 仍打在本地裸仓上，避免依赖真实网络。断言打在 JSON 结果字段上，不打私有实现。
 """
 
 from __future__ import annotations
@@ -599,6 +599,248 @@ class FetchFailureDetailTest(ConfiguredCase):
             _code, doc = self.run_cli("--sync", "--json", "--force")
         self.assertEqual(doc["reason"], "timeout")
         self.assertIn("remote is slow", doc["fetch_error"])
+
+
+# fetch 被权限拒绝时的两种 stderr 形态：写 FETCH_HEAD 被拒，以及 --no-write-fetch-head 之后
+# 的写对象被拒。受限档位的实际形态是后者。
+PERMISSION_DENIED_STDERR = "fatal: cannot open '.git/FETCH_HEAD': Operation not permitted\n"
+OBJECT_WRITE_DENIED_STDERR = (
+    "error: insufficient permission for adding an object to repository database .git/objects\n"
+    "fatal: failed to write object\n"
+    "fatal: unpack-objects failed\n")
+
+
+class FetchFailureReasonTest(unittest.TestCase):
+    """fetch 失败归类的优先级：锁 > 凭据 > 权限拒绝 > 网络。"""
+
+    def reason(self, stderr: str) -> str:
+        proc = subprocess.CompletedProcess(args=["git", "fetch"], returncode=128,
+                                           stdout="", stderr=stderr)
+        return kb_sync.fetch_failure_reason(proc)
+
+    def test_permission_wording_maps_to_permission_denied(self):
+        samples = {
+            "posix": "fatal: cannot open '.git/FETCH_HEAD': Permission denied\n",
+            "windows": "fatal: cannot open '.git/FETCH_HEAD': Access is denied.\n",
+            "macos": "fatal: cannot open '.git/FETCH_HEAD': Operation not permitted\n",
+        }
+        for name, stderr in samples.items():
+            with self.subTest(name=name):
+                self.assertEqual(self.reason(stderr), "permission-denied")
+
+    def test_object_write_denied_maps_to_permission_denied(self):
+        # --no-write-fetch-head 之后 git 不再碰 FETCH_HEAD，权限失败发生在写对象；
+        # 只认 FETCH_HEAD 与 permission denied 会漏掉这条路径，探测因此不触发。
+        self.assertEqual(self.reason(OBJECT_WRITE_DENIED_STDERR), "permission-denied")
+
+    def test_ssh_publickey_stays_exit_code(self):
+        # "Permission denied (publickey)" 是认不出凭据，不是沙箱拒绝；归到权限拒绝会把读者
+        # 带去查文件权限。凭据类归类排在权限拒绝之前。
+        self.assertEqual(self.reason("git@example.com: Permission denied (publickey).\n"),
+                         "exit-128")
+
+    def test_lock_wording_wins_over_permission(self):
+        self.assertEqual(
+            self.reason("fatal: cannot lock ref 'refs/remotes/origin/main': "
+                        "Unable to create '.../main.lock': Permission denied\n"),
+            "lock")
+
+    def test_network_wording_stays_network(self):
+        self.assertEqual(self.reason("fatal: could not resolve host: example.com\n"), "network")
+
+
+class PermissionDegradedTest(ConfiguredCase):
+    """`--check` 的 fetch 被权限拒绝：改用 `git ls-remote` 只读探测，只判远端有没有新提交。
+
+    手动路径（`--merge`）保持失败返回：没有写权限就取不回提交，不能报成可见。
+    """
+
+    def deny_fetch(self, stderr=PERMISSION_DENIED_STDERR):
+        """把 fetch 换成指定的权限拒绝 stderr，其余 git 命令照跑（ls-remote 走真实本地裸仓）。"""
+        real = kb_sync.run_git
+
+        def fake(args, cwd, timeout):
+            if "fetch" in args:
+                return subprocess.CompletedProcess(args=["git", *args], returncode=128,
+                                                   stdout="", stderr=stderr)
+            return real(args, cwd, timeout)
+
+        return mock.patch.object(kb_sync, "run_git", side_effect=fake)
+
+    def read_state(self) -> dict:
+        path = self.repo / ".local" / "kb-sync-state.json"
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def test_fetch_argv_skips_write_fetch_head(self):
+        # 受限档位下写 FETCH_HEAD 会被拒；fetch 不该再写它，全仓没有消费点。
+        self.upstream({"knowledge/a.yaml": "cases: []\n"})
+        real = kb_sync.run_git
+        fetch_calls = []
+
+        def spy(args, cwd, timeout):
+            if "fetch" in args:
+                fetch_calls.append(list(args))
+            return real(args, cwd, timeout)
+
+        with mock.patch.object(kb_sync, "run_git", side_effect=spy):
+            code, doc = self.run_cli("--sync", "--json")
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["ok"])
+        self.assertEqual(fetch_calls, [["fetch", "--no-tags", "--no-write-fetch-head",
+                                        "origin", "main"]])
+
+    def test_check_degrades_when_upstream_moved(self):
+        upstream = self.upstream({"knowledge/new.yaml": "cases: []\n"})
+        with self.deny_fetch():
+            code, doc = self.run_cli("--check", "--json")
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["ok"])
+        self.assertEqual(doc["reason"], "")
+        self.assertFalse(doc["skipped"])
+        self.assertEqual(doc["degraded"], "permission-denied")
+        self.assertEqual(doc["degraded_error"], PERMISSION_DENIED_STDERR.strip())
+        self.assertTrue(doc["update_available"])
+        self.assertEqual(doc["behind"], "unknown")
+        self.assertEqual(doc["ahead"], "unknown")
+        self.assertFalse(doc["surface_known"])
+        self.assertEqual(doc["surface"], {key: 0 for key in kb_sync.SURFACE_KEYS})
+        # remote_rev 是远端完整 sha 的前 7 位，不是本地远端跟踪 ref 的旧值。
+        self.assertEqual(len(doc["remote_rev"]), 7)
+        self.assertTrue(upstream.startswith(doc["remote_rev"]))
+        self.assertEqual(doc["local_rev"], git(self.repo, "rev-parse", "--short", "HEAD")[:7])
+        state = self.read_state()
+        self.assertEqual(state["reason"], "")
+        self.assertEqual(state["fetch_error"], "")
+        self.assertTrue(state["last_ok_at"])
+        # 只读探测不写本地：远端跟踪 ref 仍停在本地 HEAD，工作区没有取回提交。
+        self.assertEqual(git(self.repo, "rev-parse", "origin/main"),
+                         git(self.repo, "rev-parse", "HEAD"))
+        self.assertFalse((self.repo / "knowledge" / "new.yaml").exists())
+
+    def test_check_degrades_when_object_write_denied(self):
+        # 带 --no-write-fetch-head 后受限档位的实际失败形态：写对象被拒，不再是 FETCH_HEAD。
+        upstream = self.upstream({"knowledge/new.yaml": "cases: []\n"})
+        with self.deny_fetch(OBJECT_WRITE_DENIED_STDERR):
+            code, doc = self.run_cli("--check", "--json")
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["ok"])
+        self.assertEqual(doc["reason"], "")
+        self.assertEqual(doc["degraded"], "permission-denied")
+        # 原始错误取末行 fatal；归类看整段 stderr。
+        self.assertEqual(doc["degraded_error"], "fatal: unpack-objects failed")
+        self.assertTrue(doc["update_available"])
+        self.assertEqual(doc["behind"], "unknown")
+        self.assertFalse(doc["surface_known"])
+        self.assertTrue(upstream.startswith(doc["remote_rev"]))
+        state = self.read_state()
+        self.assertEqual(state["reason"], "")
+        self.assertEqual(state["fetch_error"], "")
+        self.assertTrue(state["last_ok_at"])
+        self.assertEqual(git(self.repo, "rev-parse", "origin/main"),
+                         git(self.repo, "rev-parse", "HEAD"))
+
+    def test_check_degrades_keeps_behind_after_successful_check(self):
+        # 先成功 --check 一次（跟踪 ref 前进、本地未合并），随后 fetch 被拒：远端相对上次
+        # fetch 没动，但本地 HEAD 仍落后，探测必须继续提示更新。
+        self.upstream({"knowledge/a.yaml": "cases: []\n"})
+        self.upstream({"knowledge/b.yaml": "cases: []\n"})
+        _code, first = self.run_cli("--check", "--json")
+        self.assertEqual(first["behind"], 2)
+        with self.deny_fetch():
+            _code, doc = self.run_cli("--check", "--json")
+        self.assertTrue(doc["ok"])
+        self.assertEqual(doc["degraded"], "permission-denied")
+        self.assertTrue(doc["update_available"])
+        self.assertEqual(doc["behind"], "unknown")
+
+    def test_check_reports_no_update_when_remote_unmoved(self):
+        with self.deny_fetch():
+            _code, doc = self.run_cli("--check", "--json")
+        self.assertTrue(doc["ok"])
+        self.assertEqual(doc["degraded"], "permission-denied")
+        self.assertFalse(doc["update_available"])
+        self.assertEqual(doc["behind"], 0)
+        self.assertEqual(doc["remote_rev"], doc["local_rev"])
+        self.assertFalse(doc["surface_known"])
+
+    def test_local_ahead_with_remote_unmoved_has_no_update(self):
+        # 本地领先、远端没动：远端 sha 是本地 HEAD 的祖先，不能报成远端有新提交。
+        (self.repo / "local.txt").write_text("x\n", encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-qm", "local")
+        with self.deny_fetch():
+            _code, doc = self.run_cli("--check", "--json")
+        self.assertTrue(doc["ok"])
+        self.assertFalse(doc["update_available"])
+        self.assertEqual(doc["behind"], 0)
+        self.assertNotEqual(doc["local_rev"], doc["remote_rev"])
+
+    def test_check_probe_failure_records_permission_denied(self):
+        # ls-remote 也失败时不猜：按 permission-denied 记这次失败，error 留 fetch 原文。
+        self.bare.rename(self.base / "origin.gone")
+        with self.deny_fetch():
+            code, doc = self.run_cli("--check", "--json")
+        self.assertEqual(code, 0)
+        self.assertFalse(doc["ok"])
+        self.assertEqual(doc["reason"], "permission-denied")
+        self.assertFalse(doc.get("degraded"))
+        self.assertIn("FETCH_HEAD", doc["fetch_error"])
+        state = self.read_state()
+        self.assertEqual(state["reason"], "permission-denied")
+        self.assertIn("FETCH_HEAD", state["fetch_error"])
+
+    def test_merge_permission_denied_stays_failure(self):
+        self.upstream({"knowledge/a.yaml": "cases: []\n"})
+        with self.deny_fetch():
+            code, doc = self.run_cli("--merge", "--json")
+        self.assertEqual(code, 0)
+        self.assertFalse(doc["ok"])
+        self.assertEqual(doc["reason"], "permission-denied")
+        self.assertFalse(doc.get("degraded"))
+        self.assertEqual(doc["merge"], "none")
+        state = self.read_state()
+        self.assertEqual(state["reason"], "permission-denied")
+
+    def test_human_check_output_explains_degraded_probe(self):
+        self.upstream({"knowledge/new.yaml": "cases: []\n"})
+        out = io.StringIO()
+        with self.deny_fetch():
+            with contextlib.redirect_stdout(out):
+                kb_sync.main(["--root", str(self.repo), "--check"])
+        text = out.getvalue()
+        self.assertIn("只读探测", text)
+        self.assertIn("有新提交", text)
+        self.assertIn("落后数与改动面未知", text)
+        self.assertIn("git 原始输出", text)
+
+
+class NoWriteFetchHeadFallbackTest(ConfiguredCase):
+    """git 2.29 之前不认 `--no-write-fetch-head`：去掉该参数重试一次。"""
+
+    def test_retries_without_flag_once(self):
+        upstream = self.upstream({"knowledge/a.yaml": "cases: []\n"})
+        real = kb_sync.run_git
+        fetch_calls = []
+
+        def fake(args, cwd, timeout):
+            if "fetch" in args:
+                fetch_calls.append(list(args))
+                if len(fetch_calls) == 1:
+                    return subprocess.CompletedProcess(
+                        args=["git", *args], returncode=129, stdout="",
+                        stderr="error: unknown option `no-write-fetch-head'\n")
+            return real(args, cwd, timeout)
+
+        with mock.patch.object(kb_sync, "run_git", side_effect=fake):
+            code, doc = self.run_cli("--sync", "--json")
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["ok"])
+        self.assertEqual(fetch_calls, [
+            ["fetch", "--no-tags", "--no-write-fetch-head", "origin", "main"],
+            ["fetch", "--no-tags", "origin", "main"],
+        ])
+        self.assertTrue(upstream.startswith(doc["remote_rev"]))
+        self.assertFalse(doc.get("degraded"))
 
 
 class MergeTest(ConfiguredCase):

@@ -26,6 +26,20 @@
 它的开关与间隔是 `sync.check_enabled`（默认 true）与 `sync.check_minutes`（默认 30，
 夹在 5..720 之间）。
 
+`--check` 的 fetch 被权限拒绝（沙箱或文件权限写不进检出）时改用只读探测：`git ls-remote`
+问远端分支的 sha，再用 `git merge-base --is-ancestor` 判它是否从本地 HEAD 可达，只能判出
+远端有没有本地 HEAD 未包含的提交。结果里 `degraded` 非空、`degraded_error` 是 fetch 的
+原始一行错误、`surface_known` 为 false。
+
+`--no-write-fetch-head` 让权限失败从写 `FETCH_HEAD` 后移到对象写入：stderr 变成
+`insufficient permission for adding an object` 与 `failed to write object`，归类要覆盖这条
+路径，否则探测不会触发。该选项要 git 2.29 才有；老 git 报 unknown / unrecognized option
+时去掉它重试一次（全仓没有 `FETCH_HEAD` 消费点）。
+
+探测成功也把本次核对记为成功（`reason` 清空、`last_ok_at` 前移）；探测失败按
+`permission-denied` 记失败。落后数、领先数与改动面都要先把提交取回本地才算得出，这一路
+一律未知。
+
 自动合并只在这些条件同时成立时发生：当前分支 = 配置 `branch`、HEAD 是远端分支的祖先、
 `git status --porcelain -uno` 为空、无进行中 merge / rebase / cherry-pick。worktree 与
 detached HEAD 不自动合并——合并会改当前检出的 HEAD，而 worktree 可能正被另一单使用。
@@ -43,14 +57,18 @@ detached HEAD 不自动合并——合并会改当前检出的 HEAD，而 worktr
 
 结果里的稳定取值（文档与测试可直接断言）：
   ok       true / false
-  reason   "" | timeout | network | no-remote | not-a-repo | lock | exit-<n> | offline |
-           disabled | dirty | branch-mismatch | not-ancestor | merge-in-progress |
-           auto-merge-off | not-ff | same-repo | identity-unresolved
+  reason   "" | timeout | network | permission-denied | no-remote | not-a-repo | lock |
+           exit-<n> | offline | disabled | dirty | branch-mismatch | not-ancestor |
+           merge-in-progress | auto-merge-off | not-ff | same-repo | identity-unresolved
   fetch_error  本次 fetch 失败时 git 原始输出的末行（已抹掉 URL 里的凭据）；成功与 --show 时为空
   last_error   --show 时上次失败留下的同一条原文；没有失败记录时为空
   merge    ff-only | none
   surface  各键计数：knowledge / routing / reference / methodology / panel / other；
            ff-only 合并成功时表示本次合并带进来的改动面，没有合并时表示本地落后于远端的改动面
+  surface_known  false 表示 surface 计数不可用（只在 degraded 时出现）
+  degraded  "" | permission-denied；--check 的 fetch 被权限拒绝并完成只读探测时非空
+  degraded_error  fetch 的原始一行错误（degraded 非空时）
+  update_available  true / false（degraded 时只读探测的结论：远端有没有本地 HEAD 未包含的提交）
   config   file | default
   enabled  true / false（settings 的 sync.enabled；--show 也照实给）
           只拦自动路径：--check 与带 --force 的手动路径不看它，结果里仍照实上报
@@ -479,12 +497,22 @@ _LOCK_ERROR = re.compile(
     r"cannot lock|unable to lock|lock(?:ed|ing)? (?:ref|file)|\.lock\b|"
     r"reference.*locked|ref lock",
     re.I)
+# 权限拒绝：沙箱或文件权限不让 git 写检出。两条失败路径都收：写 FETCH_HEAD（permission
+# denied / operation not permitted），以及 --no-write-fetch-head 之后的写对象（insufficient
+# permission / failed to write object）。
+# 比对顺序见 fetch_failure_reason：SSH 凭据失败里的 "Permission denied (publickey)" 先归凭据。
+_PERMISSION_ERROR = re.compile(
+    r"permission denied|access is denied|operation not permitted|"
+    r"insufficient permission|failed to write object",
+    re.I)
 
 
 def fetch_failure_reason(proc) -> str:
-    """失败原因归类：ref 锁 → network → exit-<码>。
+    """失败原因归类：ref 锁 → 凭据 → 权限拒绝 → network → exit-<码>。
 
     凭据类（401 / 403 / 认不出用户名）不归到 network：带读者往网络与代理上查会查错方向。
+    权限拒绝排在凭据之后：SSH 的 `Permission denied (publickey)` 是认不出凭据，不是沙箱拒绝。
+    权限拒绝同时覆盖写 `FETCH_HEAD` 与写对象两条文案，见 `_PERMISSION_ERROR`。
     """
     text = (proc.stderr or "") + "\n" + (proc.stdout or "")
     if _LOCK_ERROR.search(text):
@@ -492,9 +520,33 @@ def fetch_failure_reason(proc) -> str:
     code = proc.returncode if isinstance(proc.returncode, int) else 1
     if _AUTH_ERROR.search(text):
         return f"exit-{code}"
+    if _PERMISSION_ERROR.search(text):
+        return "permission-denied"
     if _NETWORK_ERROR.search(text):
         return "network"
     return f"exit-{code}"
+
+
+def _run_fetch(root: Path, argv, timeout: float):
+    """跑一次 fetch。→ (proc, reason, error)：超时与起不来时 proc 为 None 并给出归类。"""
+    try:
+        proc = run_git(argv, root, timeout)
+    except subprocess.TimeoutExpired as exc:
+        return None, "timeout", timeout_error_of(exc)
+    except (OSError, subprocess.SubprocessError):
+        return None, "exit-1", ""
+    return proc, "", ""
+
+
+def _lacks_no_write_fetch_head(proc) -> bool:
+    """git 2.29 之前不认 `--no-write-fetch-head`：stderr 报 unknown / unrecognized option。
+
+    老 git 上这条参数会让 fetch 直接失败，先去掉重试一次再谈归类。
+    """
+    text = (proc.stderr or "") + "\n" + (proc.stdout or "")
+    if "no-write-fetch-head" not in text:
+        return False
+    return bool(re.search(r"unknown option|unrecognized option", text, re.I))
 
 
 def _git_text(root: Path, args, timeout: float):
@@ -692,13 +744,16 @@ def local_snapshot(root: Path, remote: str, branch: str, *, timeout: float = DEF
 
 def sync(root: Path, *, do_fetch: bool = True, do_merge: bool = False,
          honor_auto_merge: bool = False, timeout: float = DEFAULT_TIMEOUT,
-         force: bool = False, ignore_enabled: bool = False) -> dict:
+         force: bool = False, ignore_enabled: bool = False,
+         probe_on_denied: bool = False) -> dict:
     """fetch（可选条件 ff-only 合并）→ 结果映射。任何失败都返回结果，不抛给调用方。
 
     `force=True` 跳过失败缓存：手动同步要能立刻重试，否则刚失败过的网络在 10 分钟内
     点几次都只会拿回同一份缓存。自动同步（建单、续接漂移检查）不加这个参数。
     `ignore_enabled=True`（`--check` 用）与 `force=True`（手动路径）不看 `sync.enabled`：
     两种情况照常联网，结果里的 `enabled` 仍按设置照实上报。离线声明仍拦下它们。
+    `probe_on_denied=True`（`--check` 用）在 fetch 被权限拒绝时改用只读探测，详见
+    `_probe_on_denied`；手动路径保持失败返回。
     """
     root = Path(root)
     settings, config, config_error = load_settings(root)
@@ -732,15 +787,24 @@ def sync(root: Path, *, do_fetch: bool = True, do_merge: bool = False,
         result.update(ok=False, reason="no-remote")
         return result
 
-    try:
-        proc = run_git(["fetch", "--no-tags", remote, branch], root, timeout)
-    except subprocess.TimeoutExpired as exc:
-        return _record_fetch_failure(root, result, "timeout", timeout_error_of(exc))
-    except (OSError, subprocess.SubprocessError):
-        return _record_fetch_failure(root, result, "exit-1")
+    argv = ["fetch", "--no-tags", "--no-write-fetch-head", remote, branch]
+    proc, fail_reason, fail_error = _run_fetch(root, argv, timeout)
+    if proc is None:
+        return _record_fetch_failure(root, result, fail_reason, fail_error)
+    if proc.returncode != 0 and _lacks_no_write_fetch_head(proc):
+        # 老 git（2.29 之前）不认该选项：去掉它重试一次。全仓没有 FETCH_HEAD 消费点，
+        # 老 git 上写 FETCH_HEAD 只多一次本地写，不改变合并用的 ref。
+        proc, fail_reason, fail_error = _run_fetch(
+            root, ["fetch", "--no-tags", remote, branch], timeout)
+        if proc is None:
+            return _record_fetch_failure(root, result, fail_reason, fail_error)
     if proc.returncode != 0:
-        return _record_fetch_failure(root, result,
-                                     fetch_failure_reason(proc), fetch_error_of(proc))
+        reason = fetch_failure_reason(proc)
+        error = fetch_error_of(proc)
+        if probe_on_denied and reason == "permission-denied":
+            return _probe_on_denied(root, result, remote=remote, branch=branch,
+                                    timeout=timeout, fetch_error=error)
+        return _record_fetch_failure(root, result, reason, error)
 
     _record_fetch_ok(root, remote, branch)
     fresh = local_snapshot(root, remote, branch, timeout=timeout, config=config,
@@ -856,11 +920,78 @@ def _record_fetch_ok(root: Path, remote: str, branch: str) -> None:
     save_state(root, state)
 
 
+# 完整 sha：SHA-1 40 位、SHA-256 64 位。ls-remote 输出解析出别的形态不认。
+_SHA_FULL = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$", re.I)
+
+
+def _remote_head_sha(root: Path, remote: str, branch: str, timeout: float) -> str:
+    """只读问远端分支的完整 sha；`ls-remote` 不写本地任何文件。取不到返回空串。"""
+    ref = f"refs/heads/{branch}"
+    text = _git_text(root, ["ls-remote", "--heads", remote, ref], timeout)
+    for line in (text or "").splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1] == ref and _SHA_FULL.match(parts[0]):
+            return parts[0].lower()
+    return ""
+
+
+def _remote_sha_reachable(root: Path, remote_sha: str, local_sha: str, timeout: float) -> bool:
+    """远端 sha 是否可从本地 HEAD 到达（即本地不落后）。
+
+    `merge-base --is-ancestor` 退出码 0 = 远端是本地 HEAD 的祖先；1 = 不是祖先，本地落后或
+    分叉。本地没有该对象（远端有新提交、上次 fetch 后再没取回）、git 起不来或其它退出码都
+    算拿不准，返回 False：宁可多提示一次更新，也不静默把仍在的落后提示清掉。
+    """
+    try:
+        proc = run_git(["merge-base", "--is-ancestor", remote_sha, local_sha], root, timeout)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return proc.returncode == 0
+
+
+def _probe_on_denied(root: Path, result: dict, *, remote: str, branch: str,
+                     timeout: float, fetch_error: str) -> dict:
+    """fetch 被权限拒绝时的只读探测：`ls-remote` 拿远端 sha，判它是否从本地 HEAD 可达。
+
+    不用本地远端跟踪 ref 判定：它只记上次 fetch 时的远端位置。远端没动而本地 HEAD 落后时，
+    跟踪 ref 等于远端 sha，但本地仍落后（先正常 `--check` 一次、再遇到权限拒绝就是这个
+    形态），拿它判会把仍成立的更新提示清掉。可达性看 HEAD：远端是 HEAD 的祖先才不提示。
+
+    `ls-remote` 失败或解析不出 sha 时不猜，按 `permission-denied` 记这次失败。
+
+    成功时把本次核对记为成功（`_record_fetch_ok`），结论只有「远端有没有本地 HEAD 未包含
+    的提交」一项：落后数、领先数与改动面都要把提交取回本地才算得出，这里一律未知。
+    """
+    remote_sha = _remote_head_sha(root, remote, branch, timeout)
+    local_sha = _git_text(root, ["rev-parse", "HEAD"], timeout)
+    if not remote_sha or not local_sha:
+        return _record_fetch_failure(root, result, "permission-denied", fetch_error)
+    update_available = not _remote_sha_reachable(root, remote_sha, local_sha, timeout)
+    _record_fetch_ok(root, remote, branch)
+    state = load_state(root)
+    result.update(
+        ok=True, reason="", skipped=False,
+        degraded="permission-denied", degraded_error=fetch_error,
+        update_available=update_available,
+        behind="unknown" if update_available else 0,
+        ahead="unknown",
+        surface={key: 0 for key in SURFACE_KEYS},
+        surface_known=False,
+        remote_rev=remote_sha[:7],
+        local_rev=local_sha[:7],
+        last_ok_at=str(state.get("last_ok_at") or ""),
+        attempted_at=str(state.get("attempted_at") or ""),
+        last_reason="", last_error="", fetch_error="",
+    )
+    return result
+
+
 # ---------------------------------------------------------------- 人读输出
 
 FETCH_REASONS = {
     "timeout": "fetch 超时",
     "network": "网络不通",
+    "permission-denied": "没有写权限（git 被沙箱或文件权限拒绝）",
     "no-remote": "没有配置的远端",
     "not-a-repo": "不是 git 检出",
     "lock": "git 被锁",
@@ -960,6 +1091,19 @@ def render_sync(result: dict) -> str:
         if result.get("fetch_error"):
             text += f"\n  git 原始输出：{result['fetch_error']}"
         return text
+    if result.get("degraded"):
+        remote_ref = f"{result['remote']}/{result['branch']}"
+        head = f"fetch 失败：{fetch_reason_text(result['degraded'])}；改用只读探测："
+        if result.get("update_available"):
+            lines = [head + f"{remote_ref} 有新提交（{result.get('remote_rev')}），"
+                            f"落后数与改动面未知。",
+                     "恢复写权限后跑 --sync 取回提交。"]
+        else:
+            lines = [head + f"{remote_ref} 没有新提交（{result.get('remote_rev')}），"
+                            f"领先数与改动面未知。"]
+        if result.get("degraded_error"):
+            lines.append(f"  git 原始输出：{result['degraded_error']}")
+        return "\n".join(lines)
     remote_ref = f"{result['remote']}/{result['branch']}"
     lines = []
     if result.get("merge") == "ff-only":
@@ -1032,7 +1176,7 @@ def main(argv=None) -> int:
     else:
         result = sync(root, do_fetch=True, do_merge=(mode == "merge"),
                       ignore_enabled=(mode == "check"), timeout=args.timeout,
-                      force=args.force)
+                      force=args.force, probe_on_denied=(mode == "check"))
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:

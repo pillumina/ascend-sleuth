@@ -73,7 +73,12 @@ worktree 与 detached HEAD 不自动合并。worktree 里通常在做提 PR 的�
 `sync.enabled` 只拦自动路径：开单时 `trace_begin.py` 的自动 fetch 与自动合并看它。后台提醒检查与手动同步不受它影响：提醒检查走 `python3 scripts/kb_sync.py --check`（只 fetch、不合并），手动「立即同步」走 `--merge --force`。`sync.auto_merge` 只管自动路径里的合并；groom 是显式动作，不看 `sync.enabled` 与 `sync.auto_merge`，关掉自动检查后周批仍会 fetch。要让整机不联网，用 `deployment.yaml` 的 `sync.mode: "offline"`。
 
 `sync.check_enabled` 与 `sync.check_minutes` 管后台提醒检查。`check_enabled` 默认 true，关掉后不再检查，也不在诊断状态条提示知识库落后。`check_minutes` 是检查间隔，默认 30 分钟；读侧越界会夹到 5–720，写侧越界拒绝（`E_ARGS`）。
-这两个字段不影响开单自动拉取与手动同步。
+这两个字段不影响开单自动拉取与手动同步。后台检查每 60 秒至多读一次这份设置，按「上次检查开始时刻 + 间隔」判到期；改间隔后最多 60 秒按新值生效。
+
+`--check` 的 fetch 被权限拒绝（DSH 的 workspace-write 受限档位写不进检出）时，脚本退回 `git ls-remote --heads` 只读探测：能判出远端有没有新提交，状态文件按成功记（`reason` 为空、`last_ok_at` 前移）。
+有新提交时落后数与改动面未知；没有新提交时落后数为 0、改动面未知。
+状态条对应显示「远端有新提交（落后数未知）」，仍给「去同步」「稍后」。
+后台检查连续失败 3 次，或失败原因是权限拒绝时，状态条展开态显示「后台检查被拒绝」与失败时间、一句原因，带「去同步」「重试」；成功一次即消失，单次网络失败仍静默。
 
 fetch 失败时标 `kb_sync: failed`，原因写进 `kb_sync_reason`。
 
