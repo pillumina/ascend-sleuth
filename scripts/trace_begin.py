@@ -96,7 +96,8 @@ def sync_of(root: Path, *, no_sync: bool = False, no_network: bool = False) -> d
     cfg = settings["sync"]
     if no_sync or no_network:
         result = kb_sync.local_snapshot(root, cfg["remote"], cfg["branch"],
-                                        config=config, config_error=config_error)
+                                        config=config, config_error=config_error,
+                                        identity=settings.get("identity"))
         result.update(ok=False, merge="none",
                       reason=("print-only" if no_network else "no-sync"))
         return result
@@ -169,7 +170,11 @@ def _merge_next_step(result: dict) -> str:
     if reason == "auto-merge-off":
         return f"自动合并已关闭（sync.auto_merge = false）；要同步：git merge --ff-only {remote_ref}"
     if reason == "same-repo":
-        return "配置远端与 origin 不同源，未自动合并；先核对 sync.remote"
+        return ("同步源与归属仓不同源，未自动合并；"
+                "在知识库面板把该远端设为归属仓，或改 sync.remote")
+    if reason == "identity-unresolved":
+        return ("归属仓解析不到，未自动合并；"
+                "在知识库面板把本机已有的远端设为归属仓，或改 sync.remote")
     return f"未自动合并（{kb_sync.merge_reason_text(reason)}）"
 
 

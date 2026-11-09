@@ -371,9 +371,15 @@ def mark_merged_from_prs(root: Path, limit: int, dry_run: bool, prs_file: str = 
             matched.setdefault(by_card[cid], []).append(cid)
         else:
             unmatched.append(cid)
-    # 第二遍：按 commit 追溯——历史卡早于"卡内写 PR 号"的约定，但它们的改动commit 在 main 上。
-    # 取最早点名该卡的非 merge commit，再取**最早包含它的 merge**（= 带它进 main 的那个 PR）。
+    # 第二遍：按 commit 追溯——历史卡早于"卡内写 PR 号"的约定，但它们的改动 commit 在
+    # 归属仓主分支上。取最早点名该卡的非 merge commit，再取**最早包含它的 merge**
+    # （= 带它进归属仓主分支的那个 PR）。
     import subprocess as _sp
+    try:
+        from pr_status import effective_base
+        base_ref = effective_base(root)
+    except Exception:
+        base_ref = "origin/main"
     traced, still = {}, []
     for cid in unmatched:
         r = _sp.run(["git", "log", "--all", "--no-merges", "--grep", cid, "--format=%H"],
@@ -383,7 +389,7 @@ def mark_merged_from_prs(root: Path, limit: int, dry_run: bool, prs_file: str = 
             still.append(cid)
             continue
         sha = shas[-1]                      # 最早的一次提交
-        m = _sp.run(["git", "log", "--merges", "--ancestry-path", f"{sha}..origin/main",
+        m = _sp.run(["git", "log", "--merges", "--ancestry-path", f"{sha}..{base_ref}",
                      "--format=%s", "--reverse"], capture_output=True, text=True)
         first_merge = next((ln for ln in (m.stdout or "").splitlines() if ln.strip()), "")
         pm = re.search(r"pull request #(\d+)", first_merge)

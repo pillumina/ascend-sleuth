@@ -40,6 +40,7 @@
 #   python3 scripts/pr_status.py --root <repo> --json
 #   python3 scripts/pr_status.py --root <repo> --list-targets
 #   python3 scripts/pr_status.py --root <repo> --set-target --remote origin --base main
+#   python3 scripts/pr_status.py --root <repo> --set-identity --remote team
 #   python3 scripts/pr_status.py --root <repo> --set --draft <key> --platform gitcode \
 #       --repo owner/repo --number 418 --url <url> [--remote origin]
 #   python3 scripts/pr_status.py --root <repo> --mark --draft <key> --state merged
@@ -615,6 +616,42 @@ def _upstream_remote(root) -> str:
     return ref.split("/", 1)[0]
 
 
+def identity_target(root) -> dict:
+    """settings 的归属仓 → `{"remote", "base", "url", "explicit"}`。
+
+    名字缺省为 origin；`base` 是该远端的默认分支（取不到用 main），`url` 在本机没有这个
+    远端时为空串。`explicit` 来自 `kb_sync.load_settings` 的内存字段：文件里写没写
+    `identity.remote`。
+    """
+    settings, _source, _problem = kb_sync.load_settings(Path(root))
+    identity = settings.get("identity") or {}
+    remote = str(identity.get("remote") or kb_sync.DEFAULT_REMOTE).strip()
+    url = dict(_git_remotes(root)).get(remote, "") if remote else ""
+    return {"remote": remote,
+            "base": _remote_base(root, remote) if remote else DEFAULT_BASE,
+            "url": url,
+            "explicit": bool(identity.get("explicit"))}
+
+
+def effective_base(root) -> str:
+    """写侧的比较基准 ref：提 PR 目标优先，其次归属仓默认分支，最后 origin/main。
+
+    目标未配置时不再一律回到 origin/main：归属仓配成团队中央仓时，写侧（复核、收尾、
+    生成物同步）都以它为准。归属仓在本机解析不到才退回 origin/main。
+    """
+    root = Path(root)
+    try:
+        target = load_target(root)
+    except Exception:
+        target = None
+    if isinstance(target, dict) and target.get("remote") and target.get("base"):
+        return f"{target['remote']}/{target['base']}"
+    identity = identity_target(root)
+    if identity["remote"] and identity["url"]:
+        return f"{identity['remote']}/{identity['base']}"
+    return f"{kb_sync.DEFAULT_REMOTE}/{DEFAULT_BASE}"
+
+
 def _normalize_target(target):
     """与 `kb_sync.normalize_target` 同一份结构（target 已迁到 settings，这里保留旧入口）。"""
     return kb_sync.normalize_target(target)
@@ -691,7 +728,8 @@ def _last_used(ledger: dict, remote_name: str, repo: str, platform: str) -> str:
     return max(fallback) if fallback else ""
 
 
-def _recommend(root, target, remotes) -> dict:
+def _recommend(root, target, remotes, identity=None) -> dict:
+    """推荐顺序：已保存目标（有适配器）→ 归属仓（已解析）→ 分支上游 → 唯一远端。"""
     by_name = {r["name"]: r for r in remotes}
     if target and target.get("remote") in by_name:
         saved = by_name[target["remote"]]
@@ -699,6 +737,11 @@ def _recommend(root, target, remotes) -> dict:
         if saved["has_adapter"]:
             return {"remote": saved["name"], "base": target.get("base") or saved["base"],
                     "reason": "上次选择的目标"}
+    identity = identity or {}
+    identity_remote = str(identity.get("remote") or "")
+    if identity_remote and identity_remote in by_name:
+        return {"remote": identity_remote, "base": by_name[identity_remote]["base"],
+                "reason": "归属仓"}
     upstream = _upstream_remote(root)
     if upstream and upstream in by_name:
         return {"remote": upstream, "base": by_name[upstream]["base"],
@@ -710,10 +753,11 @@ def _recommend(root, target, remotes) -> dict:
 
 
 def list_targets(root) -> dict:
-    """远端清单 + 已保存目标 + 推荐。只读、不探测网络（设计 5.7）。"""
+    """远端清单 + 已保存目标 + 归属仓 + 推荐。只读、不探测网络（设计 5.7）。"""
     root = Path(root)
     ledger = _load_ledger_soft(root)
     target = load_target(root)
+    identity = identity_target(root)
     adapters = load_adapters()
     remotes = []
     for name, url in _git_remotes(root):
@@ -734,8 +778,9 @@ def list_targets(root) -> dict:
             "last_used": _last_used(ledger, name, parsed["repo"],
                                     adapter.get("id", "") if adapter else ""),
         })
-    return {"target": target, "remotes": remotes,
-            "recommendation": _recommend(root, target, remotes),
+    identity_out = {key: identity.get(key) for key in ("remote", "url", "explicit")}
+    return {"target": target, "remotes": remotes, "identity": identity_out,
+            "recommendation": _recommend(root, target, remotes, identity),
             # 面板写回时的 CAS 令牌：与 `--status` 的 `sha256` 同一算法。台账不存在时为 null。
             "sha256": ledger_sha256(root)}
 
@@ -1045,6 +1090,34 @@ def cmd_set_sync(root, args) -> int:
     except kb_sync.SettingsError as exc:
         return _fail("E_SETTINGS", str(exc), extra={"write_failed": True})
     return _ok({"sync": kb_sync.normalize_sync(sync), "config": source,
+                "config_problem": problem,
+                "settings": str(kb_sync.settings_path(root)),
+                "sha256": digest})
+
+
+def cmd_set_identity(root, args) -> int:
+    """写 settings 的归属仓（`identity.remote`）；CAS 令牌与 `--set-sync` 同一个写点。
+
+    远端必须在本机存在：写一个解析不到的名字会让读侧只拉不合并，写成配置事故。
+    """
+    remote = str(args.remote or "").strip()
+    if not remote:
+        return _arg_fail("--set-identity 需要 --remote")
+    remotes = dict(_git_remotes(root))
+    if remote not in remotes:
+        return _arg_fail(f"远端不存在：{remote}（本机远端：{'、'.join(remotes) or '无'}）")
+    settings_sha = _settings_sha_or_none(root)
+    settings, source, problem = kb_sync.load_settings(Path(root))
+    settings["identity"] = {"remote": remote}
+    try:
+        digest = kb_sync.save_settings(
+            Path(root), settings,
+            expect_sha=_settings_expect_sha(settings_sha, args.expect_sha256))
+    except kb_sync.SettingsCasConflict as exc:
+        return _fail("E_CAS", str(exc))
+    except kb_sync.SettingsError as exc:
+        return _fail("E_SETTINGS", str(exc), extra={"write_failed": True})
+    return _ok({"identity": {"remote": remote}, "config": source,
                 "config_problem": problem,
                 "settings": str(kb_sync.settings_path(root)),
                 "sha256": digest})
@@ -1375,13 +1448,15 @@ def build_parser() -> argparse.ArgumentParser:
                     help="配合 --check-all：每查完一条输出一行 JSON，最后输出汇总行（契约见文件头）")
     ap.add_argument("--expect-sha256", default=None,
                     help="写前 CAS 令牌：--set-target / --set / --mark / --forget / --check 用台账 sha256，"
-                         "--migrate / --set-sync 用 settings 的 sha256")
+                         "--migrate / --set-sync / --set-identity 用 settings 的 sha256")
     group = ap.add_mutually_exclusive_group()
     group.add_argument("--list-targets", action="store_true", help="列远端、平台与推荐目标")
     group.add_argument("--set-target", action="store_true", help="写 target 段")
     group.add_argument("--migrate", action="store_true", help="把旧台账的 target 搬进 settings")
     group.add_argument("--set-sync", action="store_true", dest="set_sync",
                        help="写 settings 的 sync 段")
+    group.add_argument("--set-identity", action="store_true", dest="set_identity",
+                       help="写 settings 的归属仓（identity.remote）")
     group.add_argument("--set", action="store_true", dest="set_pr", help="写/覆盖一份草稿的 PR 记录")
     group.add_argument("--mark", action="store_true", help="人手确认 PR 状态")
     group.add_argument("--forget", action="store_true", help="删掉一份已关闭的 PR 记录（其余状态拒绝）")
@@ -1436,6 +1511,8 @@ def main(argv=None) -> int:
             return cmd_migrate(root, args)
         if args.set_sync:
             return cmd_set_sync(root, args)
+        if args.set_identity:
+            return cmd_set_identity(root, args)
         if args.set_pr:
             return cmd_set(root, args)
         if args.mark:

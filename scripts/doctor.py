@@ -479,8 +479,9 @@ def check_kb_sync(root: Path):
     remote = str(config_sync.get("remote") or "origin")
     branch = str(config_sync.get("branch") or "main")
     remote_ref = f"{remote}/{branch}"
+    identity = settings.get("identity") or {}
     try:
-        snap = kb_sync.local_snapshot(root, remote, branch)
+        snap = kb_sync.local_snapshot(root, remote, branch, identity=identity)
     except Exception as exc:  # noqa: BLE001
         return {"id": "kb-sync", "label": "知识库同步", "kind": "data", "state": DEGRADE,
                 "detail": f"读不出本机 {remote_ref}（{type(exc).__name__}: {exc}）",
@@ -493,6 +494,9 @@ def check_kb_sync(root: Path):
 
     behind = snap.get("behind")
     degraded = False
+    identity_remote = str(snap.get("identity_remote") or "origin")
+    identity_name = identity_remote if snap.get("identity_explicit") \
+        else f"{identity_remote}（默认）"
     if behind == "unknown":
         detail = f"本机没有 {remote_ref} ref，算不出落后"
         degraded = True
@@ -501,8 +505,12 @@ def check_kb_sync(root: Path):
         degraded = True
     else:
         detail = f"与 {remote_ref} 一致"
-    if snap.get("same_repo") is False:
-        detail += "；配置远端与 origin 不同源"
+    detail += f"；归属仓 {identity_name}"
+    if snap.get("identity_explicit") and not snap.get("identity_resolved"):
+        detail += "（解析不到）"
+        degraded = True
+    elif snap.get("same_repo") is False:
+        detail += "；同步源与归属仓不同源"
         degraded = True
 
     last_ok = str(state.get("last_ok_at") or "")

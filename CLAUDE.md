@@ -105,7 +105,7 @@ Golden-case 回归套件在 `eval/golden/`：公开仓只放构造示例，真�
 1. **改 tracked 文件的活进 worktree**：`git worktree add <路径> <自己的 kb/* 分支>`，禁止在主检出目录修改或提交；同一分支同时只能被一个 worktree 检出。
 2. **未进 git 的运行时件一律锚到主检出**，且**用绝对路径读写**：`python3 scripts/shared_dir.py <名字>` 是唯一入口（exec-log、`src-code/`、`traces/`、`postmortems/inbox/` 草稿、`proposals/{sessions,tasks,reviews,experiments}/`）。
 3. **别写相对路径**：worktree 清理对 gitignore 件无提示、不报错（不是"会被 git 拦住"），而面板/周批/结算脚本读的是主检出那一份——"记录了但没人看得见"与"读不到就当成没有"会同时发生。
-4. **串行与收工**：`ingest-state.json` 的游标更新无锁，必须串行；开工先 `git fetch origin`，收工前提交或 stash，不留未提交改动。
+4. **串行与收工**：`ingest-state.json` 的游标更新无锁，必须串行；开工先 `git fetch <归属仓>`（默认 origin），收工前提交或 stash，不留未提交改动。
 
 完整约定（不隔离的面如何在合流时解决、锁原语、worktree 清理）见 [`docs/guide/git-workflow.md`](docs/guide/git-workflow.md)。
 

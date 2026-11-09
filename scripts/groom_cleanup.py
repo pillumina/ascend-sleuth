@@ -20,7 +20,7 @@
 #      **可能部分完成**：sidecar/快照先删、日志最后写；日志写失败时删除不可回滚（会在报告里标出）。
 #
 # 用法（默认直接执行；agent 读完判据后自己决定跑不跑）：
-#   python3 scripts/groom_cleanup.py --pr-body-file <body> [--base origin/main] [--head <ref>]
+#   python3 scripts/groom_cleanup.py --pr-body-file <body> [--base <ref>] [--head <ref>]
 #   python3 scripts/groom_cleanup.py --pr-body-file <body> --post-merge \
 #       --base <合并前 base> --head <合入提交>      # 合入后清理：跳过过期判定
 #   python3 scripts/groom_cleanup.py --pr-body-file <body> --dry-run    # 只看计划
@@ -461,7 +461,9 @@ def main():
     ap = _Parser(description="Groom 收尾清理（复核通过后按草稿删产物）")
     ap.add_argument("--repo", default=None)
     ap.add_argument("--pr-body-file", required=True)
-    ap.add_argument("--base", default="origin/main")
+    ap.add_argument("--base", default=None,
+                    help="比较基准 ref（默认按 settings 的 target，未配置用归属仓默认分支，"
+                         "解析不到用 origin/main）")
     ap.add_argument("--head", default="HEAD")
     ap.add_argument("--branch", default="main", help="建快照时用的分支（默认 main）")
     ap.add_argument("--pr", default=None, help="PR 标识（URL 或编号），写进清理日志")
@@ -482,7 +484,14 @@ def main():
         print(f"groom_cleanup: 找不到 PR body：{body_path}", file=sys.stderr)
         return 3
     root = repo_root(Path(args.repo).resolve() if args.repo else Path.cwd())
-    report = cleanup(body_path.read_text(encoding="utf-8"), root, args.base, args.head,
+    base = args.base
+    if base is None:
+        try:
+            from pr_status import effective_base
+            base = effective_base(root)
+        except Exception:
+            base = "origin/main"
+    report = cleanup(body_path.read_text(encoding="utf-8"), root, base, args.head,
                      apply=not args.dry_run, snapshot_dir=args.snapshot_dir,
                      branch=args.branch, pr_label=args.pr,
                      runs_keep_days=args.keep_runs_days, lock_keep_days=args.keep_lock_days,
