@@ -27,9 +27,11 @@
 用法（CI 由 `changes` job 提供改动文件列表）：
   git diff --name-only origin/main...HEAD | python3 scripts/select_unit_tests.py
   python3 scripts/select_unit_tests.py --all          # 强制全量，输出 `ALL`
+  python3 scripts/select_unit_tests.py --all --shard 2/4   # 全量取第 2 片（共 4 片）
   echo 'scripts/build_index.py' | python3 scripts/select_unit_tests.py   # 本地手跑
 
-输出（stdout）：`ALL`，或每行一个测试模块（`tests.test_xxx`）。
+输出（stdout）：`ALL`，或每行一个测试模块（`tests.test_xxx`）。带 `--shard I/N` 时始终
+输出模块列表（全量会先展开成模块再切），供 CI 把长跑 job 拆成 N 个并行 job。
 """
 
 from __future__ import annotations
@@ -45,6 +47,7 @@ TEST_DIR = "tests"
 CI_PREFIX = ".github/"
 TEST_FILE_RE = re.compile(r"^tests/(test_[A-Za-z0-9_]+)\.py$")
 SCRIPT_REF_RE = re.compile(r"^scripts/([^/]+)$")
+SHARD_RE = re.compile(r"^(\d+)/(\d+)$")
 # 数据目录 → 消费它的脚本：数据文件不是脚本，静态扫描看不出归属。不登记的话，
 # 只改数据的 PR 会选中空集（"没跑"与"跑了没命中"同形）。
 DATA_CONSUMERS = {"source-catalog.d": {"src_fetch", "source_catalog"}}
@@ -230,6 +233,25 @@ def select(
     return sorted(f"tests.{name}" for name in selected), notes
 
 
+def all_test_modules(root: Path) -> list[str]:
+    """`tests/` 下全部测试模块（供 `--shard` 切全量）。"""
+    directory = root / TEST_DIR
+    if not directory.is_dir():
+        raise _Unparseable(directory, FileNotFoundError("tests/ 不存在"))
+    return sorted(f"tests.{path.stem}" for path in directory.glob("test_*.py") if path.is_file())
+
+
+def shard(items: list[str], spec: str) -> list[str]:
+    """把列表按 `I/N` 轮转切片（I 从 1 起）。切分只保证不重不漏，不按耗时均衡。"""
+    match = SHARD_RE.match(spec)
+    if match is None:
+        raise ValueError(f"--shard 需要 I/N 形式（收到 {spec!r}）")
+    index, count = int(match.group(1)), int(match.group(2))
+    if count < 1 or not (1 <= index <= count):
+        raise ValueError(f"--shard {spec} 越界：I 需在 1..N 之间")
+    return [item for i, item in enumerate(items) if i % count == index - 1]
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="按改动文件选单元测试（改哪里测哪里）")
     parser.add_argument(
@@ -239,6 +261,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--all", action="store_true", dest="force_all",
         help="强制全量（changes job 判基线不可比或 CI 自身有改动时用）",
+    )
+    parser.add_argument(
+        "--shard", default=None, metavar="I/N",
+        help="只输出第 I 片（1 起）测试模块，共 N 片；与 --all 连用时对全量切分",
     )
     parser.add_argument(
         "changed_from", nargs="?", default="-",
@@ -254,6 +280,15 @@ def main(argv: list[str] | None = None) -> int:
         changed = Path(args.changed_from).read_text(encoding="utf-8").splitlines()
 
     result, notes = select(Path(args.root), changed, force_all=args.force_all)
+    if args.shard:
+        try:
+            items = all_test_modules(Path(args.root)) if result == "ALL" else result
+            items = shard(items, args.shard)
+        except (ValueError, _Unparseable) as exc:
+            print(f"select_unit_tests: {exc}", file=sys.stderr)
+            return 2
+        notes.append(f"分片 {args.shard}：{len(items)} 个测试模块")
+        result = items
     for note in notes:
         print(f"select_unit_tests: {note}", file=sys.stderr)
     if result == "ALL":
