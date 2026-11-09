@@ -359,9 +359,29 @@ def _configured_target(root: Path):
     return {"remote": remote, "base": base, "ref": f"refs/remotes/{remote}/{base}"}
 
 
+def _identity_target(root: Path):
+    """读主检出 settings 的归属仓 → {"remote", "base", "ref"}；读不出返回 None。
+
+    lazy import pr_status（与 `_configured_target` 同一条读侧）；归属仓默认 origin/main，
+    所以默认配置下兜底行为与旧版一致。
+    """
+    try:
+        from pr_status import identity_target
+        identity = identity_target(root)
+    except Exception:
+        return None
+    remote = str(identity.get("remote") or "").strip()
+    base = str(identity.get("base") or "").strip()
+    if not remote or not base:
+        return None
+    return {"remote": remote, "base": base, "ref": f"refs/remotes/{remote}/{base}"}
+
+
 def _fallback_target(root: Path):
-    """没有可用目标 ref 时的兜底：origin/main → HEAD。返回 (commit, ref)。"""
-    for ref in ("refs/remotes/origin/main", "HEAD"):
+    """没有可用目标 ref 时的兜底：归属仓默认分支 → HEAD。返回 (commit, ref)。"""
+    identity = _identity_target(root)
+    refs = ([identity["ref"]] if identity else []) + ["HEAD"]
+    for ref in refs:
         commit = normalize_commit(root, ref)
         if commit:
             return commit, ref
@@ -377,7 +397,7 @@ def main():
     ap.add_argument("--snapshot", default=None,
                     help="用快照 meta 的 ref 当显式目标（没有 ref 时用 commit；不 fetch）")
     ap.add_argument("--fetch", action="store_true",
-                    help="先 fetch 配置目标的远端分支；未配置时 fetch origin main")
+                    help="先 fetch 配置目标的远端分支；未配置时 fetch 归属仓默认分支")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--decision-prompt", action="store_true",
                     help="表格后输出待决定草稿的问答块；不写状态")
@@ -426,7 +446,12 @@ def main():
                 run_git(["fetch", "--no-tags", configured["remote"], configured["base"]],
                         cwd=root, check=False)
             else:
-                run_git(["fetch", "--no-tags", "origin", "main"], cwd=root, check=False)
+                identity = _identity_target(root)
+                if identity:
+                    run_git(["fetch", "--no-tags", identity["remote"], identity["base"]],
+                            cwd=root, check=False)
+                else:
+                    run_git(["fetch", "--no-tags", "origin", "main"], cwd=root, check=False)
         if configured:
             configured_commit = normalize_commit(root, configured["ref"])
         if explicit_ref:

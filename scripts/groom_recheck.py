@@ -461,19 +461,16 @@ def check(body, repo: Path, base_ref: str, head_ref: str, enforce_marker: bool,
 
 
 def default_base(root: Path) -> str:
-    """未传 --base 时的比较基准：settings 的提 PR 目标优先，没有配置再退回 origin/main。
+    """未传 --base 时的比较基准：`pr_status.effective_base` 的三段顺序。
 
     lazy import pr_status：正常带 --base 的调用不加载平台适配器。读不出配置时按未配置处理，
-    保持旧行为（origin/main），不因配置文件损坏让复核不可用。
+    退回 origin/main，不因配置文件损坏让复核不可用。
     """
     try:
-        from pr_status import load_target
-        target = load_target(root)
+        from pr_status import effective_base
+        return effective_base(root)
     except Exception:
         return "origin/main"
-    if isinstance(target, dict) and target.get("remote") and target.get("base"):
-        return f"{target['remote']}/{target['base']}"
-    return "origin/main"
 
 
 def main():
@@ -483,7 +480,8 @@ def main():
     ap.add_argument("--pr-body-file", default=None)
     ap.add_argument("--pr-body", default=None)
     ap.add_argument("--base", default=None,
-                    help="比较基准 ref（默认读 .local/settings.json 的 target，未配置用 origin/main）")
+                    help="比较基准 ref（默认读 settings 的 target，未配置按归属仓默认分支，"
+                         "解析不到用 origin/main）")
     ap.add_argument("--head", default="HEAD")
     ap.add_argument("--enforce", action="store_true", help="缺 marker / 未决也失败")
     ap.add_argument("--advisory", action="store_true", help="只报告，不改变退出码（CI 过渡用）")

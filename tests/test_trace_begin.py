@@ -230,6 +230,18 @@ class SyncHintTest(unittest.TestCase):
                 self.assertIn(expected, text)
                 self.assertNotIn("stash", text)
 
+    def test_identity_hints_point_to_identity_setting(self):
+        cases = {
+            "same-repo": "同步源与归属仓不同源",
+            "identity-unresolved": "归属仓解析不到",
+        }
+        for reason, expected in cases.items():
+            with self.subTest(reason=reason):
+                text = trace_begin.sync_hint(sync_result(
+                    behind=1, reason=reason, surface=self.KNOWLEDGE_SURFACE))
+                self.assertIn(expected, text)
+                self.assertIn("设为归属仓", text)
+
     def test_fetch_failure(self):
         text = trace_begin.sync_hint(sync_result(
             ok=False, reason="timeout", local_rev="aaa1111", behind="unknown"))

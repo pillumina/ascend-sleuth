@@ -52,15 +52,20 @@ class RepoCase(unittest.TestCase):
         git(self.repo, "remote", "add", "origin", str(self.bare))
         git(self.repo, "push", "-q", "-u", "origin", "main")
 
-    def write_settings(self, sync=None, target=None):
+    def write_settings(self, sync=None, target=None, identity=None):
         doc = {
             "schema": "ascend-sleuth-settings/1",
             "sync": {"remote": "origin", "branch": "main", "enabled": True, "auto_merge": True},
         }
         if sync:
             doc["sync"].update(sync)
+        if identity is not None:
+            doc["identity"] = identity
         if target is not None:
             doc["target"] = target
+        self.write_settings_doc(doc)
+
+    def write_settings_doc(self, doc: dict):
         path = self.repo / ".local" / "settings.json"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(doc), encoding="utf-8")
@@ -641,6 +646,159 @@ class MergeTest(ConfiguredCase):
         self.assertEqual(result["merge"], "none")
         self.assertEqual(result["reason"], "auto-merge-off")
         self.assertEqual(result["behind"], 1)
+
+
+class IdentityTest(ConfiguredCase):
+    """归属仓（identity.remote）：同源比较、显式解析不到拦截、sync.remote 跟随。"""
+
+    def add_remote(self, name: str):
+        """把 origin 裸仓复制一份当第二个远端（同历史）。"""
+        bare = self.base / f"{name}.git"
+        git(self.base, "clone", "--bare", "-q", str(self.bare), str(bare))
+        git(self.repo, "remote", "add", name, str(bare))
+        return bare
+
+    def push_upstream_to(self, name: str):
+        """把 origin 裸仓的最新提交推到第二个远端，保持两仓同历史。"""
+        git(self.repo, "fetch", "-q", "origin", "main")
+        git(self.repo, "push", "-q", name, "origin/main:refs/heads/main")
+
+    def test_default_identity_is_origin_and_not_explicit(self):
+        data, _config, _problem = kb_sync.load_settings(self.repo)
+        self.assertEqual(data["identity"], {"remote": "origin", "explicit": False})
+        _code, doc = self.run_cli("--show", "--json")
+        self.assertEqual(doc["identity_remote"], "origin")
+        self.assertFalse(doc["identity_explicit"])
+        self.assertTrue(doc["identity_resolved"])
+        self.assertEqual(doc["identity_url"], str(self.bare))
+        self.assertTrue(doc["same_repo"])
+
+    def test_save_settings_drops_explicit(self):
+        path = self.repo / ".local" / "settings.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "schema": "ascend-sleuth-settings/1",
+            "sync": {"remote": "origin", "branch": "main"},
+            "identity": {"remote": "origin"},
+        }), encoding="utf-8")
+        data, _config, _problem = kb_sync.load_settings(self.repo)
+        self.assertTrue(data["identity"]["explicit"])
+        kb_sync.save_settings(self.repo, data)
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["identity"], {"remote": "origin"})
+
+    def test_sync_remote_follows_identity_when_unset(self):
+        self.add_remote("team")
+        self.write_settings_doc({
+            "schema": "ascend-sleuth-settings/1",
+            "sync": {"branch": "main", "enabled": True, "auto_merge": True},
+            "identity": {"remote": "team"},
+        })
+        data, _config, _problem = kb_sync.load_settings(self.repo)
+        self.assertEqual(data["sync"]["remote"], "team")
+        _code, doc = self.run_cli("--show", "--json")
+        self.assertEqual(doc["remote"], "team")
+        self.assertEqual(doc["identity_remote"], "team")
+        self.assertTrue(doc["same_repo"])
+
+    def test_explicit_sync_remote_wins_over_identity(self):
+        self.add_remote("team")
+        self.write_settings(sync={"remote": "team"}, identity={"remote": "origin"})
+        data, _config, _problem = kb_sync.load_settings(self.repo)
+        self.assertEqual(data["sync"]["remote"], "team")
+
+    def test_identity_second_remote_allows_fast_forward(self):
+        self.add_remote("team")
+        upstream = self.upstream({"knowledge/a.yaml": "cases: []\n"})
+        self.push_upstream_to("team")
+        self.write_settings(sync={"remote": "team"}, identity={"remote": "team"})
+        code, doc = self.run_cli("--merge", "--json")
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["ok"])
+        self.assertTrue(doc["same_repo"])
+        self.assertEqual(doc["merge"], "ff-only")
+        self.assertEqual(doc["local_rev"], upstream)
+
+    def test_explicit_identity_unresolved_blocks_merge(self):
+        self.upstream({"knowledge/a.yaml": "cases: []\n"})
+        self.write_settings(identity={"remote": "nowhere"})
+        before = git(self.repo, "rev-parse", "HEAD")
+        code, doc = self.run_cli("--merge", "--json")
+        after = git(self.repo, "rev-parse", "HEAD")
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["ok"])
+        self.assertTrue(doc["identity_explicit"])
+        self.assertFalse(doc["identity_resolved"])
+        self.assertIsNone(doc["same_repo"])
+        self.assertEqual(doc["merge"], "none")
+        self.assertEqual(doc["reason"], "identity-unresolved")
+        self.assertEqual(doc["behind"], 1)
+        self.assertEqual(after, before)
+        self.assertFalse((self.repo / "knowledge" / "a.yaml").exists())
+
+    def test_missing_default_origin_does_not_block_merge(self):
+        backup = self.base / "backup.git"
+        git(self.base, "clone", "--bare", "-q", str(self.bare), str(backup))
+        upstream = self.upstream({"knowledge/a.yaml": "cases: []\n"})
+        git(self.repo, "fetch", "-q", "origin", "main")
+        git(self.repo, "push", "-q", str(backup), "origin/main:refs/heads/main")
+        git(self.repo, "remote", "remove", "origin")
+        git(self.repo, "remote", "add", "backup", str(backup))
+        self.write_settings(sync={"remote": "backup"})
+        code, doc = self.run_cli("--merge", "--json")
+        self.assertEqual(code, 0)
+        self.assertTrue(doc["ok"])
+        self.assertFalse(doc["identity_explicit"])
+        self.assertFalse(doc["identity_resolved"])
+        self.assertIsNone(doc["same_repo"])
+        self.assertEqual(doc["merge"], "ff-only")
+        self.assertEqual(doc["local_rev"], upstream)
+
+    def test_save_settings_does_not_materialize_default_identity(self):
+        # 旧配置没有 identity 段：一次普通写入不应把默认 origin 写成显式声明。
+        self.write_settings()
+        path = self.repo / ".local" / "settings.json"
+        self.assertNotIn("identity", json.loads(path.read_text(encoding="utf-8")))
+        data, _config, _problem = kb_sync.load_settings(self.repo)
+        kb_sync.save_settings(self.repo, data)
+        self.assertNotIn("identity", json.loads(path.read_text(encoding="utf-8")))
+        again, _config2, _problem2 = kb_sync.load_settings(self.repo)
+        self.assertFalse(again["identity"]["explicit"])
+
+    def test_settings_save_keeps_missing_origin_compatible(self):
+        # 默认 origin 不存在、单远端检出：面板保存（写 settings）之后仍应放行合并。
+        backup = self.base / "backup.git"
+        git(self.base, "clone", "--bare", "-q", str(self.bare), str(backup))
+        upstream = self.upstream({"knowledge/a.yaml": "cases: []\n"})
+        git(self.repo, "fetch", "-q", "origin", "main")
+        git(self.repo, "push", "-q", str(backup), "origin/main:refs/heads/main")
+        git(self.repo, "remote", "remove", "origin")
+        git(self.repo, "remote", "add", "backup", str(backup))
+        self.write_settings(sync={"remote": "backup"})
+        data, _config, _problem = kb_sync.load_settings(self.repo)
+        kb_sync.save_settings(self.repo, data)
+        code, doc = self.run_cli("--merge", "--json")
+        self.assertEqual(code, 0)
+        self.assertFalse(doc["identity_explicit"])
+        self.assertEqual(doc["merge"], "ff-only")
+        self.assertEqual(doc["local_rev"], upstream)
+
+    def test_human_show_reports_identity(self):
+        self.write_settings(identity={"remote": "origin"})
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            kb_sync.main(["--root", str(self.repo), "--show"])
+        text = out.getvalue()
+        self.assertIn("归属仓", text)
+        self.assertIn("解析：是", text)
+        self.assertIn("同源：是", text)
+
+    def test_human_show_marks_default_identity(self):
+        self.write_settings()
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            kb_sync.main(["--root", str(self.repo), "--show"])
+        self.assertIn("origin（默认）", out.getvalue())
 
 
 class CliTest(RepoCase):

@@ -43,14 +43,19 @@ class KbSyncCheckTest(unittest.TestCase):
         git(self.repo, "update-ref", "refs/remotes/origin/main", self.first)
         self.write_settings()
 
-    def write_settings(self):
-        path = self.repo / ".local" / "settings.json"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({
+    def write_settings(self, sync=None, identity=None):
+        doc = {
             "schema": "ascend-sleuth-settings/1",
             "sync": {"remote": "origin", "branch": "main",
                      "enabled": True, "auto_merge": True},
-        }), encoding="utf-8")
+        }
+        if sync:
+            doc["sync"].update(sync)
+        if identity is not None:
+            doc["identity"] = identity
+        path = self.repo / ".local" / "settings.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(doc), encoding="utf-8")
 
     def check(self):
         return doctor.check_kb_sync(self.repo)
@@ -109,6 +114,26 @@ class KbSyncCheckTest(unittest.TestCase):
         row = self.check()
         self.assertEqual(row["state"], doctor.DEGRADE)
         self.assertIn("算不出落后", row["detail"])
+
+    def test_identity_is_shown_with_default_marker(self):
+        row = self.check()
+        self.assertIn("归属仓 origin（默认）", row["detail"])
+
+    def test_identity_unresolved_degrades(self):
+        self.write_settings(identity={"remote": "gone"})
+        row = self.check()
+        self.assertEqual(row["state"], doctor.DEGRADE)
+        self.assertIn("归属仓 gone", row["detail"])
+        self.assertIn("解析不到", row["detail"])
+
+    def test_same_repo_mismatch_degrades(self):
+        git(self.repo, "remote", "add", "origin",
+            "https://github.com/pillumina/ascend-sleuth.git")
+        git(self.repo, "remote", "add", "mirror", "https://example.com/o/r.git")
+        self.write_settings(sync={"remote": "mirror"})
+        row = self.check()
+        self.assertEqual(row["state"], doctor.DEGRADE)
+        self.assertIn("同步源与归属仓不同源", row["detail"])
 
 
 class RegistrationTest(unittest.TestCase):

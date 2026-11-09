@@ -236,6 +236,16 @@ def sync(remote: str, main_branch: str, pr_branch: str, dry_run: bool) -> int:
     return 0
 
 
+def _identity_remote() -> str:
+    """settings 的归属仓远端名；没有 settings 或读不出时回退 origin。"""
+    try:
+        import kb_sync
+        settings, _config, _problem = kb_sync.load_settings(ROOT)
+        return str((settings.get("identity") or {}).get("remote") or "origin")
+    except Exception:
+        return "origin"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description="重建全部生成物（PR 不提交它们；主干 job 用 --check 后提交；无 job 的部署用 --sync）"
@@ -255,7 +265,8 @@ def main() -> int:
         action="store_true",
         help="只打印生成物路径，不生成（守卫 / 文档 / 测试取清单用）",
     )
-    ap.add_argument("--remote", default="origin", help="--sync 用的远端名（默认 origin）")
+    ap.add_argument("--remote", default=None,
+                    help="--sync 用的远端名（默认读 settings 的归属仓，取不到用 origin）")
     ap.add_argument("--main-branch", default="main", help="--sync 用的主分支名（默认 main）")
     ap.add_argument(
         "--pr-branch",
@@ -274,7 +285,8 @@ def main() -> int:
         return 0
 
     if args.sync:
-        return sync(args.remote, args.main_branch, args.pr_branch, args.dry_run)
+        return sync(args.remote or _identity_remote(), args.main_branch, args.pr_branch,
+                    args.dry_run)
 
     rebuild(args.check)
     return 0
