@@ -1130,6 +1130,12 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(findAria(view, '跟踪哪一单'))
   const opened = await t.settle()
   expect('选择器：列出多单', opened.text.includes('vllm-ascend PD 分离'), opened.text.slice(0, 300))
+  expect('选择器：当前行带「当前」标记', byClass(opened, 'scp-picker-current').length === 1,
+    String(byClass(opened, 'scp-picker-current').length))
+  expect('选择器：未固定时脚注给当前单',
+    byClass(opened, 'scp-picker-foot-note').length === 1
+      && nodeText(byClass(opened, 'scp-picker-foot-note')[0]).includes('当前'),
+    String(byClass(opened, 'scp-picker-foot-note').length))
   const target = opened.nodes.find((node) => node.type === 'button' && nodeText(node).includes('vllm-ascend PD 分离'))
   click(target)
   const after = await t.settle()
@@ -1143,6 +1149,15 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(findButton(menuView, '查 case 上游状态'))
   expect('查上游：prompt 走 verify 脚本', t.lastDraft().includes('verify_upstream_outcomes.py --case VLLM-ASC-11312')
     && t.lastDraft().includes('--dry-run') && t.lastDraft().includes('scripts/doctor.py'), t.lastDraft())
+}
+
+{
+  const t = await mount('multi', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: { 'sess-1': '2026-09-07-glm53-pd-sfa-c8-hang' } } })
+  click(findAria(t.view(), '跟踪哪一单'))
+  const opened = await t.settle()
+  expect('选择器：已固定时脚注让位、给「取消固定」',
+    byClass(opened, 'scp-picker-foot-note').length === 0 && !!findButton(opened, '取消固定'),
+    String(byClass(opened, 'scp-picker-foot-note').length))
 }
 
 {
@@ -1329,7 +1344,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const t = await mount('recent')
   click(findToolbar(t.view()))
   const view = await t.settle()
-  expect('材料：出现「在等材料」', view.text.includes('在等材料'))
+  expect('材料：出现「还缺什么」', view.text.includes('还缺什么'))
   expect('材料：列出 trace 记的缺口', view.text.includes('device-side plog'))
   click(findButton(view, '复制清单'))
   await t.settle()
@@ -1377,6 +1392,10 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   pressKey('k', { metaKey: true })
   const cmdView = await t.settle()
   expect('命令面板：⌘K 打开', byClass(cmdView, 'scp-cmd').length === 1)
+  expect('命令面板：说明作用于哪一单',
+    byClass(cmdView, 'scp-cmd-where').length === 1
+      && nodeText(byClass(cmdView, 'scp-cmd-where')[0]).includes('作用于'),
+  nodeText(byClass(cmdView, 'scp-cmd-where')[0] || {}))
   click(findButton(cmdView, '复制为 issue 文本'))
   await t.settle()
   expect('命令面板：执行复制', copied[copied.length - 1].includes('标题：'))
@@ -1531,9 +1550,12 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('详情抬头：展开后给收起入口', byClass(open, 'scp-lede')[0].props['data-open'] === 'true'
     && !!findButton(open, '收起全文'))
   expect('详情抬头：背景只出现一处', byClass(open, 'scp-p').length === 0)
-  expect('详情抬头：在等做成一条窄行', byClass(open, 'scp-waitline').length === 1
-    && nodeText(byClass(open, 'scp-waitline')[0]).includes('在等'),
-  byClass(open, 'scp-waitline').length + ' / ' + nodeText(byClass(open, 'scp-waitline')[0] || {}))
+  expect('详情抬头：顶部有案例标题锚点', byClass(open, 'scp-pal-titlecase').length === 1
+    && nodeText(byClass(open, 'scp-pal-titlecase')[0]).includes('vllm-ascend'),
+  String(byClass(open, 'scp-pal-titlecase').length))
+  expect('详情抬头：在等并入「还缺什么」块', byClass(open, 'scp-missing-lead').length === 1
+    && nodeText(byClass(open, 'scp-missing-lead')[0]).includes('在等'),
+  byClass(open, 'scp-missing-lead').length + ' / ' + nodeText(byClass(open, 'scp-missing-lead')[0] || {}))
 }
 
 {
@@ -1636,6 +1658,15 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(findButton(view, '复制结论摘要'))
   await t.settle()
   expect('复制摘要：写进剪贴板', copied.length === before + 1 && copied[copied.length - 1].includes('诊断 ' + ID))
+}
+
+{
+  const t = await mount('closed')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  const actionBar = byClass(view, 'scp-actions')[0]
+  const copyCount = ((actionBar && nodeText(actionBar)) || '').match(/复制结论摘要/g) || []
+  expect('终态单：底部只有一个复制摘要按钮', copyCount.length === 1, String(copyCount.length))
 }
 
 {
