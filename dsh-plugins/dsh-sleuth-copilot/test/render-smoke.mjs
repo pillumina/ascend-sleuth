@@ -1675,6 +1675,25 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 }
 
 {
+  const t = await mount('recent')
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  click(findButton(view, '更多操作'))
+  view = await t.settle()
+  expect('更多操作：打开浮层', byClass(view, 'scp-actions-menu').length === 1,
+    String(byClass(view, 'scp-actions-menu').length))
+  const moreBtn = findButton(view, '更多操作')
+  expect('更多操作：开合状态可播报',
+    moreBtn.props['aria-expanded'] === 'true' && moreBtn.props['aria-haspopup'] === 'dialog',
+    JSON.stringify({ expanded: moreBtn.props['aria-expanded'], popup: moreBtn.props['aria-haspopup'] }))
+  const tabs = byClass(view, 'scp-view-tab')
+  click(tabs[1])
+  view = await t.settle()
+  expect('更多操作：切沉淀视图后浮层关闭', byClass(view, 'scp-actions-menu').length === 0,
+    String(byClass(view, 'scp-actions-menu').length))
+}
+
+{
   const t = await mount('empty')
   click(findToolbar(t.view()))
   const view = await t.settle()

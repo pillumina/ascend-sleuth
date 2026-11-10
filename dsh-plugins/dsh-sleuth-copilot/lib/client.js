@@ -199,7 +199,7 @@ window.__ModuleLoader__.load({
       'cmd.group.primary': '主操作',
       'cmd.group.copy': '复制',
       'cmd.group.view': '查看',
-      'cmd.group.action': '动作',
+      'cmd.group.action': '回报与沉淀',
       'cmd.group.nav': '导航',
       'cmd.hint': '↑↓ 选择 · Enter 执行 · Esc 关闭',
       'cmd.empty': '没有匹配的命令',
@@ -659,7 +659,7 @@ window.__ModuleLoader__.load({
       'cmd.group.primary': 'Primary',
       'cmd.group.copy': 'Copy',
       'cmd.group.view': 'View',
-      'cmd.group.action': 'Action',
+      'cmd.group.action': 'Report & sediment',
       'cmd.group.nav': 'Navigate',
       'cmd.hint': '↑↓ select · Enter run · Esc close',
       'cmd.empty': 'No matching command',
@@ -1249,11 +1249,10 @@ window.__ModuleLoader__.load({
 .scp-history-text{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--scp-text);}
 .scp-history-note{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--scp-faint);}
 .scp-actions{position:sticky;bottom:0;display:flex;flex-wrap:wrap;align-items:center;gap:var(--scp-sp-2);margin:var(--scp-sp-5) calc(-1 * var(--scp-side-pad-x)) 0;padding:var(--scp-sp-3) var(--scp-side-pad-x) var(--scp-sp-4);border-top:1px solid var(--scp-border);background:var(--scp-surface-2);box-shadow:0 -8px 16px -12px color-mix(in srgb,var(--scp-text) 24%,transparent);}
-.scp-actions::before,.scp-sed-actions::before{content:"";position:absolute;left:0;right:0;top:-14px;height:14px;pointer-events:none;background:linear-gradient(to bottom,transparent,var(--scp-surface-2));}
 .scp-actions::before,.scp-sed-actions::before{top:-20px;height:20px;}
-.scp-actions-menu{position:absolute;right:calc(var(--scp-side-pad-x) + 4px);bottom:96px;z-index:7;width:min(340px,calc(100% - 32px));max-height:min(58vh,520px);display:flex;flex-direction:column;padding:6px;border:1px solid var(--scp-border-strong);border-radius:14px;background:var(--scp-surface);box-shadow:var(--scp-shadow);}
+.scp-actions-menu{position:absolute;right:calc(var(--scp-side-pad-x) + 4px);bottom:100px;z-index:7;width:min(340px,calc(100% - 32px));max-height:min(58vh,520px);display:flex;flex-direction:column;overflow:auto;padding:6px;border:1px solid var(--scp-border-strong);border-radius:14px;background:var(--scp-surface);box-shadow:var(--scp-shadow);outline:none;}
 .scp-actions-menu .scp-menu-scroll{flex:1 1 auto;min-height:0;overflow:auto;}
-.scp-cmd-group{padding:6px 10px 2px;font-size:10.5px;font-weight:600;letter-spacing:.04em;color:var(--scp-faint);}
+.scp-cmd-group{padding:6px 10px 2px;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);letter-spacing:.04em;color:var(--scp-muted);}
 .scp-pal .scp-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--scp-ctl-h);padding:0 14px;border:1px solid var(--scp-border);border-radius:var(--scp-ctl-r);background:var(--scp-surface);color:var(--scp-text);font:inherit;font-size:var(--scp-fs-sm);font-weight:var(--scp-fw-medium);line-height:1;white-space:nowrap;cursor:pointer;transition:background-color 120ms ease,border-color 120ms ease,color 120ms ease;}
 .scp-pal .scp-btn:hover{background:var(--scp-surface-2);border-color:var(--scp-border-strong);}
 .scp-pal .scp-btn:disabled{opacity:.45;cursor:not-allowed;}
@@ -1280,16 +1279,6 @@ window.__ModuleLoader__.load({
 .scp-pal .scp-preview-label{font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);letter-spacing:.02em;color:var(--scp-muted);}
 .scp-pal .scp-preview-text{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-label);line-height:var(--scp-lh-prose);}
 .scp-search:focus-within{border-color:var(--scp-accent-line);box-shadow:0 0 0 2px var(--scp-accent-line);}
-.scp-write-side{padding-bottom:var(--scp-sp-5);}
-.scp-write-side .scp-menu-head{display:flex;align-items:center;justify-content:space-between;gap:var(--scp-sp-2);padding:0 0 var(--scp-sp-2);border-bottom:1px solid var(--scp-border);}
-.scp-write-side .scp-menu-title{font-size:var(--scp-fs-title);font-weight:var(--scp-fw-bold);line-height:var(--scp-lh-tight);color:var(--scp-text);}
-.scp-write-side .scp-menu-group{margin:var(--scp-sp-3) 0 0;padding:var(--scp-sp-3) 2px 0;border-top:1px solid var(--scp-border);font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);letter-spacing:.02em;color:var(--scp-faint);}
-.scp-write-side .scp-menu-item{display:flex;align-items:center;gap:var(--scp-sp-2);width:100%;padding:8px 10px;border:none;border-radius:8px;background:transparent;color:var(--scp-text);font:inherit;font-size:var(--scp-fs-body);line-height:var(--scp-lh-base);text-align:left;cursor:pointer;transition:background-color 120ms ease;}
-.scp-write-side .scp-menu-item:hover{background:var(--scp-surface);}
-.scp-write-side .scp-menu-item:disabled{opacity:.45;cursor:not-allowed;}
-.scp-write-side .scp-form{padding:0;}
-.scp-write-side .scp-form-actions{justify-content:flex-start;padding-top:var(--scp-sp-2);}
-.scp-write-side .scp-textarea{min-height:132px;}
 .scp-link{border:0;background:transparent;padding:0;font:inherit;font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);line-height:var(--scp-lh-base);color:var(--scp-accent);cursor:pointer;text-align:left;overflow-wrap:anywhere;}
 .scp-link:hover{text-decoration:underline;}
 .scp-pal-foot{display:flex;align-items:center;gap:var(--scp-sp-3);min-width:0;padding:10px var(--scp-sp-5);border-top:1px solid var(--scp-border);font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);background:var(--scp-surface);}
@@ -4288,6 +4277,15 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const targetRef = React.useRef(null)
       const toastTimer = React.useRef(null)
       const panelRef = React.useRef(null)
+      const actionMenuRef = React.useRef(null)
+      React.useEffect(() => {
+        if (!menuOpen) return undefined
+        const el = actionMenuRef.current
+        if (el && typeof el.focus === 'function') {
+          try { el.focus() } catch { /* 替身渲染没有焦点 API */ }
+        }
+        return undefined
+      }, [menuOpen])
       const searchRef = React.useRef(null)
       const listRef = React.useRef(null)
       const cmdInputRef = React.useRef(null)
@@ -5185,15 +5183,19 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   onClick: () => runPrimary(row),
                 }, rowAction.label),
                 rowAction.key === 'copy' ? null : h('button', { type: 'button', className: 'scp-btn', onClick: () => copyAndFlash(summaryText(row, data)) }, tr('action.copySummary')),
-                h('button', { type: 'button', className: 'scp-btn scp-btn--ghost', onClick: () => setMenuOpen(true) }, tr('action.more')))
+                h('button', {
+                  type: 'button', className: 'scp-btn scp-btn--ghost',
+                  'aria-haspopup': 'dialog', 'aria-expanded': menuOpen ? 'true' : 'false',
+                  onClick: () => setMenuOpen(true),
+                }, tr('action.more')))
             })())
         : (data && filtered.length === 0 ? null : h('div', { className: 'scp-pal-side' },
           h('div', { className: 'scp-pal-empty' },
             emptyMark,
             !data ? tr('palette.loading') : tr('palette.empty'))))
 
-      const actionMenu = menuOpen && row && !loadFailed
-        ? h('div', { className: 'scp-actions-menu', role: 'dialog', 'aria-label': tr('menu.title') },
+      const actionMenu = menuOpen && row && !loadFailed && view === 'diagnosis'
+        ? h('div', { className: 'scp-actions-menu', role: 'dialog', 'aria-label': tr('menu.title'), ref: actionMenuRef, tabIndex: -1 },
           h(WritePanel, {
             row,
             data,
@@ -6289,14 +6291,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 className: 'scp-view-tab',
                 'aria-selected': view === 'diagnosis' ? 'true' : 'false',
                 'data-on': view === 'diagnosis' ? 'true' : 'false',
-                onClick: () => setPaletteView('diagnosis'),
+                onClick: () => { setMenuOpen(false); setMenuForm(null); setPaletteView('diagnosis') },
               }, tr('palette.view.diagnosis'), h('b', {}, loadFailed ? '—' : loading ? '…' : String(rows.length))),
               h('button', {
                 type: 'button', role: 'tab',
                 className: 'scp-view-tab',
                 'aria-selected': view === 'sediment' ? 'true' : 'false',
                 'data-on': view === 'sediment' ? 'true' : 'false',
-                onClick: () => setPaletteView('sediment'),
+                onClick: () => { setMenuOpen(false); setMenuForm(null); setPaletteView('sediment') },
               }, tr('palette.view.sediment'), h('b', {}, String(sedDrafts.length)))),
             h('button', {
               type: 'button', className: 'scp-icon', 'aria-label': tr('palette.close'), title: tr('palette.close'),
@@ -6355,7 +6357,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   ? commandList.flatMap((item, index) => {
                     const rows = []
                     if (index === 0 || commandList[index - 1].group !== item.group) {
-                      rows.push(h('div', { key: 'grp-' + item.group, className: 'scp-cmd-group' }, tr('cmd.group.' + item.group)))
+                      rows.push(h('div', { key: 'grp-' + item.group, className: 'scp-cmd-group', role: 'presentation' }, tr('cmd.group.' + item.group)))
                     }
                     rows.push(h('button', {
                       key: 'cmd-' + index, type: 'button', className: 'scp-cmd-item',
