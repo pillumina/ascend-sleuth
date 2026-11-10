@@ -1686,6 +1686,15 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('更多操作：开合状态可播报',
     moreBtn.props['aria-expanded'] === 'true' && moreBtn.props['aria-haspopup'] === 'dialog',
     JSON.stringify({ expanded: moreBtn.props['aria-expanded'], popup: moreBtn.props['aria-haspopup'] }))
+  expect('列表：待回报行带文字标签',
+    byClass(view, 'scp-pal-row').some((row) => nodeText(row).includes('待回报')),
+    byClass(view, 'scp-pal-row').map((row) => nodeText(row).slice(0, 30)).join(' | '))
+  click(findButton(view, '更多操作'))
+  view = await t.settle()
+  expect('更多操作：再点一次收起', byClass(view, 'scp-actions-menu').length === 0,
+    String(byClass(view, 'scp-actions-menu').length))
+  click(findButton(view, '更多操作'))
+  view = await t.settle()
   const tabs = byClass(view, 'scp-view-tab')
   click(tabs[1])
   view = await t.settle()
