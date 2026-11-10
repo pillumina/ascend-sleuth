@@ -20,10 +20,11 @@ return {
     const PANEL_ID = 'ascend-sleuth-console'
     const PANEL_LABEL = 'Ascend Sleuth'
 
+    // 顺序即 tab 顺序，第一项是打开整页时的默认子页。
     const VIEWS = [
+      { id: 'knowledge', label: '知识库' },
       { id: 'metrics', label: '指标' },
       { id: 'evolve', label: '自演进' },
-      { id: 'knowledge', label: '知识库' },
     ]
 
     const styleHost = typeof styles !== 'undefined' && styles !== null ? styles : ctx.get('styles')
@@ -813,7 +814,7 @@ return {
     SLEUTH_VIEWS.knowledge = (props) => React.createElement(KnowledgeView, props)
 
     function ConsolePage(props) {
-      const requested = props && (props.view === 'metrics' || props.view === 'evolve' || props.view === 'knowledge') ? props.view : 'metrics'
+      const requested = props && VIEWS.some(item => item.id === props.view) ? props.view : VIEWS[0].id
       const [active, setActive] = React.useState(requested)
       const view = SLEUTH_VIEWS[active]
       return React.createElement('div', { className: 'sleu-console' },
@@ -821,7 +822,7 @@ return {
           React.createElement('div', { className: 'sleu-console-head' },
             React.createElement('div', null,
               React.createElement('div', { className: 'sleu-console-title' }, PANEL_LABEL),
-              React.createElement('div', { className: 'sleu-console-sub' }, '全库读数 · 判据判决 · 自演进 · 知识库'),
+              React.createElement('div', { className: 'sleu-console-sub' }, '知识库同步 · 全库读数与判据判决 · 自演进'),
             ),
           ),
           React.createElement('div', { className: 'sleu-console-tabs', role: 'tablist' },

@@ -6,7 +6,7 @@ description: >
   包；DSH Desktop 用安装目录自带的 dsh 命令行把 dsh-plugins/dsh-sleuth-panels/ 装进 profile（拿不到
   地址与 token 时这是主路）；另有 scripts/panel_install.js --all 经 /api 通路一次装面板、vllm-kb、
   诊断状态条与诊断画布四个包、以及在侧栏「插件」页粘贴路径两条备用路。面板包的界面分三块：会话里一个
-  「诊断」tab、左侧栏一个「Ascend Sleuth」整页（指标 / 自演进）、侧栏页脚一个「诊断记录」入口
+  「诊断」tab、左侧栏一个「Ascend Sleuth」整页（「知识库」「指标」「自演进」）、侧栏页脚一个「诊断记录」入口
   （列出诊断会话，可按时间或按价值排序，点一行切过去）；另有独立的状态条包，一块：输入框上方的
   诊断状态条（可单独装卸）；另有独立的诊断画布包，左侧栏一个「诊断画布」图标、主区一整页，离线渲染
   `traces/`（可单独装卸）。热加载路径没有整页容器、页脚入口、状态条与画布，仍是三个 tab（诊断 / 指标 / 自演进）。
@@ -21,7 +21,8 @@ description: >
 
 DSH 会话中加载可视化面板、诊断状态条与诊断画布。常驻包把界面分成四处：会话里一个「诊断」tab
 （`conversation.view`，读这一单）；全库读数在整页「Ascend Sleuth」（`main` 的 keyed 条目 +
-`sidebar.panellist` 图标，指标 / 自演进两个子页）；另有一个独立的 `dsh-sleuth-copilot` 包，把状态条
+`sidebar.panellist` 图标，「知识库」「指标」「自演进」三个子页，默认落在
+「知识库」）；另有一个独立的 `dsh-sleuth-copilot` 包，把状态条
 放在输入框上方（`conversation.input.dock`）、入口放在输入区工具条（`conversation.input.right`）、
 全库动作放在浮层（`shell.overlay`），可单独装卸；另有一个独立的 `dsh-sleuth-canvas` 包，把诊断旅程
 画布放进整页（`main` 的 keyed 条目 + `sidebar.panellist` 图标），可单独装卸。热加载路径没有整页容器、
@@ -346,7 +347,7 @@ version 与 `lib/client.js` 的 `PLUGIN_VERSION` 一起改，再按原路重装�
 | 诊断记录 | `dsh-plugins/ascend-panel/` | `sidebar.footer.action` id `sleu-ledger-entry`(30) + `shell.overlay` id `sleu-ledger-overlay`(40) | 诊断会话清单，可按时间或按价值排序（默认按时间），点一行切过去（只读 + 导航） |
 | Ascend Sleuth · 指标 | `dsh-plugins/ascend-panel/` | 视图登记表 `SLEUTH_VIEWS.metrics`，整页按 id 取 | 指标闭环判决（判据→结论/证据/下一步）/容量逐格/趋势 |
 | Ascend Sleuth · 自演进 | `dsh-plugins/ev-panel/` | 视图登记表 `SLEUTH_VIEWS.evolve`，整页按 id 取 | 首屏是体检判决（要处理的判据 + 下一步动作）与触及面 |
-| Ascend Sleuth 外壳 | `dsh-plugins/sleuth-console/` | `main` key `ascend-sleuth-console` + `sidebar.panellist` 同 id | 两个子页的切换与侧栏图标（`icon.svg`） |
+| Ascend Sleuth 外壳 | `dsh-plugins/sleuth-console/` | `main` key `ascend-sleuth-console` + `sidebar.panellist` 同 id | 三个子页的切换（默认「知识库」）与侧栏图标（`icon.svg`） |
 
 侧栏另有**会话行的「待回报」标记**（`sidebar.session.row.leading` / `.hover`，同一个 id）：只标
 `traces/` 里 `feedback.outcome: pending` 的会话，没有轨迹的会话不显示。**按轨迹的

@@ -292,7 +292,7 @@ section('[知识库 · 客户端] 默认态（落后 12）')
   const showCall = calls.filter(c => c.endpoint === 'ascend-kb-sync-show')[0]
   check(!!showCall && showCall.channel === CHANNEL, '打开知识库子页发 ascend-kb-sync-show', JSON.stringify(calls.map(c => c.endpoint)))
   check(text.indexOf('知识库') >= 0 && text.indexOf('指标') >= 0 && text.indexOf('自演进') >= 0,
-    '三个 tab 的入口都在（指标 / 自演进 / 知识库）', text.slice(0, 120))
+    '三个 tab 的入口都在（知识库 / 指标 / 自演进）', text.slice(0, 120))
   check(text.indexOf('本机版本') >= 0 && text.indexOf('v1a2b3c') >= 0, '本机版本读数', text.slice(0, 200))
   check(text.indexOf('远端版本') >= 0 && text.indexOf('v9f8e7d') >= 0, '远端版本读数')
   check(text.indexOf('落后') >= 0 && text.indexOf('12') >= 0 && text.indexOf('个提交') >= 0, '落后提交数与单位')

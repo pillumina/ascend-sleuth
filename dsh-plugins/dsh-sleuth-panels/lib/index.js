@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:c7d9672fc72d)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:0b3357b61a2f)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:14c0313391b5)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -105,7 +105,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:c7d9672fc72d) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:0b3357b61a2f) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -117,7 +117,7 @@ return {
 
     // 本插件加载时的那一版面板包版本。构建常驻包时生成器把占位符换成 package.json 的 version；
     // 热加载路直接读源文件，占位符不会被替换，这时按"版本未知"处理，不据此判新旧。
-    const PANEL_VERSION = '0.10.0'
+    const PANEL_VERSION = '0.10.1'
     const PANEL_VERSION_KNOWN = /^\d+\.\d+/.test(PANEL_VERSION)
 
     // fs 缺失时**只降级依赖它的功能**，不再让整个插件静默不注册。
