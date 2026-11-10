@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.22.1'
+    const PLUGIN_VERSION = '0.22.3'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。
@@ -1167,15 +1167,18 @@ window.__ModuleLoader__.load({
 .scp-filter-item[data-on="true"]{background:var(--scp-accent-soft);border-color:var(--scp-accent-line);color:var(--scp-accent);font-weight:var(--scp-fw-semi);}
 .scp-filter-item b{font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);color:var(--scp-faint);font-variant-numeric:tabular-nums;}
 .scp-filter-item[data-on="true"] b{color:var(--scp-accent);}
-.scp-pal-row{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:none;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 120ms ease;}
+.scp-pal-row{position:relative;display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:none;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 120ms ease;}
 .scp-pal-row:hover{background:var(--scp-surface-2);}
-.scp-pal-row[data-on="true"]{background:var(--scp-accent-soft);box-shadow:inset 2px 0 0 var(--scp-accent);}
-.scp-pal-row[data-pending="true"]{box-shadow:inset 2px 0 0 var(--scp-warn);}
-.scp-pal-row[data-on="true"][data-pending="true"]{box-shadow:inset 2px 0 0 var(--scp-accent),inset 4px 0 0 var(--scp-warn);}
+.scp-pal-row::before{content:"";position:absolute;left:4px;top:50%;width:2px;height:18px;margin-top:-9px;border-radius:1px;background:transparent;pointer-events:none;}
+.scp-pal-row[data-on="true"]{background:var(--scp-accent-soft);}
+.scp-pal-row[data-on="true"]::before{background:var(--scp-accent);}
+.scp-pal-row[data-pending="true"]::before{background:var(--scp-warn);}
+.scp-pal-row[data-on="true"][data-pending="true"]::before{background:var(--scp-warn);}
 .scp-pal-row .scp-ring{width:8px;height:8px;}
 .scp-pal-row-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:4px;}
 .scp-pal-row-line{display:flex;align-items:baseline;gap:8px;min-width:0;}
 .scp-pal-row-meta-main{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.scp-pal-row-meta-main .scp-chip{margin-left:6px;height:16px;padding:0 5px;font-size:10.5px;}
 .scp-pal-row-time{flex:none;font-size:var(--scp-fs-meta);font-variant-numeric:tabular-nums;color:var(--scp-muted);}
 .scp-pal-row-title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--scp-fs-row);font-weight:var(--scp-fw-semi);line-height:var(--scp-lh-base);color:var(--scp-text);}
 .scp-pal-row-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);white-space:nowrap;}
@@ -1328,9 +1331,11 @@ window.__ModuleLoader__.load({
 .scp-sed-side>.scp-sed-hint{margin-top:6px;}
 .scp-sed-side>.scp-list-block>.scp-section-label{margin:0 0 var(--scp-sp-2);}
 .scp-sed-group{display:flex;align-items:center;justify-content:space-between;padding:var(--scp-sp-3) 8px 6px;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);letter-spacing:.02em;color:var(--scp-faint);}
-.scp-sed-row{display:flex;gap:10px;width:100%;padding:10px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 120ms ease;}
+.scp-sed-row{position:relative;display:flex;gap:10px;width:100%;padding:10px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 120ms ease;}
 .scp-sed-row:hover{background:var(--scp-surface-2);}
-.scp-sed-row[data-on="true"]{background:var(--scp-accent-soft);box-shadow:inset 2px 0 0 var(--scp-accent);}
+.scp-sed-row[data-on="true"]{background:var(--scp-accent-soft);}
+.scp-sed-row::before{content:"";position:absolute;left:4px;top:50%;width:2px;height:18px;margin-top:-9px;border-radius:1px;background:transparent;pointer-events:none;}
+.scp-sed-row[data-on="true"]::before{background:var(--scp-accent);}
 .scp-sed-dot{width:6px;height:6px;border-radius:50%;margin-top:7px;flex:none;}
 .scp-sed-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px;}
 .scp-sed-line{display:flex;align-items:baseline;gap:8px;min-width:0;}
@@ -3025,13 +3030,17 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         return h('div', {},
           h('div', { className: 'scp-menu-head' },
             h('span', { className: 'scp-menu-title' }, form.title),
-            h('button', { type: 'button', className: 'scp-icon', 'aria-label': tr('action.closeMenu'), onClick: () => setForm(null) }, IconClose())),
+            h('button', {
+              type: 'button', className: 'scp-icon', 'aria-label': tr('action.closeMenu'),
+              onClick: () => { if (onClose) onClose(); else setForm(null) },
+            }, IconClose())),
           h(WriteForm, {
             form,
             row,
             busy,
             error,
-            onCancel: () => setForm(null),
+            // 取消与右上关闭键同一语义：收起整个浮层。旧行为是退回「更多操作」列表，读者要点两次才关得掉。
+            onCancel: () => { if (onClose) onClose(); else setForm(null) },
             onSubmit: (values) => {
               if (form.kind === 'feedback') {
                 fillAndClose(feedbackInstruction(row, values, vocab))
@@ -4284,7 +4293,19 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         if (el && typeof el.focus === 'function') {
           try { el.focus() } catch { /* 替身渲染没有焦点 API */ }
         }
-        return undefined
+        // 浮层是浮在详情上的，没有遮罩：点浮层外要收起；触发器自己的 mousedown 跳过，
+        // 否则「再点一次更多操作」会先被这里关掉、又被 click 重新打开。
+        const onDown = (event) => {
+          const menu = actionMenuRef.current
+          const target = event && event.target
+          if (menu && target && typeof menu.contains === 'function' && menu.contains(target)) return
+          const path = event && typeof event.composedPath === 'function' ? event.composedPath() : null
+          if (path && path.some((node) => node && typeof node.getAttribute === 'function' && node.getAttribute('data-more-button') === 'true')) return
+          setMenuOpen(false)
+          setMenuForm(null)
+        }
+        document.addEventListener('mousedown', onDown, true)
+        return () => document.removeEventListener('mousedown', onDown, true)
       }, [menuOpen])
       const searchRef = React.useRef(null)
       const listRef = React.useRef(null)
@@ -4913,7 +4934,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                     h('span', { className: 'scp-pal-row-step' }, stepsShort(extra))),
                   h('span', { className: 'scp-pal-row-meta' },
                     h('span', { className: 'scp-pal-row-meta-main' },
-                      [statusMeta(data.vocab, item.status).label].concat(metaPieces).join(' · ')),
+                      [statusMeta(data.vocab, item.status).label].concat(metaPieces).join(' · '),
+                      isPending(item) ? h('span', { key: 'pending', className: 'scp-chip', 'data-tone': 'warn' }, tr('chip.feedback')) : null),
                     h('span', { className: 'scp-pal-row-time' }, formatTime(item.updatedAt) || tr('none')))))
             }))
 
@@ -5186,7 +5208,15 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 h('button', {
                   type: 'button', className: 'scp-btn scp-btn--ghost',
                   'aria-haspopup': 'dialog', 'aria-expanded': menuOpen ? 'true' : 'false',
-                  onClick: () => setMenuOpen(true),
+                  'data-more-button': 'true',
+                  onClick: () => {
+                    if (menuOpen) {
+                      setMenuOpen(false)
+                      setMenuForm(null)
+                    } else {
+                      setMenuOpen(true)
+                    }
+                  },
                 }, tr('action.more')))
             })())
         : (data && filtered.length === 0 ? null : h('div', { className: 'scp-pal-side' },
