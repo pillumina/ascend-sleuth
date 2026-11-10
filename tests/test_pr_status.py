@@ -347,6 +347,28 @@ class SetSyncCheckFieldsTest(RepoCase):
         self.assertFalse(status["settings"]["sync"]["check_enabled"])
         self.assertEqual(status["settings"]["sync"]["check_minutes"], 45)
 
+    def test_check_full_access_roundtrip(self):
+        self.seed_sync()
+        code, payload = run_cli("--root", str(self.repo), "--set-sync",
+                                "--check-full-access", "off")
+        self.assertEqual(code, 0, payload)
+        self.assertTrue(payload["ok"], payload)
+        self.assertFalse(payload["sync"]["check_full_access"])
+        # 只动这一键：其余键保持原值（seed 的四个键 + 读侧补的默认值）。
+        self.assertEqual((payload["sync"]["remote"], payload["sync"]["branch"]), ("origin", "release"))
+        self.assertFalse(payload["sync"]["enabled"])
+        self.assertFalse(payload["sync"]["auto_merge"])
+        self.assertTrue(payload["sync"]["check_enabled"])
+        settings, _source, _problem = pr.kb_sync.load_settings(self.repo)
+        self.assertFalse(settings["sync"]["check_full_access"])
+        code, status = run_cli("--root", str(self.repo))
+        self.assertEqual(code, 0, status)
+        self.assertFalse(status["settings"]["sync"]["check_full_access"])
+        code, payload = run_cli("--root", str(self.repo), "--set-sync",
+                                "--check-full-access", "on")
+        self.assertEqual(code, 0, payload)
+        self.assertTrue(payload["sync"]["check_full_access"])
+
     def test_check_field_alone_counts_as_a_change(self):
         self.seed_sync()
         code, payload = run_cli("--root", str(self.repo), "--set-sync",

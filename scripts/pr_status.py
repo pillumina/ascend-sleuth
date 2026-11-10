@@ -1054,14 +1054,16 @@ def cmd_set_sync(root, args) -> int:
 
     没给 `--expect-sha256` 时用读配置那一刻的指纹：面板一直显式给令牌，命令行手写
     也走同一条「读 sha → 比对 → 写」路径，读后被别人改过就拒绝覆盖。
-    `--check-reminders` / `--check-minutes` 只动提醒检查的两键，不碰 remote / branch /
-    enabled / auto_merge。
+    `--check-reminders` / `--check-minutes` / `--check-full-access` 只动提醒检查的键，
+    不碰 remote / branch / enabled / auto_merge。
     """
     if not any((args.remote is not None, args.branch is not None, args.enable,
                 args.disable, args.auto_merge is not None,
-                args.check_reminders is not None, args.check_minutes is not None)):
+                args.check_reminders is not None, args.check_minutes is not None,
+                args.check_full_access is not None)):
         return _arg_fail("--set-sync 至少给一个 --remote / --branch / --enable / --disable / "
-                         "--auto-merge / --check-reminders / --check-minutes")
+                         "--auto-merge / --check-reminders / --check-minutes / "
+                         "--check-full-access")
     settings_sha = _settings_sha_or_none(root)
     settings, source, problem = kb_sync.load_settings(Path(root))
     sync = dict(settings.get("sync") or {})
@@ -1092,6 +1094,8 @@ def cmd_set_sync(root, args) -> int:
             return _arg_fail(f"--check-minutes 需要在 {kb_sync.CHECK_MINUTES_MIN}.."
                              f"{kb_sync.CHECK_MINUTES_MAX} 之间：{minutes}")
         sync["check_minutes"] = minutes
+    if args.check_full_access is not None:
+        sync["check_full_access"] = args.check_full_access == "on"
     settings["sync"] = sync
     try:
         digest = kb_sync.save_settings(
@@ -1491,6 +1495,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="sync.auto_merge 开关")
     ap.add_argument("--check-reminders", choices=("on", "off"), default=None,
                     dest="check_reminders", help="sync.check_enabled 开关（后台提醒检查）")
+    ap.add_argument("--check-full-access", choices=("on", "off"), default=None,
+                    dest="check_full_access",
+                    help="后台提醒检查是否以完全权限运行（on 默认 / off 跟随部署默认档）")
     ap.add_argument("--check-minutes", type=int, default=None, dest="check_minutes",
                     help=f"sync.check_minutes：提醒检查间隔（分钟，"
                          f"{kb_sync.CHECK_MINUTES_MIN}..{kb_sync.CHECK_MINUTES_MAX}）")

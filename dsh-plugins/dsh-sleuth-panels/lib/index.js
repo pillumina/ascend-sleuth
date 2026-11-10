@@ -1,7 +1,7 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:0b3357b61a2f)
-//   dsh-plugins/ev-panel/panel-host.js  (sha256:14c0313391b5)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:f4370ba16031)
+//   dsh-plugins/ev-panel/panel-host.js  (sha256:27f2d4423c8d)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
 // 面板源码是动态插件方言（文件是函数体，靠沙箱提供的 harness 通信）；这里原文嵌入常驻
@@ -105,7 +105,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:0b3357b61a2f) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:f4370ba16031) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -117,7 +117,7 @@ return {
 
     // 本插件加载时的那一版面板包版本。构建常驻包时生成器把占位符换成 package.json 的 version；
     // 热加载路直接读源文件，占位符不会被替换，这时按"版本未知"处理，不据此判新旧。
-    const PANEL_VERSION = '0.10.1'
+    const PANEL_VERSION = '0.10.3'
     const PANEL_VERSION_KNOWN = /^\d+\.\d+/.test(PANEL_VERSION)
 
     // fs 缺失时**只降级依赖它的功能**，不再让整个插件静默不注册。
@@ -3056,7 +3056,7 @@ return {
     id: 'ev-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ev-panel/panel-host.js (sha256:14c0313391b5) 原文开始 ----
+// ---- dsh-plugins/ev-panel/panel-host.js (sha256:27f2d4423c8d) 原文开始 ----
 // ev-panel host —— 自演进看板数据服务（EV 卡 / 容量 / 归因聚合 / timeline）
 // 用法：cordis_define kind:new → code.host 用本文件全文；code.client 用 panel-client.js 全文。
 // host 侧通过 shell 跑 scripts/ev_board_data.py 汇总 JSON（确定性逻辑在脚本，遵循原则二）。
@@ -3453,6 +3453,10 @@ return {
       if (!r) return null
       if (r === 'timeout') return { code: 'E_TIMEOUT', message: 'fetch 超时' }
       if (r === 'network') return { code: 'E_NETWORK', message: '连不上远端（网络或代理）' }
+      // 认不出凭据（403 / SSH publickey / known_hosts）：和网络分开，否则读者去查代理。
+      if (r === 'credential') {
+        return { code: 'E_CREDENTIAL', message: '拿不到 git 凭据（SSH 主机密钥校验失败或密钥不可用，或 https 认证失败）' }
+      }
       if (r === 'lock') return { code: 'E_LOCK', message: '远端的引用锁被占用' }
       if (r === 'no-remote') return { code: 'E_NO_REMOTE', message: '配置的远端不存在' }
       if (r === 'not-a-repo') return { code: 'E_NOT_GIT', message: '当前目录不是 git 检出' }
@@ -3513,6 +3517,9 @@ return {
         last_checked: syncStr(doc.last_checked) || syncStr(doc.last_ok_at) || syncStr(doc.attempted_at) || null,
         last_reason: syncStr(doc.last_reason) || reason,
         last_error: syncStr(doc.last_error),
+        // 上次尝试是谁发起的（kb_sync 记的 check / manual / auto）：页面据此说「后台检查
+        // 失败」还是「同步失败」，不把后台提醒检查的失败冒充成用户的同步失败。
+        last_source: syncStr(doc.last_source),
         last_failure: null,
         enabled: enabled,
         offline: offline,
@@ -3591,11 +3598,13 @@ return {
           auto_merge: sync.auto_merge !== false,
           check_enabled: sync.check_enabled !== false,
           check_minutes: Number(sync.check_minutes) || 30,
+          // 后台检查是否用完全权限：缺字段按脚本默认（开），不把旧设置读成受限档。
+          check_full_access: sync.check_full_access !== false,
         } : null,
         target: target ? { remote: syncStr(target.remote), base: syncStr(target.base) } : null,
       } }
     }
-    // 三个开关与配置来源：优先本机设置（`pr_status.py --json`），脚本自带 config 对象时也认。
+    // 四个开关与配置来源：优先本机设置（`pr_status.py --json`），脚本自带 config 对象也认。
     function syncConfigOf(settingsPart, syncData) {
       if (settingsPart && settingsPart.ok === true && settingsPart.data.sync) {
         const cfgSync = settingsPart.data.sync
@@ -3605,6 +3614,8 @@ return {
           // 提醒检查与间隔：缺字段按脚本的默认值（开、30 分钟），不把旧设置读成关闭。
           check_enabled: cfgSync.check_enabled !== false,
           check_minutes: Number(cfgSync.check_minutes) || 30,
+          // 后台检查的沙箱档位：缺字段按默认（完全权限）。
+          check_full_access: cfgSync.check_full_access !== false,
           source: settingsPart.data.config === 'file' ? 'personal' : 'default',
           path: settingsPart.data.path || '.local/settings.json',
         }
@@ -3664,7 +3675,7 @@ return {
     })
 
     // 一次读全：同步状态 + 本机设置 + 远端清单。三段各自成败——kb_sync.py 缺失时
-    // 仍要能列远端、读到三个开关，而不是整页只剩一句"读不到"。
+    // 仍要能列远端、读到四个开关，而不是整页只剩一句"读不到"。
     const kbShowDisposer = harness.handle('ascend-kb-sync-show', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
       const syncRaw = await runSyncScript(sessionId, KB_SYNC_SCRIPT, '--show --json', 20000)
@@ -3729,10 +3740,11 @@ return {
       }
     })
 
-    // 「保存」：写 `.local/settings.json` 的 sync 段（远端 / 分支 / 三个开关与检查间隔）。
-    // 三个开关在脚本里的名字：自动检查更新 = `sync.enabled`（--enable / --disable），
+    // 「保存」：写 `.local/settings.json` 的 sync 段（远端 / 分支 / 四个开关与检查间隔）。
+    // 开关在脚本里的名字：自动检查更新 = `sync.enabled`（--enable / --disable），
     // 自动合并 = `sync.auto_merge`（--auto-merge on|off），提醒检查 = `sync.check_enabled`
-    // （--check-reminders on|off）；检查间隔 = `sync.check_minutes`（--check-minutes N）。
+    // （--check-reminders on|off），后台检查用完全权限 = `sync.check_full_access`
+    // （--check-full-access on|off）；检查间隔 = `sync.check_minutes`（--check-minutes N）。
     // CAS 令牌用读到的那份设置指纹。
     const kbSaveDisposer = harness.handle('ascend-kb-sync-save', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
@@ -3750,6 +3762,11 @@ return {
       const autoMerge = args && args.autoMerge === true
       // 提醒检查默认开；间隔默认 30 分钟，落到脚本接受的 5..720 区间。
       const checkEnabled = !(args && args.checkEnabled === false)
+      // 后台检查的权限：调用方没传这一项时不带参数，保留设置文件里的现值——浏览器缓存的
+      // 旧客户端保存其它设置时，不能把用户已经关掉的完全权限又打开。只有显式布尔值才写。
+      const checkFullAccess = args && typeof args.checkFullAccess === 'boolean'
+        ? args.checkFullAccess
+        : null
       const minutesArg = args && args.checkMinutes !== undefined && args.checkMinutes !== null
         ? Number(args.checkMinutes)
         : NaN
@@ -3761,6 +3778,7 @@ return {
       argv.push(autoCheck ? '--enable' : '--disable')
       argv.push('--auto-merge', autoMerge ? 'on' : 'off')
       argv.push('--check-reminders', checkEnabled ? 'on' : 'off')
+      if (checkFullAccess !== null) argv.push('--check-full-access', checkFullAccess ? 'on' : 'off')
       argv.push('--check-minutes', String(checkMinutes))
       if (expect) argv.push('--expect-sha256', expect)
       argv.push('--json')
@@ -3769,6 +3787,11 @@ return {
       const doc = syncDocOf(r) || {}
       const env = syncEnvelopeError(doc)
       if (env) return { ok: false, code: env.code, message: env.message, cwd: r.cwd || null, detail: '' }
+      // 回带给面板的权限值以脚本返回的规范化 sync 为准（没传这一项时就是文件现值）。
+      const docSync = doc.sync && typeof doc.sync === 'object' ? doc.sync : {}
+      const savedFullAccess = typeof docSync.check_full_access === 'boolean'
+        ? docSync.check_full_access
+        : (checkFullAccess === null ? true : checkFullAccess)
       return {
         ok: true,
         cwd: r.cwd || null,
@@ -3777,6 +3800,7 @@ return {
         saved: {
           remote: remote, branch: branch, auto_check: autoCheck, auto_merge: autoMerge,
           check_reminders: checkEnabled, check_minutes: checkMinutes,
+          check_full_access: savedFullAccess,
         },
       }
     })

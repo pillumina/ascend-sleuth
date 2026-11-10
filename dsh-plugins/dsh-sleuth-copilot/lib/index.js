@@ -54,6 +54,16 @@ const KB_SETTINGS_REL = '.local/settings.json'
 const KB_STATE_REL = '.local/kb-sync-notify.json'
 const KB_STATE_VERSION = 1
 const KB_SURFACE_KEYS = ['knowledge', 'routing', 'reference', 'methodology', 'panel', 'other']
+// 失败原因码 → 一句中文，只在脚本没给 raw 原文时兜底；有原文时状态条只显示原文第一行，
+// 不再把 `；credential` 这类内部取值拼进去。
+const KB_FAILURE_TEXT = {
+  credential: '拿不到 git 凭据',
+  network: '网络不通',
+  timeout: '检查超时',
+  'permission-denied': '被沙箱拒绝写入',
+  'no-remote': '没有配置的远端',
+  'not-a-repo': '不是 git 检出',
+}
 
 export const name = 'dsh-sleuth-copilot'
 // timer 不进必需依赖：缺它时整个 host 半仍要挂载，只在注入得到时装背景检查的定时器。
@@ -1353,10 +1363,14 @@ export function apply(ctx) {
     return mainRoot
   }
 
-  // 后台 fetch 的沙箱档位：部署默认档位的工作区根是 DSH launch-root（不是仓库），
-  // 直接跑子进程会被 EPERM 拒掉。部署已是完全权限时原样透传；否则显式把工作区根收成
-  // 主检出，只放开这一个仓库。解析不到档位时也按 workspace-write + 主检出给。
-  function kbSandboxPolicy(mainRoot) {
+  // 后台 fetch 的沙箱档位：默认以完全权限跑（sync.check_full_access，默认 true）。
+  // 这条检查只跑 scripts/kb_sync.py --check（只 fetch、不改检出），但要读 git 凭据：
+  // 受限档（Windows 的 workspace-write）拿不到凭据时检查会永远失败，而面板「立即同步」
+  // 走会话档能成——同一台机器两种结果。面板可把 check_full_access 关掉，关掉后按部署
+  // 默认档跑；部署默认的工作区根是 DSH launch-root（不是仓库），非完全权限时显式把根收成
+  // 主检出，只放开这一个仓库。解析不到档位时按 workspace-write + 主检出给。
+  function kbSandboxPolicy(mainRoot, fullAccess) {
+    if (fullAccess !== false) return { mode: 'danger-full-access', workspaceRoot: mainRoot }
     const svc = ctx.get('sandboxPolicy')
     let base
     try {
@@ -1505,9 +1519,10 @@ export function apply(ctx) {
     return persistKbState(mainRoot)
   }
 
-  // 后台检查的开关与间隔：主检出的 .local/settings.json，sync.check_enabled（默认 true）、
-  // sync.check_minutes（默认 30，夹取 5..720）。文件缺失、坏 JSON、字段不合规都按默认值，
-  // 一个坏文件不该把提醒永久关掉。
+  // 后台检查的开关、间隔与沙箱档位：主检出的 .local/settings.json，sync.check_enabled
+  // （默认 true）、sync.check_minutes（默认 30，夹取 5..720）、sync.check_full_access
+  // （默认 true，以完全权限跑）。文件缺失、坏 JSON、字段不合规都按默认值，一个坏文件不该
+  // 把提醒永久关掉、也不该把检查拦在沙箱里。
   async function readKbSchedule(mainRoot) {
     let raw = null
     try {
@@ -1523,6 +1538,7 @@ export function apply(ctx) {
     return {
       enabled: kbAsBool(sync.check_enabled, true),
       minutes: Math.min(KB_CHECK_MAX_MINUTES, Math.max(KB_CHECK_MIN_MINUTES, minutes)),
+      fullAccess: kbAsBool(sync.check_full_access, true),
     }
   }
 
@@ -1615,7 +1631,9 @@ export function apply(ctx) {
       return kbSnapshot()
     }
     // 探测与取数同一档位：否则子进程在部署默认沙箱里会因工作区根不是仓库被拒。
-    const policy = kbSandboxPolicy(mainRoot)
+    // 档位由设置决定（默认完全权限）；手动重查与定时检查读同一份设置。
+    const schedule = await readKbSchedule(mainRoot)
+    const policy = kbSandboxPolicy(mainRoot, schedule.fullAccess)
     const python = await resolvePython(mainRoot, policy)
     if (python === null) {
       await kbFailed(mainRoot, kbNowIso(), noPythonMessage(), 'no-python')
@@ -1654,11 +1672,15 @@ export function apply(ctx) {
       return kbSnapshot()
     }
     if (doc.ok === false || reason !== '') {
-      const text = [doc.fetch_error, doc.config_error, doc.last_error, reason]
-        .map((item) => (typeof item === 'string' ? item.trim() : ''))
-        .filter(Boolean)
-        .join('；')
-      await kbFailed(mainRoot, kbNowIso(), text || '知识库检查失败', reason || 'failed', skipped)
+      // 原文优先（git / ssh 的行最具体）；没有原文时才用原因码的中文兜底。
+      // `fetch_error` 与 `last_error` 在脚本里是同一句（失败原文同时写两处），去重后再拼。
+      const parts = []
+      for (const item of [doc.fetch_error, doc.config_error, doc.last_error]) {
+        const text = typeof item === 'string' ? item.trim() : ''
+        if (text && parts.indexOf(text) < 0) parts.push(text)
+      }
+      const text = parts.length ? parts.join('；') : (KB_FAILURE_TEXT[reason] || '知识库检查失败')
+      await kbFailed(mainRoot, kbNowIso(), text, reason || 'failed', skipped)
       return kbSnapshot()
     }
     const remoteRev = typeof doc.remote_rev === 'string' ? doc.remote_rev.trim() : ''

@@ -108,7 +108,8 @@ class ConfigTest(RepoCase):
         self.assertEqual(data["sync"],
                          {"remote": "origin", "branch": "main",
                           "enabled": True, "auto_merge": True,
-                          "check_enabled": True, "check_minutes": 30})
+                          "check_enabled": True, "check_minutes": 30,
+                          "check_full_access": True})
         self.assertIsNone(data["target"])
 
     def test_old_settings_file_gets_default_check_fields(self):
@@ -124,10 +125,28 @@ class ConfigTest(RepoCase):
         self.assertEqual(config, "file")
         self.assertTrue(data["sync"]["check_enabled"])
         self.assertEqual(data["sync"]["check_minutes"], 30)
+        self.assertTrue(data["sync"]["check_full_access"])
         kb_sync.save_settings(self.repo, data)
         saved = json.loads(path.read_text(encoding="utf-8"))
         self.assertTrue(saved["sync"]["check_enabled"])
         self.assertEqual(saved["sync"]["check_minutes"], 30)
+        self.assertTrue(saved["sync"]["check_full_access"])
+
+    def test_check_full_access_accepts_off_and_defaults_on(self):
+        # 后台检查的沙箱档位：缺字段（旧配置）按完全权限；手写成 "off" 也算关。
+        path = self.repo / ".local" / "settings.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        for raw, expected in (("off", False), ("false", False), ("on", True), (False, False), (True, True)):
+            with self.subTest(raw=raw):
+                path.write_text(json.dumps({
+                    "schema": "ascend-sleuth-settings/1",
+                    "sync": {"check_full_access": raw},
+                }), encoding="utf-8")
+                data, _config, _problem = kb_sync.load_settings(self.repo)
+                self.assertEqual(data["sync"]["check_full_access"], expected)
+        path.unlink()
+        data, _config, _problem = kb_sync.load_settings(self.repo)
+        self.assertTrue(data["sync"]["check_full_access"])
 
     def test_broken_settings_falls_back_without_raising(self):
         path = self.repo / ".local" / "settings.json"
@@ -436,14 +455,101 @@ class FetchFailureDetailTest(ConfiguredCase):
         self.assertEqual(state["reason"], "network")
         self.assertIn("Connection refused", state["fetch_error"])
 
-    def test_auth_failure_stays_exit_code(self):
-        # 凭据问题不归到 network：那条提示会把读者带去查网络与代理。
+    def test_auth_failure_is_credential(self):
+        # 凭据问题不归到 network：那条提示会把读者带去查网络与代理；单独一档，面板才说得出
+        # 「拿不到 git 凭据」而不是笼统的 fetch 失败。
         stderr = ("remote: Invalid username or password.\n"
                   "fatal: Authentication failed for 'https://github.com/org/repo.git/'\n")
         with self.fail_fetch(stderr):
             _code, doc = self.run_cli("--sync", "--json")
-        self.assertEqual(doc["reason"], "exit-128")
+        self.assertEqual(doc["reason"], "credential")
         self.assertIn("Authentication failed", doc["fetch_error"])
+
+    def test_ssh_host_key_keeps_ssh_line(self):
+        # 沙箱读不到 known_hosts 时 ssh 打自己那行，git 再补一句 "Could not read from
+        # remote repository"。面板要的是前一句：只取最后一条 fatal 行会只剩后者。
+        stderr = ("Host key verification failed.\n"
+                  "fatal: Could not read from remote repository.\n\n"
+                  "Please make sure you have the correct access rights\n"
+                  "and the repository exists.\n")
+        with self.fail_fetch(stderr):
+            _code, doc = self.run_cli("--sync", "--json")
+        self.assertEqual(doc["reason"], "credential")
+        self.assertEqual(doc["fetch_error"], "Host key verification failed.")
+        state = json.loads((self.repo / ".local" / "kb-sync-state.json").read_text(encoding="utf-8"))
+        self.assertEqual(state["reason"], "credential")
+        self.assertEqual(state["fetch_error"], "Host key verification failed.")
+
+    def read_source_state(self) -> dict:
+        path = self.repo / ".local" / "kb-sync-state.json"
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def test_check_failure_records_source_check(self):
+        # 状态文件里记下这次是后台提醒检查发起的：面板据此分辨「后台检查失败」与用户的
+        # 「同步失败」，不再把两者混成一条横幅。
+        stderr = ("git@example.com: Permission denied (publickey).\n"
+                  "fatal: Could not read from remote repository.\n")
+        with self.fail_fetch(stderr):
+            _code, doc = self.run_cli("--check", "--json")
+        self.assertEqual(doc["reason"], "credential")
+        self.assertEqual(self.read_source_state()["source"], "check")
+        _code, shown = self.run_cli("--show", "--json")
+        self.assertEqual(shown["last_reason"], "credential")
+        self.assertEqual(shown["last_source"], "check")
+
+    def test_merge_force_failure_records_source_manual(self):
+        with self.fail_fetch("fatal: could not resolve host: example.com\n"):
+            _code, doc = self.run_cli("--merge", "--json", "--force")
+        self.assertEqual(doc["reason"], "network")
+        self.assertEqual(self.read_source_state()["source"], "manual")
+
+    def test_sync_failure_records_source_auto(self):
+        with self.fail_fetch("fatal: could not resolve host: example.com\n"):
+            _code, doc = self.run_cli("--sync", "--json")
+        self.assertEqual(doc["reason"], "network")
+        self.assertEqual(self.read_source_state()["source"], "auto")
+
+    def test_check_success_records_source_check(self):
+        self.upstream({"knowledge/a.yaml": "cases: []\n"})
+        _code, doc = self.run_cli("--check", "--json")
+        self.assertTrue(doc["ok"])
+        state = self.read_source_state()
+        self.assertEqual(state["source"], "check")
+        self.assertEqual(state["reason"], "")
+        _code, shown = self.run_cli("--show", "--json")
+        self.assertEqual(shown["last_source"], "check")
+
+    def test_show_human_prints_source(self):
+        # 人读输出在有失败记录时给出这次尝试的来源，排查时不必再猜状态文件是谁写的。
+        with self.fail_fetch("fatal: could not resolve host: example.com\n"):
+            self.run_cli("--sync", "--json")
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            kb_sync.main(["--root", str(self.repo), "--show"])
+        text = out.getvalue()
+        self.assertIn("上次来源  自动同步", text)
+        self.assertIn("网络不通", text)
+
+    def test_lock_with_credential_wording_keeps_lock_line(self):
+        # 锁冲突的 stderr 里也可能带凭据字样：归类是 lock 时要取锁那一行，不能取末条
+        # fatal（凭据行），否则横幅的「原因」与「详情」对不上。
+        stderr = ("fatal: cannot lock ref 'refs/remotes/origin/main': Unable to create lock\n"
+                  "fatal: Authentication failed for 'https://github.com/org/repo.git/'\n")
+        with self.fail_fetch(stderr):
+            _code, doc = self.run_cli("--sync", "--json")
+        self.assertEqual(doc["reason"], "lock")
+        self.assertTrue(doc["fetch_error"].startswith("fatal: cannot lock ref"))
+        self.assertNotIn("Authentication failed", doc["fetch_error"])
+
+    def test_control_chars_stripped_from_fetch_error(self):
+        # 远端 banner 带 ANSI 颜色序列时不原样进状态文件与面板。
+        stderr = "\x1b[31mfatal: could not resolve host: example.com\x1b[0m\n"
+        with self.fail_fetch(stderr):
+            _code, doc = self.run_cli("--sync", "--json")
+        self.assertEqual(doc["reason"], "network")
+        self.assertNotIn("\x1b", doc["fetch_error"])
+        self.assertNotIn("[31m", doc["fetch_error"])
+        self.assertIn("could not resolve host", doc["fetch_error"])
 
     def test_other_failure_keeps_exit_code_and_line(self):
         stderr = "fatal: couldn't find remote ref main\n"
@@ -633,11 +739,18 @@ class FetchFailureReasonTest(unittest.TestCase):
         # 只认 FETCH_HEAD 与 permission denied 会漏掉这条路径，探测因此不触发。
         self.assertEqual(self.reason(OBJECT_WRITE_DENIED_STDERR), "permission-denied")
 
-    def test_ssh_publickey_stays_exit_code(self):
+    def test_ssh_publickey_is_credential(self):
         # "Permission denied (publickey)" 是认不出凭据，不是沙箱拒绝；归到权限拒绝会把读者
         # 带去查文件权限。凭据类归类排在权限拒绝之前。
         self.assertEqual(self.reason("git@example.com: Permission denied (publickey).\n"),
-                         "exit-128")
+                         "credential")
+
+    def test_ssh_host_key_is_credential(self):
+        self.assertEqual(self.reason("Host key verification failed.\n"), "credential")
+
+    def test_unclassified_failure_keeps_exit_code(self):
+        # 分不出类的失败不编造原因，仍回退出码。
+        self.assertEqual(self.reason("fatal: something odd happened\n"), "exit-128")
 
     def test_lock_wording_wins_over_permission(self):
         self.assertEqual(
@@ -726,8 +839,9 @@ class PermissionDegradedTest(ConfiguredCase):
         self.assertTrue(doc["ok"])
         self.assertEqual(doc["reason"], "")
         self.assertEqual(doc["degraded"], "permission-denied")
-        # 原始错误取末行 fatal；归类看整段 stderr。
-        self.assertEqual(doc["degraded_error"], "fatal: unpack-objects failed")
+        # 原始错误取归类对应的那一行（权限拒绝），不是末条 fatal：末条是 unpack-objects
+        # 的收尾句，读不出被拒的是哪一步。
+        self.assertEqual(doc["degraded_error"], "fatal: failed to write object")
         self.assertTrue(doc["update_available"])
         self.assertEqual(doc["behind"], "unknown")
         self.assertFalse(doc["surface_known"])
