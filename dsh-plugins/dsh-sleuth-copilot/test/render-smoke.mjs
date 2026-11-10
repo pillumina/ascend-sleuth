@@ -983,7 +983,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('最近一单：进度轨显示 5/6', view.text.includes('5/6'))
   expect('最近一单：主按钮是回报结果', !!findButton(view, '回报结果'))
   expect('最近一单：显示身份标签（知识库未覆盖）', view.text.includes('知识库未覆盖'))
-  expect('最近一单：显示已排除条数', view.text.includes('已排除 3 条'))
+  expect('最近一单：状态条不显示计数类标签', !view.text.includes('已排除 3 条'))
   expect('最近一单：版本串与 package.json 一致', view.nodes.some((node) => node.props && node.props['data-version'] === PKG_VERSION), PKG_VERSION)
   expect('工具条：带待回报角标', view.text.includes('1 单待回报'), view.text.slice(0, 400))
   expect('标题按钮可打开台账', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断总览：')))
@@ -1396,6 +1396,8 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
     byClass(cmdView, 'scp-cmd-where').length === 1
       && nodeText(byClass(cmdView, 'scp-cmd-where')[0]).includes('作用于'),
   nodeText(byClass(cmdView, 'scp-cmd-where')[0] || {}))
+  expect('命令面板：按用途分组', byClass(cmdView, 'scp-cmd-group').length >= 2,
+    String(byClass(cmdView, 'scp-cmd-group').length))
   click(findButton(cmdView, '复制为 issue 文本'))
   await t.settle()
   expect('命令面板：执行复制', copied[copied.length - 1].includes('标题：'))
@@ -1667,6 +1669,18 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const actionBar = byClass(view, 'scp-actions')[0]
   const copyCount = ((actionBar && nodeText(actionBar)) || '').match(/复制结论摘要/g) || []
   expect('终态单：底部只有一个复制摘要按钮', copyCount.length === 1, String(copyCount.length))
+  const primaryBtn = view.nodes.find((node) => node.type === 'button'
+    && String((node.props && node.props.className) || '').includes('scp-btn--primary'))
+  expect('终态单：复制摘要不作蓝色主按钮', !primaryBtn || !nodeText(primaryBtn).includes('复制结论摘要'))
+}
+
+{
+  const t = await mount('empty')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('空数据：给「刷新」入口', !!findButton(view, '刷新'), view.text.slice(0, 200))
+  expect('空数据：只画一份占位', byClass(view, 'scp-pal-empty').length === 1,
+    String(byClass(view, 'scp-pal-empty').length))
 }
 
 {

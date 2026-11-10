@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.22.0'
+    const PLUGIN_VERSION = '0.22.1'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。
@@ -196,6 +196,11 @@ window.__ModuleLoader__.load({
       'search.placeholder': '搜索单号 / case / 关键词',
       'cmd.placeholder': '输入命令…',
       'cmd.where': '作用于：',
+      'cmd.group.primary': '主操作',
+      'cmd.group.copy': '复制',
+      'cmd.group.view': '查看',
+      'cmd.group.action': '动作',
+      'cmd.group.nav': '导航',
       'cmd.hint': '↑↓ 选择 · Enter 执行 · Esc 关闭',
       'cmd.empty': '没有匹配的命令',
       'command.primary': '主操作',
@@ -651,6 +656,11 @@ window.__ModuleLoader__.load({
       'search.placeholder': 'Search id / case / keyword',
       'cmd.placeholder': 'Type a command…',
       'cmd.where': 'Acting on: ',
+      'cmd.group.primary': 'Primary',
+      'cmd.group.copy': 'Copy',
+      'cmd.group.view': 'View',
+      'cmd.group.action': 'Action',
+      'cmd.group.nav': 'Navigate',
       'cmd.hint': '↑↓ select · Enter run · Esc close',
       'cmd.empty': 'No matching command',
       'command.primary': 'Primary',
@@ -1159,8 +1169,9 @@ window.__ModuleLoader__.load({
 .scp-filter-item[data-on="true"] b{color:var(--scp-accent);}
 .scp-pal-row{display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:none;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 120ms ease;}
 .scp-pal-row:hover{background:var(--scp-surface-2);}
-.scp-pal-row[data-on="true"]{background:var(--scp-accent-soft);}
+.scp-pal-row[data-on="true"]{background:var(--scp-accent-soft);box-shadow:inset 2px 0 0 var(--scp-accent);}
 .scp-pal-row[data-pending="true"]{box-shadow:inset 2px 0 0 var(--scp-warn);}
+.scp-pal-row[data-on="true"][data-pending="true"]{box-shadow:inset 2px 0 0 var(--scp-accent),inset 4px 0 0 var(--scp-warn);}
 .scp-pal-row .scp-ring{width:8px;height:8px;}
 .scp-pal-row-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:4px;}
 .scp-pal-row-line{display:flex;align-items:baseline;gap:8px;min-width:0;}
@@ -1239,6 +1250,10 @@ window.__ModuleLoader__.load({
 .scp-history-note{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--scp-faint);}
 .scp-actions{position:sticky;bottom:0;display:flex;flex-wrap:wrap;align-items:center;gap:var(--scp-sp-2);margin:var(--scp-sp-5) calc(-1 * var(--scp-side-pad-x)) 0;padding:var(--scp-sp-3) var(--scp-side-pad-x) var(--scp-sp-4);border-top:1px solid var(--scp-border);background:var(--scp-surface-2);box-shadow:0 -8px 16px -12px color-mix(in srgb,var(--scp-text) 24%,transparent);}
 .scp-actions::before,.scp-sed-actions::before{content:"";position:absolute;left:0;right:0;top:-14px;height:14px;pointer-events:none;background:linear-gradient(to bottom,transparent,var(--scp-surface-2));}
+.scp-actions::before,.scp-sed-actions::before{top:-20px;height:20px;}
+.scp-actions-menu{position:absolute;right:calc(var(--scp-side-pad-x) + 4px);bottom:96px;z-index:7;width:min(340px,calc(100% - 32px));max-height:min(58vh,520px);display:flex;flex-direction:column;padding:6px;border:1px solid var(--scp-border-strong);border-radius:14px;background:var(--scp-surface);box-shadow:var(--scp-shadow);}
+.scp-actions-menu .scp-menu-scroll{flex:1 1 auto;min-height:0;overflow:auto;}
+.scp-cmd-group{padding:6px 10px 2px;font-size:10.5px;font-weight:600;letter-spacing:.04em;color:var(--scp-faint);}
 .scp-pal .scp-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--scp-ctl-h);padding:0 14px;border:1px solid var(--scp-border);border-radius:var(--scp-ctl-r);background:var(--scp-surface);color:var(--scp-text);font:inherit;font-size:var(--scp-fs-sm);font-weight:var(--scp-fw-medium);line-height:1;white-space:nowrap;cursor:pointer;transition:background-color 120ms ease,border-color 120ms ease,color 120ms ease;}
 .scp-pal .scp-btn:hover{background:var(--scp-surface-2);border-color:var(--scp-border-strong);}
 .scp-pal .scp-btn:disabled{opacity:.45;cursor:not-allowed;}
@@ -1326,7 +1341,7 @@ window.__ModuleLoader__.load({
 .scp-sed-group{display:flex;align-items:center;justify-content:space-between;padding:var(--scp-sp-3) 8px 6px;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);letter-spacing:.02em;color:var(--scp-faint);}
 .scp-sed-row{display:flex;gap:10px;width:100%;padding:10px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 120ms ease;}
 .scp-sed-row:hover{background:var(--scp-surface-2);}
-.scp-sed-row[data-on="true"]{background:var(--scp-accent-soft);}
+.scp-sed-row[data-on="true"]{background:var(--scp-accent-soft);box-shadow:inset 2px 0 0 var(--scp-accent);}
 .scp-sed-dot{width:6px;height:6px;border-radius:50%;margin-top:7px;flex:none;}
 .scp-sed-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px;}
 .scp-sed-line{display:flex;align-items:baseline;gap:8px;min-width:0;}
@@ -3981,7 +3996,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const derived = primary.derived || {}
         const waiting = derived.waitingFor || extra.evidenceMissing || ''
         const action = primaryFor(primary, bound)
-        const chips = identityChips(primary).slice(0, 3)
+        const chips = identityChips(primary).filter((chip) => chip.key !== 'excluded').slice(0, 3)
         if (s.stale) chips.push({ key: 'stale', tone: 'warn', text: tr('chip.stale') })
         const metaBits = []
         if (status && status.label) metaBits.push(status.label)
@@ -4822,20 +4837,20 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         if (!target) return []
         const items = []
         const primary = primaryFor(target, data && data.bound && target.sessionId === data.bound.sessionId)
-        items.push({ label: tr('command.primary') + '：' + primary.label, run: () => runPrimary(target) })
-        items.push({ label: tr('action.copySummary'), run: () => copyAndFlash(summaryText(target, data)) })
-        items.push({ label: tr('copy.issue'), run: () => copyAndFlash(issueText(target)) })
-        items.push({ label: tr('action.viewReport'), run: () => toggleReport(target) })
-        if (target.activeCase) items.push({ label: tr('action.upstream'), run: () => fillDraft(upstreamDraft(target, data.upstream)) })
+        items.push({ group: 'primary', label: tr('command.primary') + '：' + primary.label, run: () => runPrimary(target) })
+        items.push({ group: 'copy', label: tr('action.copySummary'), run: () => copyAndFlash(summaryText(target, data)) })
+        items.push({ group: 'copy', label: tr('copy.issue'), run: () => copyAndFlash(issueText(target)) })
+        items.push({ group: 'view', label: tr('action.viewReport'), run: () => toggleReport(target) })
+        if (target.activeCase) items.push({ group: 'view', label: tr('action.upstream'), run: () => fillDraft(upstreamDraft(target, data.upstream)) })
+        items.push({ group: 'view', label: tr('action.loadTimeline'), run: () => toggleTimeline(target) })
         if ((target.activeCase || isPending(target)) && primary.key !== 'feedback') {
-          items.push({ label: tr('action.feedback'), run: () => { setMenuForm('feedback'); setMenuOpen(true) } })
+          items.push({ group: 'action', label: tr('action.feedback'), run: () => { setMenuForm('feedback'); setMenuOpen(true) } })
         }
         if (canStartSediment(target)) {
-          items.push({ label: tr('action.sediment'), run: () => fillDraft(sedimentDraft(target)) })
+          items.push({ group: 'action', label: tr('action.sediment'), run: () => fillDraft(sedimentDraft(target)) })
         }
-        items.push({ label: tr('action.loadTimeline'), run: () => toggleTimeline(target) })
-        items.push({ label: tr('action.refresh'), run: () => { refresh(true); flash(tr('hint.refreshed')) } })
-        items.push({ label: tr('palette.close'), run: () => setPaletteOpen(false) })
+        items.push({ group: 'nav', label: tr('action.refresh'), run: () => { refresh(true); flash(tr('hint.refreshed')) } })
+        items.push({ group: 'nav', label: tr('palette.close'), run: () => setPaletteOpen(false) })
         return items
       }
 
@@ -4851,7 +4866,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         className: 'scp-filter-item',
         'data-on': filter === key ? 'true' : 'false',
         onClick: () => savePrefs({ paletteFilter: key }),
-      }, tr('palette.filter.' + key), h('b', {}, String(filterCounts[key] || 0))))
+      }, tr('palette.filter.' + key), h('b', {}, data ? String(filterCounts[key] || 0) : '—')))
 
       const skeleton = Array.from({ length: 5 }, (_, index) => h('div', { key: 'skel-' + index, className: 'scp-pal-row' },
         h('span', { className: 'scp-ring', style: { background: 'var(--dsw-alias-bg-layer-2)', boxShadow: 'none' } }),
@@ -4980,17 +4995,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       })()
 
       const side = row
-        ? menuOpen
-          ? h('div', { className: 'scp-pal-side scp-write-side' }, h(WritePanel, {
-            row,
-            data,
-            autoForm: menuForm,
-            onClose: () => { setMenuOpen(false); setMenuForm(null) },
-            onDone: () => { setMenuOpen(false); setMenuForm(null); refresh(true) },
-            onFlash: flash,
-            onDraft: fillDraft,
-          }))
-          : h('div', { className: 'scp-pal-side', style: { '--scp-tone': TONE_VAR[toneOf(row)] || TONE_VAR.brand } },
+        ? h('div', { className: 'scp-pal-side', style: { '--scp-tone': TONE_VAR[toneOf(row)] || TONE_VAR.brand } },
             h('div', { className: 'scp-pal-titlecase', title: caseTitle(row) }, caseTitle(row)),
             h('div', { className: 'scp-identity' },
               h('span', { className: 'scp-badge' }, statusMeta(data.vocab, row.status).label),
@@ -5176,7 +5181,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               return h('div', { className: 'scp-actions' },
                 h('button', {
                   type: 'button',
-                  className: 'scp-btn scp-btn--primary',
+                  className: rowAction.key === 'copy' ? 'scp-btn' : 'scp-btn scp-btn--primary',
                   onClick: () => runPrimary(row),
                 }, rowAction.label),
                 rowAction.key === 'copy' ? null : h('button', { type: 'button', className: 'scp-btn', onClick: () => copyAndFlash(summaryText(row, data)) }, tr('action.copySummary')),
@@ -5186,6 +5191,19 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           h('div', { className: 'scp-pal-empty' },
             emptyMark,
             !data ? tr('palette.loading') : tr('palette.empty'))))
+
+      const actionMenu = menuOpen && row && !loadFailed
+        ? h('div', { className: 'scp-actions-menu', role: 'dialog', 'aria-label': tr('menu.title') },
+          h(WritePanel, {
+            row,
+            data,
+            autoForm: menuForm,
+            onClose: () => { setMenuOpen(false); setMenuForm(null) },
+            onDone: () => { setMenuOpen(false); setMenuForm(null); refresh(true) },
+            onFlash: flash,
+            onDraft: fillDraft,
+          }))
+        : null
 
       // ── 沉淀视图的渲染件 ────────────────────────────────────────────────
       function openPrompt(kind, resume) {
@@ -5827,7 +5845,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                             : null),
                         draft.decision
                           ? h('span', {}, sedDecisionLabel(draft.decision))
-                          : (draft.novelty ? h('span', {}, draft.novelty + (draft.confidence ? ' · ' + draft.confidence : '')) : null),
+                          : (draft.novelty ? h('span', {}, sedDecisionLabel(draft.novelty) + (draft.confidence ? ' · ' + draft.confidence : '')) : null),
                         draft.source && draft.source.sessionId
                           ? h('span', {}, draft.source.sessionId)
                           : null)))
@@ -5983,13 +6001,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               : null))
 
           const head = []
+          head.push(h('div', { key: 'title', className: 'scp-pal-titlecase', title: sedPick.title || sedPick.key }, sedPick.title || sedPick.key))
           // 抬头与诊断详情一致：一行识别信息 + 正文层的问题背景，不把首句放大加粗。
           // 来源诊断显示 trace 单号，跳的是它记的 harness 会话号；两个值不同，单号不在会话列表里。
           const sedSourceTrace = sedPick.source ? String(sedPick.source.sessionId || '') : ''
           const sedSourceSession = sedPick.source ? String(sedPick.source.harnessSession || '') : ''
           head.push(h('div', { key: 'identity', className: 'scp-identity' },
             h('span', { className: 'scp-badge', 'data-tone': SED_CHIP_TONE[sedPick.stageTone] || 'none' }, sedPick.stage || sedPick.state),
-            sedPick.novelty ? h('span', { className: 'scp-chip' }, sedPick.novelty + (sedPick.confidence ? ' · ' + sedPick.confidence : '')) : null,
+            sedPick.novelty ? h('span', { className: 'scp-chip' }, sedDecisionLabel(sedPick.novelty) + (sedPick.confidence ? ' · ' + sedPick.confidence : '')) : null,
             sedSourceTrace
               ? (sedSourceSession
                 ? h('button', {
@@ -6295,7 +6314,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 h('button', { type: 'button', className: 'scp-btn', onClick: () => refresh(true) }, tr('action.retry'))))
             : data && view === 'diagnosis' && rows.length === 0
               ? h('div', { className: 'scp-pal-main scp-pal-main--empty' },
-                h('div', { className: 'scp-pal-empty' }, emptyMark, tr('palette.empty')))
+                h('div', { className: 'scp-pal-empty' }, emptyMark, tr('palette.empty'),
+                  h('button', { type: 'button', className: 'scp-btn', onClick: () => refresh(true) }, tr('action.refresh'))))
               : h('div', { className: 'scp-pal-main' }, view === 'sediment' ? sedList : list, view === 'sediment' ? sedSide : side),
           h('div', { className: 'scp-pal-foot' },
             loadFailed ? null : h('span', { className: 'scp-foot-hints' },
@@ -6313,6 +6333,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             h('span', { className: 'scp-spacer' }),
             view === 'sediment' ? h('span', { className: 'scp-foot-note' }, sedTargetHint) : null,
             h('span', { className: 'scp-version' }, 'v' + PLUGIN_VERSION)),
+          actionMenu,
           promptModal,
           targetModal,
           manualModal,
@@ -6331,14 +6352,21 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               }),
               h('div', { className: 'scp-cmd-list', role: 'listbox', id: 'scp-cmd-list' },
                 commandList.length
-                  ? commandList.map((item, index) => h('button', {
-                    key: 'cmd-' + index, type: 'button', className: 'scp-cmd-item',
-                    role: 'option', id: 'scp-cmd-' + index,
-                    'aria-selected': index === cmdIndex ? 'true' : 'false',
-                    'data-on': index === cmdIndex ? 'true' : 'false',
-                    onMouseEnter: () => setCmdIndex(index),
-                    onClick: () => { setCmdOpen(false); item.run() },
-                  }, item.label))
+                  ? commandList.flatMap((item, index) => {
+                    const rows = []
+                    if (index === 0 || commandList[index - 1].group !== item.group) {
+                      rows.push(h('div', { key: 'grp-' + item.group, className: 'scp-cmd-group' }, tr('cmd.group.' + item.group)))
+                    }
+                    rows.push(h('button', {
+                      key: 'cmd-' + index, type: 'button', className: 'scp-cmd-item',
+                      role: 'option', id: 'scp-cmd-' + index,
+                      'aria-selected': index === cmdIndex ? 'true' : 'false',
+                      'data-on': index === cmdIndex ? 'true' : 'false',
+                      onMouseEnter: () => setCmdIndex(index),
+                      onClick: () => { setCmdOpen(false); item.run() },
+                    }, item.label))
+                    return rows
+                  })
                   : h('div', { className: 'scp-cmd-empty' }, tr('cmd.empty'))),
               h('div', { className: 'scp-pal-foot' }, h('span', {}, tr('cmd.hint'))))) : null,
           toast ? h('span', { className: 'scp-toast', role: 'status', title: toast }, toast) : null))
