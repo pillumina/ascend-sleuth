@@ -5,15 +5,19 @@
   </picture>
 </p>
 
+<h1 align="center">昇腾 NPU 训练与推理故障诊断知识库</h1>
+
 <p align="center">
   <a href="https://www.hiascend.com/"><img alt="platform: Ascend NPU" src="https://img.shields.io/badge/platform-Ascend%20NPU-CC0000?logo=huawei&logoColor=white"></a>
   <a href="https://agentskills.io/"><img alt="Agent Skills compliant" src="https://img.shields.io/badge/Agent%20Skills-compliant-8B5CF6.svg"></a>
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
 </p>
 
-<p align="center">昇腾 NPU 训练与推理问题的诊断知识库。按症状命中已验证的 case，把每次新定位沉淀回库，同类问题下次直接命中。</p>
+训练或推理在昇腾 NPU 上中断、精度异常、性能退化时，把日志与版本信息交给 agent。它按症状路由，查先验知识（官方文档与已沉淀事实）框定方向，再加载候选 case 逐条验证。未命中时继续深度排查，可按版本拉源码分析。输出定位结论与修复方案。
 
-遵循 [Agent Skills](https://agentskills.io/) 标准，在 pi、Claude Code、Codex、DSH 等支持该标准的 agent 中运行。
+定位结束后，新知识进待审队列，每周例行维护去重、升格为 case，同类问题下次直接命中。共性另归纳成先验知识。系统也按使用记录演进：未命中、执行出错、条目过期都记为改进卡。改动按影响面验证，提 PR 人审。
+
+skill 按 [Agent Skills](https://agentskills.io/) 标准打包。可在 pi、Claude Code、Codex、DeepSeek Harness（DSH）等支持该标准的 agent 中运行。
 
 ## 快速开始
 
