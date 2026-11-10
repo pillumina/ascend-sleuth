@@ -52,7 +52,7 @@ window.__ModuleLoader__.load({
       'picker.search': '搜索标题或单号',
       'picker.empty': '没有匹配的诊断。',
       'picker.current': '当前',
-      'picker.followOff': '取消固定，跟随最近一单',
+      'picker.followOff': '取消固定',
       'picker.open': '打开诊断总览',
       'action.pin': '固定到状态条',
       'action.unpin': '取消固定',
@@ -298,6 +298,7 @@ window.__ModuleLoader__.load({
       'palette.unavailable': '读不到 traces/：{message}',
       'palette.count': '共 {n} 单',
       'palette.loadFailed': '读取失败',
+      'palette.reading': '正在读取',
       'palette.close': '关闭诊断总览',
       'tool.title': '诊断总览',
       'tool.pending': '{n} 单待回报',
@@ -419,8 +420,12 @@ window.__ModuleLoader__.load({
       'sediment.detail.decision': '人决定',
       'sediment.detail.decisionValue': '决定',
       'sediment.decisionValue.new_pattern': '新模式',
-      'sediment.decisionValue.variant_of': '已有案例的变体',
-      'sediment.decisionValue.covered_by': '已有案例覆盖',
+      'sediment.decisionValue.variant': '已有案例的变体',
+      'sediment.decisionValue.covered': '已有案例覆盖',
+      'sediment.decisionValue.defer': '暂缓',
+      'sediment.decisionValue.reject': '不采纳',
+      'sediment.decisionValue.ambiguous': '待判定',
+      'sediment.decisionValue.duplicate': '与已有重复',
       'sediment.batch.next': '下一步',
       'sediment.dock.missingDraft': '已交草稿 · 未找到草稿',
       'sediment.detail.promotion': '落点与 PR',
@@ -502,7 +507,7 @@ window.__ModuleLoader__.load({
       'picker.search': 'Search title or id',
       'picker.empty': 'No matching diagnosis.',
       'picker.current': 'Current',
-      'picker.followOff': 'Unpin and follow the recent one',
+      'picker.followOff': 'Unpin',
       'picker.open': 'Open diagnosis overview',
       'action.pin': 'Pin to the status bar',
       'action.unpin': 'Unpin',
@@ -748,6 +753,7 @@ window.__ModuleLoader__.load({
       'palette.unavailable': 'Cannot read traces/: {message}',
       'palette.count': '{n} total',
       'palette.loadFailed': 'Read failed',
+      'palette.reading': 'Reading…',
       'palette.close': 'Close the diagnosis overview',
       'tool.title': 'Diagnosis overview',
       'tool.pending': '{n} pending outcomes',
@@ -869,8 +875,12 @@ window.__ModuleLoader__.load({
       'sediment.detail.decision': 'Human decision',
       'sediment.detail.decisionValue': 'Decision',
       'sediment.decisionValue.new_pattern': 'New pattern',
-      'sediment.decisionValue.variant_of': 'Variant of an existing case',
-      'sediment.decisionValue.covered_by': 'Covered by an existing case',
+      'sediment.decisionValue.variant': 'Variant of an existing case',
+      'sediment.decisionValue.covered': 'Covered by an existing case',
+      'sediment.decisionValue.defer': 'Deferred',
+      'sediment.decisionValue.reject': 'Rejected',
+      'sediment.decisionValue.ambiguous': 'Needs a call',
+      'sediment.decisionValue.duplicate': 'Duplicate of an existing case',
       'sediment.batch.next': 'next',
       'sediment.dock.missingDraft': 'draft submitted, not found',
       'sediment.detail.promotion': 'Landing and PR',
@@ -1063,14 +1073,16 @@ window.__ModuleLoader__.load({
       '.scp-picker-row{display:flex;align-items:center;gap:8px;width:100%;padding:7px 8px;border:none;border-radius:8px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 100ms ease;}',
       '.scp-picker-row:hover{background:var(--scp-surface-2);}',
       '.scp-picker-row[data-on="true"]{background:var(--scp-accent-soft);}',
-      '.scp-picker-current{flex:none;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);line-height:1;padding:2px 6px;border-radius:4px;color:var(--scp-accent);background:var(--scp-accent-soft);}',
-      '.scp-picker-foot-note{flex:1 1 auto;min-width:0;font-size:var(--scp-fs-label);color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
+      '.scp-picker-current{flex:none;font-size:10.5px;font-weight:600;line-height:1;padding:2px 6px;border-radius:4px;color:var(--scp-accent);background:var(--scp-accent-soft);}',
+      '.scp-picker-foot-note{flex:1 1 auto;min-width:0;font-size:11.5px;line-height:1.6;color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
       '.scp-picker-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px;}',
       '.scp-picker-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;font-weight:550;line-height:1.5;}',
       '.scp-picker-meta{font-size:11px;line-height:1.5;color:var(--scp-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
       '.scp-picker-foot{display:flex;align-items:center;gap:8px;padding:8px 10px;border-top:1px solid var(--scp-border);}',
       '.scp-picker-empty{padding:18px 10px;text-align:center;font-size:11.5px;color:var(--scp-faint);}',
-      '.scp-menu{position:absolute;right:8px;bottom:calc(100% + 8px);z-index:50;width:302px;max-height:min(64vh,540px);overflow:auto;padding:6px;border:1px solid var(--scp-border-strong);border-radius:14px;background:var(--scp-surface);box-shadow:var(--scp-shadow);animation:scp-pop 150ms ease-out;-webkit-mask-image:linear-gradient(180deg,transparent,#000 8px,#000 calc(100% - 12px),transparent);mask-image:linear-gradient(180deg,transparent,#000 8px,#000 calc(100% - 12px),transparent);}',
+      '.scp-menu{position:absolute;right:8px;bottom:calc(100% + 8px);z-index:50;width:302px;max-height:min(64vh,540px);display:flex;flex-direction:column;overflow:hidden;padding:6px;border:1px solid var(--scp-border-strong);border-radius:14px;background:var(--scp-surface);box-shadow:var(--scp-shadow);animation:scp-pop 150ms ease-out;}',
+      '.scp-menu-scroll{flex:1 1 auto;min-height:0;overflow:auto;}',
+      '.scp-menu-scroll[data-overflow="true"]{-webkit-mask-image:linear-gradient(180deg,transparent,#000 8px,#000 calc(100% - 12px),transparent);mask-image:linear-gradient(180deg,transparent,#000 8px,#000 calc(100% - 12px),transparent);}',
       '@keyframes scp-pop{from{opacity:0;transform:translateY(6px) scale(.99)}to{opacity:1;transform:none}}',
       '.scp-menu-head{display:flex;align-items:center;justify-content:space-between;padding:2px 6px 6px;}',
       '.scp-menu-title{font-size:11px;line-height:1.7;color:var(--scp-muted);}',
@@ -1134,6 +1146,7 @@ window.__ModuleLoader__.load({
 .scp-pal-main--empty{display:flex;align-items:center;justify-content:center;}
 .scp-pal-main--empty .scp-pal-empty{flex:0 1 auto;}
 .scp-pal-list{flex:0 0 clamp(280px,34%,380px);max-width:380px;min-width:280px;overflow:auto;padding:var(--scp-sp-3);border-right:1px solid var(--scp-border);}
+@media (min-width:1200px){.scp-pal-list{flex:0 0 400px;max-width:400px;min-width:280px;}}
 .scp-search{display:flex;align-items:center;gap:6px;margin:0 0 var(--scp-sp-2);padding:0 10px;height:var(--scp-ctl-h-input);border:1px solid var(--scp-border);border-radius:9px;background:var(--scp-surface);}
 .scp-search input{flex:1;min-width:0;border:0;outline:none;background:transparent;color:var(--scp-text);font:inherit;font-size:var(--scp-fs-body);line-height:1.5;}
 .scp-search input::placeholder{color:var(--scp-faint);}
@@ -2791,6 +2804,15 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const expectAtOpen = React.useRef(row.contentSha256)
       // 上一次提交的写入参数：权限类失败时据此生成兜底指令（不靠回读表单状态）。
       const attemptRef = React.useRef(null)
+      const menuScrollRef = React.useRef(null)
+      const [menuOverflow, setMenuOverflow] = React.useState(false)
+      // 菜单内容超高时才给上下渐隐；是否超高按真实布局量，不按条目数猜（替身渲染拿不到尺寸时保持 false）。
+      React.useEffect(() => {
+        const el = menuScrollRef.current
+        if (!el || typeof el.scrollHeight !== 'number' || !(el.clientHeight > 0)) return
+        const next = el.scrollHeight > el.clientHeight + 1
+        setMenuOverflow((prev) => (prev === next ? prev : next))
+      })
       const [fallback, setFallback] = React.useState('')
 
       function feedbackForm() {
@@ -3281,7 +3303,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       }
       if (navItems.length) groups.push({ key: 'nav', title: tr('group.nav'), items: navItems })
 
-      return h('div', {},
+      return h('div', { className: 'scp-menu-scroll', ref: menuScrollRef, 'data-overflow': menuOverflow ? 'true' : 'false' },
         h('div', { className: 'scp-menu-head' },
           h('span', { className: 'scp-menu-title' }, tr('menu.title')),
           h('button', { type: 'button', className: 'scp-icon', 'aria-label': tr('action.closeMenu'), onClick: onClose }, IconClose())),
@@ -4071,7 +4093,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                       formatTime(row.updatedAt) || tr('none'))))
               })),
           h('div', { className: 'scp-picker-foot' },
-            h('span', { className: 'scp-picker-foot-note' }, tr('picker.current') + '：' + scopeLabel),
+            pinned ? null : h('span', { className: 'scp-picker-foot-note' }, tr('picker.current') + '：' + scopeLabel),
             pinned ? h('button', {
               type: 'button',
               className: 'scp-btn scp-btn--ghost',
@@ -4657,6 +4679,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       if (s.data && s.data.ok === false && s.data.code === 'E_NO_ROOT') return null
 
       const loadFailed = !data && (s.phase === 'error' || !!(s.data && s.data.ok === false))
+      const loading = !data && !loadFailed
       const row = filtered[selected] || null
       selectedRowRef.current = row ? row.sessionId : ''
       const counts = data && data.counts ? data.counts : {}
@@ -6212,9 +6235,11 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               onClick: () => setManualOpen(false),
             }, tr('sediment.prompt.cancel'))))) : null
 
-      const subParts = loadFailed || !data
+      const subParts = loadFailed
         ? [tr('palette.loadFailed')]
-        : [tr('palette.count', { n: rows.length })]
+        : loading
+          ? [tr('palette.reading')]
+          : [tr('palette.count', { n: rows.length })]
       if (data && Number(counts.pendingFeedback) > 0) subParts.push(tr('queue.pending', { n: Number(counts.pendingFeedback) }))
 
       return h('div', {
@@ -6246,7 +6271,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 'aria-selected': view === 'diagnosis' ? 'true' : 'false',
                 'data-on': view === 'diagnosis' ? 'true' : 'false',
                 onClick: () => setPaletteView('diagnosis'),
-              }, tr('palette.view.diagnosis'), h('b', {}, loadFailed || !data ? '—' : String(rows.length))),
+              }, tr('palette.view.diagnosis'), h('b', {}, loadFailed ? '—' : loading ? '…' : String(rows.length))),
               h('button', {
                 type: 'button', role: 'tab',
                 className: 'scp-view-tab',
@@ -6268,7 +6293,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('div', { className: 'scp-pal-error scp-pal-error--center' },
                 h('div', { className: 'scp-pal-error-title' }, tr('palette.unavailable', { message: (s.data && s.data.message) || s.message || '' })),
                 h('button', { type: 'button', className: 'scp-btn', onClick: () => refresh(true) }, tr('action.retry'))))
-            : view === 'diagnosis' && rows.length === 0
+            : data && view === 'diagnosis' && rows.length === 0
               ? h('div', { className: 'scp-pal-main scp-pal-main--empty' },
                 h('div', { className: 'scp-pal-empty' }, emptyMark, tr('palette.empty')))
               : h('div', { className: 'scp-pal-main' }, view === 'sediment' ? sedList : list, view === 'sediment' ? sedSide : side),

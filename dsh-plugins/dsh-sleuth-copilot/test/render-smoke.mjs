@@ -1130,6 +1130,12 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(findAria(view, '跟踪哪一单'))
   const opened = await t.settle()
   expect('选择器：列出多单', opened.text.includes('vllm-ascend PD 分离'), opened.text.slice(0, 300))
+  expect('选择器：当前行带「当前」标记', byClass(opened, 'scp-picker-current').length === 1,
+    String(byClass(opened, 'scp-picker-current').length))
+  expect('选择器：未固定时脚注给当前单',
+    byClass(opened, 'scp-picker-foot-note').length === 1
+      && nodeText(byClass(opened, 'scp-picker-foot-note')[0]).includes('当前'),
+    String(byClass(opened, 'scp-picker-foot-note').length))
   const target = opened.nodes.find((node) => node.type === 'button' && nodeText(node).includes('vllm-ascend PD 分离'))
   click(target)
   const after = await t.settle()
@@ -1143,6 +1149,15 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(findButton(menuView, '查 case 上游状态'))
   expect('查上游：prompt 走 verify 脚本', t.lastDraft().includes('verify_upstream_outcomes.py --case VLLM-ASC-11312')
     && t.lastDraft().includes('--dry-run') && t.lastDraft().includes('scripts/doctor.py'), t.lastDraft())
+}
+
+{
+  const t = await mount('multi', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: { 'sess-1': '2026-09-07-glm53-pd-sfa-c8-hang' } } })
+  click(findAria(t.view(), '跟踪哪一单'))
+  const opened = await t.settle()
+  expect('选择器：已固定时脚注让位、给「取消固定」',
+    byClass(opened, 'scp-picker-foot-note').length === 0 && !!findButton(opened, '取消固定'),
+    String(byClass(opened, 'scp-picker-foot-note').length))
 }
 
 {
@@ -1649,8 +1664,9 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const t = await mount('closed')
   click(findToolbar(t.view()))
   const view = await t.settle()
-  const copyButtons = view.nodes.filter((node) => node.type === 'button' && nodeText(node) === '复制结论摘要')
-  expect('终态单：底部只有一个复制摘要按钮', copyButtons.length === 1, String(copyButtons.length))
+  const actionBar = byClass(view, 'scp-actions')[0]
+  const copyCount = ((actionBar && nodeText(actionBar)) || '').match(/复制结论摘要/g) || []
+  expect('终态单：底部只有一个复制摘要按钮', copyCount.length === 1, String(copyCount.length))
 }
 
 {
