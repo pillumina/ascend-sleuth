@@ -4774,12 +4774,20 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       String(page.regs[0].opts.key) + ' / ' + String(page.regs[1].opts.id))
     expect('侧栏图标带可读名字', page.regs[1].opts.label === 'Ascend Sleuth', String(page.regs[1].opts.label))
 
-    expect('默认落在「指标」子页（渲染出指标首屏）', page.text.includes('本期变化'), page.text.slice(0, 160))
+    // 顺序从 tab 按钮自己的标记取，不用整页文本找词：副标题里也有「知识库」「指标」，
+    // 按词序断言拦不住「知识库排第二位」这种回归（预核反例实测）。flatten 对每个元素先输出
+    // «cls:…»，tab 按钮的下一行就是标签文字。
+    const tabLabels = (page.text.match(/«cls:sleu-console-tab»\n([^\n]+)/g) || [])
+      .map(s => s.split('\n')[1].trim())
+    expect('子页顺序 知识库 / 指标 / 自演进',
+      tabLabels.join(' / ') === '知识库 / 指标 / 自演进', tabLabels.join(' / ') || '没取到 tab')
+    expect('默认落在第一个 tab「知识库」子页（渲染出知识库首屏）',
+      page.text.includes('同步源'), page.text.slice(0, 160))
     const evo = await renderAsync(consoleSrc, { sessionId: 'sess-1', view: 'evolve' }, pageHost, { views })
     expect('切到「自演进」子页渲染看板', evo.text.includes('自演进 · 体检'), evo.text.slice(0, 160))
-    expect('两个子页的入口都在', page.text.includes('指标') && page.text.includes('自演进'))
 
-    const empty = await renderAsync(consoleSrc, { sessionId: 'sess-1' }, pageHost, { views: {} })
+    // 缺视图的那一页要显式点名：默认子页由整页自己登记，拿它验不出「没接上」。
+    const empty = await renderAsync(consoleSrc, { sessionId: 'sess-1', view: 'metrics' }, pageHost, { views: {} })
     expect('视图缺失时给一行说明（不空白）', empty.text.includes('没接上'), empty.text.slice(0, 160))
 
     const svg = fs.readFileSync(path.join(repo, 'dsh-plugins/sleuth-console/icon.svg'), 'utf8')

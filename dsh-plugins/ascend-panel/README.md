@@ -297,7 +297,7 @@ node scripts/panel_install.js --remove   # 卸载
 
 1. 侧栏「插件」页 → 添加入口 → 粘贴本仓库 `dsh-plugins/dsh-sleuth-panels` 的绝对路径（粘的是这个包目录，不是上面的面板源目录 `dsh-plugins/ascend-panel/`：后者没有 `package.json`，入口会拒）。该入口也接受包名、Git 地址与压缩包。
 2. 装完看 profile 里的四处记录：`package.json` 的 `dependencies` 与 `dsh.profile.bundles` 各一条 `dsh-sleuth-panels`；`dsh.desktop.generationProjection` 里一条 generationId，形如 `dsh-sleuth-panels+<版本>+<哈希>`；`pnpm.overrides` 里一条指向 `dirname($DSH_PROFILE_DIR)/.generations/live/<generationId>/node_modules/dsh-sleuth-panels` 的 link。界面不给模型可读的 application / warnings，以这四处记录为准。包进了 generation，仓库被移动或 worktree 被清掉都不影响已装的那份。
-3. 在仓库里跑 `node scripts/panel_rpc_probe.js`（退出码 2 = 拿不到地址，或路由没在服务或未授权），再刷新页面：对话视图的 tab 条里应出现「诊断」，左侧栏应出现「Ascend Sleuth」图标（指标 / 自演进在这一页里）。
+3. 在仓库里跑 `node scripts/panel_rpc_probe.js`（退出码 2 = 拿不到地址，或路由没在服务或未授权），再刷新页面：对话视图的 tab 条里应出现「诊断」，左侧栏应出现「Ascend Sleuth」图标（「知识库」「指标」「自演进」在这一页里）。
 4. 卸载也在这个页面做。
 
 桌面版没有 `dsh` 命令，界面提示的 `dsh plugin --profile web install` 与 `dsh --profile web --dump-config` 都用不上。profile 的 `dependencies` 里若有指向没有 `package.json` 的目录的 link 依赖，桌面版启动的 generations 迁移会 defer，之后需要解析这个包的操作报 `cannot resolve profile bundle "<名字>"`；处置是把 `package.json`、`pnpm-lock.yaml`、`node_modules` 里的死链一起删干净。
