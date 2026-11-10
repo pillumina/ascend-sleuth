@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.22.2'
+    const PLUGIN_VERSION = '0.22.3'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。
@@ -3030,13 +3030,17 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         return h('div', {},
           h('div', { className: 'scp-menu-head' },
             h('span', { className: 'scp-menu-title' }, form.title),
-            h('button', { type: 'button', className: 'scp-icon', 'aria-label': tr('action.closeMenu'), onClick: () => setForm(null) }, IconClose())),
+            h('button', {
+              type: 'button', className: 'scp-icon', 'aria-label': tr('action.closeMenu'),
+              onClick: () => { if (onClose) onClose(); else setForm(null) },
+            }, IconClose())),
           h(WriteForm, {
             form,
             row,
             busy,
             error,
-            onCancel: () => setForm(null),
+            // 取消与右上关闭键同一语义：收起整个浮层。旧行为是退回「更多操作」列表，读者要点两次才关得掉。
+            onCancel: () => { if (onClose) onClose(); else setForm(null) },
             onSubmit: (values) => {
               if (form.kind === 'feedback') {
                 fillAndClose(feedbackInstruction(row, values, vocab))
