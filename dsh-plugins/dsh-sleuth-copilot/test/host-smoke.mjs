@@ -1239,10 +1239,11 @@ function newKbHarness(payload, timers) {
   // 定时检查不带 --force：脚本的失败冷却与静默规则照旧。
   expect('知识库：定时检查的命令不带 --force',
     kbCommands.every((command) => !/(^|\s)--force(\s|$)/.test(command)), JSON.stringify(kbCommands))
-  // 真机 bug：部署默认是 workspace-write + launch-root，后台 fetch 会 EPERM；这里显式收窄到主检出。
+  // 后台检查默认以完全权限跑：受限档（Windows 的 workspace-write）拿不到 git 凭据，
+  // 检查会永远失败；面板可关掉，关掉后按部署默认档（见 ①b）。
   const kbSpec = first.shell.specs.filter((spec) => String(spec.command || '').includes('kb_sync.py')).pop()
-  expect('知识库：后台 fetch 的沙箱档位收窄到 workspace-write + 主检出',
-    kbSpec && kbSpec.sandboxPolicy && kbSpec.sandboxPolicy.mode === 'workspace-write'
+  expect('知识库：后台检查默认以完全权限跑、根仍指主检出',
+    kbSpec && kbSpec.sandboxPolicy && kbSpec.sandboxPolicy.mode === 'danger-full-access'
     && kbSpec.sandboxPolicy.workspaceRoot === KB_REPO,
     JSON.stringify(kbSpec && kbSpec.sandboxPolicy))
   // 默认 settings 缺省：检查后至多 60 秒重读设置，按「上次检查开始 + 间隔」判到期。
@@ -1335,7 +1336,23 @@ function newKbHarness(payload, timers) {
     && commandsAfterForce.slice(0, -1).every((command) => !/(^|\s)--force(\s|$)/.test(command)),
     JSON.stringify(commandsAfterForce))
 
-  // ①b 沙箱档位：部署默认已是完全权限时原样透传（不再包一层）。
+  // ①b 沙箱档位：默认/显式打开时以完全权限跑，忽略部署默认；关掉后按部署默认档：
+  // 部署是完全权限时原样透传，受限档（workspace-write）时把工作区根收成主检出。
+  clearKbSettings()
+  writeKbSettings({ check_enabled: true, check_minutes: 30, check_full_access: true })
+  const onShell = makeKbShell()
+  onShell.setPayload(kbPayload({}))
+  const onPolicy = makeHarness({ shell: onShell, sandboxPolicy: { resolve: () => ({ mode: 'workspace-write' }) } })
+  kbHarnesses.push(onPolicy)
+  mod.apply(onPolicy.ctx)
+  await kbRpc(onPolicy, 'copilot-kb-recheck', { force: true }, 'kb-recheck-full-on')
+  const onSpec = onShell.specs.filter((spec) => String(spec.command || '').includes('kb_sync.py')).pop()
+  expect('知识库：开「后台检查用完全权限」时忽略部署默认档',
+    onSpec && onSpec.sandboxPolicy && onSpec.sandboxPolicy.mode === 'danger-full-access'
+    && onSpec.sandboxPolicy.workspaceRoot === KB_REPO,
+    JSON.stringify(onSpec && onSpec.sandboxPolicy))
+
+  writeKbSettings({ check_enabled: true, check_minutes: 30, check_full_access: false })
   const fullShell = makeKbShell()
   fullShell.setPayload(kbPayload({}))
   const full = makeHarness({ shell: fullShell, sandboxPolicy: { resolve: () => ({ mode: 'danger-full-access' }) } })
@@ -1343,9 +1360,27 @@ function newKbHarness(payload, timers) {
   mod.apply(full.ctx)
   await kbRpc(full, 'copilot-kb-recheck', { force: true }, 'kb-recheck-full')
   const fullSpec = fullShell.specs.filter((spec) => String(spec.command || '').includes('kb_sync.py')).pop()
-  expect('知识库：部署默认完全权限时沙箱档位原样透传',
+  expect('知识库：关掉后部署默认完全权限时沙箱档位原样透传',
     fullSpec && fullSpec.sandboxPolicy && fullSpec.sandboxPolicy.mode === 'danger-full-access',
     JSON.stringify(fullSpec && fullSpec.sandboxPolicy))
+
+  const restrictedShell = makeKbShell()
+  restrictedShell.setPayload(kbPayload({}))
+  const restricted = makeHarness({
+    shell: restrictedShell,
+    sandboxPolicy: { resolve: () => ({ mode: 'workspace-write', workspaceRoot: '/elsewhere' }) },
+  })
+  kbHarnesses.push(restricted)
+  mod.apply(restricted.ctx)
+  await kbRpc(restricted, 'copilot-kb-recheck', { force: true }, 'kb-recheck-restricted')
+  const restrictedSpec = restrictedShell.specs
+    .filter((spec) => String(spec.command || '').includes('kb_sync.py')).pop()
+  expect('知识库：关掉后受限档把工作区根收成主检出',
+    restrictedSpec && restrictedSpec.sandboxPolicy
+    && restrictedSpec.sandboxPolicy.mode === 'workspace-write'
+    && restrictedSpec.sandboxPolicy.workspaceRoot === KB_REPO,
+    JSON.stringify(restrictedSpec && restrictedSpec.sandboxPolicy))
+  clearKbSettings()
 
   // ①c 按 settings 调度：check_minutes=15 → 检查后按 60 秒轮询等到期。
   writeKbSettings({ check_enabled: true, check_minutes: 15 })
@@ -1681,6 +1716,28 @@ function newKbHarness(payload, timers) {
     && clearedState && clearedState.kbError === null
     && fileCleared && fileCleared.failures === 0,
     JSON.stringify({ value: clearedValue && clearedValue.kbError, state: clearedState && clearedState.kbError, file: fileCleared }))
+
+  // ⑥b1 凭据失败（SSH 拿不到密钥 / known_hosts）：原因码按 credential 上报，状态条原文
+  // 取 ssh 那行；内部取值不再以 `；credential` 的形式拼进用户可见的句子。
+  const credential = newKbHarness(kbPayload({ remote_rev: 'cred001', behind: 3 }), false)
+  await kbRpc(credential.harness, 'copilot-kb-recheck', {}, 'kb-credential-seed')
+  credential.shell.setPayload(kbPayload({
+    ok: false, reason: 'credential', behind: 'unknown', remote_rev: null,
+    // 真实 `--check` 输出的形状：失败原文同时写在 fetch_error 与 last_error。
+    fetch_error: 'Host key verification failed.', last_error: 'Host key verification failed.',
+  }))
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await kbRpc(credential.harness, 'copilot-kb-recheck', { force: true }, 'kb-credential-' + attempt)
+  }
+  const credentialView = (await kbRpc(credential.harness, 'copilot-state', {
+    sessionId: 'kb-credential', cwd: SANDBOX,
+  }, 'kb-state-credential')).envelope.result.value
+  expect('知识库：凭据失败按 credential 上报、原文取 ssh 那行且不重复',
+    credentialView && credentialView.kbError
+    && credentialView.kbError.reason === 'credential'
+    && credentialView.kbError.message === 'Host key verification failed.'
+    && credentialView.kbError.failures === 3,
+    JSON.stringify({ error: credentialView && credentialView.kbError, file: readKbState() }))
 
   // ⑥b2 子进程超时：错误原文由调用点给——知识库检查只跑 git，不再套面板取数的 traces/ 猜测。
   const timeoutCheck = newKbHarness(kbPayload({ remote_rev: 'slow001', behind: 3 }), false)

@@ -64,16 +64,18 @@ worktree 与 detached HEAD 不自动合并。worktree 里通常在做提 PR 的�
 
 诊断侧这次 fetch 只保证候选集来自较新的知识库；它不改提交、不推送，也不处理与本地未提交改动的冲突。一次合并同时更新知识与流程：`knowledge/` 在运行时读取立即生效，`skills/` 要下一次会话才重新加载。
 
-配置在 `.local/settings.json`（主检出那一份，`.gitignore` 已挡在 git 外），schema `ascend-sleuth-settings/1`。`sync` 段含 `remote` / `branch` / `enabled` / `auto_merge` / `check_enabled` / `check_minutes`，`identity` 段记归属仓（`{"remote": "origin"}`）。
+配置在 `.local/settings.json`（主检出那一份，`.gitignore` 已挡在 git 外），schema `ascend-sleuth-settings/1`。`sync` 段含 `remote` / `branch` / `enabled` / `auto_merge` / `check_enabled` / `check_minutes` / `check_full_access`，`identity` 段记归属仓（`{"remote": "origin"}`）。
 
 默认 `origin`、当前分支上游（取不到用 `main`）、同步开、自动合并开；`sync.remote` 未显式配置时跟随归属仓。没有该文件时按默认值同步，groom 回到原有的选源流程（单个远端直接用，多个才问）。
 
-查看配置与状态用 `python3 scripts/kb_sync.py --show`（只读，不联网）；改配置用 `python3 scripts/pr_status.py --set-sync`（`--remote` / `--branch` / `--disable` / `--auto-merge off` / `--check-reminders on|off` / `--check-minutes 分钟`），改归属仓用 `--set-identity --remote <名字>`，不要手改 JSON。
+查看配置与状态用 `python3 scripts/kb_sync.py --show`（只读，不联网）；改配置用 `python3 scripts/pr_status.py --set-sync`（`--remote` / `--branch` / `--disable` / `--auto-merge off` / `--check-reminders on|off` / `--check-minutes 分钟` / `--check-full-access on|off`），改归属仓用 `--set-identity --remote <名字>`，不要手改 JSON。
 
 `sync.enabled` 只拦自动路径：开单时 `trace_begin.py` 的自动 fetch 与自动合并看它。后台提醒检查与手动同步不受它影响：提醒检查走 `python3 scripts/kb_sync.py --check`（只 fetch、不合并），手动「立即同步」走 `--merge --force`。`sync.auto_merge` 只管自动路径里的合并；groom 是显式动作，不看 `sync.enabled` 与 `sync.auto_merge`，关掉自动检查后周批仍会 fetch。要让整机不联网，用 `deployment.yaml` 的 `sync.mode: "offline"`。
 
 `sync.check_enabled` 与 `sync.check_minutes` 管后台提醒检查。`check_enabled` 默认 true，关掉后不再检查，也不在诊断状态条提示知识库落后。`check_minutes` 是检查间隔，默认 30 分钟；读侧越界会夹到 5–720，写侧越界拒绝（`E_ARGS`）。
-这两个字段不影响开单自动拉取与手动同步。后台检查每 60 秒至多读一次这份设置，按「上次检查开始时刻 + 间隔」判到期；改间隔后最多 60 秒按新值生效。
+`sync.check_full_access` 管这条检查的沙箱档位，默认 true：true 时以完全权限跑 `--check`（只 fetch、不改检出，但要读 git 凭据）；false 时跟随部署默认档（不是完全权限时收成 `workspace-write` + 主检出）。面板知识库页有对应开关，写侧是 `--check-full-access on|off`。
+默认开是为了让自动提醒在受限部署上先能用：受限档拿不到 git 凭据时，这条只跑 `kb_sync.py --check` 的检查会在每一轮失败。
+这三项不影响开单自动拉取与手动同步。定时路径每 60 秒至多轮询一次设置，按「上次检查开始时刻 + 间隔」判到期；每次真正检查前还会再读一次，改间隔后最多 60 秒按新值生效。
 
 `--check` 的 fetch 被权限拒绝（DSH 的 workspace-write 受限档位写不进检出）时，脚本退回 `git ls-remote --heads` 只读探测：能判出远端有没有新提交，状态文件按成功记（`reason` 为空、`last_ok_at` 前移）。
 有新提交时落后数与改动面未知；没有新提交时落后数为 0、改动面未知。
@@ -82,11 +84,22 @@ worktree 与 detached HEAD 不自动合并。worktree 里通常在做提 PR 的�
 原因句按失败的检查对象给。后台检查只跑 git（fetch / rev-list），超时说「知识库检查超时」。
 只有诊断状态取数（会读 `traces/`）的超时才提 `traces/` 这一可能。
 
+fetch 因凭据失败时不做只读探测。探测同样要凭据，重试只会再失败一次。
+认不出凭据的文案有几类：
+- SSH：`Permission denied (publickey)`、`Host key verification failed.`；
+- https：401/403 / `Authentication failed`。
+这一档记 `reason: credential`，状态文件里的原文取 ssh / git 自己的原因行。
+来源是后台提醒检查时，知识库页把这条失败写成「上次后台检查失败」。知识库页同时给终端核对命令 `python3 scripts/kb_sync.py --merge --force`。
+
 fetch 失败时标 `kb_sync: failed`，原因写进 `kb_sync_reason`。
 
-失败时脚本把 git 原始输出收成一行（`fetch_error`）。取最后一条 fatal / error 行，抹掉 URL 里的账号、密码与查询串里的 token。人读输出与面板都显示这一行。
+失败时脚本把 git 原始输出收成一行（`fetch_error`）。凭据类失败优先取 ssh / git 的原因行，其余取最后一条 fatal / error 行。
+抹掉 URL 里的账号、密码与查询串里的 token。人读输出与面板都显示这一行。
 
 失败结果缓存在 `.local/kb-sync-state.json`：自动同步在 10 分钟内不重试，避免每次开单都等满 10 秒超时。手动同步（`--force`，面板「立即同步」走这条）跳过窗口立即重试。
+状态文件同时记这次尝试的来源（`source`：`check` 后台提醒检查（含 `--check --force`）/ `manual` `--merge` 或 `--sync` 带 `--force` / `auto` 自动路径）。
+`--show` 以 `last_source` 带出。
+知识库页据此把失败写成「上次后台检查失败」还是「上次同步失败」。
 
 离线部署在 `deployment.yaml` 声明 `sync.mode: "offline"`：`--sync` / `--check` / `--merge` 都不联网，`--show` 仍可读本地状态。
 

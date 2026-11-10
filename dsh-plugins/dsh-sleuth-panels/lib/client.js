@@ -1,8 +1,8 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:d25d0870b625)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:9fabca236447)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:2faf50d5daad)
-//   dsh-plugins/sleuth-console/console-client.js  (sha256:69f65160ae5f)
+//   dsh-plugins/sleuth-console/console-client.js  (sha256:36dab229fc03)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
 // 面板源码是动态插件方言（靠沙箱提供的 host 通信）；这里原文嵌入页面产物，并补一层适配：
@@ -70,7 +70,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:d25d0870b625) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:9fabca236447) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -474,7 +474,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.10.1'
+    const PANEL_VERSION = '0.10.3'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -6368,7 +6368,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       id: 'sleuth-console',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/sleuth-console/console-client.js (sha256:69f65160ae5f) 原文开始 ----
+// ---- dsh-plugins/sleuth-console/console-client.js (sha256:36dab229fc03) 原文开始 ----
 // sleuth-console/console-client.js —— 常驻包里的整页「Ascend Sleuth」（client-only）
 //
 // 为什么单有这一页：指标与自演进读的是**全库**（`metrics/`、`proposals/`、`knowledge/`），
@@ -6419,7 +6419,7 @@ return {
       .sleu-console-empty{padding:20px 0;font-size:var(--t-md);color:var(--dsw-alias-label-secondary)}
 
       /* ── 知识库子页 ─────────────────────────────────────────────────────
-         四块：读数、状态提示条、同步源、三个开关与检查间隔。配色沿用两个面板的角色
+         四块：读数、状态提示条、同步源、四个开关与检查间隔。配色沿用两个面板的角色
          （--c-* 文字 / --tint-* 大块底 / --hair 描边），不新增色值。 */
       .sleu-kb{padding-top:14px}
       .sleu-kb-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
@@ -6530,6 +6530,7 @@ return {
       E_NOT_GIT: '当前目录不是 git 检出',
       E_NO_REMOTE: '本机没有这个远端',
       E_NETWORK: '连不上远端',
+      E_CREDENTIAL: '拿不到 git 凭据（SSH 主机密钥校验失败或密钥不可用，或 https 认证失败）',
       E_TIMEOUT: '请求超时',
       E_DIRTY: '工作区有未提交改动',
       E_NOT_FF: '本地提交不能快进',
@@ -6569,6 +6570,9 @@ return {
       if (code === 'E_TIMEOUT') return '检查网络与 git 凭据后重试。'
       if (code === 'E_NETWORK') return '检查网络与代理；修好后点「立即同步」重试。'
       if (code === 'E_FETCH') return '检查网络与 git 凭据；修好后点「立即同步」重试。'
+      if (code === 'E_CREDENTIAL') {
+        return '检查 git 凭据（SSH 密钥、known_hosts）；后台检查可在下方打开「后台检查用完全权限」。'
+      }
       if (code === 'E_SKIPPED') return '过一会儿再点「立即同步」。'
       if (code === 'E_NO_REMOTE') return '在仓库根目录执行 git remote add <名字> <地址>，再刷新本页。'
       if (code === 'E_DIRTY') return '先提交或 git stash，再点「立即同步」。'
@@ -6637,6 +6641,8 @@ return {
         autoCheck: !!(cfg && cfg.auto_check),
         autoMerge: !!(cfg && cfg.auto_merge),
         checkEnabled: !(cfg && cfg.check_enabled === false),
+        // 后台检查默认以完全权限跑；缺字段按默认（开），不把旧设置读成受限档。
+        checkFullAccess: !(cfg && cfg.check_full_access === false),
         checkMinutes: kbCheckMinutesOf(cfg && cfg.check_minutes),
       }
     }
@@ -6812,6 +6818,7 @@ return {
           autoCheck: !!draft.autoCheck,
           autoMerge: !!draft.autoMerge,
           checkEnabled: !!draft.checkEnabled,
+          checkFullAccess: !!draft.checkFullAccess,
           checkMinutes: kbCheckMinutesOf(draft.checkMinutes),
           expectSha256: status && status.settings_sha256 ? String(status.settings_sha256) : '',
         })
@@ -6964,8 +6971,27 @@ return {
           hint: '点「立即同步」拉一次远端，再按配置合并。' }
       } else if (data.last_failure) {
         // 上一次 fetch 失败过（脚本从状态文件读出）：重新打开本页也显示原因与 git 原始输出。
-        banner = { kind: 'warn', text: '上次同步失败：' + kbReasonOf(data.last_failure) + '。',
-          hint: '点「立即同步」重试。', detail: data.last_error ? String(data.last_error) : '' }
+        // 失败的来源也可能是后台提醒检查（kb_sync 记 `last_source: check`）：那不是用户的
+        // 同步失败，标题要分开说。提醒检查关掉后这条不再用失败横幅催人，只留一句说明。
+        const fromCheck = data.last_source === 'check'
+        const checkOff = fromCheck && draft && draft.checkEnabled === false
+        if (checkOff) {
+          banner = { kind: 'muted',
+            text: '提醒检查已关闭，上次后台检查失败：' + kbReasonOf(data.last_failure) + '。',
+            detail: data.last_error ? String(data.last_error) : '' }
+        } else {
+          // 凭据类失败的下一步取决于开关：没开完全权限就先指到开关；开了还失败说明凭据本身
+          // 有问题，指到终端复核。
+          const credentialHint = fromCheck && data.last_failure.code === 'E_CREDENTIAL'
+            ? (draft && draft.checkFullAccess === false
+              ? '后台检查没开完全权限，受限档位里拿不到凭据；可在下方打开「后台检查用完全权限」，或去终端跑 python3 scripts/kb_sync.py --merge --force。'
+              : '当前设置已用完全权限；上次失败可能发生在打开开关之前，先去终端跑 python3 scripts/kb_sync.py --merge --force 复核 git 凭据。')
+            : (fromCheck ? (kbHintFor(data.last_failure.code) || '点「立即同步」重试。') : '点「立即同步」重试。')
+          banner = { kind: 'warn',
+            text: (fromCheck ? '上次后台检查失败：' : '上次同步失败：') + kbReasonOf(data.last_failure) + '。',
+            hint: credentialHint,
+            detail: data.last_error ? String(data.last_error) : '' }
+        }
       } else if (!targetsPart || targetsPart.ok !== true) {
         banner = { kind: 'err', text: '读不到远端列表：' + kbReasonOf(targets || {}) + '。',
           hint: kbHintFor(targetsPart && targetsPart.code), detail: targetsPart && targetsPart.detail ? String(targetsPart.detail) : '' }
@@ -7082,6 +7108,7 @@ return {
         switchRow('自动检查更新', '诊断开单时 fetch 一次，并按配置自动合并。关闭后开单不自动拉取、不自动合并；不影响「提醒检查」与「立即同步」。', 'autoCheck'),
         switchRow('自动合并', '仅当工作区干净、当前在配置分支上、且可快进时合并。不满足只提示，不 rebase。', 'autoMerge'),
         switchRow('提醒检查', '后台定期检查知识库是否落后，落后时在诊断状态条提示。关闭后后台不再检查、不再提示；不影响开单自动拉取与「立即同步」。', 'checkEnabled'),
+        switchRow('后台检查用完全权限', '后台提醒检查默认以完全权限跑 scripts/kb_sync.py --check（只 fetch、不改检出），不经过 DSH 沙箱。关闭后按 DSH 部署默认的权限模式跑；受限权限模式可能拿不到 git 凭据。只影响这一条检查。', 'checkFullAccess'),
         React.createElement('div', { className: 'sleu-kb-switch-row', key: 'checkMinutes' },
           React.createElement('div', { className: 'sleu-kb-switch-main' },
             React.createElement('div', { className: 'sleu-kb-switch-t' }, '检查间隔'),

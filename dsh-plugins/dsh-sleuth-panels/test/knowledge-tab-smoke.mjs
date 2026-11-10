@@ -257,7 +257,7 @@ function showPayload(over) {
     settings_sha256: SETTINGS_SHA,
     settings: { ok: true, data: {
       config: 'file', problem: '', path: '.local/settings.json', sha256: SETTINGS_SHA,
-      sync: { remote: 'origin', branch: 'main', enabled: true, auto_merge: true, check_enabled: true, check_minutes: 30 },
+      sync: { remote: 'origin', branch: 'main', enabled: true, auto_merge: true, check_enabled: true, check_minutes: 30, check_full_access: true },
       target: { remote: 'origin', base: 'main' },
     } },
     sync: { ok: true, state: 'ok', error: null, data: {
@@ -270,7 +270,7 @@ function showPayload(over) {
       same_repo: true,
       identity_remote: 'origin', identity_url: 'git@github.com:org/repo.git',
       identity_explicit: false, identity_resolved: true,
-      config: { auto_check: true, auto_merge: true, check_enabled: true, check_minutes: 30, source: 'personal', path: '.local/settings.json' },
+      config: { auto_check: true, auto_merge: true, check_enabled: true, check_full_access: true, check_minutes: 30, source: 'personal', path: '.local/settings.json' },
     } },
     targets: { ok: true, data: {
       remotes: [
@@ -306,12 +306,16 @@ section('[知识库 · 客户端] 默认态（落后 12）')
   check(opts.some(t => t.indexOf('origin · github.com') >= 0), '远端下拉列出名字与 host', JSON.stringify(opts).slice(0, 200))
   check(text.indexOf('上次使用：') >= 0, '同步源给「上次使用」')
   check(text.indexOf('自动检查更新') >= 0 && text.indexOf('自动合并') >= 0 && text.indexOf('提醒检查') >= 0
-    && text.indexOf('检查间隔') >= 0, '三个开关与检查间隔都在')
+    && text.indexOf('后台检查用完全权限') >= 0 && text.indexOf('检查间隔') >= 0,
+    '四个开关与检查间隔都在')
   check(text.indexOf('来源：个人设置') >= 0, '开关来源标「个人设置」')
   check(switchByLabel(tree, '自动检查更新') && switchByLabel(tree, '自动检查更新').props['aria-checked'] === 'true',
     '自动检查更新默认开（aria-checked=true）')
   check(switchByLabel(tree, '提醒检查') && switchByLabel(tree, '提醒检查').props['aria-checked'] === 'true',
     '提醒检查默认开（aria-checked=true）')
+  check(switchByLabel(tree, '后台检查用完全权限')
+    && switchByLabel(tree, '后台检查用完全权限').props['aria-checked'] === 'true',
+    '后台检查用完全权限默认开（aria-checked=true）')
   check(selectByLabel(tree, '检查间隔') && selectByLabel(tree, '检查间隔').props.value === '30',
     '检查间隔默认 30 分钟')
   check(text.indexOf('.local/settings.json') >= 0 && text.indexOf('修改下次开单生效') >= 0, '页脚给配置路径与生效时点')
@@ -345,6 +349,8 @@ section('[知识库 · 客户端] 默认态（落后 12）')
     '保存带上自动检查更新与自动合并的当前值', JSON.stringify(saveCall && saveCall.payload))
   check(!!saveCall && saveCall.payload.checkEnabled === true && saveCall.payload.checkMinutes === 30,
     '保存带上提醒检查与检查间隔的当前值', JSON.stringify(saveCall && saveCall.payload))
+  check(!!saveCall && saveCall.payload.checkFullAccess === true,
+    '保存带上后台检查用完全权限的当前值', JSON.stringify(saveCall && saveCall.payload))
   check(!!saveCall && saveCall.payload.expectSha256 === SETTINGS_SHA,
     '保存带上设置指纹（CAS）', JSON.stringify(saveCall && saveCall.payload))
   check(textOf(saved).indexOf('.local/settings.json') >= 0, '保存后仍显示配置落点')
@@ -769,6 +775,64 @@ section('[知识库 · 客户端] 上次同步失败：重新打开本页仍显�
     '失败 banner 带 git 原始输出', text.slice(0, 400))
 }
 
+section('[知识库 · 客户端] 后台检查失败：与同步失败分开说，给真实原因')
+{
+  const payload = showPayload()
+  payload.sync.data.last_reason = 'credential'
+  payload.sync.data.last_error = 'Host key verification failed.'
+  payload.sync.data.last_source = 'check'
+  payload.sync.data.last_failure = { code: 'E_CREDENTIAL', message: '拿不到 git 凭据（SSH 密钥或 known_hosts 读不到）' }
+  const { runtime, main } = await bootClient({ 'ascend-kb-sync-show': () => payload })
+  const tree = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
+  const text = textOf(tree)
+  check(text.indexOf('上次后台检查失败：拿不到 git 凭据') >= 0, '后台检查失败不冒充「同步失败」', text.slice(0, 260))
+  check(text.indexOf('Host key verification failed.') >= 0, '失败 banner 带 ssh 自己的原因行', text.slice(0, 420))
+  check(text.indexOf('python3 scripts/kb_sync.py --merge --force') >= 0,
+    '拿不到凭据时给终端核对命令', text.slice(0, 520))
+}
+
+section('[知识库 · 客户端] 提醒检查已关闭：后台检查失败只留一句说明')
+{
+  const payload = showPayload()
+  payload.sync.data.last_reason = 'credential'
+  payload.sync.data.last_error = 'Host key verification failed.'
+  payload.sync.data.last_source = 'check'
+  payload.sync.data.last_failure = { code: 'E_CREDENTIAL', message: '拿不到 git 凭据（SSH 密钥或 known_hosts 读不到）' }
+  payload.sync.data.config = Object.assign({}, payload.sync.data.config, { check_enabled: false })
+  const { runtime, main } = await bootClient({ 'ascend-kb-sync-show': () => payload })
+  const tree = await runtime.render(main.component, { view: 'knowledge', sessionId: 's1' })
+  const text = textOf(tree)
+  check(text.indexOf('提醒检查已关闭，上次后台检查失败') >= 0,
+    '关掉提醒检查后不再用失败横幅，改为一句说明', text.slice(0, 300))
+}
+
+section('[知识库 · 客户端] 凭据失败：提示按「后台检查用完全权限」分流')
+{
+  const base = () => {
+    const payload = showPayload()
+    payload.sync.data.last_reason = 'credential'
+    payload.sync.data.last_error = 'Host key verification failed.'
+    payload.sync.data.last_source = 'check'
+    payload.sync.data.last_failure = { code: 'E_CREDENTIAL', message: '拿不到 git 凭据（SSH 主机密钥校验失败或密钥不可用，或 https 认证失败）' }
+    return payload
+  }
+  const offPayload = base()
+  offPayload.sync.data.config = Object.assign({}, offPayload.sync.data.config, { check_full_access: false })
+  const off = await bootClient({ 'ascend-kb-sync-show': () => offPayload })
+  const offTree = await off.runtime.render(off.main.component, { view: 'knowledge', sessionId: 's1' })
+  const offText = textOf(offTree)
+  check(offText.indexOf('后台检查没开完全权限') >= 0 && offText.indexOf('「后台检查用完全权限」') >= 0,
+    '没开完全权限时，提示指到开关', offText.slice(0, 620))
+
+  const onPayload = base()
+  const on = await bootClient({ 'ascend-kb-sync-show': () => onPayload })
+  const onTree = await on.runtime.render(on.main.component, { view: 'knowledge', sessionId: 's1' })
+  const onText = textOf(onTree)
+  check(onText.indexOf('当前设置已用完全权限') >= 0 && onText.indexOf('复核 git 凭据') >= 0
+    && onText.indexOf('上次失败可能发生在打开开关之前') >= 0,
+    '已用完全权限仍失败时，提示去终端复核凭据并说明可能是旧失败', onText.slice(0, 680))
+}
+
 // ── 宿主半：用假 ctx 装 lib/index.js，直接走 RPC ────────────────────────────
 function makeShell(plan) {
   const commands = []
@@ -870,7 +934,7 @@ const settingsDoc = {
   sha256: null,
   settings: {
     path: '.local/settings.json', config: 'file', problem: '',
-    sync: { remote: 'origin', branch: 'main', enabled: true, auto_merge: true, check_enabled: false, check_minutes: 15 },
+    sync: { remote: 'origin', branch: 'main', enabled: true, auto_merge: true, check_enabled: false, check_minutes: 15, check_full_access: false },
     target: { remote: 'origin', base: 'main' },
   },
   settings_sha256: SETTINGS_SHA,
@@ -944,8 +1008,8 @@ section('[知识库 · host] 正常读取')
     && value.sync.data.config.auto_merge === true && value.sync.data.config.source === 'personal',
     'show：自动检查更新与自动合并取自设置文件的 sync 段', JSON.stringify(value && value.sync.data.config))
   check(!!value && value.sync.data.config && value.sync.data.config.check_enabled === false
-    && value.sync.data.config.check_minutes === 15,
-    'show：提醒检查与检查间隔取自设置文件的 sync 段（关闭 / 15 分钟）',
+    && value.sync.data.config.check_minutes === 15 && value.sync.data.config.check_full_access === false,
+    'show：提醒检查、间隔与后台检查权限取自设置文件的 sync 段',
     JSON.stringify(value && value.sync.data.config))
   check(!!value && value.settings_sha256 === SETTINGS_SHA, 'show：带出设置指纹（保存时做 CAS）')
   check(!!value && value.targets.ok === true && value.targets.data.remotes.length === 1
@@ -974,6 +1038,22 @@ section('[知识库 · host] 正常读取')
   check(!!prevFailedValue && String(prevFailedValue.sync.data.last_error || '').indexOf('Connection refused') >= 0,
     'show：上次失败带上 git 原始输出', JSON.stringify(prevFailedValue && prevFailedValue.sync.data).slice(0, 240))
 
+  // 凭据类失败 + 来源是后台检查：面板把 reason 映射成 E_CREDENTIAL、带出来源，
+  // 这样客户端才说得清「后台检查失败」而不是「同步失败」。
+  const credentialShow = Object.assign({}, showDoc, {
+    last_reason: 'credential',
+    last_source: 'check',
+    last_error: 'Host key verification failed.',
+  })
+  const credentialHost = await bootHost(defaultPlan({ 'kb_sync --show': () => okStdout(JSON.stringify(credentialShow)) }))
+  const credentialValue = valueOf(await credentialHost.call('ascend-kb-sync-show', { sessionId: 's1' }))
+  check(!!credentialValue && credentialValue.sync.ok === true
+    && credentialValue.sync.data.last_failure
+    && credentialValue.sync.data.last_failure.code === 'E_CREDENTIAL',
+    'show：credential 原因映射成 E_CREDENTIAL', JSON.stringify(credentialValue && credentialValue.sync.data).slice(0, 260))
+  check(!!credentialValue && credentialValue.sync.data.last_source === 'check',
+    'show：带出上次尝试的来源（check）', JSON.stringify(credentialValue && credentialValue.sync.data).slice(0, 260))
+
   const saved = await host.call('ascend-kb-sync-save', {
     sessionId: 's1', remote: 'origin', branch: 'main', autoCheck: false, autoMerge: true,
     expectSha256: SETTINGS_SHA,
@@ -986,6 +1066,19 @@ section('[知识库 · host] 正常读取')
     'save：把远端与分支原样传给脚本', saveCmd)
   check(saveCmd.indexOf('--disable') >= 0 && saveCmd.indexOf('--auto-merge on') >= 0,
     'save：自动检查更新关 → --disable，自动合并开 → --auto-merge on', saveCmd)
+  check(saveCmd.indexOf('--check-full-access') < 0,
+    'save：没传该开关时不带参数（保留文件现值）', saveCmd)
+  const savedLimited = valueOf(await host.call('ascend-kb-sync-save', {
+    sessionId: 's1', remote: 'origin', branch: 'main', autoCheck: true, autoMerge: true,
+    checkEnabled: true, checkFullAccess: false, checkMinutes: 30, expectSha256: SETTINGS_SHA,
+  }))
+  check(!!savedLimited && savedLimited.ok === true && savedLimited.saved
+    && savedLimited.saved.check_full_access === false,
+    'save：关闭后台检查用完全权限时按 off 传并回带', JSON.stringify(savedLimited))
+  const limitedCmds = host.shell.commands.filter(c => /--set-sync/.test(c))
+  check(limitedCmds[limitedCmds.length - 1].indexOf('--check-full-access off') >= 0,
+    'save：checkFullAccess=false → --check-full-access off',
+    limitedCmds[limitedCmds.length - 1])
   check(saveCmd.indexOf('--expect-sha256 ' + SETTINGS_SHA) >= 0, 'save：带上 CAS 指纹', saveCmd)
   // 没传提醒检查参数时按缺省（开 / 30 分钟）写进 argv 与 saved。
   check(!!savedValue && savedValue.saved && savedValue.saved.check_reminders === true
