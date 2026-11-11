@@ -946,6 +946,26 @@ class FlowTest(RepoCase):
         for key in ("draft-a", "draft-b"):
             self.assertEqual(pr.load_ledger(self.repo)["prs"][key]["source"], "platform")
 
+    def test_check_all_only_draft_filters_scope(self):
+        # 面板多选后按所选查：只查带上的键，其余待查行保持原样（不写、不查）。
+        self._set_pr("draft-a", url="https://example.com/o/r/pulls/1", platform="unknown")
+        self._set_pr("draft-b", url="https://unknown.example/o/r/pulls/2", platform="other")
+        before_b = pr.load_ledger(self.repo)["prs"]["draft-b"]
+        code, payload = run_cli("--root", str(self.repo), "--check-all", "--only-draft", "draft-a")
+        self.assertEqual(code, 0)
+        checked = [item["draft"] for item in payload["checked"]]
+        self.assertEqual(checked, ["draft-a"], payload)
+        after_b = pr.load_ledger(self.repo)["prs"]["draft-b"]
+        self.assertEqual(after_b, before_b)
+
+    def test_check_all_only_draft_ignores_unknown_key(self):
+        # 界面给的 key 来自同一份台账快照；对不上说明台账变了，忽略而不是报参数错。
+        self._set_pr("draft-a", url="https://example.com/o/r/pulls/1", platform="unknown")
+        code, payload = run_cli("--root", str(self.repo), "--check-all", "--only-draft", "draft-gone")
+        self.assertEqual(code, 0)
+        self.assertTrue(payload["ok"], payload)
+        self.assertEqual(payload["checked"], [])
+
     def test_check_all_skips_terminal_states(self):
         self._set_pr()
         run_cli("--root", str(self.repo), "--mark", "--draft", "draft-a", "--state", "merged")

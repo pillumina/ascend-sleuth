@@ -1242,7 +1242,7 @@ export function apply(ctx) {
     }
   }
 
-  async function computeSediment(cwd, sessionId) {
+  async function computeSediment(cwd, sessionId, promptKeys) {
     const root = await resolveRepoRoot(cwd)
     if (root === null) return { ok: false, code: 'E_NO_ROOT', message: '当前工作区不是 ascend-sleuth 检出' }
     const policy = await resolvePolicy(sessionId)
@@ -1251,6 +1251,9 @@ export function apply(ctx) {
     const script = join(PKG_DIR, 'lib', 'sediment_state.py')
     if (!(await isFile(script))) return { ok: false, code: 'E_NO_HELPER', message: '装进来的包缺少 lib/sediment_state.py' }
     const args = ['--root', shq(root), '--json']
+    // 多选后按所选生成批次指令：只收窄指令名单，队列与计数仍取全量。
+    const keys = Array.isArray(promptKeys) ? promptKeys.filter(validDraftKey).slice(0, 500) : []
+    if (keys.length) args.push('--prompt-keys', shq(keys.join(',')))
     const doc = await runJsonHelper(root, python, script, args, 30000, policy, timeoutMessage('沉淀队列取数', 30000))
     doc.repoRoot = root
     return doc
@@ -1307,7 +1310,10 @@ export function apply(ctx) {
     } else if (action === 'check-all') {
       // 一次查完所有 open/unknown；脚本自己按台账做 CAS，写回 state/checked_at/source。
       // 逐行模式只服务进度，最终结果仍以 stdout 里最后一行 done 为准（见 runCheckAll）。
+      // 面板多选时带 keys：只查所选，未选中的行不动。
+      const keys = Array.isArray(payload.keys) ? payload.keys.filter(validDraftKey) : []
       argv.push('--check-all', '--json-lines')
+      for (const key of keys) argv.push('--only-draft', shq(key))
     } else if (action === 'set-target') {
       const remote = String(payload.remote || '')
       const base = String(payload.base || '')
@@ -1885,6 +1891,7 @@ export function apply(ctx) {
                 value: await computeSediment(
                   typeof payload.cwd === 'string' ? payload.cwd : '',
                   typeof payload.sessionId === 'string' ? payload.sessionId : '',
+                  Array.isArray(payload.promptKeys) ? payload.promptKeys : [],
                 ),
               }
             } else if (endpoint === 'copilot-pr-progress') {

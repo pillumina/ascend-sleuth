@@ -1409,6 +1409,11 @@ def cmd_check_all(root, args) -> int:
     drafts = [draft for draft in sorted(snapshot["prs"].keys())
               if isinstance(snapshot["prs"].get(draft), dict)
               and str(snapshot["prs"][draft].get("state") or "") in CHECKABLE]
+    # 面板多选后按所选查询：只查这些台账键，其余行不动。未知键直接忽略——
+    # 界面上的 key 来自同一份台账快照，对不上说明台账在两次读之间变了，不是参数错。
+    only = set(str(key) for key in (getattr(args, "only_draft", None) or []) if key)
+    if only:
+        drafts = [draft for draft in drafts if draft in only]
     # 同一 PR 的多份草稿只查一次：按 PR 身份分组，组内台账键最小的一条代表提交查询。
     groups = {}
     for draft in drafts:
@@ -1509,6 +1514,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--json", action="store_true", help="输出 JSON（所有命令都输出 JSON，保留兼容）")
     ap.add_argument("--json-lines", action="store_true", dest="json_lines",
                     help="配合 --check-all：每查完一条输出一行 JSON，最后输出汇总行（契约见文件头）")
+    ap.add_argument("--only-draft", action="append", default=None, metavar="KEY",
+                    help="配合 --check-all：只查这些台账键（可重复）；不传则查全部")
     ap.add_argument("--expect-sha256", default=None,
                     help="写前 CAS 令牌：--set-target / --set / --mark / --forget / --check 用台账 sha256，"
                          "--migrate / --set-sync / --set-identity 用 settings 的 sha256")

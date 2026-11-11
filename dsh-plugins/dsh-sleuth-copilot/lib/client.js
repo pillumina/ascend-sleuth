@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.22.7'
+    const PLUGIN_VERSION = '0.23.0'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。
@@ -342,7 +342,7 @@ window.__ModuleLoader__.load({
       'sediment.undo.hint': '草稿还在 inbox、PR 没提过或已关闭、来源 trace 没升格时才能撤销',
       'sediment.undo.batchAction': '撤销可撤销的 {n} 份',
       'sediment.undo.batchTitle': '批量撤销沉淀',
-      'sediment.undo.batchSub': '范围 = 当前列表（筛选与搜索词）。填入后从下面两条命令里各删掉不想撤的 --draft-key 再发送。',
+      'sediment.undo.batchSub': '名单在打开时冻结；想少撤哪几份，先在列表里取消勾选。填入后由 agent 逐份执行。',
       'sediment.undo.batchHint': '只含可撤销的行；执行前把每份的计划给读者确认',
       'sediment.manualState': '手动改状态',
       'sediment.manualTitle': '手动改 PR 状态',
@@ -398,10 +398,58 @@ window.__ModuleLoader__.load({
       'diag.batch.scope': '范围 = 当前筛选（含搜索词）',
       'diag.batch.fill': '生成批量沉淀指令',
       'diag.batch.sub': '范围 = 当前筛选的 {n} 单；只生成指令，不直接写 trace',
+      'diag.batch.subSelected': '范围 = 所选的 {n} 单；只生成指令，不直接写 trace',
       'diag.batch.flow': '流程：先按 sediment_batch.py --json 分组与复核，再逐单起草、逐单回写。',
       'diag.batch.boundary': '边界：只写 sedimented 与 updated_at，不改 status、不改 feedback.outcome，也不改知识库。',
       'diag.batch.search': '含搜索词「{q}」',
       'diag.batch.readonly': '只读档位：指令可复制到可写会话执行，回写会被拒绝。',
+      // ── 多选与撤销 ────────────────────────────────────────────────
+      'sel.check': '勾选「{title}」',
+      'sel.all': '全选当前筛选 {n} 项',
+      'sel.count': '已选 {n} 项',
+      'sel.inFilter': '当前筛选 {n} 项',
+      'sel.outside': '{n} 项不在当前筛选',
+      'sel.invalid': '{n} 项已不在队列',
+      'sel.removeInvalid': '移除失效项',
+      'sel.only': '只看已选',
+      'sel.showAll': '显示全部',
+      'sel.clear': '清空',
+      'sel.more': '更多',
+      'sel.scopeAll': '整批',
+      'sel.scopeSelected': '所选 {n} 项',
+      'sel.menuEmpty': '所选没有可执行的批次动作。',
+      'sel.sedimentSelected': '沉淀所选 {n} 单',
+      'sel.sedimentAll': '沉淀当前筛选 {n} 单',
+      'sel.copyList': '复制所选清单',
+      'sel.copyDone': '已复制 {n} 项的清单',
+      'sel.copyEmpty': '所选没有可复制的行。',
+      'sel.undoSelected': '撤销沉淀 {n} 份',
+      'sel.prSelected': '提 PR {n} 份',
+      'sel.groomSelected': '继续 groom {n} 份',
+      'sel.closeSelected': '合入后收尾 {n} 份',
+      'sel.restoreSelected': '恢复草稿 {n} 份',
+      'sel.checkSelected': '查合入 {n} 份',
+      'sel.checkingSelected': '查合入中 {n}/{m}',
+      'sel.checkNone': '所选没有待合入的行。',
+      'sel.writeReadonly': '当前会话只读，不写台账。',
+      'sel.stale': '数据可能过期，先刷新再执行。',
+      'sel.scopedLoading': '正在按所选生成指令…',
+      'sel.scopedFailed': '按所选生成指令失败：{reason}',
+      'sel.scopedEmpty': '所选没有这类动作可生成。',
+      'sel.receiptPrompt': '{action} · 已填入输入框',
+      'sel.receiptUnsent': '尚未发送',
+      'sel.receiptClear': '清空输入框',
+      'sel.receiptClearAsk': '确认清空？填入后手改的内容也会一起清掉。',
+      'sel.receiptClearYes': '确认清空',
+      'sel.receiptCleared': '已清空输入框',
+      'sel.receiptCopy': '复制名单',
+      'sel.receiptDismiss': '关闭回执',
+      'sel.receiptWrite': '已标记 {label}',
+      'sel.receiptUndo': '撤销',
+      'sel.receiptRestored': '已恢复：{state}',
+      'sel.receiptRestoreFailed': '撤销失败：{reason}',
+      'sel.receiptCheck': '查合入 {n} 份',
+      'sel.hint': '空格勾选 · Shift 连选 · Cmd/Ctrl+Z 撤销选择',
       'sediment.primary.groom': '继续 groom',
       'sediment.primary.pr': '生成提 PR 指令',
       'sediment.primary.check': '查合入状态',
@@ -807,7 +855,7 @@ window.__ModuleLoader__.load({
       'sediment.undo.hint': 'Only available while the draft is still in the inbox, its PR is closed or absent, and its trace is not promoted',
       'sediment.undo.batchAction': 'Undo {n} undoable drafts',
       'sediment.undo.batchTitle': 'Undo sediment in batch',
-      'sediment.undo.batchSub': 'Scope = the current list (filter and search). Before sending, remove the keys you do not want from both commands in the composer.',
+      'sediment.undo.batchSub': 'The list is frozen when opened; uncheck rows in the list to leave them out. The agent runs it row by row.',
       'sediment.undo.batchHint': 'Only undoable rows are included; review each plan before running',
       'sediment.manualState': 'Set state manually',
       'sediment.manualTitle': 'Set PR state manually',
@@ -863,10 +911,57 @@ window.__ModuleLoader__.load({
       'diag.batch.scope': 'scope = current filter (including search)',
       'diag.batch.fill': 'Generate batch sediment prompt',
       'diag.batch.sub': 'Scope = {n} sessions under the current filter; generates an instruction, writes no trace',
+      'diag.batch.subSelected': 'Scope = {n} selected sessions; generates an instruction, writes no trace',
       'diag.batch.flow': 'Flow: group and re-check with sediment_batch.py --json, then draft and write back per session.',
       'diag.batch.boundary': 'Boundary: only sedimented and updated_at change; status, feedback.outcome, and the knowledge base stay untouched.',
       'diag.batch.search': 'search: {q}',
       'diag.batch.readonly': 'Read-only: copy the instruction to a writable session; write-back is rejected here.',
+      'sel.check': 'Select "{title}"',
+      'sel.all': 'Select all {n} in this filter',
+      'sel.count': '{n} selected',
+      'sel.inFilter': '{n} in this filter',
+      'sel.outside': '{n} outside this filter',
+      'sel.invalid': '{n} no longer in the queue',
+      'sel.removeInvalid': 'Remove missing',
+      'sel.only': 'Selected only',
+      'sel.showAll': 'Show all',
+      'sel.clear': 'Clear',
+      'sel.more': 'More',
+      'sel.scopeAll': 'Whole batch',
+      'sel.scopeSelected': '{n} selected',
+      'sel.menuEmpty': 'No batch action applies to this selection.',
+      'sel.sedimentSelected': 'Sediment {n} selected',
+      'sel.sedimentAll': 'Sediment {n} in this filter',
+      'sel.copyList': 'Copy selection list',
+      'sel.copyDone': 'Copied {n} rows',
+      'sel.copyEmpty': 'Nothing to copy in this selection.',
+      'sel.undoSelected': 'Undo {n} sedimented',
+      'sel.prSelected': 'Open PR for {n}',
+      'sel.groomSelected': 'Continue grooming {n}',
+      'sel.closeSelected': 'Close after merge: {n}',
+      'sel.restoreSelected': 'Restore {n} drafts',
+      'sel.checkSelected': 'Check merge for {n}',
+      'sel.checkingSelected': 'Checking {n}/{m}',
+      'sel.checkNone': 'No PR pending merge in this selection.',
+      'sel.writeReadonly': 'This session is read-only; no ledger writes.',
+      'sel.stale': 'Data may be stale. Refresh before running.',
+      'sel.scopedLoading': 'Building the instruction for the selection…',
+      'sel.scopedFailed': 'Could not build the instruction: {reason}',
+      'sel.scopedEmpty': 'Nothing to generate for this selection.',
+      'sel.receiptPrompt': '{action} · filled into the composer',
+      'sel.receiptUnsent': 'not sent',
+      'sel.receiptClear': 'Clear composer',
+      'sel.receiptClearAsk': 'Clear it? Edits made after filling will be lost too.',
+      'sel.receiptClearYes': 'Clear',
+      'sel.receiptCleared': 'Composer cleared',
+      'sel.receiptCopy': 'Copy list',
+      'sel.receiptDismiss': 'Dismiss',
+      'sel.receiptWrite': 'Marked {label}',
+      'sel.receiptUndo': 'Undo',
+      'sel.receiptRestored': 'Restored: {state}',
+      'sel.receiptRestoreFailed': 'Undo failed: {reason}',
+      'sel.receiptCheck': 'Checked {n}',
+      'sel.hint': 'Space selects · Shift extends · Cmd/Ctrl+Z undoes selection',
       'sediment.primary.groom': 'Continue groom',
       'sediment.primary.pr': 'Generate PR prompt',
       'sediment.primary.check': 'Check merge status',
@@ -1439,6 +1534,29 @@ body[data-ds-dark-theme] .scp-veil,[data-theme="dark"] .scp-veil{background:rgba
 .scp-kb-error .scp-btn:hover{background:var(--scp-bad-soft);}
 @container (max-width: 720px){.scp-kb-notice,.scp-kb-error{flex-wrap:wrap;}.scp-kb-notice-note{display:none;}}
 body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,[data-theme="dark"] .scp-actions,[data-theme="dark"] .scp-sed-actions{box-shadow:0 -8px 16px -12px rgba(0,0,0,.55);}
+.scp-row-wrap{display:flex;align-items:center;gap:2px;min-width:0;}
+.scp-row-wrap>.scp-pal-row,.scp-row-wrap>.scp-sed-row{flex:1 1 auto;min-width:0;}
+.scp-row-check{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-left:3px;padding:0;border:0;border-radius:6px;background:transparent;cursor:pointer;}
+.scp-row-check:hover{background:var(--scp-surface-2);}
+.scp-row-check-box{width:15px;height:15px;border:1.5px solid var(--scp-border-strong);border-radius:4px;background:var(--scp-surface);display:grid;place-items:center;font-size:10px;line-height:1;color:transparent;}
+.scp-row-check[aria-checked="true"] .scp-row-check-box{background:var(--scp-accent);border-color:var(--scp-accent);color:var(--scp-on-accent);}
+.scp-row-check[data-mixed="true"] .scp-row-check-box{border-color:var(--scp-accent);background:var(--scp-surface);position:relative;}
+.scp-row-check[data-mixed="true"] .scp-row-check-box::after{content:"";width:7px;height:2px;border-radius:1px;background:var(--scp-accent);}
+.scp-pal-row[data-sel="true"],.scp-sed-row[data-sel="true"]{background:var(--scp-surface-2);}
+.scp-pal-row[data-on="true"][data-sel="true"],.scp-sed-row[data-on="true"][data-sel="true"]{background:var(--scp-accent-soft);}
+.scp-batch{position:relative;display:block;}
+.scp-batch-line{display:flex;align-items:center;gap:var(--scp-sp-2);min-width:0;flex-wrap:wrap;}
+.scp-batch-line + .scp-batch-line{margin-top:4px;}
+.scp-batch-note{font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+.scp-batch-menu{position:absolute;right:var(--scp-sp-5);top:calc(100% - 2px);z-index:8;width:min(300px,calc(100% - 32px));padding:5px;border:1px solid var(--scp-border-strong);border-radius:12px;background:var(--scp-surface);box-shadow:var(--scp-shadow);}
+.scp-batch-item{display:flex;align-items:center;gap:8px;width:100%;padding:7px 9px;border:0;border-radius:8px;background:transparent;color:var(--scp-text);font:inherit;font-size:var(--scp-fs-body);text-align:left;cursor:pointer;}
+.scp-batch-item:hover{background:var(--scp-surface-2);}
+.scp-batch-item:disabled{opacity:.55;cursor:not-allowed;}
+.scp-batch-item-n{margin-left:auto;font-size:var(--scp-fs-cap);color:var(--scp-faint);font-variant-numeric:tabular-nums;}
+.scp-batch-empty{padding:6px 9px;font-size:var(--scp-fs-meta);color:var(--scp-muted);line-height:var(--scp-lh-base);}
+.scp-receipt{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px var(--scp-sp-5);border-bottom:1px solid var(--scp-border);background:var(--scp-surface-2);font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);flex:none;}
+.scp-receipt-strong{color:var(--scp-text);font-weight:var(--scp-fw-medium);}
+.scp-receipt .scp-btn{height:22px;padding:0 8px;font-size:var(--scp-fs-meta);}
 @media (max-width:760px){.scp-batch{flex-wrap:wrap;gap:6px 8px;}.scp-batch .scp-spacer{display:none;}.scp-sed-step-label,.scp-sed-step-note{font-size:var(--scp-fs-cap);}.scp-target-row{flex-wrap:wrap;}}`,
     ].join('\n')
 
@@ -2098,18 +2216,22 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       return true
     }
 
-    // 批量沉淀：把当前筛选里的可沉淀单一次交给 to-postmortem。
-    // 名单以界面筛选为准；分组与「还有哪些单」先问只读脚本，避免面板投影与脚本判据不一致时漏单或重复起草。
+    // 批量沉淀：未选时范围是当前筛选；已选时范围是选择集。
+    // 名单以界面为准；分组与「还有哪些单」先问只读脚本，避免面板投影与脚本判据不一致时漏单或重复起草。
     function sedimentBatchDraft(rows, meta) {
       const ids = (rows || []).map((row) => row && row.sessionId).filter(Boolean)
       if (!ids.length) return ''
-      const query = String((meta && meta.query) || '').trim()
+      const options = meta || {}
+      const bySelection = options.selection === true
+      const query = String(options.query || '').trim()
       const scope = query ? '（含搜索词「' + query + '」）' : ''
-      const total = Number(meta && meta.total) || ids.length
+      const total = Number(options.total) || ids.length
       const totalText = query && total > ids.length ? '；该筛选全量 ' + total + ' 单' : ''
+      const scopeText = bySelection
+        ? '范围 = 诊断总览所选的 ' + ids.length + ' 单'
+        : '范围 = 诊断总览「可沉淀」筛选当前列出的 ' + ids.length + ' 单' + scope + totalText
       return '用 /to-postmortem 批量沉淀这些 session：' + ids.join('、') + '\n'
-        + '范围 = 诊断总览「可沉淀」筛选当前列出的 ' + ids.length + ' 单' + scope + totalText
-        + '；trace 在 traces/<session>.yaml。\n'
+        + scopeText + '；trace 在 traces/<session>.yaml。\n'
         + '先跑 python3 scripts/sediment_batch.py --json 核对分组与证据：名单外、或名单内被判「已沉淀 / 没素材」的，'
         + '先报原因，不一起沉淀；每个 session 各成一条草稿（不按组合并）；来源 trace 逐单回写 sedimented.state: submitted，'
         + '只写 sedimented 与 updated_at，不改 status、不改 feedback.outcome。'
@@ -4258,7 +4380,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       // 别处更新一单就会静默换到另一单，动作会落到读者没在看的那条上。
       const selectedIdRef = React.useRef('')
       function selectIndex(next) {
-        const row = filtered[next]
+        const row = visibleRows[next]
         selectedIdRef.current = row ? row.sessionId : ''
         setSelected(next)
       }
@@ -4288,11 +4410,26 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const [targetOpen, setTargetOpen] = React.useState(false)
       const [manualOpen, setManualOpen] = React.useState(false)
       const [targetResume, setTargetResume] = React.useState('')
+      const [targetScope, setTargetScope] = React.useState('')
       const [targetRemote, setTargetRemote] = React.useState('')
       const [targetBase, setTargetBase] = React.useState('')
       const [targetBusy, setTargetBusy] = React.useState(false)
       const [checkBusy, setCheckBusy] = React.useState('')
+      // 多选：选择集按稳定 id 记（诊断 sessionId / 沉淀草稿 key），每个视图各一份。
+      // 只活在面板打开期间，不写 localStorage：队列会变，隔天恢复一批「已选」等于给过期范围。
+      const [sel, setSel] = React.useState({ diagnosis: [], sediment: [] })
+      const [selAnchor, setSelAnchor] = React.useState({ diagnosis: -1, sediment: -1 })
+      // 选择撤销栈：只收选择集本身与当时的筛选/搜索词，最多 5 步；切视图清空（两边的 id 不同域）。
+      const [selHist, setSelHist] = React.useState([])
+      const [onlySel, setOnlySel] = React.useState({ diagnosis: false, sediment: false })
+      const [batchMenu, setBatchMenu] = React.useState(false)
+      // 动作回执：prompt = 指令类（只写「已填入，未确认发送」）；write = 面板自己写台账，可反写。
+      const [receipt, setReceipt] = React.useState(null)
+      const [receiptAsk, setReceiptAsk] = React.useState(false)
+      // 所选范围的批次指令由 host 按 key 现算；加载中不让旧的全量指令先闪一下。
+      const [scopedPrompt, setScopedPrompt] = React.useState(null)
       const promptRef = React.useRef(null)
+      const promptToken = React.useRef(0)
       const targetRef = React.useRef(null)
       const toastTimer = React.useRef(null)
       const panelRef = React.useRef(null)
@@ -4317,6 +4454,19 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         document.addEventListener('mousedown', onDown, true)
         return () => document.removeEventListener('mousedown', onDown, true)
       }, [menuOpen])
+
+      // 批次动作菜单：点浮层外收起。点了菜单项自己会收起，不再等这一下。
+      React.useEffect(() => {
+        if (!batchMenu) return undefined
+        const onDown = (event) => {
+          const path = event && typeof event.composedPath === 'function' ? event.composedPath() : []
+          if (path.some((node) => node && typeof node.getAttribute === 'function'
+            && node.getAttribute('data-batch-menu') === 'true')) return
+          setBatchMenu(false)
+        }
+        document.addEventListener('mousedown', onDown, true)
+        return () => document.removeEventListener('mousedown', onDown, true)
+      }, [batchMenu])
       const searchRef = React.useRef(null)
       const listRef = React.useRef(null)
       const cmdInputRef = React.useRef(null)
@@ -4368,6 +4518,95 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         return ab - aa
       })
       const sedPick = sedSorted[Math.max(0, Math.min(sedSel, sedSorted.length - 1))] || null
+
+      // ── 选择集 ────────────────────────────────────────────────────────────
+      // 选择集只认 id；刷新、重排、切筛选都不改它，只按 id 重新对应行。
+      // 对不上行的 id 单独计数（「已不在队列」），不从选择集里静默删掉。
+      const selIds = sel[view] || []
+      const selSet = new Set(selIds)
+      const idOfRow = (item) => (view === 'diagnosis'
+        ? String((item && item.sessionId) || '')
+        : String((item && item.key) || ''))
+      const allRowsOfView = view === 'diagnosis' ? rows : sedDrafts
+      const rowById = new Map()
+      allRowsOfView.forEach((item) => {
+        const id = idOfRow(item)
+        if (id) rowById.set(id, item)
+      })
+      const selRows = selIds.map((id) => rowById.get(id)).filter(Boolean)
+      const visibleBase = view === 'diagnosis' ? filtered : sedSorted
+      const visibleRows = onlySel[view]
+        ? visibleBase.filter((item) => selSet.has(idOfRow(item)))
+        : visibleBase
+      const selVisibleRows = visibleBase.filter((item) => selSet.has(idOfRow(item)))
+      const invalidSel = selIds.filter((id) => !rowById.has(id))
+      const outsideSel = selRows.length - selVisibleRows.length
+      const selectedCount = selIds.length
+      const selectedValid = selRows.length
+      const onlySelOn = !!onlySel[view]
+      // 当前可见列表里被选中的条数 / 全部条数：全选复选框的勾、半选与全选比较都用这一对。
+      const visibleSelected = visibleRows.filter((item) => selSet.has(idOfRow(item))).length
+
+      // 快照记下筛选与搜索词：撤销选择时一起回去，否则恢复出来的选中项在屏上看不见。
+      function selSnapshot() {
+        return { view, ids: selIds.slice(), filter, search: searchText, sedFilter }
+      }
+      function commitSel(next) {
+        setSelHist((hist) => hist.concat([selSnapshot()]).slice(-5))
+        setSel((current) => Object.assign({}, current, { [view]: next }))
+      }
+      function toggleRowSelection(item, index, mode) {
+        const id = idOfRow(item)
+        if (!id) return
+        if (mode === 'range') {
+          const anchor = selAnchor[view]
+          const from = anchor >= 0 && anchor < visibleRows.length ? anchor : index
+          const lo = Math.min(from, index)
+          const hi = Math.max(from, index)
+          const rangeIds = visibleRows.slice(lo, hi + 1).map(idOfRow).filter(Boolean)
+          const anchorId = visibleRows[from] ? idOfRow(visibleRows[from]) : ''
+          const remove = anchorId ? selSet.has(anchorId) : false
+          const next = remove
+            ? selIds.filter((value) => rangeIds.indexOf(value) < 0)
+            : Array.from(new Set(selIds.concat(rangeIds)))
+          commitSel(next)
+          setSelAnchor((current) => Object.assign({}, current, { [view]: index }))
+          return
+        }
+        const next = selSet.has(id)
+          ? selIds.filter((value) => value !== id)
+          : selIds.concat([id])
+        commitSel(next)
+        setSelAnchor((current) => Object.assign({}, current, { [view]: index }))
+      }
+      function selectAllVisible() {
+        const ids = visibleBase.map(idOfRow).filter(Boolean)
+        const allOn = ids.length > 0 && ids.every((id) => selSet.has(id))
+        commitSel(allOn ? [] : ids)
+        if (allOn && onlySel[view]) setOnlySel((current) => Object.assign({}, current, { [view]: false }))
+      }
+      function clearSelection() {
+        if (!selIds.length) return
+        commitSel([])
+        setOnlySel((current) => Object.assign({}, current, { [view]: false }))
+      }
+      function removeInvalidSelection() {
+        if (!invalidSel.length) return
+        commitSel(selIds.filter((id) => rowById.has(id)))
+      }
+      // 撤销一步选择：恢复选择集与当时的筛选 / 搜索词。最多 5 步，取完就停。
+      function undoSel() {
+        if (!selHist.length) return
+        const last = selHist[selHist.length - 1]
+        setSelHist((hist) => hist.slice(0, -1))
+        setSel((current) => Object.assign({}, current, { [last.view]: last.ids }))
+        if (last.view === view) {
+          setSearchText(last.search || '')
+          if (view === 'sediment') setSedFilter(last.sedFilter || 'all')
+          else savePrefs({ paletteFilter: FILTER_KEYS.indexOf(last.filter) >= 0 ? last.filter : 'all' })
+        }
+        flash(tr('sel.count', { n: last.ids.length }))
+      }
 
       // 同一 PR 常覆盖多份草稿（一批决定提一个 PR）。查合入按 PR 合并查询后，
       // 列表行与详情要能看出「这几行是同一个 PR」，否则读者会以为每行各查一次。
@@ -4422,6 +4661,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         setPromptKind('')
         setPromptFallback(null)
         setManualOpen(false)
+        // 换会话等于换一批单：选择集与回执都不跟着走。
+        setSel({ diagnosis: [], sediment: [] })
+        setSelHist([])
+        setOnlySel({ diagnosis: false, sediment: false })
+        setReceipt(null)
+        setReceiptAsk(false)
+        setBatchMenu(false)
+        setScopedPrompt(null)
       }, [s.sessionId])
 
       React.useEffect(() => {
@@ -4436,28 +4683,37 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       React.useEffect(() => {
         setSearchText('')
         setSedSel(0)
+        setSelHist([])
+        setBatchMenu(false)
+        setScopedPrompt(null)
       }, [view])
 
+      // 连选锚点记的是可见列表的下标；筛选或搜索变了，旧下标指到另一行，先清掉。
       React.useEffect(() => {
-        if (sedSel > sedSorted.length - 1) setSedSel(sedSorted.length > 0 ? sedSorted.length - 1 : 0)
-      }, [sedSorted.length, sedSel])
+        setSelAnchor((current) => Object.assign({}, current, { [view]: -1 }))
+      }, [view, filter, searchText, sedFilter])
+
+      React.useEffect(() => {
+        if (view !== 'sediment') return
+        if (sedSel > visibleRows.length - 1) setSedSel(visibleRows.length > 0 ? visibleRows.length - 1 : 0)
+      }, [view, visibleRows.length, sedSel])
 
       React.useEffect(() => {
         if (!s.paletteOpen || view !== 'sediment') return
         const key = s.sedimentSelectKey
         if (!key) return
-        const index = sedSorted.findIndex((draft) => draft.key === key)
+        const index = visibleRows.findIndex((draft) => draft.key === key)
         if (index < 0 && sedFilter !== 'all') {
           setSedFilter('all')
           return
         }
         if (index >= 0 && index !== sedSel) setSedSel(index)
-      }, [s.paletteOpen, s.sedimentSelectKey, view, sedSorted.length, sedFilter])
+      }, [s.paletteOpen, s.sedimentSelectKey, view, visibleRows.length, sedFilter])
 
       React.useEffect(() => {
         if (!s.paletteOpen) return
         setMenuOpen(false)
-        const position = filtered.findIndex((row) => row.sessionId === s.paletteSelect)
+        const position = visibleRows.findIndex((row) => row.sessionId === s.paletteSelect)
         selectIndex(position >= 0 ? position : 0)
       }, [s.paletteOpen, s.paletteSelect, filter])
 
@@ -4465,14 +4721,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       React.useEffect(() => {
         const id = selectedIdRef.current
         if (id) {
-          const index = filtered.findIndex((row) => row.sessionId === id)
+          const index = visibleRows.findIndex((row) => row.sessionId === id)
           if (index >= 0) {
             if (index !== selected) setSelected(index)
             return
           }
         }
-        if (selected > filtered.length - 1) setSelected(filtered.length > 0 ? filtered.length - 1 : 0)
-      }, [filtered, selected])
+        if (selected > visibleRows.length - 1) setSelected(visibleRows.length > 0 ? visibleRows.length - 1 : 0)
+      }, [visibleRows, selected])
 
       // 键盘选中变化时把行滚进可视区：列表比一屏长，选中项在屏外时回车执行的是看不见的行。
       React.useEffect(() => {
@@ -4507,6 +4763,13 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         setTargetResume('')
         setManualOpen(false)
         setCheckBusy('')
+        setSel({ diagnosis: [], sediment: [] })
+        setSelHist([])
+        setOnlySel({ diagnosis: false, sediment: false })
+        // 回执不随面板关闭清掉：填完指令面板会自己收起，读者再打开时要能看到刚才那批并撤回。
+        setReceiptAsk(false)
+        setBatchMenu(false)
+        setScopedPrompt(null)
       }, [s.paletteOpen])
 
       React.useEffect(() => {
@@ -4615,6 +4878,32 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             }
             return
           }
+          // 多选键：空格勾选焦点行，Cmd/Ctrl+A 全选当前筛选，Cmd/Ctrl+Z 撤销一步选择。
+          const metaKey = event.metaKey || event.ctrlKey
+          if (metaKey && !typing && (event.key === 'z' || event.key === 'Z')) {
+            event.preventDefault()
+            undoSel()
+            return
+          }
+          if (metaKey && !typing && (event.key === 'a' || event.key === 'A')) {
+            event.preventDefault()
+            selectAllVisible()
+            return
+          }
+          if (event.key === ' ' && !typing && !menuOpen) {
+            const spaceTarget = event.target
+            const onRow = spaceTarget && spaceTarget.tagName === 'BUTTON'
+              && typeof spaceTarget.className === 'string'
+              && /(^|\s)scp-(pal|sed)-row(\s|$)/.test(spaceTarget.className)
+            if (!(spaceTarget && spaceTarget.tagName === 'BUTTON') || onRow) {
+              const pick = visibleRows[selected]
+              if (pick) {
+                event.preventDefault()
+                toggleRowSelection(pick, selected, event.shiftKey ? 'range' : 'toggle')
+              }
+              return
+            }
+          }
           if (event.key === '/' && !typing && !menuOpen) {
             event.preventDefault()
             if (searchRef.current && typeof searchRef.current.focus === 'function') searchRef.current.focus()
@@ -4622,20 +4911,22 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           }
           if (event.key === 'Escape') {
             event.preventDefault()
-            if (menuOpen) setMenuOpen(false)
-            else setPaletteOpen(false)
+            if (batchMenu) { setBatchMenu(false); return }
+            if (menuOpen) { setMenuOpen(false); return }
+            if (selectedCount) { clearSelection(); return }
+            setPaletteOpen(false)
             return
           }
           if (typing || menuOpen) return
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-            if (!filtered.length) return
+            if (!visibleRows.length) return
             event.preventDefault()
             const next = event.key === 'ArrowDown' ? selected + 1 : selected - 1
-            selectIndex(Math.max(0, Math.min(next, filtered.length - 1)))
+            selectIndex(Math.max(0, Math.min(next, visibleRows.length - 1)))
             return
           }
           if (event.key === 'Enter') {
-            const row = filtered[selected]
+            const row = visibleRows[selected]
             if (!row) return
             // 焦点只在普通按钮/输入框上时不抢回车；行按钮与列表容器上按回车都执行主操作。
             const target = event.target
@@ -4648,7 +4939,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         }
         window.addEventListener('keydown', onKey)
         return () => window.removeEventListener('keydown', onKey)
-      }, [s.paletteOpen, filtered, selected, menuOpen, cmdOpen, cmdQuery, cmdIndex, promptKind])
+      }, [s.paletteOpen, visibleRows, selected, menuOpen, cmdOpen, cmdQuery, cmdIndex, promptKind,
+        selectedCount, batchMenu, onlySelOn])
 
       React.useEffect(() => {
         if (!s.paletteOpen || view !== 'sediment') return undefined
@@ -4677,8 +4969,35 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             }
             return
           }
+          const metaKey = event.metaKey || event.ctrlKey
+          if (metaKey && !typing && (event.key === 'z' || event.key === 'Z')) {
+            event.preventDefault()
+            undoSel()
+            return
+          }
+          if (metaKey && !typing && (event.key === 'a' || event.key === 'A')) {
+            event.preventDefault()
+            selectAllVisible()
+            return
+          }
+          if (event.key === ' ' && !typing) {
+            const spaceTarget = event.target
+            const onRow = spaceTarget && spaceTarget.tagName === 'BUTTON'
+              && typeof spaceTarget.className === 'string'
+              && /(^|\s)scp-(pal|sed)-row(\s|$)/.test(spaceTarget.className)
+            if (!(spaceTarget && spaceTarget.tagName === 'BUTTON') || onRow) {
+              const pick = visibleRows[sedSel]
+              if (pick) {
+                event.preventDefault()
+                toggleRowSelection(pick, sedSel, event.shiftKey ? 'range' : 'toggle')
+              }
+              return
+            }
+          }
           if (event.key === 'Escape') {
             event.preventDefault()
+            if (batchMenu) { setBatchMenu(false); return }
+            if (selectedCount) { clearSelection(); return }
             setPaletteOpen(false)
             return
           }
@@ -4689,17 +5008,15 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           }
           if (typing) return
           if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-            if (!sedSorted.length) return
+            if (!visibleRows.length) return
             event.preventDefault()
-            setSedSel((current) => {
-              const next = event.key === 'ArrowDown' ? current + 1 : current - 1
-              return Math.max(0, Math.min(next, sedSorted.length - 1))
-            })
+            const next = event.key === 'ArrowDown' ? sedSel + 1 : sedSel - 1
+            setSedSel(Math.max(0, Math.min(next, visibleRows.length - 1)))
             return
           }
           if (event.key === 'Enter') {
             if (event.target && event.target.tagName === 'BUTTON') return
-            const pick = sedSorted[sedSel]
+            const pick = visibleRows[sedSel]
             if (!pick) return
             event.preventDefault()
             runSedNext(pick)
@@ -4707,12 +5024,13 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         }
         window.addEventListener('keydown', onKey)
         return () => window.removeEventListener('keydown', onKey)
-      }, [s.paletteOpen, view, sedSorted.length, sedSel, promptKind, targetOpen, manualOpen, cmdOpen])
+      }, [s.paletteOpen, view, visibleRows.length, sedSel, promptKind, targetOpen, manualOpen, cmdOpen,
+        selectedCount, batchMenu, onlySelOn])
 
       // 详情抬头的三个钩子必须放在任何提前 return 之前：总览关着时 Palette 提前返回，打开后
       // 又多出这三个钩子，React 会报「hook 数量与上次渲染不一致」，整个 shell.overlay 槽位崩掉，
       // 表现就是点「诊断总览」没有反应。依赖值都从已声明的 state 现算，不依赖后面才赋值的局部变量。
-      const ledeRow = filtered[selected] || null
+      const ledeRow = visibleRows[selected] || null
       const ledeText = ledeRow ? (String(ledeRow.summary || '').trim() || caseTitle(ledeRow)) : ''
       const ledeOpen = Boolean(ledeRow) && ledeOpenId === ledeRow.sessionId
       const ledeRef = React.useRef(null)
@@ -4747,7 +5065,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
       const loadFailed = !data && (s.phase === 'error' || !!(s.data && s.data.ok === false))
       const loading = !data && !loadFailed
-      const row = filtered[selected] || null
+      const row = visibleRows[selected] || null
       selectedRowRef.current = row ? row.sessionId : ''
       const counts = data && data.counts ? data.counts : {}
       const filterCounts = {
@@ -4757,12 +5075,13 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         sediment: filterRows(rows, 'sediment').length,
       }
 
-      function fillDraft(text) {
+      function fillDraft(text, meta) {
         const inputActions = findInputActions()
         if (inputActions && typeof inputActions.setDraft === 'function') {
           try {
             inputActions.setDraft(text)
             store.sedimentForceNext = true
+            if (meta && meta.receipt) notePromptReceipt(meta.receipt.action, meta.receipt.rows)
             flash(tr('hint.draft'))
             setPaletteOpen(false)
             return
@@ -4842,7 +5161,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       }
 
       function checklistAction(target, item) {
-        if (!item || !item.kind) return
+          if (!item || !item.kind) return
         if (item.kind === 'report') fillDraft(reportDraft(target))
         else if (item.kind === 'feedback') { setMenuForm('feedback'); setMenuOpen(true) }
         else if (item.kind === 'sediment') fillDraft(sedimentDraft(target))
@@ -4943,33 +5262,57 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           h('span', { className: 'scp-kbd' }, '/')),
         h('div', { className: 'scp-filters', role: 'group', 'aria-label': tr('palette.filterLabel') }, filterButtons),
         !data ? skeleton
-          : filtered.length === 0 ? h('div', { className: 'scp-pal-empty' }, emptyMark, tr('palette.empty'))
-            : filtered.map((item, index) => {
+          : visibleRows.length === 0 ? h('div', { className: 'scp-pal-empty' }, emptyMark, tr('palette.empty'))
+            : visibleRows.map((item, index) => {
               const extra = item.extra || {}
               const metaPieces = []
               if (extra.platform) metaPieces.push(extra.platform)
               if (extra.framework) metaPieces.push(extra.framework)
-              return h('button', {
-                key: item.sessionId,
-                type: 'button',
-                className: 'scp-pal-row',
-                'aria-current': index === selected ? 'true' : 'false',
-                'data-pending': isPending(item) ? 'true' : 'false',
-                'data-on': index === selected ? 'true' : 'false',
-                style: { '--scp-tone': TONE_VAR[toneOf(item)] || TONE_VAR.idle },
-                onClick: () => { selectIndex(index); setMenuOpen(false) },
-                onDoubleClick: () => runPrimary(item),
-              },
-                h('span', { className: 'scp-ring', 'aria-hidden': 'true' }),
-                h('span', { className: 'scp-pal-row-main' },
-                  h('span', { className: 'scp-pal-row-line' },
-                    h('span', { className: 'scp-pal-row-title', title: caseTitle(item) }, caseTitle(item)),
-                    h('span', { className: 'scp-pal-row-step' }, stepsShort(extra))),
-                  h('span', { className: 'scp-pal-row-meta' },
-                    h('span', { className: 'scp-pal-row-meta-main' },
-                      [statusMeta(data.vocab, item.status).label].concat(metaPieces).join(' · '),
-                      isPending(item) ? h('span', { key: 'pending', className: 'scp-chip', 'data-tone': 'warn' }, tr('chip.feedback')) : null),
-                    h('span', { className: 'scp-pal-row-time' }, formatTime(item.updatedAt) || tr('none')))))
+              const id = String(item.sessionId || '')
+              const checked = selSet.has(id)
+              return h('div', { key: id, className: 'scp-row-wrap' },
+                h('button', {
+                  key: 'check',
+                  type: 'button',
+                  className: 'scp-row-check',
+                  role: 'checkbox',
+                  'aria-checked': checked ? 'true' : 'false',
+                  'aria-label': tr('sel.check', { title: caseTitle(item) }),
+                  tabIndex: -1,
+                  onClick: (event) => {
+                    const e = event || {}
+                    if (typeof e.stopPropagation === 'function') e.stopPropagation()
+                    toggleRowSelection(item, index, e.shiftKey ? 'range' : 'toggle')
+                  },
+                }, h('span', { className: 'scp-row-check-box', 'aria-hidden': 'true' }, checked ? '✓' : '')),
+                h('button', {
+                  key: 'row',
+                  type: 'button',
+                  className: 'scp-pal-row',
+                  'aria-current': index === selected ? 'true' : 'false',
+                  'data-pending': isPending(item) ? 'true' : 'false',
+                  'data-on': index === selected ? 'true' : 'false',
+                  'data-sel': checked ? 'true' : 'false',
+                  style: { '--scp-tone': TONE_VAR[toneOf(item)] || TONE_VAR.idle },
+                  onClick: (event) => {
+                    const e = event || {}
+                    if (e.shiftKey) toggleRowSelection(item, index, 'range')
+                    else if (e.metaKey || e.ctrlKey) toggleRowSelection(item, index, 'toggle')
+                    selectIndex(index)
+                    setMenuOpen(false)
+                  },
+                  onDoubleClick: () => runPrimary(item),
+                },
+                  h('span', { className: 'scp-ring', 'aria-hidden': 'true' }),
+                  h('span', { className: 'scp-pal-row-main' },
+                    h('span', { className: 'scp-pal-row-line' },
+                      h('span', { className: 'scp-pal-row-title', title: caseTitle(item) }, caseTitle(item)),
+                      h('span', { className: 'scp-pal-row-step' }, stepsShort(extra))),
+                    h('span', { className: 'scp-pal-row-meta' },
+                      h('span', { className: 'scp-pal-row-meta-main' },
+                        [statusMeta(data.vocab, item.status).label].concat(metaPieces).join(' · '),
+                        isPending(item) ? h('span', { key: 'pending', className: 'scp-chip', 'data-tone': 'warn' }, tr('chip.feedback')) : null),
+                      h('span', { className: 'scp-pal-row-time' }, formatTime(item.updatedAt) || tr('none'))))))
             }))
 
       const waiting = row ? ((row.derived && row.derived.waitingFor) || (row.extra && row.extra.evidenceMissing) || '') : ''
@@ -5271,11 +5614,17 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         : null
 
       // ── 沉淀视图的渲染件 ────────────────────────────────────────────────
-      function openPrompt(kind, resume) {
+      // 有选择时，提 PR / groom / 收尾的指令按所选 key 现算（host 只收窄指令名单）。
+      // 旧版本 host 不认 promptKeys 时会退回整批指令，所以这里在正文里也写清名单来源。
+      function openPrompt(kind, resume, scope) {
         const k = String(kind || '')
         if (k !== 'groom' && k !== 'pr' && k !== 'check' && k !== 'close') return
+        // 单条动作只对焦点行，整批动作对整份队列，只有从所选范围进来的才按 key 收窄（scope 参数）。
+        const wantScope = scope === 'single' || scope === 'whole'
+          ? scope
+          : (selectedCount ? 'selected' : 'whole')
         if (k === 'pr' && !sedTargetLabel) {
-          openTarget('pr')
+          openTarget('pr', wantScope)
           return
         }
         setPromptKind(k)
@@ -5283,13 +5632,40 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         setPromptDetailsOpen(false)
         setBatchSed(null)
         setMenuOpen(false)
+        const scopedKinds = { pr: true, groom: true, close: true }
+        const keys = wantScope === 'selected' && scopedKinds[k]
+          ? selDraftRows.map((draft) => String(draft.key || '')).filter(Boolean)
+          : []
+        promptToken.current += 1
+        if (!keys.length) {
+          setScopedPrompt(null)
+          return
+        }
+        const token = promptToken.current
+        setScopedPrompt({ kind: k, loading: true, error: '', prompts: null })
+        rpcCall('copilot-sediment', {
+          cwd: s.cwd, sessionId: s.sessionId, promptKeys: keys,
+        }).then((doc) => {
+          if (token !== promptToken.current) return
+          if (!doc || doc.ok === false) {
+            setScopedPrompt({ kind: k, loading: false, error: (doc && doc.message) || '', prompts: null })
+            return
+          }
+          setScopedPrompt({ kind: k, loading: false, error: '', prompts: doc.prompts || {} })
+        }, (error) => {
+          if (token !== promptToken.current) return
+          setScopedPrompt({ kind: k, loading: false, error: String((error && error.message) || error), prompts: null })
+        })
       }
 
       // 写台账被系统拒绝时的指令弹层：复用指令预览这一个面（复制 / 填入输入框），
       // 正文由失败上下文生成。点了才填进输入框，不自动发送，也不覆盖读者正在写的内容。
-      function openPromptFallback(head, text, sub) {
+      function openPromptFallback(head, text, sub, rows) {
         if (!text) return
-        setPromptFallback({ head: String(head || ''), text: String(text), sub: String(sub || '') })
+        setPromptFallback({
+          head: String(head || ''), text: String(text), sub: String(sub || ''),
+          rows: Array.isArray(rows) ? rows : null,
+        })
         setPromptKind('fallback')
         setPromptDetailsOpen(false)
         setBatchSed(null)
@@ -5297,28 +5673,39 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       }
 
       function closePrompt() {
+        promptToken.current += 1
         setPromptKind('')
         setPromptFallback(null)
         setBatchSed(null)
       }
 
-      // 批量沉淀：名单在打开弹层时冻结（范围 = 当前筛选，含搜索词），预览后由读者决定填入还是复制。
-      function openBatchSediment() {
-        if (!diagSedRows.length) return
+      // 批量沉淀：名单在打开弹层时冻结（未选时 = 当前筛选，含搜索词；已选时 = 所选）。
+      function openBatchSediment(rowsOverride) {
+        const list = Array.isArray(rowsOverride) ? rowsOverride : diagSedRows
+        if (!list.length) return
         const query = String(searchText || '').trim()
+        const bySelection = Array.isArray(rowsOverride)
         setBatchSed({
-          text: sedimentBatchDraft(diagSedRows, { query, total: filterRows(rows, 'sediment').length }),
-          count: diagSedRows.length,
+          text: sedimentBatchDraft(list, {
+            query: bySelection ? '' : query,
+            total: bySelection ? list.length : filterRows(rows, 'sediment').length,
+            selection: bySelection,
+          }),
+          count: list.length,
           query,
+          selection: bySelection,
+          rows: list,
         })
         setPromptKind('sedimentBatch')
         setPromptDetailsOpen(false)
         setMenuOpen(false)
       }
 
-      // 批量撤销：只生成指令，范围冻结在点开这一刻（当前筛选与搜索词）；读者可在输入框里删行。
-      function openBatchUndo() {
-        const keys = sedUndoRows.map((draft) => String(draft.key || '')).filter(Boolean)
+      // 批量撤销：只生成指令，名单冻结在点开这一刻（未选 = 当前筛选；已选 = 所选）。
+      // 一份都不手改命令：想撤哪几份，先在列表里勾出来。
+      function openBatchUndo(rowsOverride) {
+        const list = Array.isArray(rowsOverride) ? rowsOverride : sedUndoRows
+        const keys = list.map((draft) => String(draft.key || '')).filter(Boolean)
         if (!keys.length) return
         // key 来自 inbox 文件名；常规字符直接写，出现空格或引号时按 shell 单引号转义。
         const quote = (key) => (/^[A-Za-z0-9._-]+$/.test(key)
@@ -5329,14 +5716,17 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           const text = String(title || '').trim()
           return text.length > 40 ? text.slice(0, 40) + '…' : text
         }
-        const names = sedUndoRows.map((draft) => {
+        const names = list.map((draft) => {
           const title = shortTitle(draft.title)
           return String(draft.key || '') + (title ? '（' + title + '）' : '')
         }).join('；')
+        const bySelection = Array.isArray(rowsOverride)
         const filterDef = sedFilterDefs.find((item) => item.key === sedFilter)
-        const scope = ['筛选「' + (filterDef ? filterDef.label : sedFilter) + '」']
+        const scope = bySelection
+          ? ['所选 ' + keys.length + ' 份']
+          : ['筛选「' + (filterDef ? filterDef.label : sedFilter) + '」']
         const query = String(searchText || '').trim()
-        if (query) scope.push('搜索「' + query + '」')
+        if (!bySelection && query) scope.push('搜索「' + query + '」')
         const text = '撤销本批沉淀：' + keys.length + ' 份（范围：' + scope.join(' + ') + '）。\n'
           + '本批名单：' + names + '\n'
           + '先看计划（只读）：\npython3 scripts/sediment_undo.py ' + args + '\n'
@@ -5344,10 +5734,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           + '脚本逐份处理；被拒的会跳过并报原因，不要绕过。撤销还原沉淀状态，不改诊断状态；'
           + 'PR 已关闭的行会一并清掉本地台账记录（PR 本身不动），撤销前先在平台上确认这些 PR 仍关闭；'
           + '要回到进行中，在诊断面板用「重新打开」。'
-        openPromptFallback(tr('sediment.undo.batchTitle'), text, tr('sediment.undo.batchSub'))
+        openPromptFallback(tr('sediment.undo.batchTitle'), text, tr('sediment.undo.batchSub'), list)
       }
 
-      function openTarget(resume) {
+      function openTarget(resume, scope) {
         const remotes = sedRemotes
         const savedName = sedTarget && sedTarget.remote ? String(sedTarget.remote) : ''
         const recName = sedTargetDoc && sedTargetDoc.recommendation && sedTargetDoc.recommendation.remote
@@ -5361,6 +5751,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         setTargetRemote(current ? current.name : '')
         setTargetBase(String(base))
         setTargetResume(String(resume || ''))
+        setTargetScope(scope === 'single' || scope === 'selected' ? scope : 'whole')
         setTargetOpen(true)
         closePrompt()
       }
@@ -5406,10 +5797,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           const resume = targetResume
           setTargetResume('')
           await refreshSediment(true)
-          if (resume) {
-            setPromptKind(resume)
-            setPromptDetailsOpen(false)
-          }
+          if (resume) openPrompt(resume, undefined, targetScope)
         } catch (error) {
           flash(String((error && error.message) || error))
         } finally {
@@ -5421,10 +5809,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const resume = targetResume
         setTargetOpen(false)
         setTargetResume('')
-        if (resume && sedTargetLabel) {
-          setPromptKind(resume)
-          setPromptDetailsOpen(false)
-        }
+        if (resume && sedTargetLabel) openPrompt(resume, undefined, targetScope)
       }
 
       async function checkPr(key) {
@@ -5544,11 +5929,13 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         return key && key !== 'unknown' ? generic + '（' + key + '）' : generic
       }
 
-      async function checkAllPrs() {
+      async function checkAllPrs(scopeDrafts) {
         if (!canWrite) { flash(tr('write.disabled')); return }
         if (checkBusy) return
+        const scoped = Array.isArray(scopeDrafts)
+        const drafts = scoped ? scopeDrafts : sedDrafts
         setCheckBusy('__all__')
-        beginCheckRun(sedDrafts)
+        beginCheckRun(drafts)
         const run = store.checkRun
         const runSession = store.sessionId
         const runCwd = store.cwd
@@ -5593,6 +5980,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           // 先把主 RPC 发出去，再起轮询：不 await 之后才开始轮询，否则进度永远晚一步。
           const pending = rpcCall('copilot-pr-target', {
             action: 'check-all', cwd: runCwd, sessionId: runSession,
+            keys: drafts.map((draft) => String(draft.key || '')).filter(Boolean),
           })
           timer = setInterval(() => { poll() }, PR_PROGRESS_POLL_MS)
           let result
@@ -5624,8 +6012,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 .filter((item) => item && item.ok !== false
                   && PR_STATE_KEYS.indexOf(String(item.state || '')) >= 0)
                 .map((item) => String(item.draft || '') + ' ' + tr('sediment.prState.' + String(item.state)))
+              const command = 'python3 scripts/pr_status.py --root . --check-all'
+                + (scoped ? drafts.map((draft) => ' --only-draft ' + String(draft.key || '')).join('') : '')
               openPromptFallback(tr('sediment.primary.checkAll'), prWriteFallbackText(
-                message, 'python3 scripts/pr_status.py --root . --check-all',
+                message, command,
                 { kind: writeKind, checkedStates: states }))
               return
             }
@@ -5651,6 +6041,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const nextState = String(state || '')
         if (!canWrite) { flash(tr('write.disabled')); return }
         if (!key || checkBusy || PR_STATE_KEYS.indexOf(nextState) < 0) return
+        const draft = sedDrafts.find((item) => item && item.key === key) || null
+        const prevState = draft && draft.pr && draft.pr.state ? String(draft.pr.state) : 'unknown'
         setCheckBusy(key)
         try {
           const result = await rpcCall('copilot-pr-target', {
@@ -5676,9 +6068,47 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           }
           await refreshSediment(true)
           setManualOpen(false)
+          setReceiptAsk(false)
+          setReceipt({
+            kind: 'write',
+            view: 'sediment',
+            key,
+            label: tr('sediment.prState.' + nextState),
+            prev: prevState,
+            at: Date.now(),
+          })
           flash(tr('sediment.manualDone', { state: tr('sediment.prState.' + nextState) }))
         } catch (error) {
           flash(String((error && error.message) || error))
+        } finally {
+          setCheckBusy('')
+        }
+      }
+
+      // 反写台账：只对面板自己写过的动作成立。旧状态是写之前记下的，写入再走一次 CAS，
+      // 台账被别的进程改过就报冲突、不覆盖。撤销成功后回执改成「已恢复」，不再给撤销。
+      async function undoMark() {
+        if (!receipt || receipt.kind !== 'write' || receipt.undone) return
+        if (!canWrite) { flash(tr('write.disabled')); return }
+        if (checkBusy) return
+        const target = receipt
+        setCheckBusy(target.key)
+        try {
+          const result = await rpcCall('copilot-pr-target', {
+            action: 'mark', cwd: s.cwd, sessionId: s.sessionId, key: target.key,
+            state: target.prev, expectSha256: ledgerSha(),
+          })
+          if (!result || result.ok === false) {
+            const reason = (result && (result.message || (result.error && result.error.message))) || ''
+            flash(tr('sel.receiptRestoreFailed', { reason: reason || tr('sediment.checkError.unknown') }))
+            if (failureCode(result) === 'E_CAS') await refreshSediment(true)
+            return
+          }
+          await refreshSediment(true)
+          setReceipt(Object.assign({}, target, { undone: true }))
+          flash(tr('sel.receiptRestored', { state: tr('sediment.prState.' + target.prev) }))
+        } catch (error) {
+          flash(tr('sel.receiptRestoreFailed', { reason: String((error && error.message) || error) }))
         } finally {
           setCheckBusy('')
         }
@@ -5702,7 +6132,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           checkPr(draft.key)
           return
         }
-        openPrompt(kind)
+        openPrompt(kind, undefined, 'single')
       }
 
       const sedDecidedRows = sedDrafts.filter((draft) => draft.state === 'decided')
@@ -5743,6 +6173,168 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         { key: 'rerun', label: tr('sediment.filter.rerun'), n: sedNeedRerun },
       ]
 
+      // ── 所选范围的动作 ────────────────────────────────────────────────────
+      // 动作按所选行的下一步计数；主操作取条数最多的那一个（并列时 PR 优先），
+      // 不按固定顺序：否则选了一行 groom 就会把三行 PR 的主操作抢走。
+      const selDiagRows = view === 'diagnosis' ? selRows : []
+      const selDiagSed = selDiagRows.filter((item) => canStartSediment(item))
+      const selDraftRows = view === 'sediment' ? selRows : []
+      const selUndoRows = selDraftRows.filter((item) => item && item.undo && item.undo.available)
+      const selKindRows = (kind) => selDraftRows.filter((item) => sedPrimaryKey(item) === kind)
+      const selPrRows = selKindRows('pr')
+      const selGroomRows = selKindRows('groom')
+      const selCloseRows = selKindRows('close')
+      const selRestoreRows = selKindRows('restore')
+      const selCheckRows = selKindRows('check')
+      const selPrimary = (() => {
+        const candidates = [
+          ['pr', selPrRows], ['check', selCheckRows], ['close', selCloseRows],
+          ['restore', selRestoreRows], ['groom', selGroomRows],
+        ]
+        let best = null
+        candidates.forEach(([kind, rowsOfKind]) => {
+          if (rowsOfKind.length && (!best || rowsOfKind.length > best.rows.length)) {
+            best = { kind, rows: rowsOfKind }
+          }
+        })
+        return best
+      })()
+      const staleBlocked = Boolean(s.stale)
+
+      function copySelList() {
+        if (!selRows.length) { flash(tr('sel.copyEmpty')); return }
+        const lines = selRows.map((item) => (view === 'diagnosis'
+          ? String(item.sessionId || '') + ' · ' + caseTitle(item)
+          : String(item.key || '') + ' · ' + String(item.title || '')))
+        copyToClipboard(lines.join('\n')).then((ok) => flash(ok
+          ? tr('sel.copyDone', { n: lines.length })
+          : tr('hint.copyFailed')))
+      }
+
+      function runSelAction(kind) {
+        if (kind === 'sediment') {
+          if (staleBlocked) { flash(tr('sel.stale')); return }
+          if (selDiagSed.length) openBatchSediment(selDiagSed)
+          else copySelList()
+          return
+        }
+        if (kind === 'copy') { copySelList(); return }
+        if (kind === 'invalid') { removeInvalidSelection(); return }
+        if (kind === 'undo') {
+          if (staleBlocked) { flash(tr('sel.stale')); return }
+          openBatchUndo(selUndoRows)
+          return
+        }
+        if (kind === 'check') {
+          if (staleBlocked) { flash(tr('sel.stale')); return }
+          // 按所选查会回写台账；只读档位下不生成整批指令冒充所选范围。
+          if (canWrite) checkAllPrs(selCheckRows)
+          else flash(tr('sel.writeReadonly'))
+          return
+        }
+        if (kind === 'restore') {
+          const text = selRestoreRows.map((item) => String(item.restore || '')).filter(Boolean).join('\n\n')
+          if (text) fillDraft(text)
+          else flash(tr('sediment.prompt.empty'))
+          return
+        }
+        if (staleBlocked) { flash(tr('sel.stale')); return }
+        openPrompt(kind, undefined, 'selected')
+      }
+
+      function runSelPrimary() {
+        if (view === 'diagnosis') {
+          if (staleBlocked && selDiagSed.length) { flash(tr('sel.stale')); return }
+          runSelAction(selDiagSed.length ? 'sediment' : 'copy')
+          return
+        }
+        if (!selPrimary) { copySelList(); return }
+        runSelAction(selPrimary.kind)
+      }
+
+      function selPrimaryLabel() {
+        if (view === 'diagnosis') {
+          return selDiagSed.length
+            ? tr('sel.sedimentSelected', { n: selDiagSed.length })
+            : tr('sel.copyList')
+        }
+        if (!selPrimary) return tr('sel.copyList')
+        const n = selPrimary.rows.length
+        if (selPrimary.kind === 'pr') return tr('sel.prSelected', { n })
+        if (selPrimary.kind === 'check') return tr('sel.checkSelected', { n })
+        if (selPrimary.kind === 'close') return tr('sel.closeSelected', { n })
+        if (selPrimary.kind === 'restore') return tr('sel.restoreSelected', { n })
+        return tr('sel.groomSelected', { n })
+      }
+
+      const batchMenuItems = []
+      if (view === 'diagnosis') {
+        if (selDiagSed.length) {
+          batchMenuItems.push({ key: 'sediment', label: tr('sel.sedimentSelected', { n: selDiagSed.length }), run: () => runSelAction('sediment') })
+        }
+        batchMenuItems.push({ key: 'copy', label: tr('sel.copyList'), run: () => runSelAction('copy') })
+      } else {
+        const add = (kind, rowsOfKind, label) => {
+          if (!rowsOfKind.length) return
+          if (selPrimary && selPrimary.kind === kind) return
+          batchMenuItems.push({ key: kind, label, run: () => runSelAction(kind) })
+        }
+        add('pr', selPrRows, tr('sel.prSelected', { n: selPrRows.length }))
+        add('groom', selGroomRows, tr('sel.groomSelected', { n: selGroomRows.length }))
+        add('check', selCheckRows, tr('sel.checkSelected', { n: selCheckRows.length }))
+        add('close', selCloseRows, tr('sel.closeSelected', { n: selCloseRows.length }))
+        add('restore', selRestoreRows, tr('sel.restoreSelected', { n: selRestoreRows.length }))
+        if (selUndoRows.length) {
+          batchMenuItems.push({ key: 'undo', label: tr('sel.undoSelected', { n: selUndoRows.length }), run: () => runSelAction('undo') })
+        }
+        batchMenuItems.push({ key: 'copy', label: tr('sel.copyList'), run: () => runSelAction('copy') })
+      }
+      if (invalidSel.length) {
+        batchMenuItems.push({ key: 'invalid', label: tr('sel.removeInvalid'), run: () => runSelAction('invalid') })
+      }
+
+      // 回执里的「清空输入框」：面板只经 setDraft 写输入框，读不到里面现在是什么，
+      // 所以先问一次；输入框在别的会话时不做假动作。
+      function clearFilled() {
+        const inputActions = findInputActions()
+        if (!inputActions || typeof inputActions.setDraft !== 'function') {
+          flash(tr('hint.noInput'))
+          return
+        }
+        try {
+          inputActions.setDraft('')
+          store.sedimentForceNext = true
+          setReceiptAsk(false)
+          setReceipt(null)
+          flash(tr('sel.receiptCleared'))
+        } catch (error) {
+          flash(tr('hint.failed', { message: String((error && error.message) || error) }))
+        }
+      }
+
+      function copyReceiptLines() {
+        if (!receipt || !receipt.lines) { flash(tr('sel.copyEmpty')); return }
+        copyToClipboard(receipt.lines).then((ok) => flash(ok
+          ? tr('sel.copyDone', { n: receipt.count || 0 })
+          : tr('hint.copyFailed')))
+      }
+
+      // 批次指令填入后记一条回执：只写面板看得见的事（填了几份、什么时候、是否发送）。
+      function notePromptReceipt(action, rowsList) {
+        const lines = (rowsList || []).map((item) => (view === 'diagnosis'
+          ? String(item.sessionId || '') + ' · ' + caseTitle(item)
+          : String(item.key || '') + ' · ' + String(item.title || '')))
+        setReceipt({
+          kind: 'prompt',
+          view,
+          action,
+          count: (rowsList || []).length,
+          lines: lines.join('\n'),
+          at: Date.now(),
+        })
+        setReceiptAsk(false)
+      }
+
       const runSedPrimary = () => {
         if (sedBatchKind === 'none') return
         if (sedBatchKind === 'restore') {
@@ -5754,14 +6346,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         // 查合入不再生成指令：有写权限时直接查平台并回写台账，结果回到行里。
         if (sedBatchKind === 'check') {
           if (canWrite) checkAllPrs()
-          else openPrompt('check')
+          else openPrompt('check', undefined, 'whole')
           return
         }
         if (sedBatchKind === 'close') {
-          openPrompt('close')
+          openPrompt('close', undefined, 'whole')
           return
         }
-        openPrompt(sedPrimaryKind)
+        openPrompt(sedPrimaryKind, undefined, 'whole')
       }
 
       // 混合队列在「待合入」以外的筛选下也留住查合入入口：主按钮会被 groom 占着。
@@ -5769,73 +6361,185 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         ? h('button', {
           type: 'button', className: 'scp-btn',
           title: tr('sediment.secondary.checkHint'),
-          onClick: () => { if (canWrite) checkAllPrs(); else openPrompt('check') },
+          onClick: () => { if (canWrite) checkAllPrs(); else openPrompt('check', undefined, 'whole') },
         }, tr('sediment.primary.checkAll'))
         : null
 
-      const sedBatch = view === 'sediment' ? h('div', { className: 'scp-batch' },
-        h('span', { className: 'scp-batch-strong' }, tr('sediment.batch.total', { n: sedDrafts.length })),
-        sedUnassessed + sedNeedDecision > 0
-          ? h('span', { className: 'scp-batch-chip', 'data-tone': 'warn' }, String(sedUnassessed + sedNeedDecision) + ' ' + tr('sediment.filter.decision'))
-          : null,
-        sedDecided > 0
-          ? h('span', { className: 'scp-batch-chip', 'data-tone': 'accent' }, String(sedDecided) + ' ' + tr('sediment.filter.pr'))
-          : null,
-        sedPrOpen + sedPrMerged > 0
-          ? h('span', { className: 'scp-batch-chip', 'data-tone': 'ok' }, String(sedPrOpen + sedPrMerged) + ' ' + tr('sediment.filter.check'))
-          : null,
-        sedNeedRerun > 0
-          ? h('span', { className: 'scp-batch-chip', 'data-tone': 'bad' }, String(sedNeedRerun) + ' ' + tr('sediment.filter.rerun'))
-          : null,
-        sedOldest > 0
-          ? h('span', { className: 'scp-batch-age', 'data-over': sedOldest > 14 ? 'true' : 'false' }, tr('sediment.batch.oldest', { n: sedOldest }))
+      const allChecked = visibleRows.length > 0 && visibleSelected === visibleRows.length
+      const someChecked = visibleSelected > 0 && !allChecked
+      const selectAllControl = h('button', {
+        type: 'button',
+        className: 'scp-row-check',
+        role: 'checkbox',
+        'aria-checked': allChecked ? 'true' : 'false',
+        'data-mixed': someChecked ? 'true' : 'false',
+        'aria-label': tr('sel.all', { n: visibleRows.length }),
+        tabIndex: -1,
+        onClick: selectAllVisible,
+      }, h('span', { className: 'scp-row-check-box', 'aria-hidden': 'true' }, allChecked ? '✓' : ''))
+
+      const selChips = []
+      if (outsideSel > 0) {
+        selChips.push(h('span', { key: 'outside', className: 'scp-batch-chip', 'data-tone': 'gray' }, tr('sel.outside', { n: outsideSel })))
+      }
+      if (invalidSel.length) {
+        selChips.push(h('span', { key: 'invalid', className: 'scp-batch-chip', 'data-tone': 'bad' }, tr('sel.invalid', { n: invalidSel.length })))
+      }
+
+      const receiptMine = receipt && (receipt.view || 'sediment') === view
+      const receiptBar = receiptMine ? h('div', { className: 'scp-receipt', role: 'status' },
+        h('span', { className: 'scp-receipt-strong' }, receipt.kind === 'write'
+          ? (receipt.undone
+            ? tr('sel.receiptRestored', { state: tr('sediment.prState.' + receipt.prev) })
+            : tr('sel.receiptWrite', { label: receipt.label }))
+          : tr('sel.receiptPrompt', { action: receipt.action, n: receipt.count })),
+        receipt.kind === 'prompt'
+          ? h('span', { className: 'scp-chip', 'data-tone': 'warn' }, tr('sel.receiptUnsent'))
           : null,
         h('span', { className: 'scp-spacer' }),
-        sedDecided > 0 && sedBatchKind !== 'pr'
+        receipt.kind === 'write' && !receipt.undone
           ? h('button', {
-            type: 'button', className: 'scp-btn',
-            onClick: () => openPrompt('pr'),
-          }, tr('sediment.secondary.pr', { n: sedDecided }))
+            type: 'button', className: 'scp-btn', disabled: checkBusy === receipt.key,
+            onClick: undoMark,
+          }, tr('sel.receiptUndo'))
           : null,
-        sedCheckSecondary,
+        receipt.kind === 'prompt'
+          ? (receiptAsk
+            ? h('span', { key: 'ask', className: 'scp-batch-note' }, tr('sel.receiptClearAsk'))
+            : null)
+          : null,
+        receipt.kind === 'prompt'
+          ? (receiptAsk
+            ? h('button', { key: 'yes', type: 'button', className: 'scp-btn', onClick: clearFilled }, tr('sel.receiptClearYes'))
+            : h('button', { key: 'clear', type: 'button', className: 'scp-btn', onClick: () => setReceiptAsk(true) }, tr('sel.receiptClear')))
+          : null,
+        receipt.kind === 'prompt' && receiptAsk
+          ? h('button', { key: 'no', type: 'button', className: 'scp-btn scp-btn--ghost', onClick: () => setReceiptAsk(false) }, tr('sediment.prompt.cancel'))
+          : null,
+        receipt.kind === 'prompt'
+          ? h('button', { type: 'button', className: 'scp-btn scp-btn--ghost', onClick: copyReceiptLines }, tr('sel.receiptCopy'))
+          : null,
         h('button', {
-          type: 'button',
-          className: 'scp-btn scp-btn--primary',
-          disabled: sedBatchKind === 'none' || checkBusy === '__all__',
-          onClick: runSedPrimary,
-        }, checkBusy === '__all__'
-          ? (checkRun && checkRun.active && checkRun.total > 0
-            ? tr('sediment.checkingProgress', {
-              n: Math.min(checkRun.seen, checkRun.total),
-              m: checkRun.total,
-            })
-            : tr('sediment.refreshing'))
-          : sedPrimaryLabel),
-        sedUndoRows.length >= 2
-          ? h('button', {
-            type: 'button', className: 'scp-btn scp-btn--ghost',
-            title: tr('sediment.undo.batchHint'),
-            onClick: openBatchUndo,
-          }, tr('sediment.undo.batchAction', { n: sedUndoRows.length }))
-          : null) : null
+          type: 'button', className: 'scp-btn scp-btn--ghost', 'aria-label': tr('sel.receiptDismiss'),
+          onClick: () => { setReceipt(null); setReceiptAsk(false) },
+        }, '×')) : null
 
-      // 诊断视图的批量沉淀：只在「可沉淀」筛选下出现，范围就是当前筛选（含搜索词）。
-      // 只生成指令、不写 trace 与知识库；单条动作仍在右列详情里。
-      const diagBatch = view === 'diagnosis' && diagSedRows.length ? h('div', {
+      const batchMenuEl = batchMenu ? h('div', { className: 'scp-batch-menu', 'data-batch-menu': 'true' },
+        batchMenuItems.length
+          ? batchMenuItems.map((item) => h('button', {
+            key: item.key, type: 'button', className: 'scp-batch-item',
+            onClick: () => { setBatchMenu(false); item.run() },
+          }, item.label))
+          : h('div', { className: 'scp-batch-empty' }, tr('sel.menuEmpty'))) : null
+
+      const primaryBlocked = staleBlocked && (view === 'sediment' || selDiagSed.length > 0)
+      const checkingLabel = checkBusy === '__all__' && checkRun && checkRun.active && checkRun.total > 0
+        ? tr('sel.checkingSelected', { n: Math.min(checkRun.seen, checkRun.total), m: checkRun.total })
+        : ''
+      const selBar = h('div', { className: 'scp-batch', 'data-kind': 'selection', role: 'group', 'aria-label': tr('sel.count', { n: selectedCount }) },
+        h('div', { className: 'scp-batch-line' },
+          selectAllControl,
+          h('span', { className: 'scp-batch-strong' }, tr('sel.count', { n: selectedCount })),
+          h('span', { className: 'scp-batch-note' }, tr('sel.inFilter', { n: selVisibleRows.length })),
+          selChips),
+        h('div', { className: 'scp-batch-line' },
+          h('button', {
+            type: 'button', className: 'scp-btn scp-btn--ghost',
+            onClick: () => setOnlySel((current) => Object.assign({}, current, { [view]: !current[view] })),
+          }, onlySelOn ? tr('sel.showAll') : tr('sel.only')),
+          h('button', {
+            type: 'button', className: 'scp-btn scp-btn--ghost',
+            onClick: clearSelection,
+          }, tr('sel.clear')),
+          staleBlocked
+            ? h('span', { className: 'scp-batch-note', style: { color: 'var(--scp-warn)' } }, tr('sel.stale'))
+            : null,
+          h('span', { className: 'scp-spacer' }),
+          h('button', {
+            type: 'button',
+            className: 'scp-btn scp-btn--primary',
+            disabled: primaryBlocked || checkBusy === '__all__',
+            onClick: runSelPrimary,
+          }, checkingLabel || selPrimaryLabel()),
+          h('button', {
+            type: 'button', className: 'scp-btn', 'data-batch-menu': 'true',
+            onClick: () => setBatchMenu((value) => !value),
+          }, tr('sel.more') + ' ▾'),
+          batchMenuEl))
+
+      const sedWholeBatch = h('div', { className: 'scp-batch' },
+        h('div', { className: 'scp-batch-line' },
+          selectAllControl,
+          h('span', { className: 'scp-batch-strong' }, tr('sediment.batch.total', { n: sedDrafts.length })),
+          sedUnassessed + sedNeedDecision > 0
+            ? h('span', { className: 'scp-batch-chip', 'data-tone': 'warn' }, String(sedUnassessed + sedNeedDecision) + ' ' + tr('sediment.filter.decision'))
+            : null,
+          sedDecided > 0
+            ? h('span', { className: 'scp-batch-chip', 'data-tone': 'accent' }, String(sedDecided) + ' ' + tr('sediment.filter.pr'))
+            : null,
+          sedPrOpen + sedPrMerged > 0
+            ? h('span', { className: 'scp-batch-chip', 'data-tone': 'ok' }, String(sedPrOpen + sedPrMerged) + ' ' + tr('sediment.filter.check'))
+            : null,
+          sedNeedRerun > 0
+            ? h('span', { className: 'scp-batch-chip', 'data-tone': 'bad' }, String(sedNeedRerun) + ' ' + tr('sediment.filter.rerun'))
+            : null,
+          sedOldest > 0
+            ? h('span', { className: 'scp-batch-age', 'data-over': sedOldest > 14 ? 'true' : 'false' }, tr('sediment.batch.oldest', { n: sedOldest }))
+            : null),
+        h('div', { className: 'scp-batch-line' },
+          h('span', { className: 'scp-spacer' }),
+          sedDecided > 0 && sedBatchKind !== 'pr'
+            ? h('button', {
+              type: 'button', className: 'scp-btn',
+              onClick: () => openPrompt('pr', undefined, 'whole'),
+            }, tr('sediment.secondary.pr', { n: sedDecided }))
+            : null,
+          sedCheckSecondary,
+          h('button', {
+            type: 'button',
+            className: 'scp-btn scp-btn--primary',
+            disabled: sedBatchKind === 'none' || checkBusy === '__all__',
+            onClick: runSedPrimary,
+          }, checkBusy === '__all__'
+            ? (checkRun && checkRun.active && checkRun.total > 0
+              ? tr('sediment.checkingProgress', {
+                n: Math.min(checkRun.seen, checkRun.total),
+                m: checkRun.total,
+              })
+              : tr('sediment.refreshing'))
+            : sedPrimaryLabel),
+          sedUndoRows.length >= 2
+            ? h('button', {
+              type: 'button', className: 'scp-btn scp-btn--ghost',
+              title: tr('sediment.undo.batchHint'),
+              onClick: () => openBatchUndo(),
+            }, tr('sediment.undo.batchAction', { n: sedUndoRows.length }))
+            : null))
+
+      // 诊断视图的批量沉淀：未选时只在「可沉淀」筛选下出现，范围是当前筛选（含搜索词）；
+      // 已选时范围是选择集，主操作写「沉淀所选 n 单」。都只生成指令，不写 trace 与知识库。
+      const diagWholeBatch = filter === 'sediment' && diagSedRows.length ? h('div', {
         className: 'scp-batch', 'data-kind': 'sediment-batch', role: 'group', 'aria-label': tr('diag.batch.fill'),
       },
-        h('span', { className: 'scp-batch-strong' }, tr('diag.batch.count', { n: diagSedRows.length })),
-        h('span', { className: 'scp-batch-age' }, tr('diag.batch.scope')),
-        searchText.trim() ? h('span', { className: 'scp-batch-chip', 'data-tone': 'gray' }, tr('diag.batch.search', { q: searchText.trim() })) : null,
-        data && data.capabilities && data.capabilities.canWrite === false
-          ? h('span', { className: 'scp-batch-chip', 'data-tone': 'warn' }, tr('diag.batch.readonly'))
-          : null,
-        h('span', { className: 'scp-spacer' }),
-        h('button', {
-          type: 'button',
-          className: 'scp-btn scp-btn--primary',
-          onClick: openBatchSediment,
-        }, tr('diag.batch.fill'))) : null
+        h('div', { className: 'scp-batch-line' },
+          selectAllControl,
+          h('span', { className: 'scp-batch-strong' }, tr('diag.batch.count', { n: diagSedRows.length })),
+          h('span', { className: 'scp-batch-chip', 'data-tone': 'gray' }, tr('sel.scopeAll')),
+          h('span', { className: 'scp-batch-age' }, tr('diag.batch.scope')),
+          searchText.trim() ? h('span', { className: 'scp-batch-chip', 'data-tone': 'gray' }, tr('diag.batch.search', { q: searchText.trim() })) : null,
+          data && data.capabilities && data.capabilities.canWrite === false
+            ? h('span', { className: 'scp-batch-chip', 'data-tone': 'warn' }, tr('diag.batch.readonly'))
+            : null),
+        h('div', { className: 'scp-batch-line' },
+          h('span', { className: 'scp-spacer' }),
+          h('button', {
+            type: 'button',
+            className: 'scp-btn scp-btn--primary',
+            onClick: () => openBatchSediment(),
+          }, tr('diag.batch.fill')))) : null
+
+      const sedBatch = view === 'sediment' ? (selectedCount ? selBar : sedWholeBatch) : null
+      const diagBatch = view === 'diagnosis' ? (selectedCount ? selBar : diagWholeBatch) : null
 
       const sedHistory = sedDoc && Array.isArray(sedDoc.history) ? sedDoc.history.slice(0, 5) : []
       const sedListInner = !sedDoc
@@ -5869,7 +6573,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                     : null,
                   item.at ? h('span', { className: 'scp-sed-hint' }, formatTime(item.at) || item.at) : null)))
               : null)
-          : sedSorted.length === 0
+          : visibleRows.length === 0
             ? h('div', { className: 'scp-pal-empty' }, tr('palette.empty'))
             : (() => {
               const order = ['groom', 'pr', 'check', 'other']
@@ -5880,7 +6584,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 other: tr('sediment.group.other'),
               }
               const grouped = {}
-              sedSorted.forEach((draft, index) => {
+              visibleRows.forEach((draft, index) => {
                 const group = sedGroupOf(draft)
                 if (!grouped[group]) grouped[group] = []
                 grouped[group].push({ draft, index })
@@ -5892,16 +6596,23 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 grouped[group].map(({ draft, index }) => {
                   const age = draft.ageDays
                   const prShared = draft.pr ? (sedPrCounts[sedPrKey(draft)] || 0) : 0
+                  const checked = selSet.has(String(draft.key || ''))
                   // 查合入进行中：已到的行显示状态或失败原因，还没到的标「查询中」。
                   const runState = checkRun && checkRun.states ? checkRun.states[draft.key] : null
                   const runPending = !runState && checkRun && checkRun.active
                     && checkRun.targets && checkRun.targets[draft.key] === true
-                  return h('button', {
-                    key: draft.key,
+                  const rowButton = h('button', {
+                    key: 'row',
                     type: 'button',
                     className: 'scp-sed-row',
                     'data-on': index === sedSel ? 'true' : 'false',
-                    onClick: () => setSedSel(index),
+                    'data-sel': checked ? 'true' : 'false',
+                    onClick: (event) => {
+                      const e = event || {}
+                      if (e.shiftKey) toggleRowSelection(draft, index, 'range')
+                      else if (e.metaKey || e.ctrlKey) toggleRowSelection(draft, index, 'toggle')
+                      setSedSel(index)
+                    },
                     onDoubleClick: () => runSedNext(draft),
                     onKeyDown: (event) => {
                       if (event.key === 'Enter') {
@@ -5943,6 +6654,22 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                         draft.source && draft.source.sessionId
                           ? h('span', {}, draft.source.sessionId)
                           : null)))
+                  return h('div', { key: draft.key, className: 'scp-row-wrap' },
+                    h('button', {
+                      key: 'check',
+                      type: 'button',
+                      className: 'scp-row-check',
+                      role: 'checkbox',
+                      'aria-checked': checked ? 'true' : 'false',
+                      'aria-label': tr('sel.check', { title: draft.title || draft.key }),
+                      tabIndex: -1,
+                      onClick: (event) => {
+                        const e = event || {}
+                        if (typeof e.stopPropagation === 'function') e.stopPropagation()
+                        toggleRowSelection(draft, index, e.shiftKey ? 'range' : 'toggle')
+                      },
+                    }, h('span', { className: 'scp-row-check-box', 'aria-hidden': 'true' }, checked ? '✓' : '')),
+                    rowButton)
                 })))
             })()
 
@@ -6057,7 +6784,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               disabled: prRowBusy,
               // 只读档位不写台账，但可以生成查证指令；与批次条和 Enter 的行为一致。
               title: canWrite ? undefined : tr('sediment.check.readonly'),
-              onClick: () => { if (canWrite) checkPr(sedPick.key); else openPrompt('check') },
+              onClick: () => { if (canWrite) checkPr(sedPick.key); else openPrompt('check', undefined, 'single') },
             }, checkBusy === sedPick.key ? tr('sediment.refreshing') : tr('sediment.check')),
             sedPick.pr.state !== 'merged'
               ? h('button', {
@@ -6187,14 +6914,32 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       }
       const isBatchPrompt = promptKind === 'sedimentBatch' && !!batchSed
       const isFallbackPrompt = promptKind === 'fallback' && !!promptFallback
+      const scopedActive = !!(scopedPrompt && scopedPrompt.kind === promptKind)
       const promptText = isBatchPrompt
         ? String(batchSed.text || '')
         : (isFallbackPrompt
           ? String(promptFallback.text || '')
-          : (promptKind && sedDoc && sedDoc.prompts ? String(sedDoc.prompts[promptKind] || '') : ''))
+          : (promptKind && (scopedActive
+            ? (scopedPrompt.prompts && scopedPrompt.prompts[promptKind] ? String(scopedPrompt.prompts[promptKind]) : '')
+            : (sedDoc && sedDoc.prompts ? String(sedDoc.prompts[promptKind] || '') : ''))))
       const promptDetail = isBatchPrompt || isFallbackPrompt
         ? ''
-        : (promptKind && sedDoc && sedDoc.prompts ? String(sedDoc.prompts[promptKind + 'Detail'] || '') : '')
+        : (promptKind && (scopedActive
+          ? (scopedPrompt.prompts && scopedPrompt.prompts[promptKind + 'Detail'] ? String(scopedPrompt.prompts[promptKind + 'Detail']) : '')
+          : (sedDoc && sedDoc.prompts ? String(sedDoc.prompts[promptKind + 'Detail'] || '') : '')))
+
+      function promptFillMeta() {
+        if (isBatchPrompt && batchSed && batchSed.rows) {
+          return { receipt: { action: tr('sel.sedimentSelected', { n: batchSed.rows.length }), rows: batchSed.rows } }
+        }
+        if (isFallbackPrompt && promptFallback && promptFallback.rows) {
+          return { receipt: { action: promptFallback.head || tr('sediment.undo.batchTitle'), rows: promptFallback.rows } }
+        }
+        if (scopedActive && selDraftRows.length) {
+          return { receipt: { action: promptTitle[promptKind] || promptKind, rows: selDraftRows } }
+        }
+        return undefined
+      }
       const promptDecided = sedDrafts.filter((draft) => draft.state === 'decided')
       const promptModal = promptKind ? h('div', {
         className: 'scp-veil',
@@ -6205,7 +6950,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             h('div', { style: { flex: '1 1 auto', minWidth: 0 } },
               h('div', { className: 'scp-modal-title' }, promptTitle[promptKind] || promptKind),
               h('div', { className: 'scp-modal-sub' }, isBatchPrompt
-                ? tr('diag.batch.sub', { n: batchSed.count || 0 })
+                ? tr(batchSed.selection ? 'diag.batch.subSelected' : 'diag.batch.sub', { n: batchSed.count || 0 })
                 : (isFallbackPrompt
                   ? ((promptFallback && promptFallback.sub) || tr('sediment.fallback.sub'))
                   : (promptKind === 'pr' ? (sedTargetLabel || tr('sediment.noTarget')) : tr('sediment.prompt.sub'))))),
@@ -6231,6 +6976,12 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               : h('div', { className: 'scp-warn-list' },
                 isBatchPrompt ? h('div', {}, tr('diag.batch.flow')) : h('div', {}, tr('sediment.prompt.flow')),
                 isBatchPrompt ? h('div', {}, tr('diag.batch.boundary')) : h('div', {}, tr('sediment.prompt.boundary'))),
+            scopedActive && scopedPrompt.loading
+              ? h('div', { className: 'scp-sed-hint' }, tr('sel.scopedLoading'))
+              : null,
+            scopedActive && scopedPrompt.error
+              ? h('div', { className: 'scp-form-error' }, tr('sel.scopedFailed', { reason: scopedPrompt.error }))
+              : null,
             promptText
               ? h('div', { className: 'scp-prompt' }, promptText)
               : h('div', { className: 'scp-sed-hint' }, tr('sediment.prompt.empty')),
@@ -6249,8 +7000,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               onClick: () => copyAndFlash(promptText),
             }, tr('sediment.prompt.copy')),
             h('button', {
-              type: 'button', className: 'scp-btn scp-btn--primary', disabled: !promptText,
-              onClick: () => { if (promptText) { closePrompt(); fillDraft(promptText) } },
+              type: 'button', className: 'scp-btn scp-btn--primary',
+              disabled: !promptText || (scopedActive && scopedPrompt.loading),
+              onClick: () => { if (promptText) { const meta = promptFillMeta(); closePrompt(); fillDraft(promptText, meta) } },
             }, tr('sediment.prompt.fill'))))) : null
 
       // 目标选择（第一次提 PR 时出现）
@@ -6405,6 +7157,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             h('button', { type: 'button', className: 'scp-btn scp-btn--ghost', onClick: () => refresh(true) }, tr('action.refresh'))) : null,
           loadFailed ? null : sedBatch,
           loadFailed ? null : diagBatch,
+          loadFailed ? null : receiptBar,
           loadFailed
             ? h('div', { className: 'scp-pal-main scp-pal-main--empty' },
               h('div', { className: 'scp-pal-error scp-pal-error--center' },
@@ -6426,8 +7179,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               ' 搜索 · ',
               view === 'diagnosis' ? h('span', { className: 'scp-kbd' }, shortcutKeys('command')) : null,
               view === 'diagnosis' ? ' 命令 · ' : null,
+              selectedCount ? h('span', { className: 'scp-kbd' }, 'Cmd/Ctrl+Z') : null,
+              selectedCount ? ' 撤销选择 · ' : null,
               h('span', { className: 'scp-kbd' }, 'Esc'),
-              ' 关闭'),
+              selectedCount ? ' 清空选择' : ' 关闭'),
             h('span', { className: 'scp-spacer' }),
             view === 'sediment' ? h('span', { className: 'scp-foot-note' }, sedTargetHint) : null,
             h('span', { className: 'scp-version' }, 'v' + PLUGIN_VERSION)),
