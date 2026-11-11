@@ -1,13 +1,18 @@
 id: hccn-tool-qos-pfc-tc-dscp
 type: tool
-title: hccn_tool（PFC / TC / DSCP 队列流控：-pfc -prio_tc -dscp_to_tc -tc_cfg）
-summary: hccn_tool 查改 PFC 优先级位图、优先级到 TC、DSCP 到 TC 与 TC 缓冲水线；链路反压落在哪个优先级、哪块缓冲，靠这几组输出对齐。
+title: hccn_tool（PFC / TC / DSCP 队列流控：-pfc -prio_tc -dscp_to_tc -tc_cfg -tc_qos）
+summary: hccn_tool 查改 PFC 优先级位图、优先级与 DSCP 到 TC 的映射、TC 缓冲水线与 TC 调度带宽，并取 PFC 反压时长与 TC 包统计。
 sources:
 - type: official-doc
   url: https://www.hiascend.com/document/detail/zh/HDK/260RCx/A2/A2HCCN/a2hccntoolrcx-005.html
   version: HDK 26.0.RCx《HCCN Tool 接口参考》信息查询与配置功能两章：-pfc / -prio_tc / -dscp_to_tc / -tc_cfg 各条目（Atlas A2、A3）
   fetched_at: 2026-11-12
   verification: auto-extracted
+- type: official-doc
+  url: Atlas A3 中心推理和训练硬件 25.5.x HCCN Tool 接口参考（华为技术有限公司，文档版本 06，2026-10-30）
+  version: 文档版本 06（2026-10-30）第 2 章 2.16–2.20 / 2.61 / 2.62 / 2.77、第 3 章 3.8–3.11 / 3.52、第 6 章 6.6–6.7、第 7 章 7.6–7.7
+  fetched_at: 2026-11-12
+  verification: cross-checked-source
 - type: engineer-input
   engineer: 现场反馈（hccn_tool 随昇腾 NPU 驱动发布，1823 网卡自身驱动不实现该工具）
   input_session: 2026-11-12 会话（1823 网卡队列、PFC 与 DSCP 文档整理）
@@ -19,6 +24,7 @@ applies_to:
   - A3-910C
   versions:
     hdk: 26.0.RCx
+    a3_hccn_tool_doc: 06（25.5.x）
   categories:
   - interrupt
   - performance
@@ -27,46 +33,71 @@ related_references:
 status: active
 last_verified: 2026-11-12
 content:
-  tool_name: hccn_tool 的队列流控面（PFC 优先级位图 / 优先级到 TC / DSCP 到 TC / TC 缓冲与水线）
-  invocation: hccn_tool -i <dev_id> <-pfc|-prio_tc|-dscp_to_tc|-tc_cfg> -g（查询）或 -s（设置）。dev_id 取 npu-smi info 输出的 NPU ID；工具随昇腾 NPU 驱动发布，只在昇腾驱动接管的 RoCE 网口上可用，1823 网卡自身的驱动不含它。网口 link 状态为 down 时查询不支持。用于通信丢包、吞吐下降、PFC 是否真的生效这类问题：PFC 按优先级使能、缓冲按 TC 分配，两边粒度不同，必须三条命令对齐着看。
+  tool_name: hccn_tool 的队列流控面（PFC 优先级位图 / 优先级与 DSCP 到 TC / TC 缓冲与水线 / TC 调度与带宽 / PFC 与 TC 统计）
+  invocation: 'hccn_tool -i <芯片ID> <-pfc|-prio_tc|-dscp_to_tc|-tc_cfg|-tc_qos|-pfc_stat|-tc_stat|-cur_tc_buf> -g（查询）或 -s（设置），统计类用 -c 清零。工具随昇腾 NPU 驱动发布，只在昇腾驱动接管的 RoCE 网口上可用，1823 网卡自身的驱动不含它。用于通信丢包、吞吐下降、PFC 是否真的生效这类问题：PFC 按优先级使能、缓冲与调度按 TC 分配，两层粒度不同，必须几条命令对齐着看。A3 25.5.x 文档把 -i 定义为芯片物理 ID（Atlas 9000 A3 SuperPoD 集群 0~7，Atlas 900 A3 SuperPoD、800T A3、800I A3、A200T A3 Box8 为 0~15）；A2 在线文档写作软件的逻辑 ID、取 npu-smi info 的 NPU ID——两处口径不同，按现场版本文档对，先跑一条 -g 确认能查到设备。'
   output_meaning:
   - -pfc -g：给出 priority 0–7 与 enabled 0/1 两行，表示哪些优先级队列打开了 PFC；默认位图 0,0,0,0,1,0,0,0（仅优先级队列 4）
   - -prio_tc -g：给出 priority 0–7 与 TC 两行，表示每个优先级落到哪个 TC；默认 3,3,3,2,2,1,0,3，即优先级 0、1、2、7 进 TC3，3、4 进 TC2，5 进 TC1，6 进 TC0
   - -dscp_to_tc -g：逐行列出 DSCP 0–63 对应的 TC，加 dscp <N> 只查一条；默认 DSCP 0 对应 TC3、DSCP 33 对应 TC2、其余 DSCP 对应 TC0
   - -tc_cfg -g：给出 TC id 0–7 与 Buffer、Up waterline、Low waterline 三行，缓冲与水线按 TC 分配；实际只用前 4 个 TC，后 4 个缓冲为 0
+  - -tc_qos -g：给出 TC Bandwidth 与 TSA_MAP 两行，前者是每个 TC 的带宽百分比、后者是每个 TC 的调度算法（ets 或 strict）；示例 TC Bandwidth 0% 30% 30% 40% 0% 0% 0% 0%、TSA_MAP 0:strict 1:ets 2:ets 3:ets 4:strict 5:strict 6:strict 7:strict
+  - -pfc_stat -g：按优先级给出 tx_pfcN_duration_time 与 rx_pfcN_duration_time（对端停发 / 本端停发的累计时长，ms），以及 tx_pfcN_duration_warn_cnt 与 tx_pfcN_duration_err_cnt（PFC 风暴 watchdog 超过告警 / 差错门限的次数）
+  - -tc_stat -g：按 TC 给出 tc_tx_pkt_num[i] 与 tc_rx_pkt_num[i]，即该 TC 的累计收发报文数；重启、复位后清零
+  - -cur_tc_buf -g tc <N>：给出 Current TC used buffer，即该 TC 已记录的最大占用；命令调用后会做值清除，属于读一次少一次的证据；TC 4~7 未使能，不支持查询
   pitfalls:
   - PFC 按优先级使能、缓冲与水线按 TC 分配，两层粒度不同：只查 -pfc 会漏掉「使能的那个优先级映射到的 TC 缓冲为 0」这种配置没落地的情况，要再跑 -prio_tc 与 -tc_cfg 对一遍
-  - TC 取值只有 0–3（-dscp_to_tc -s 的 tc 参数与 -tc_cfg 的前 4 个 TC），交换机侧是 8 个 TC（0–7）；两端能对齐的是优先级与 PFC 使能位，不是 TC 编号
+  - TC 取值只有 0–3（-dscp_to_tc -s 的 tc 参数、-tc_qos 的 tsa 与 tcbw 都只到 3），交换机侧是 8 个 TC（0–7）；两端能对齐的是优先级与 PFC 使能位，不是 TC 编号
   - -pfc -s 与 -prio_tc -s 会触发网口 link 闪断，跳为 down 后自动恢复；建议等 5 秒以上、link 回到 up 之后再做验证，并在业务低峰执行
   - -pfc -s 同时使能超过 4 位报 The number of pfc priority queues exceeds the maximum value(4).
-  - -prio_tc -s 用到的 TC 数少于 TC 服务质量里按 ETS 配置的 TC 数时报 Get invalid parameters, please check tc_qos config.；反过来 prio_tc 没配好就配 TC 服务质量报 Get invalid parameters, please check prio_tc config.
+  - ets 调度数量与 prio_tc 使用的 TC 数量必须对齐：-tc_qos 里 tsa 为 ets 的 TC 数量超过 prio_tc 映射用到的 TC 数报 Get invalid parameters, please check prio_tc config.；反过来 -prio_tc -s 把 TC 数量改小到少于 ets 数量时报 Get invalid parameters, please check tc_qos config.。前一种先把 prio_tc 的 map 扩到相同或更多 TC，后一种先用 -tc_qos 减少 ets 数量
+  - -tc_qos 的配置只在 NPU 网卡作为发送端时生效；网口 link down 时不支持配置。重启或 NPU 热复位后持久化配置要等网口 up 才恢复，恢复失败时 hccn_config.log 会出现 Failed to restore the tc_qos configuration.，按正常现象处理，等 link 稳定 up 后重配或走配置恢复
+  - -tc_qos -s 全设成 strict 时，查回来是 TC Bandwidth 0% 0% 0% 0% 0% 0% 0% 100%、TSA_MAP 全 strict；ets 的带宽不能为 0 且各 ets 之和等于 100，strict 的带宽必须写 0
   - 改完 prio_tc 会与 dscp_to_tc 冲突，表现为 LLDP 返回空、网络健康状态 Receive timeout、ping 失败；处置是把 dscp_to_tc 的 TC 调到不大于 prio_tc map 的最大值
   - -tc_cfg -s 的约束：所有 TC 缓冲总和不超过 1797120 B，单个非零缓冲不小于 6272 B，下水线 = 上水线 − 6144 B，配置值按 128 B 取整；后 4 个 TC 缓冲为 0 时水线也要配 0
+  - 配置类命令（-pfc -s、-prio_tc -s、-dscp_to_tc -s、-tc_cfg -s、-tc_qos -s、各类 -c）在非 root 运行用户组下不支持，查询类不受此限；容器与直通场景的支持矩阵以文档第 3 章各命令的表为准
   commands:
   - name: 查 PFC 使能位图
-    cmd: hccn_tool -i <dev_id> -pfc -g
+    cmd: hccn_tool -i <芯片ID> -pfc -g
     when: 怀疑 PFC 没生效、或确认业务优先级是否真的开了流控
   - name: 查优先级到 TC 的映射
-    cmd: hccn_tool -i <dev_id> -prio_tc -g
+    cmd: hccn_tool -i <芯片ID> -prio_tc -g
     when: 确认业务优先级落到哪个 TC，以及该 TC 有没有缓冲
   - name: 查 DSCP 到 TC 的映射
-    cmd: hccn_tool -i <dev_id> -dscp_to_tc -g（单条用 -g dscp <N>）
+    cmd: hccn_tool -i <芯片ID> -dscp_to_tc -g（单条用 -g dscp <N>）
     when: 报文标记的 DSCP 与实际落点对不上，或改过 prio_tc 之后查冲突
   - name: 查 TC 缓冲与 PFC 水线
-    cmd: hccn_tool -i <dev_id> -tc_cfg -g
+    cmd: hccn_tool -i <芯片ID> -tc_cfg -g
     when: 判断被反压的 TC 有没有分配缓冲、水线是否配反
+  - name: 查 TC 调度算法与带宽分配
+    cmd: hccn_tool -i <芯片ID> -tc_qos -g
+    when: 吞吐不对、怀疑某个 TC 分到的带宽过高或过低，或查 ets 与 strict 的分布
+  - name: 查每个优先级的 PFC 反压时长与风暴计数
+    cmd: hccn_tool -i <芯片ID> -pfc_stat -g
+    when: PFC 是否真在反压、反压集中在哪个优先级、有没有触发风暴告警
+  - name: 查每个 TC 的收发报文数
+    cmd: hccn_tool -i <芯片ID> -tc_stat -g
+    when: 确认业务流量实际走的是哪个 TC（读数前先记基线，重启会清零）
+  - name: 查 TC 峰值缓冲占用
+    cmd: hccn_tool -i <芯片ID> -cur_tc_buf -g tc <N>
+    when: 判断某 TC 是否接近缓冲上限；读一次即清零，取证前先记下读数
   - name: 改 PFC 使能位图
-    cmd: hccn_tool -i <dev_id> -pfc -s bitmap 0,0,0,0,1,0,0,0
+    cmd: hccn_tool -i <芯片ID> -pfc -s bitmap 0,0,0,0,1,0,0,0
     when: 需要把流控开在与交换机对齐的优先级上；最多同时使能 4 位，改完等 link 恢复
   - name: 改优先级到 TC 的映射
-    cmd: hccn_tool -i <dev_id> -prio_tc -s map 3,3,3,2,2,1,0,3
+    cmd: hccn_tool -i <芯片ID> -prio_tc -s map 3,3,3,2,2,1,0,3
     when: 优先级落点与交换机规划不一致；8 个值依次对应优先级 0–7，TC 取值 0–3，改完等 link 恢复
   - name: 改单条 DSCP 到 TC
-    cmd: hccn_tool -i <dev_id> -dscp_to_tc -s dscp <N> tc <M>
+    cmd: hccn_tool -i <芯片ID> -dscp_to_tc -s dscp <N> tc <M>
     when: 报文标记的 DSCP 与 TC 的映射需要与交换机对齐
   - name: 改 TC 缓冲与水线
-    cmd: hccn_tool -i <dev_id> -tc_cfg -s size 816512,81792,81792,816384,0,0,0,0 waterline 774528,45952,45952,780672,0,0,0,0
+    cmd: hccn_tool -i <芯片ID> -tc_cfg -s size 816512,81792,81792,816384,0,0,0,0 waterline 774528,45952,45952,780672,0,0,0,0
     when: 无损优先级所在 TC 的缓冲不足或水线配反；改前先 -g 记录原值与总量上限
+  - name: 改 TC 调度算法与带宽
+    cmd: hccn_tool -i <芯片ID> -tc_qos -s tsa 0:strict,1:ets,2:ets,3:ets tcbw 0:0,1:30,2:30,3:40
+    when: 需要给 ets 的 TC 分配比例带宽、或把某个 TC 改成严格优先；ets 数量不能超过 prio_tc 用到的 TC 数
+  - name: 清零 PFC 与 TC 统计
+    cmd: hccn_tool -i <芯片ID> -pfc_stat -c；hccn_tool -i <芯片ID> -tc_stat -c
+    when: 复测前清基线；清之前先把读数记录下来，否则证据丢失
   - name: 回退到文档默认
-    cmd: hccn_tool -i <dev_id> -pfc -s bitmap 0,0,0,0,1,0,0,0；hccn_tool -i <dev_id> -prio_tc -s map 3,3,3,2,2,1,0,3
-    when: 配置试错后恢复；单条 DSCP 用 -dscp_to_tc -s 改回原值，缓冲与水线照改前 -g 的记录重设
+    cmd: hccn_tool -i <芯片ID> -pfc -s bitmap 0,0,0,0,1,0,0,0；hccn_tool -i <芯片ID> -prio_tc -s map 3,3,3,2,2,1,0,3
+    when: 配置试错后恢复；单条 DSCP 用 -dscp_to_tc -s 改回原值，缓冲、水线与 TC 调度照改前 -g 的记录重设
