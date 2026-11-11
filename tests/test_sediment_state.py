@@ -236,7 +236,8 @@ class StateTest(SedimentCase):
         self.assertEqual(row["ageDays"], 16)
         self.assertEqual(row["ageSource"], "created_at")
         self.assertEqual(row["next"]["kind"], "groom")
-        self.assertEqual(row["next"]["prompt"], payload["prompts"]["groom"])
+        # 批次指令只在顶层 prompts 出一份，行内不再复制（payload 不随行数平方增长）。
+        self.assertNotIn("prompt", row["next"])
         self.assertIn("knowledge-groom", payload["prompts"]["groom"])
         self.assertIn("逐条问我，不替我决定", payload["prompts"]["groom"])
         self.assertIn("groom_status.py --decision-prompt", payload["prompts"]["groomDetail"])
@@ -299,7 +300,7 @@ class StateTest(SedimentCase):
         self.assertTrue(row["decisionValid"])
         self.assertEqual(row["decisionBy"], "测试人")
         self.assertEqual(row["next"]["kind"], "pr")
-        self.assertEqual(row["next"]["prompt"], payload["prompts"]["pr"])
+        self.assertNotIn("prompt", row["next"])
         prompt = payload["prompts"]["pr"]
         self.assertIn("origin/main（GitHub）", prompt)
         self.assertIn("new_pattern", prompt)
@@ -645,6 +646,25 @@ class AggregateTest(SedimentCase):
         self.assertEqual(payload["counts"]["overdue"], 1)
         self.assertEqual(payload["counts"]["oldestDays"], 20)
 
+    def test_batch_prompt_is_not_copied_per_row(self):
+        """批次指令只在顶层 prompts 与 primary 各出一份，不随行数复制。
+
+        待提 PR 的批次指令本身是逐条列表；复制进每一行会让 payload 随条目数平方增长。
+        """
+        for index in range(3):
+            key = f"draft-{index}"
+            write_draft(self.repo, key=key, cid=f"D-{index}")
+            write_assessment(self.repo, key, fresh_commit(self.repo),
+                             decision="new_pattern")
+        write_ledger(self.repo, target=GITHUB_TARGET)
+        payload = self.collect()
+        self.assertEqual(payload["counts"]["decided"], 3)
+        for row in payload["drafts"]:
+            self.assertNotIn("prompt", row["next"])
+        prompt = json.dumps(payload["prompts"]["pr"], ensure_ascii=False)[1:-1]
+        blob = json.dumps(payload, ensure_ascii=False)
+        self.assertEqual(blob.count(prompt), 2)
+
     def test_history_reads_last_five_close_log_lines(self):
         log = inbox(self.repo) / ".groom" / "close-log.jsonl"
         log.parent.mkdir(parents=True, exist_ok=True)
@@ -808,8 +828,9 @@ class ClosedDraftQueueTest(SedimentCase):
         self.assertEqual(row["state"], "pr_closed")
         self.assertEqual(row["next"]["kind"], "restore")
         self.assertEqual(row["next"]["label"], "恢复草稿")
-        self.assertIn("mv ", row["next"]["prompt"])
-        self.assertIn(".done", row["next"]["prompt"])
+        # 单行动作指令（恢复命令）逐行不同，放在行的 restore 字段里。
+        self.assertIn("mv ", row["restore"])
+        self.assertIn(".done", row["restore"])
         self.assertFalse(row["undo"]["available"])
 
     def test_pending_pr_does_not_report_trace_mismatch(self):
