@@ -3580,5 +3580,153 @@ const KB_ERROR = {
   expect('后台检查失败：正常提示行照旧', byClass(view, 'scp-kb-notice').length === 1)
 }
 
+{
+  // 混合队列：一部分待决定、一部分已提 PR。批次条要能在「待合入」筛选下一键查合入；
+  // 同一 PR 覆盖多份草稿时行内标出份数（脚本侧按 PR 合并查询，界面只负责说明）。
+  const sharedPr = {
+    number: 417, url: 'https://github.com/pillumina/ascend-sleuth/pull/417',
+    platform: 'github', state: 'open', source: 'platform', checkedAt: '',
+  }
+  const prOpenA = Object.assign({}, SEDIMENT.drafts[1], {
+    key: 'pr-open-a', state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    pr: Object.assign({}, sharedPr),
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const prOpenB = Object.assign({}, SEDIMENT.drafts[2], {
+    key: 'pr-open-b', state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    pr: Object.assign({}, sharedPr),
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const prOther = Object.assign({}, SEDIMENT.drafts[2], {
+    key: 'pr-open-c', state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    pr: {
+      number: 418, url: 'https://github.com/pillumina/ascend-sleuth/pull/418',
+      platform: 'github', state: 'open', source: 'platform', checkedAt: '',
+    },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const mixed = Object.assign({}, SEDIMENT, {
+    drafts: [SEDIMENT.drafts[0], SEDIMENT.drafts[1], prOpenA, prOpenB, prOther],
+    counts: { total: 5, unassessed: 0, needDecision: 1, needRerun: 0, decided: 1, prOpen: 3, prMerged: 0, overdue: 1, oldestDays: 16 },
+    primary: { kind: 'groom', label: '继续 groom', prompt: '继续 groom 的批次指令' },
+  })
+  const t = await mount('recent', { sediment: mixed, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = await openSedimentView(t)
+  expect('混合队列：主操作仍是继续 groom', !!findButton(view, '继续 groom'))
+  const secondaryCheck = findButton(view, '查全部合入状态')
+  expect('混合队列：批次条给查合入次级入口', !!secondaryCheck)
+  expect('同 PR 关联：共享 PR 的行标出份数', rowText(view, 417).includes('同 PR 2 份'), rowText(view, 417))
+  expect('同 PR 关联：独立 PR 的行不标份数', !rowText(view, 418).includes('同 PR'), rowText(view, 418))
+
+  const beforeSecondary = t.rpcCalls.length
+  if (secondaryCheck) {
+    click(secondaryCheck)
+    await t.settle()
+    await t.settle()
+  }
+  const secondaryCall = t.rpcCalls.slice(beforeSecondary)
+    .filter((call) => call.endpoint === 'copilot-pr-target').pop()
+  expect('混合队列：次级入口走 check-all',
+    secondaryCall && secondaryCall.args && secondaryCall.args.action === 'check-all',
+    JSON.stringify(secondaryCall && secondaryCall.args))
+
+  view = await t.settle()
+  click(byClass(view, 'scp-filter-item').find((node) => nodeText(node).includes('待合入')))
+  view = await t.settle()
+  const primaryCheck = byClass(view, 'scp-btn--primary')
+    .find((node) => nodeText(node).includes('查全部合入状态'))
+  expect('待合入筛选：主操作改成查合入', !!primaryCheck, view.text.slice(-300))
+  expect('待合入筛选：查合入只剩一个入口', view.nodes.filter((node) => node.type === 'button'
+    && nodeText(node) === '查全部合入状态').length === 1)
+  const beforePrimary = t.rpcCalls.length
+  if (primaryCheck) {
+    click(primaryCheck)
+    await t.settle()
+    await t.settle()
+  }
+  const primaryCall = t.rpcCalls.slice(beforePrimary)
+    .filter((call) => call.endpoint === 'copilot-pr-target').pop()
+  expect('待合入筛选：一键查合入走 check-all',
+    primaryCall && primaryCall.args && primaryCall.args.action === 'check-all',
+    JSON.stringify(primaryCall && primaryCall.args))
+}
+
+{
+  // 待合入筛选但只剩已合入行：主操作换成收尾，不回落成整批的「继续 groom」。
+  const mergedPr = {
+    number: 419, url: 'https://github.com/pillumina/ascend-sleuth/pull/419',
+    platform: 'github', state: 'merged', source: 'platform', checkedAt: '2026-11-05T10:41:12+08:00',
+  }
+  const mergedDraft = Object.assign({}, SEDIMENT.drafts[1], {
+    key: 'pr-merged-a', state: 'pr_merged', stage: '已合入 · 待收尾', stageTone: 'ok',
+    pr: Object.assign({}, mergedPr),
+    next: { kind: 'close', label: '合入后收尾', prompt: '合入后收尾的指令' },
+  })
+  const queue = Object.assign({}, SEDIMENT, {
+    drafts: [SEDIMENT.drafts[0], mergedDraft],
+    counts: { total: 2, unassessed: 0, needDecision: 1, needRerun: 0, decided: 0, prOpen: 0, prMerged: 1, overdue: 0, oldestDays: 1 },
+    primary: { kind: 'groom', label: '继续 groom', prompt: '继续 groom 的批次指令' },
+  })
+  const t = await mount('recent', { sediment: queue, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = await openSedimentView(t)
+  click(byClass(view, 'scp-filter-item').find((node) => nodeText(node).includes('待合入')))
+  view = await t.settle()
+  const closePrimary = byClass(view, 'scp-btn--primary')
+    .find((node) => nodeText(node) === '合入后收尾')
+  expect('待合入筛选只剩已合入行：主操作换成收尾', !!closePrimary, view.text.slice(-300))
+  if (closePrimary) {
+    click(closePrimary)
+    view = await t.settle()
+  }
+  expect('待合入筛选只剩已合入行：收尾走指令层', byClass(view, 'scp-modal').length >= 1)
+}
+
+{
+  // 整批 primary 是提 PR 时切到待合入：主按钮换成查合入，但提 PR 次级入口不能一起消失。
+  const prDraft = Object.assign({}, SEDIMENT.drafts[1], {
+    state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    pr: {
+      number: 421, url: 'https://github.com/pillumina/ascend-sleuth/pull/421',
+      platform: 'github', state: 'open', source: 'platform', checkedAt: '',
+    },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const queue = Object.assign({}, SEDIMENT, {
+    drafts: [SEDIMENT.drafts[1], prDraft],
+    counts: { total: 2, unassessed: 0, needDecision: 0, needRerun: 0, decided: 1, prOpen: 1, prMerged: 0, overdue: 0, oldestDays: 1 },
+    primary: { kind: 'pr', label: '生成提 PR 指令', prompt: '提 PR 的批次指令' },
+  })
+  const t = await mount('recent', { sediment: queue, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = await openSedimentView(t)
+  click(byClass(view, 'scp-filter-item').find((node) => nodeText(node).includes('待合入')))
+  view = await t.settle()
+  expect('待合入+primary=pr：主操作是查合入',
+    !!byClass(view, 'scp-btn--primary').find((node) => nodeText(node) === '查全部合入状态'), view.text.slice(-300))
+  expect('待合入+primary=pr：提 PR 次级入口还在', !!findButton(view, '提 PR（1）'), view.text.slice(-300))
+}
+
+{
+  // 同 URL 但 repo/号不同：脚本按 (repo, 号, URL) 并组，界面也不该标成同一 PR。
+  const sharedUrl = 'https://github.com/pillumina/ascend-sleuth/pull/422'
+  const first = Object.assign({}, SEDIMENT.drafts[1], {
+    key: 'pr-url-a', state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    pr: { number: 422, url: sharedUrl, repo: 'o/r', platform: 'github', state: 'open', source: 'platform', checkedAt: '' },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const second = Object.assign({}, SEDIMENT.drafts[2], {
+    key: 'pr-url-b', state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    pr: { number: 422, url: sharedUrl, repo: 'other/repo', platform: 'github', state: 'open', source: 'platform', checkedAt: '' },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const queue = Object.assign({}, SEDIMENT, {
+    drafts: [first, second],
+    counts: { total: 2, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 2, prMerged: 0, overdue: 0, oldestDays: 1 },
+    primary: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const t = await mount('recent', { sediment: queue, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  const view = await openSedimentView(t)
+  expect('同 URL 异 repo/号：不标成同一 PR', !view.text.includes('同 PR 2 份'), view.text.slice(-300))
+}
+
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')
 process.exit(failures === 0 ? 0 : 1)

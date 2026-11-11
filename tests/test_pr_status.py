@@ -116,6 +116,24 @@ class RepoCase(unittest.TestCase):
         self.repo = init_repo(self.base)
 
 
+def seed_pr_records(repo, records):
+    """按草稿键写 PR 台账：每条记录在同一个默认值上覆盖给定字段。
+
+    用来构造指向同一 PR 的多份草稿（同 repo/number/url），与 `_seed_ledger` 的
+    「每份草稿一个不同 PR」相对。
+    """
+    data = pr.load_ledger(repo)
+    data["prs"] = {}
+    for key, overrides in records.items():
+        entry = {"platform": "fake", "repo": "o/r", "number": 1,
+                 "url": "https://example.com/o/r/pulls/1",
+                 "state": "open", "source": "ledger",
+                 "created_at": "2026-11-01T10:00:00+08:00"}
+        entry.update(overrides)
+        data["prs"][key] = entry
+    pr.save_ledger(repo, data)
+
+
 # ---------------------------------------------------------------- 台账
 
 class LedgerTest(RepoCase):
@@ -1085,6 +1103,74 @@ class CheckAllParallelTest(RepoCase):
         # 顺序断言之外确认确实并发过，避免测试退化成串行也通过。
         self.assertGreater(state["peak"], 1)
 
+    def test_check_all_queries_shared_pr_once(self):
+        # 两份草稿指向同一个 PR：只提交一次查询，但 checked 与写回仍是两条。
+        # 分组用的是 URL 对应的适配器，台账 platform 不参与；组结果把 platform 刷新成
+        # 代表查询那次得到的适配器 id，repo/number/url 保留各自的值。
+        seed_pr_records(self.repo, {"draft-a": {}, "draft-b": {"platform": "other"}})
+        lock = threading.Lock()
+        state = {"calls": 0, "active": 0, "peak": 0}
+        fake_run_check = self._fake_check(lock, state, lambda key: 0.0)
+
+        with mock.patch.object(pr, "_run_check", side_effect=fake_run_check):
+            code, payload = run_cli("--root", str(self.repo), "--check-all")
+
+        self.assertEqual(code, 0, payload)
+        self.assertTrue(payload["ok"], payload)
+        self.assertEqual(state["calls"], 1)
+        self.assertEqual([item["draft"] for item in payload["checked"]],
+                         ["draft-a", "draft-b"])
+        saved = pr.load_ledger(self.repo)["prs"]
+        for draft in ("draft-a", "draft-b"):
+            self.assertEqual(saved[draft]["state"], "open")
+            self.assertEqual(saved[draft]["source"], "platform")
+            self.assertEqual(saved[draft]["platform"], "fake")
+            self.assertEqual(saved[draft]["url"], "https://example.com/o/r/pulls/1")
+            self.assertEqual(saved[draft]["number"], 1)
+            self.assertEqual(saved[draft]["repo"], "o/r")
+
+    def test_check_all_queries_each_unique_pr_once(self):
+        # 三份草稿、两个 PR：draft-a 与 draft-b 同 PR，draft-c 是另一个 → 两次查询。
+        seed_pr_records(self.repo, {
+            "draft-a": {},
+            "draft-b": {},
+            "draft-c": {"number": 2, "url": "https://example.com/o/r/pulls/2"},
+        })
+        lock = threading.Lock()
+        state = {"calls": 0, "active": 0, "peak": 0}
+        fake_run_check = self._fake_check(lock, state, lambda key: 0.0)
+
+        with mock.patch.object(pr, "_run_check", side_effect=fake_run_check):
+            code, payload = run_cli("--root", str(self.repo), "--check-all")
+
+        self.assertEqual(code, 0, payload)
+        self.assertTrue(payload["ok"], payload)
+        self.assertEqual(state["calls"], 2)
+        self.assertEqual([item["draft"] for item in payload["checked"]],
+                         ["draft-a", "draft-b", "draft-c"])
+
+    def test_check_all_groups_normalized_identity(self):
+        # 同一 PR 的写法差异（repo 大小写与空白、number 数字/字符串、URL 尾斜杠）归一后只查一次。
+        # 界面按同一套归一规则计「同 PR N 份」，这条与 `lib/client.js` 的 sedPrKey 对齐。
+        seed_pr_records(self.repo, {
+            "draft-a": {"repo": "O/R", "number": 7,
+                        "url": "https://example.com/o/r/pulls/7/"},
+            "draft-b": {"repo": " o/r ", "number": "7",
+                        "url": "https://example.com/o/r/pulls/7"},
+        })
+        lock = threading.Lock()
+        state = {"calls": 0, "active": 0, "peak": 0}
+        fake_run_check = self._fake_check(lock, state, lambda key: 0.0)
+
+        with mock.patch.object(pr, "_run_check", side_effect=fake_run_check):
+            code, payload = run_cli("--root", str(self.repo), "--check-all")
+
+        self.assertEqual(code, 0, payload)
+        self.assertTrue(payload["ok"], payload)
+        self.assertEqual(state["calls"], 1)
+        self.assertEqual([item["draft"] for item in payload["checked"]],
+                         ["draft-a", "draft-b"])
+
 
 # ---------------------------------------------------------------- check-all 逐条进度
 
@@ -1172,6 +1258,69 @@ class CheckAllJsonLinesTest(RepoCase):
         self.assertEqual([row["draft"] for row in rows],
                          ["draft-d", "draft-c", "draft-b", "draft-a"])
         self.assertEqual([item["draft"] for item in done["checked"]], keys)
+
+    def test_json_lines_shared_pr_emits_one_row_per_draft(self):
+        # 同一 PR 的两份草稿：查询一次，但每份草稿各有一行 row；checked 仍按台账键排序。
+        # 台账插入序与键序相反，row 的顺序断言的是组内台账键序。
+        seed_pr_records(self.repo, {"draft-b": {}, "draft-a": {}})
+        calls = []
+        checked_at = "2026-11-01T10:00:00+08:00"
+
+        def fake_run_check(ledger, key, adapters):
+            calls.append(key)
+            entry = dict(ledger["prs"][key])
+            entry.update({"state": "open", "source": "platform", "checked_at": checked_at})
+            return entry, None, ""
+
+        with mock.patch.object(pr, "_run_check", side_effect=fake_run_check):
+            code, text = run_cli_lines("--root", str(self.repo), "--check-all", "--json-lines")
+
+        self.assertEqual(code, 0, text)
+        self.assertEqual(len(calls), 1)
+        rows, done = self._rows_and_done(text)
+        self.assertEqual([row["draft"] for row in rows], ["draft-a", "draft-b"])
+        self.assertTrue(done["ok"], done)
+        self.assertEqual([item["draft"] for item in done["checked"]],
+                         ["draft-a", "draft-b"])
+        for row in rows:
+            self.assertTrue(row["ok"])
+            self.assertEqual(row["state"], "open")
+            self.assertEqual(row["checked_at"], checked_at)  # 组内共用同一次查询的时间
+
+    def test_json_lines_shared_pr_failure_marks_both_unknown(self):
+        # 同一 PR 查询失败：只查一次，组内每份草稿各出一行 row，且都落成 unknown 留痕。
+        seed_pr_records(self.repo, {
+            "draft-a": {"platform": "unknown", "url": "https://example.invalid/o/r/pulls/9"},
+            "draft-b": {"platform": "unknown", "url": "https://example.invalid/o/r/pulls/9"},
+        })
+        real_run = pr._run_check
+        calls = []
+
+        def counting_run(ledger, key, adapters):
+            calls.append(key)
+            return real_run(ledger, key, adapters)
+
+        with mock.patch.object(pr, "_run_check", side_effect=counting_run):
+            code, text = run_cli_lines("--root", str(self.repo), "--check-all", "--json-lines")
+
+        self.assertEqual(code, 0, text)
+        self.assertEqual(len(calls), 1)
+        rows, done = self._rows_and_done(text)
+        self.assertEqual([row["draft"] for row in rows], ["draft-a", "draft-b"])
+        for row in rows:
+            self.assertFalse(row["ok"])
+            self.assertEqual(row["error"], "E_NO_ADAPTER")
+            self.assertEqual(row["state"], "unknown")
+            self.assertTrue(row["checked_at"])
+        self.assertFalse(done["ok"])
+        self.assertEqual(done["error"]["code"], "E_CHECK_PARTIAL")
+        self.assertEqual([item["draft"] for item in done["checked"]],
+                         ["draft-a", "draft-b"])
+        saved = pr.load_ledger(self.repo)["prs"]
+        for draft in ("draft-a", "draft-b"):
+            self.assertEqual(saved[draft]["state"], "unknown")
+            self.assertEqual(saved[draft]["source"], "platform")
+            self.assertTrue(saved[draft]["checked_at"])
 
     def test_rows_are_flushed_as_each_draft_finishes(self):
         self._seed({"draft-a": "open", "draft-b": "open"})
