@@ -11,30 +11,35 @@
 // 它不能证明的：React 那一层的渲染与排版（那只有看页面）。
 //
 // 用法：
-//   node scripts/panel_rpc_probe.js                     # 自动从 Desktop 的 harness.log 取 url 与 token
+//   node scripts/panel_rpc_probe.js                     # 有 token 打一条 RPC；没有就退到 host 半判定
 //   node scripts/panel_rpc_probe.js --url <base> --token <token>
 //   node scripts/panel_rpc_probe.js --endpoint ascend-metrics-verdict --payload '{"sessionId":"…"}'
 //   node scripts/panel_rpc_probe.js --log <harness.log 路径>
+//   node scripts/panel_rpc_probe.js --host-only         # 只验 host 半，不打 RPC
 //   node scripts/panel_rpc_probe.js --selftest          # 自带假服务器自测本脚本（不需要 DSH）
 //
-// 退出码：0 拿到 result.ok=true；2 拿不到 DSH 的地址与 token（既没传 --url/--token，日志里也没有
-//        `dsh web:` 行），或路由没在服务、未授权（多半是 host 半没加载、还没重启）；
-//        1 其他失败（信封不合法、面板侧降级、处理函数报错）
+// 桌面版把带 token 的地址写进自己接管的管道、不落磁盘时，探针取不到 token。这时它拿会话里的
+// DSH_WEB_URL（不带 token）做一遍 host 半判定：注册过的 prefix 路由对 GET 回 405 且 Allow: POST，
+// 未注册的回 404，对照一条未知路径的 404 可判路由在不在（实现在 lib/panel_endpoint.js）。
+//
+// 退出码：0 拿到 result.ok=true；3 没有 token，只证到 host 半（路由在、鉴权门在），端点与取数
+//        没验；2 拿不到地址与 token，或 host 半没加载（路由没注册），或带 token 时未授权／路由
+//        没在服务；1 其他失败（连不上、信封不合法、面板侧降级、处理函数报错）
 
 'use strict'
 
 const http = require('node:http')
-const { resolveTarget, noTargetLines, sessionCookie, rpcCall } = require('./lib/panel_endpoint')
+const { sessionBase, resolveTarget, noTargetLines, sessionCookie, rpcCall, probeHostHalf } = require('./lib/panel_endpoint')
 
 const CHANNEL = '/ascend-sleuth-panels'
 const DEFAULT_ENDPOINT = 'ascend-traces-list'
 
 function parseArgs(argv) {
-  const args = { endpoint: DEFAULT_ENDPOINT, payload: null, url: null, token: null, log: null, quiet: false }
+  const args = { endpoint: DEFAULT_ENDPOINT, payload: null, url: null, token: null, log: null, quiet: false, hostOnly: false }
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i]
     const value = argv[i + 1]
-    if (flag === '--endpoint') { args.endpoint = value; i += 1 } else if (flag === '--payload') { args.payload = value; i += 1 } else if (flag === '--url') { args.url = value; i += 1 } else if (flag === '--token') { args.token = value; i += 1 } else if (flag === '--log') { args.log = value; i += 1 } else if (flag === '--quiet') { args.quiet = true } else if (flag === '--help' || flag === '-h') { args.help = true }
+    if (flag === '--endpoint') { args.endpoint = value; i += 1 } else if (flag === '--payload') { args.payload = value; i += 1 } else if (flag === '--url') { args.url = value; i += 1 } else if (flag === '--token') { args.token = value; i += 1 } else if (flag === '--log') { args.log = value; i += 1 } else if (flag === '--host-only') { args.hostOnly = true } else if (flag === '--quiet') { args.quiet = true } else if (flag === '--help' || flag === '-h') { args.help = true }
   }
   return args
 }
@@ -49,12 +54,57 @@ async function runProbe(args, io) {
   }
 
   const target = resolveTarget(args)
-  if (target === null) {
+  if (target !== null && args.hostOnly !== true) return runRpc(args, target, say, warn)
+
+  // 没有 token 时也要能判 host 半：地址不必从日志里取，会话里的 DSH_WEB_URL 就是。
+  const explicit = args.url === null ? null : args.url.replace(/\/$/, '')
+  const base = target !== null ? target.base : (explicit !== null ? explicit : sessionBase())
+  if (base === null) {
     say('探针：拿不到 DSH 的地址与 token\n')
     for (const line of noTargetLines(process.env, args.log)) say('  ' + line + '\n')
     say('  可显式传 --url <base> --token <token>，或 --log <harness.log 路径>\n')
     return 2
   }
+  return runHostHalf(base, target, say, warn)
+}
+
+// 不带 token 的一层：只判 host 半加载没加载。它回答不了「端点能不能取数」与「是不是这一版」，
+// 所以单独给退出码 3，不与 0（RPC 通了）混在一起。
+async function runHostHalf(base, target, say, warn) {
+  say('探针：只验 host 半（端点与取数不验）\n')
+  say('  目标 ' + base + '（地址取自 ' + (target === null ? 'DSH_WEB_URL' : target.source) + '）\n')
+
+  let probe
+  try {
+    probe = await probeHostHalf(base, CHANNEL)
+  } catch (e) {
+    warn('连不上 ' + base + '：' + String((e && e.message) || e) + '\n')
+    return 1
+  }
+
+  const pad = (text) => text + ' '.repeat(Math.max(1, 39 - text.length))
+  say('  对照  ' + pad('GET /__dsh_probe_unknown__') + 'HTTP ' + probe.control.status + '\n')
+  say('  路由  ' + pad('GET ' + CHANNEL + '/__probe__') + 'HTTP ' + probe.route.status
+    + (probe.route.allow === '' ? '' : '（Allow: ' + probe.route.allow + '）') + '\n')
+  if (probe.auth !== null) say('  鉴权  ' + pad('POST ' + CHANNEL + '/__probe__') + 'HTTP ' + probe.auth.status + '\n')
+
+  if (probe.registered) {
+    say('  结论：host 半已加载，' + CHANNEL + ' 路由在'
+      + (probe.auth !== null && probe.auth.status === 401 ? '，鉴权门在（请求没带会话 cookie）' : '') + '\n')
+    say('  没验的：这条端点能不能取数、加载的是不是这一版。要验得带 token，或跑 verify_panel_desktop.js\n')
+    return 3
+  }
+  if (probe.absent) {
+    warn('  结论：host 半没加载（' + CHANNEL + ' 路由没注册，未知路径才回 404）\n')
+    warn('  多半是面板包刚装或刚换版本，重启 DSH 才会加载新的模块 generation\n')
+    return 2
+  }
+  warn('  结论：判不了（对照 HTTP ' + probe.control.status + '，路由 HTTP ' + probe.route.status + '）\n')
+  warn('  期望对照 404、路由 405 且 Allow: POST；别的组合说明这个地址不是 DSH 的 web 服务\n')
+  return 1
+}
+
+async function runRpc(args, target, say, warn) {
   say('探针目标：' + target.base + '（地址取自 ' + target.source + '）\n')
 
   // ① 换一次浏览器会话 cookie（页面也是这么进门的）
@@ -136,7 +186,8 @@ async function runProbe(args, io) {
   return 0
 }
 
-// 自测：起一个最小的假服务器，把三条判定各走一遍（不需要 DSH，所以 CI 里也能跑）
+// 自测：起两个最小假服务器（一个假装 prefix 路由在，一个什么都不认），把八条判定各走一遍
+// （不需要 DSH，所以 CI 里也能跑）
 function startFakeServer() {
   const server = http.createServer((req, res) => {
     const url = new URL(req.url === undefined ? '/' : req.url, 'http://127.0.0.1')
@@ -145,8 +196,20 @@ function startFakeServer() {
       res.end()
       return
     }
+    // 真宿主的行为：prefix 路由的 handler 先判方法（405 + Allow: POST），再判鉴权（401）。
+    if (req.method === 'GET' && url.pathname.startsWith(CHANNEL)) {
+      res.writeHead(405, { allow: 'POST' })
+      res.end()
+      return
+    }
+    if (req.method === 'POST' && url.pathname.startsWith(CHANNEL + '/') && req.headers.cookie === undefined) {
+      res.writeHead(401)
+      res.end('unauthorized')
+      return
+    }
     if (req.method !== 'POST' || !url.pathname.startsWith(CHANNEL + '/')) {
-      res.writeHead(405)
+      // 真宿主：未知路径 GET 回 404、POST 回 405（对照那条 404 就是靠这个形状）。
+      res.writeHead(req.method === 'POST' ? 405 : 404)
       res.end()
       return
     }
@@ -196,16 +259,31 @@ function startFakeServer() {
   })
 }
 
+// 一个什么都不认的服务器：拿来当「host 半没加载」的对照（所有路径都回 404）。
+function startBareServer() {
+  const server = http.createServer((req, res) => {
+    res.writeHead(404)
+    res.end()
+  })
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port }))
+  })
+}
+
 async function selftest() {
   const quiet = { quiet: true, say: () => {}, warn: () => {} }
   const { server, port } = await startFakeServer()
+  const bare = await startBareServer()
   const base = 'http://127.0.0.1:' + port
+  const bareBase = 'http://127.0.0.1:' + bare.port
   const cases = [
     { name: '正常应答', endpoint: 'ascend-traces-list', want: 0 },
     { name: '信封不合法', endpoint: 'bad-envelope', want: 1 },
     { name: '处理函数报错', endpoint: 'boom', want: 1 },
     { name: '面板侧降级', endpoint: 'degraded', want: 1 },
     { name: '路由没在服务', url: base + '/not-our-prefix', want: 2 },
+    { name: '只验 host 半：路由在', url: base, hostOnly: true, want: 3 },
+    { name: '只验 host 半：路由没注册', url: bareBase, hostOnly: true, want: 2 },
   ]
   let bad = 0
   try {
@@ -215,27 +293,44 @@ async function selftest() {
         url: item.url === undefined ? base : item.url,
         token: 'selftest-token',
         payload: '{"sessionId":"selftest"}',
+        hostOnly: item.hostOnly === true,
       })
       const got = await runProbe(args, quiet)
       const ok = got === item.want
       if (!ok) bad += 1
       process.stdout.write('  ' + (ok ? 'ok  ' : 'FAIL') + ' ' + item.name + '：exit=' + got + '（期望 ' + item.want + '）\n')
     }
+
+    // 桌面版的实际入口：没有 --url/--token，地址来自会话的 DSH_WEB_URL。
+    const saved = process.env.DSH_WEB_URL
+    process.env.DSH_WEB_URL = base
+    let fallback
+    try {
+      fallback = await runProbe(Object.assign(parseArgs([]), { log: 'dsh-probe-selftest-no-such.log' }), quiet)
+    } finally {
+      if (saved === undefined) delete process.env.DSH_WEB_URL
+      else process.env.DSH_WEB_URL = saved
+    }
+    const fallbackOk = fallback === 3
+    if (!fallbackOk) bad += 1
+    process.stdout.write('  ' + (fallbackOk ? 'ok  ' : 'FAIL') + ' 没 token 时从 DSH_WEB_URL 退到 host 半：exit=' + fallback + '（期望 3）\n')
   } finally {
     await new Promise((resolve) => server.close(resolve))
+    await new Promise((resolve) => bare.server.close(resolve))
   }
   if (bad > 0) {
     process.stderr.write('panel-rpc-probe 自测未通过：' + bad + ' 例\n')
     return 1
   }
-  process.stdout.write('panel-rpc-probe selftest ok（5 例：正常 / 信封 / 报错 / 降级 / 路由不在）\n')
+  process.stdout.write('panel-rpc-probe selftest ok（8 例：正常 / 信封 / 报错 / 降级 / 路由不在 / host 半在 / host 半不在 / 无 token 退路）\n')
   return 0
 }
 
 async function main() {
   const argv = process.argv.slice(2)
   if (argv.includes('--selftest')) return selftest()
-  return runProbe(parseArgs(argv), { say: (text) => process.stdout.write(text), warn: (text) => process.stderr.write(text) })
+  const args = parseArgs(argv)
+  return runProbe(args, { quiet: args.quiet === true, say: (text) => process.stdout.write(text), warn: (text) => process.stderr.write(text) })
 }
 
 // 不用 process.exit：fetch 的连接句柄还在收尾时硬退，Windows 上会撞 libuv 断言

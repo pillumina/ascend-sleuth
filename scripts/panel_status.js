@@ -186,7 +186,7 @@ function main(argv) {
   out.push('')
   for (const status of packages) out.push(...describePackage(status))
   out.push('')
-  out.push('host 半是否已在本会话加载：看会话工具清单里有没有 ascend_trace_status（脚本看不到工具清单）。')
+  out.push('host 半是否已在本会话加载：跑 node scripts/panel_rpc_probe.js --host-only；工具清单里有 ascend_trace_status 是另一条旁证（脚本看不到工具清单）。')
   out.push('选路：有 dsh 命令行 → 路由三；没有但日志里有本实例的带 token 地址 → 路由四；都没有 → 路由五。')
   out.push('快照安装的包用插件页更新，不要用路由三的 link 覆盖。')
   process.stdout.write(out.join('\n') + '\n')
