@@ -1561,16 +1561,17 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 }
 
 {
-  // 批量沉淀：只出现在「可沉淀」筛选下；范围 = 当前筛选，指令走 to-postmortem 并要求先跑只读清点脚本。
+  // 批量沉淀：任何筛选下都出现（范围 = 当前筛选里被标可沉淀的单），指令走 to-postmortem 并要求先跑只读清点脚本。
   const t = await mount('multi')
   click(findToolbar(t.view()))
   let view = await t.settle()
-  expect('批量沉淀：未筛选时不出现', byClass(view, 'scp-batch').length === 0)
+  expect('批量沉淀：默认筛选下也出现批次条', byClass(view, 'scp-batch').length === 1
+    && !!findButton(view, '沉淀当前筛选 1 单'), view.text.slice(-300))
   const sedimentFilter = byClass(view, 'scp-filter-item').find((node) => nodeText(node).includes('可沉淀'))
   click(sedimentFilter)
   view = await t.settle()
   expect('批量沉淀：筛选后出现批次条', byClass(view, 'scp-batch').length === 1 && view.text.includes('可沉淀 1 单'), view.text.slice(-300))
-  click(findButton(view, '生成批量沉淀指令'))
+  click(findButton(view, '沉淀当前筛选 1 单'))
   const modal = await t.settle()
   expect('批量沉淀：弹预览层', byClass(modal, 'scp-modal').length === 1 && modal.text.includes('生成批量沉淀指令'), modal.text.slice(-300))
   expect('批量沉淀：预览带范围与 session', modal.text.includes('范围 = 当前筛选的 1 单')
@@ -1596,7 +1597,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   search.props.onChange({ target: { value: 'PD 分离' } })
   view = await t.settle()
   expect('批量沉淀：搜索后带搜索词范围', view.text.includes('可沉淀 1 单') && view.text.includes('含搜索词「PD 分离」'), view.text.slice(-300))
-  click(findButton(view, '生成批量沉淀指令'))
+  click(findButton(view, '沉淀当前筛选 1 单'))
   const modal = await t.settle()
   expect('批量沉淀：预览写明搜索范围', modal.text.includes('（含搜索词「PD 分离」）'), modal.text.slice(-400))
   pressKey('Enter')
@@ -3903,6 +3904,56 @@ function clickWith(node, extra) {
     && call.args && call.args.action === 'mark').pop()
   expect('写入回执：撤销写回旧状态', !!undoCall && undoCall.args.state === 'open', JSON.stringify(undoCall && undoCall.args))
   expect('写入回执：撤销后写已恢复', view.text.includes('已恢复：待合入'), view.text.slice(0, 400))
+}
+
+{
+  // 首屏不给每行铺复选框：默认藏起来，点「选择」或有勾选后才露出；触屏靠这个入口。
+  const t = await mount('multi', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await settleTimes(t, 2)
+  const panelList = byClass(view, 'scp-pal-list')[0]
+  expect('选择态：默认不进选择态', panelList && panelList.props['data-selecting'] === 'false',
+    String(panelList && panelList.props['data-selecting']))
+  expect('选择态：默认只留一个「选择」入口', !!findButton(view, '选择'), view.text.slice(0, 300))
+  expect('选择态：样式默认藏复选框', cssRule('.scp-row-check').includes('opacity:0'), cssRule('.scp-row-check'))
+  expect('选择态：进入后露出复选框', cssRule('.scp-pal-list[data-selecting="true"] .scp-row-check').includes('opacity:1'),
+    cssRule('.scp-pal-list[data-selecting="true"] .scp-row-check'))
+  click(findButton(view, '选择'))
+  view = await t.settle()
+  expect('选择态：进入后列表标 selecting', byClass(view, 'scp-pal-list')[0].props['data-selecting'] === 'true')
+  expect('选择态：空选择给全选与退出', view.text.includes('选择要处理的项')
+    && !!findButton(view, '全选当前筛选') && !!findButton(view, '退出选择'), view.text.slice(0, 400))
+  expect('选择态：空选择不摆主操作', !view.text.includes('沉淀所选 0 单'), view.text.slice(0, 400))
+  pressKey('Escape')
+  view = await t.settle()
+  expect('选择态：Esc 先退出选择、不关面板', byClass(view, 'scp-pal').length > 0
+    && byClass(view, 'scp-pal-list')[0].props['data-selecting'] === 'false', view.text.slice(0, 300))
+  pressKey('Escape')
+  await t.settle()
+  expect('选择态：再按 Esc 关面板', byClass(t.view(), 'scp-pal').length === 0)
+}
+
+{
+  // 任意筛选都能多选沉淀：不再要求先切到「可沉淀」。
+  const t = await mount('multi', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await settleTimes(t, 2)
+  clickWith(rowCheckNodes(view)[1])
+  view = await t.settle()
+  expect('多选沉淀：全部筛选下也能按所选沉淀', view.text.includes('已选 1 项')
+    && !!findButton(view, '沉淀所选 1 单'), view.text.slice(0, 400))
+}
+
+{
+  // 整批条的勾选只选这一批的动作对象（可沉淀的 1 单），不是当前筛选的全部 2 行。
+  const t = await mount('multi', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await settleTimes(t, 2)
+  const batchBox = byClass(view, 'scp-row-check').find((node) => String(node.props['aria-label'] || '').includes('选中这 1 单'))
+  expect('整批勾选：只覆盖批次对象', !!batchBox, view.text.slice(0, 300))
+  clickWith(batchBox)
+  view = await t.settle()
+  expect('整批勾选：选中 1 项而不是全部', view.text.includes('已选 1 项') && !!findButton(view, '沉淀所选 1 单'), view.text.slice(0, 400))
 }
 
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')
