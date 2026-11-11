@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.23.0'
+    const PLUGIN_VERSION = '0.23.1'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。
@@ -399,12 +399,20 @@ window.__ModuleLoader__.load({
       'diag.batch.fill': '生成批量沉淀指令',
       'diag.batch.sub': '范围 = 当前筛选的 {n} 单；只生成指令，不直接写 trace',
       'diag.batch.subSelected': '范围 = 所选的 {n} 单；只生成指令，不直接写 trace',
+      'diag.batch.fillCount': '沉淀当前筛选 {n} 单',
       'diag.batch.flow': '流程：先按 sediment_batch.py --json 分组与复核，再逐单起草、逐单回写。',
       'diag.batch.boundary': '边界：只写 sedimented 与 updated_at，不改 status、不改 feedback.outcome，也不改知识库。',
       'diag.batch.search': '含搜索词「{q}」',
       'diag.batch.readonly': '只读档位：指令可复制到可写会话执行，回写会被拒绝。',
       // ── 多选与撤销 ────────────────────────────────────────────────
       'sel.check': '勾选「{title}」',
+      'sel.enter': '选择',
+      'sel.enterHint': '进入选择：勾选多行后批量处理',
+      'sel.emptyTitle': '选择要处理的项',
+      'sel.emptyHint': '勾选行前的复选框；空格也能勾焦点行',
+      'sel.exit': '退出选择',
+      'sel.allVisible': '全选当前筛选',
+      'sel.allBatch': '选中这 {n} 单',
       'sel.all': '全选当前筛选 {n} 项',
       'sel.count': '已选 {n} 项',
       'sel.inFilter': '当前筛选 {n} 项',
@@ -912,11 +920,19 @@ window.__ModuleLoader__.load({
       'diag.batch.fill': 'Generate batch sediment prompt',
       'diag.batch.sub': 'Scope = {n} sessions under the current filter; generates an instruction, writes no trace',
       'diag.batch.subSelected': 'Scope = {n} selected sessions; generates an instruction, writes no trace',
+      'diag.batch.fillCount': 'Sediment {n} in this filter',
       'diag.batch.flow': 'Flow: group and re-check with sediment_batch.py --json, then draft and write back per session.',
       'diag.batch.boundary': 'Boundary: only sedimented and updated_at change; status, feedback.outcome, and the knowledge base stay untouched.',
       'diag.batch.search': 'search: {q}',
       'diag.batch.readonly': 'Read-only: copy the instruction to a writable session; write-back is rejected here.',
       'sel.check': 'Select "{title}"',
+      'sel.enter': 'Select',
+      'sel.enterHint': 'Enter selection: check rows to act in batch',
+      'sel.emptyTitle': 'Choose rows to act on',
+      'sel.emptyHint': 'Check the box before a row; Space toggles the focused row',
+      'sel.exit': 'Exit selection',
+      'sel.allVisible': 'Select all in this filter',
+      'sel.allBatch': 'Select these {n} rows',
       'sel.all': 'Select all {n} in this filter',
       'sel.count': '{n} selected',
       'sel.inFilter': '{n} in this filter',
@@ -1536,8 +1552,15 @@ body[data-ds-dark-theme] .scp-veil,[data-theme="dark"] .scp-veil{background:rgba
 body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,[data-theme="dark"] .scp-actions,[data-theme="dark"] .scp-sed-actions{box-shadow:0 -8px 16px -12px rgba(0,0,0,.55);}
 .scp-row-wrap{display:flex;align-items:center;gap:2px;min-width:0;}
 .scp-row-wrap>.scp-pal-row,.scp-row-wrap>.scp-sed-row{flex:1 1 auto;min-width:0;}
-.scp-row-check{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-left:3px;padding:0;border:0;border-radius:6px;background:transparent;cursor:pointer;}
+.scp-row-check{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-left:3px;padding:0;border:0;border-radius:6px;background:transparent;cursor:pointer;opacity:0;pointer-events:none;transition:opacity 120ms ease;}
+.scp-row-wrap:hover .scp-row-check,.scp-row-wrap:focus-within .scp-row-check{opacity:1;pointer-events:auto;}
+.scp-pal-list[data-selecting="true"] .scp-row-check{opacity:1;pointer-events:auto;}
+.scp-row-check[aria-checked="true"]{opacity:1;pointer-events:auto;}
+.scp-batch .scp-row-check{opacity:1;pointer-events:auto;}
 .scp-row-check:hover{background:var(--scp-surface-2);}
+.scp-select-toggle{margin-left:auto;flex:none;display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--scp-muted);font:inherit;font-size:var(--scp-fs-label);line-height:1;cursor:pointer;}
+.scp-select-toggle:hover{background:var(--scp-surface-2);color:var(--scp-text);}
+.scp-select-toggle::before{content:"";width:12px;height:12px;border:1.5px solid var(--scp-border-strong);border-radius:3px;background:var(--scp-surface);}
 .scp-row-check-box{width:15px;height:15px;border:1.5px solid var(--scp-border-strong);border-radius:4px;background:var(--scp-surface);display:grid;place-items:center;font-size:10px;line-height:1;color:transparent;}
 .scp-row-check[aria-checked="true"] .scp-row-check-box{background:var(--scp-accent);border-color:var(--scp-accent);color:var(--scp-on-accent);}
 .scp-row-check[data-mixed="true"] .scp-row-check-box{border-color:var(--scp-accent);background:var(--scp-surface);position:relative;}
@@ -4422,6 +4445,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       // 选择撤销栈：只收选择集本身与当时的筛选/搜索词，最多 5 步；切视图清空（两边的 id 不同域）。
       const [selHist, setSelHist] = React.useState([])
       const [onlySel, setOnlySel] = React.useState({ diagnosis: false, sediment: false })
+      // 显式选择态：默认不显示行前复选框（悬停才露），点「选择」或有勾选后全部露出。
+      const [selecting, setSelecting] = React.useState({ diagnosis: false, sediment: false })
       const [batchMenu, setBatchMenu] = React.useState(false)
       // 动作回执：prompt = 指令类（只写「已填入，未确认发送」）；write = 面板自己写台账，可反写。
       const [receipt, setReceipt] = React.useState(null)
@@ -4474,7 +4499,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const commandsRef = React.useRef([])
       const filtered = filterRows(rows, filter).filter((item) => matchesQuery(item, searchText))
       // 诊断视图批量沉淀的范围 = 当前筛选（含搜索词）；单条与批量共用这一份名单。
-      const diagSedRows = filter === 'sediment' ? filtered.filter((item) => item && item.sessionId) : []
+      // 批量沉淀不再绑「可沉淀」筛选：范围是当前筛选里被标为可沉淀的单（与筛选的定义一致）。
+      // 筛选仍是一个视图，不是动作入口的前提；没被标候选的单仍可勾选后按 trace 起草。
+      const diagSedentable = filtered.filter((item) => item && item.sessionId
+        && !!(item.derived && item.derived.needSed))
 
       const view = s.paletteView === 'sediment' ? 'sediment' : 'diagnosis'
       const sedDoc = s.sediment && s.sediment.data && s.sediment.data.ok !== false ? s.sediment.data : null
@@ -4544,6 +4572,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const selectedCount = selIds.length
       const selectedValid = selRows.length
       const onlySelOn = !!onlySel[view]
+      const selectingOn = !!selecting[view] || selectedCount > 0
+      const setSelectingFor = (value) => setSelecting((current) => (
+        current[view] === value ? current : Object.assign({}, current, { [view]: value })
+      ))
       // 当前可见列表里被选中的条数 / 全部条数：全选复选框的勾、半选与全选比较都用这一对。
       const visibleSelected = visibleRows.filter((item) => selSet.has(idOfRow(item))).length
 
@@ -4558,6 +4590,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       function toggleRowSelection(item, index, mode) {
         const id = idOfRow(item)
         if (!id) return
+        setSelectingFor(true)
         if (mode === 'range') {
           const anchor = selAnchor[view]
           const from = anchor >= 0 && anchor < visibleRows.length ? anchor : index
@@ -4582,13 +4615,31 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       function selectAllVisible() {
         const ids = visibleBase.map(idOfRow).filter(Boolean)
         const allOn = ids.length > 0 && ids.every((id) => selSet.has(id))
+        setSelectingFor(true)
         commitSel(allOn ? [] : ids)
         if (allOn && onlySel[view]) setOnlySel((current) => Object.assign({}, current, { [view]: false }))
       }
+      // 清空选择同时退出选择态：行前复选框回到悬停才露的默认形态。
       function clearSelection() {
-        if (!selIds.length) return
-        commitSel([])
+        if (selIds.length) commitSel([])
         setOnlySel((current) => Object.assign({}, current, { [view]: false }))
+        setSelectingFor(false)
+      }
+      function enterSelection() {
+        setSelectingFor(true)
+      }
+      // 整批条上的勾选只管这条批次的动作对象（如可沉淀的 n 单），不是「当前筛选全部行」。
+      function toggleBatchSelection(list) {
+        const ids = (list || []).map(idOfRow).filter(Boolean)
+        if (!ids.length) return
+        const allOn = ids.every((id) => selSet.has(id))
+        setSelectingFor(true)
+        commitSel(allOn
+          ? selIds.filter((id) => ids.indexOf(id) < 0)
+          : Array.from(new Set(selIds.concat(ids))))
+      }
+      function exitSelection() {
+        clearSelection()
       }
       function removeInvalidSelection() {
         if (!invalidSel.length) return
@@ -4600,6 +4651,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const last = selHist[selHist.length - 1]
         setSelHist((hist) => hist.slice(0, -1))
         setSel((current) => Object.assign({}, current, { [last.view]: last.ids }))
+        if (last.ids.length) {
+          setSelecting((current) => Object.assign({}, current, { [last.view]: true }))
+        }
         if (last.view === view) {
           setSearchText(last.search || '')
           if (view === 'sediment') setSedFilter(last.sedFilter || 'all')
@@ -4665,6 +4719,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         setSel({ diagnosis: [], sediment: [] })
         setSelHist([])
         setOnlySel({ diagnosis: false, sediment: false })
+        setSelecting({ diagnosis: false, sediment: false })
         setReceipt(null)
         setReceiptAsk(false)
         setBatchMenu(false)
@@ -4766,6 +4821,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         setSel({ diagnosis: [], sediment: [] })
         setSelHist([])
         setOnlySel({ diagnosis: false, sediment: false })
+        setSelecting({ diagnosis: false, sediment: false })
         // 回执不随面板关闭清掉：填完指令面板会自己收起，读者再打开时要能看到刚才那批并撤回。
         setReceiptAsk(false)
         setBatchMenu(false)
@@ -4914,6 +4970,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             if (batchMenu) { setBatchMenu(false); return }
             if (menuOpen) { setMenuOpen(false); return }
             if (selectedCount) { clearSelection(); return }
+            if (selectingOn) { exitSelection(); return }
             setPaletteOpen(false)
             return
           }
@@ -4940,7 +4997,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         window.addEventListener('keydown', onKey)
         return () => window.removeEventListener('keydown', onKey)
       }, [s.paletteOpen, visibleRows, selected, menuOpen, cmdOpen, cmdQuery, cmdIndex, promptKind,
-        selectedCount, batchMenu, onlySelOn])
+        selectedCount, batchMenu, onlySelOn, selectingOn])
 
       React.useEffect(() => {
         if (!s.paletteOpen || view !== 'sediment') return undefined
@@ -4998,6 +5055,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             event.preventDefault()
             if (batchMenu) { setBatchMenu(false); return }
             if (selectedCount) { clearSelection(); return }
+            if (selectingOn) { exitSelection(); return }
             setPaletteOpen(false)
             return
           }
@@ -5025,7 +5083,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         window.addEventListener('keydown', onKey)
         return () => window.removeEventListener('keydown', onKey)
       }, [s.paletteOpen, view, visibleRows.length, sedSel, promptKind, targetOpen, manualOpen, cmdOpen,
-        selectedCount, batchMenu, onlySelOn])
+        selectedCount, batchMenu, onlySelOn, selectingOn])
 
       // 详情抬头的三个钩子必须放在任何提前 return 之前：总览关着时 Palette 提前返回，打开后
       // 又多出这三个钩子，React 会报「hook 数量与上次渲染不一致」，整个 shell.overlay 槽位崩掉，
@@ -5239,6 +5297,12 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         onClick: () => savePrefs({ paletteFilter: key }),
       }, tr('palette.filter.' + key), h('b', {}, data ? String(filterCounts[key] || 0) : '—')))
 
+      // 首屏不铺满复选框：给一个小入口，点开才把行前的框全部露出来（触屏没有悬停）。
+      const selectToggle = h('button', {
+        type: 'button', className: 'scp-select-toggle', title: tr('sel.enterHint'),
+        onClick: enterSelection,
+      }, tr('sel.enter'))
+
       const skeleton = Array.from({ length: 5 }, (_, index) => h('div', { key: 'skel-' + index, className: 'scp-pal-row' },
         h('span', { className: 'scp-ring', style: { background: 'var(--dsw-alias-bg-layer-2)', boxShadow: 'none' } }),
         h('span', { className: 'scp-pal-row-main' },
@@ -5251,7 +5315,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       }, h('circle', { cx: 20, cy: 20, r: 13, strokeDasharray: '3 4' }),
         h('path', { d: 'M14 20h12M20 14v12', strokeLinecap: 'round' }))
 
-      const list = h('div', { ref: listRef, className: 'scp-pal-list', role: 'region', 'aria-label': tr('palette.title') },
+      const list = h('div', {
+        ref: listRef, className: 'scp-pal-list', role: 'region',
+        'aria-label': tr('palette.title'), 'data-selecting': selectingOn ? 'true' : 'false',
+      },
         h('div', { className: 'scp-search' },
           h('input', {
             ref: searchRef, type: 'search', value: searchText,
@@ -5260,7 +5327,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             onKeyDown: (event) => { if (event.key === 'Escape') { setSearchText(''); event.stopPropagation() } },
           }),
           h('span', { className: 'scp-kbd' }, '/')),
-        h('div', { className: 'scp-filters', role: 'group', 'aria-label': tr('palette.filterLabel') }, filterButtons),
+        h('div', { className: 'scp-filters', role: 'group', 'aria-label': tr('palette.filterLabel') },
+          filterButtons, selectingOn ? null : selectToggle),
         !data ? skeleton
           : visibleRows.length === 0 ? h('div', { className: 'scp-pal-empty' }, emptyMark, tr('palette.empty'))
             : visibleRows.map((item, index) => {
@@ -5681,7 +5749,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
       // 批量沉淀：名单在打开弹层时冻结（未选时 = 当前筛选，含搜索词；已选时 = 所选）。
       function openBatchSediment(rowsOverride) {
-        const list = Array.isArray(rowsOverride) ? rowsOverride : diagSedRows
+        const list = Array.isArray(rowsOverride) ? rowsOverride : diagSedentable
         if (!list.length) return
         const query = String(searchText || '').trim()
         const bySelection = Array.isArray(rowsOverride)
@@ -6367,6 +6435,20 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
       const allChecked = visibleRows.length > 0 && visibleSelected === visibleRows.length
       const someChecked = visibleSelected > 0 && !allChecked
+      const batchSelectControl = (list) => {
+        const ids = (list || []).map(idOfRow).filter(Boolean)
+        const all = ids.length > 0 && ids.every((id) => selSet.has(id))
+        const some = !all && ids.some((id) => selSet.has(id))
+        return h('button', {
+          type: 'button', className: 'scp-row-check', role: 'checkbox',
+          'aria-checked': all ? 'true' : 'false',
+          'data-mixed': some ? 'true' : 'false',
+          'aria-label': tr('sel.allBatch', { n: ids.length }),
+          tabIndex: -1,
+          onClick: () => toggleBatchSelection(list),
+        }, h('span', { className: 'scp-row-check-box', 'aria-hidden': 'true' }, all ? '✓' : ''))
+      }
+
       const selectAllControl = h('button', {
         type: 'button',
         className: 'scp-row-check',
@@ -6436,40 +6518,51 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const checkingLabel = checkBusy === '__all__' && checkRun && checkRun.active && checkRun.total > 0
         ? tr('sel.checkingSelected', { n: Math.min(checkRun.seen, checkRun.total), m: checkRun.total })
         : ''
-      const selBar = h('div', { className: 'scp-batch', 'data-kind': 'selection', role: 'group', 'aria-label': tr('sel.count', { n: selectedCount }) },
+      // 选择态分两档：已勾选（给范围与动作）与刚进入（给全选 / 退出，不摆一个按不动的主按钮）。
+      const noSelectionYet = selectedCount === 0
+      const selBar = h('div', {
+        className: 'scp-batch', 'data-kind': 'selection', role: 'group',
+        'aria-label': noSelectionYet ? tr('sel.emptyTitle') : tr('sel.count', { n: selectedCount }),
+      },
         h('div', { className: 'scp-batch-line' },
-          selectAllControl,
-          h('span', { className: 'scp-batch-strong' }, tr('sel.count', { n: selectedCount })),
-          h('span', { className: 'scp-batch-note' }, tr('sel.inFilter', { n: selVisibleRows.length })),
-          selChips),
+          noSelectionYet ? null : selectAllControl,
+          h('span', { className: 'scp-batch-strong' },
+            noSelectionYet ? tr('sel.emptyTitle') : tr('sel.count', { n: selectedCount })),
+          h('span', { className: 'scp-batch-note' },
+            noSelectionYet ? tr('sel.emptyHint') : tr('sel.inFilter', { n: selVisibleRows.length })),
+          noSelectionYet ? null : selChips),
         h('div', { className: 'scp-batch-line' },
-          h('button', {
-            type: 'button', className: 'scp-btn scp-btn--ghost',
-            onClick: () => setOnlySel((current) => Object.assign({}, current, { [view]: !current[view] })),
-          }, onlySelOn ? tr('sel.showAll') : tr('sel.only')),
-          h('button', {
-            type: 'button', className: 'scp-btn scp-btn--ghost',
-            onClick: clearSelection,
-          }, tr('sel.clear')),
+          noSelectionYet
+            ? h('button', {
+              type: 'button', className: 'scp-btn', onClick: selectAllVisible,
+            }, tr('sel.allVisible'))
+            : h('button', {
+              type: 'button', className: 'scp-btn scp-btn--ghost',
+              onClick: () => setOnlySel((current) => Object.assign({}, current, { [view]: !current[view] })),
+            }, onlySelOn ? tr('sel.showAll') : tr('sel.only')),
           staleBlocked
             ? h('span', { className: 'scp-batch-note', style: { color: 'var(--scp-warn)' } }, tr('sel.stale'))
             : null,
           h('span', { className: 'scp-spacer' }),
-          h('button', {
-            type: 'button',
-            className: 'scp-btn scp-btn--primary',
-            disabled: primaryBlocked || checkBusy === '__all__',
-            onClick: runSelPrimary,
-          }, checkingLabel || selPrimaryLabel()),
-          h('button', {
-            type: 'button', className: 'scp-btn', 'data-batch-menu': 'true',
-            onClick: () => setBatchMenu((value) => !value),
-          }, tr('sel.more') + ' ▾'),
-          batchMenuEl))
+          noSelectionYet
+            ? h('button', {
+              type: 'button', className: 'scp-btn scp-btn--ghost', onClick: clearSelection,
+            }, tr('sel.exit'))
+            : h('button', {
+              type: 'button', className: 'scp-btn scp-btn--primary',
+              disabled: primaryBlocked || checkBusy === '__all__',
+              onClick: runSelPrimary,
+            }, checkingLabel || selPrimaryLabel()),
+          noSelectionYet
+            ? null
+            : h('button', {
+              type: 'button', className: 'scp-btn', 'data-batch-menu': 'true',
+              onClick: () => setBatchMenu((value) => !value),
+            }, tr('sel.more') + ' ▾'),
+          noSelectionYet ? null : batchMenuEl))
 
       const sedWholeBatch = h('div', { className: 'scp-batch' },
         h('div', { className: 'scp-batch-line' },
-          selectAllControl,
           h('span', { className: 'scp-batch-strong' }, tr('sediment.batch.total', { n: sedDrafts.length })),
           sedUnassessed + sedNeedDecision > 0
             ? h('span', { className: 'scp-batch-chip', 'data-tone': 'warn' }, String(sedUnassessed + sedNeedDecision) + ' ' + tr('sediment.filter.decision'))
@@ -6516,14 +6609,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             }, tr('sediment.undo.batchAction', { n: sedUndoRows.length }))
             : null))
 
-      // 诊断视图的批量沉淀：未选时只在「可沉淀」筛选下出现，范围是当前筛选（含搜索词）；
+      // 诊断视图的批量沉淀：未选时范围是当前筛选里能起沉淀的单（任何筛选都出现，不再绑「可沉淀」）；
       // 已选时范围是选择集，主操作写「沉淀所选 n 单」。都只生成指令，不写 trace 与知识库。
-      const diagWholeBatch = filter === 'sediment' && diagSedRows.length ? h('div', {
+      const diagWholeBatch = diagSedentable.length ? h('div', {
         className: 'scp-batch', 'data-kind': 'sediment-batch', role: 'group', 'aria-label': tr('diag.batch.fill'),
       },
         h('div', { className: 'scp-batch-line' },
-          selectAllControl,
-          h('span', { className: 'scp-batch-strong' }, tr('diag.batch.count', { n: diagSedRows.length })),
+          batchSelectControl(diagSedentable),
+          h('span', { className: 'scp-batch-strong' }, tr('diag.batch.count', { n: diagSedentable.length })),
           h('span', { className: 'scp-batch-chip', 'data-tone': 'gray' }, tr('sel.scopeAll')),
           h('span', { className: 'scp-batch-age' }, tr('diag.batch.scope')),
           searchText.trim() ? h('span', { className: 'scp-batch-chip', 'data-tone': 'gray' }, tr('diag.batch.search', { q: searchText.trim() })) : null,
@@ -6536,10 +6629,11 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             type: 'button',
             className: 'scp-btn scp-btn--primary',
             onClick: () => openBatchSediment(),
-          }, tr('diag.batch.fill')))) : null
+          }, tr('diag.batch.fillCount', { n: diagSedentable.length })))) : null
 
-      const sedBatch = view === 'sediment' ? (selectedCount ? selBar : sedWholeBatch) : null
-      const diagBatch = view === 'diagnosis' ? (selectedCount ? selBar : diagWholeBatch) : null
+      const selActive = selectedCount > 0 || selectingOn
+      const sedBatch = view === 'sediment' ? (selActive ? selBar : sedWholeBatch) : null
+      const diagBatch = view === 'diagnosis' ? (selActive ? selBar : diagWholeBatch) : null
 
       const sedHistory = sedDoc && Array.isArray(sedDoc.history) ? sedDoc.history.slice(0, 5) : []
       const sedListInner = !sedDoc
@@ -6673,7 +6767,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 })))
             })()
 
-      const sedList = h('div', { className: 'scp-pal-list', role: 'region', 'aria-label': tr('palette.sedimentTitle') },
+      const sedList = h('div', {
+        className: 'scp-pal-list', role: 'region',
+        'aria-label': tr('palette.sedimentTitle'), 'data-selecting': selectingOn ? 'true' : 'false',
+      },
         h('div', { className: 'scp-search' },
           h('input', {
             ref: searchRef, type: 'search', value: searchText,
@@ -6689,7 +6786,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             className: 'scp-filter-item',
             'data-on': sedFilter === item.key ? 'true' : 'false',
             onClick: () => setSedFilter(item.key),
-          }, item.label, h('b', {}, String(item.n))))),
+          }, item.label, h('b', {}, String(item.n)))), selectingOn ? null : selectToggle),
         sedListInner)
 
       const sedStepsOf = sedPick ? sedSteps(sedPick) : []
@@ -7181,8 +7278,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               view === 'diagnosis' ? ' 命令 · ' : null,
               selectedCount ? h('span', { className: 'scp-kbd' }, 'Cmd/Ctrl+Z') : null,
               selectedCount ? ' 撤销选择 · ' : null,
+              selectingOn && !selectedCount ? h('span', { className: 'scp-kbd' }, 'Space') : null,
+              selectingOn && !selectedCount ? ' 勾选 · ' : null,
               h('span', { className: 'scp-kbd' }, 'Esc'),
-              selectedCount ? ' 清空选择' : ' 关闭'),
+              selectedCount ? ' 清空选择' : (selectingOn ? ' 退出选择' : ' 关闭')),
             h('span', { className: 'scp-spacer' }),
             view === 'sediment' ? h('span', { className: 'scp-foot-note' }, sedTargetHint) : null,
             h('span', { className: 'scp-version' }, 'v' + PLUGIN_VERSION)),
