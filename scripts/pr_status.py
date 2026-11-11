@@ -12,7 +12,8 @@
 #   3. 写目标与 PR 记录（`--set-target` / `--set` / `--mark`）；删掉一条已关闭的
 #      PR 记录（`--forget`，只有 `closed` 可以删，撤销沉淀时用）；
 #   4. 按 PR URL 的 host 查状态（`--check` / `--check-all`）。状态只由平台查询或人手确认
-#      更新，不由「分支是否存在」「commit 是否在 main」推断（设计 5.6）。
+#      更新，不由「分支是否存在」「commit 是否在 main」推断（设计 5.6）。`--check-all`
+#      把台账里同一 PR 的多份草稿合并成一次查询，查到的状态分发给组内每份。
 #
 # 平台适配两层（加平台不改本文件，设计 5.8）：
 #   - 声明式：`scripts/platforms/<id>.yaml`，REST + token；本文件用 urllib 执行；
@@ -963,6 +964,42 @@ def _unknown_entry(pr: dict) -> dict:
     return entry
 
 
+def _check_group_key(pr: dict, adapters: list) -> tuple:
+    """`--check-all` 的去重键：键相同的草稿共用一次平台查询。
+
+    有 url 时按（适配器 id、repo、number、url）判定，适配器 id 由 URL 的 host 得到，
+    台账里的 platform 字段不参与；没有 url 时退回（platform、repo、number），
+    首项与有 url 的形式不同，两者不会分到一组。repo 去首尾空白并转小写、number 统一
+    转字符串、url 去掉尾部斜杠，避免同一 PR 因台账写法不同被拆成两组。界面按同一套归一
+    规则计「同 PR N 份」（`lib/client.js` 的 sedPrKey）；界面计全部草稿，脚本只查待合入的
+    草稿，终态与待查混合时两边份数可能不同。
+    """
+    url = str(pr.get("url") or "").strip().rstrip("/")
+    repo = str(pr.get("repo") or "").strip().lower()
+    number = "" if pr.get("number") is None else str(pr.get("number")).strip()
+    if url:
+        adapter = adapter_for_url(adapters, url)
+        return ("url", (adapter or {}).get("id") or "", repo, number, url)
+    return ("no-url", str(pr.get("platform") or "").strip(), repo, number)
+
+
+def _spread_group_result(pr: dict, result) -> tuple:
+    """把组内共用的一次查询结果写到某份草稿上：覆盖 state/checked_at/source/platform。
+
+    repo/number/url 等身份字段保留这份草稿自己的值；同组共用同一个 checked_at 与 error，
+    查询失败时每份草稿都落成 unknown。platform 随组结果刷新，与单条 `_run_check` 的语义
+    一致：同组走 URL 分组时组内适配器必然相同。
+    """
+    entry, error, detail = result
+    if entry is None:
+        return None, error, detail
+    merged = dict(pr)
+    for field in ("state", "checked_at", "source", "platform"):
+        if field in entry:
+            merged[field] = entry[field]
+    return merged, error, detail
+
+
 # ---------------------------------------------------------------- 命令实现
 
 def _ok(payload: dict, code: int = EXIT_OK) -> int:
@@ -1372,18 +1409,26 @@ def cmd_check_all(root, args) -> int:
     drafts = [draft for draft in sorted(snapshot["prs"].keys())
               if isinstance(snapshot["prs"].get(draft), dict)
               and str(snapshot["prs"][draft].get("state") or "") in CHECKABLE]
+    # 同一 PR 的多份草稿只查一次：按 PR 身份分组，组内台账键最小的一条代表提交查询。
+    groups = {}
+    for draft in drafts:
+        groups.setdefault(_check_group_key(snapshot["prs"][draft], adapters), []).append(draft)
     results = {}
-    if drafts:
+    if groups:
+        # 提交数等于唯一 PR 数，CHECK_ALL_WORKERS 仍是同时在查的 PR 上限。
         with ThreadPoolExecutor(max_workers=CHECK_ALL_WORKERS) as pool:
-            futures = {pool.submit(_run_check, snapshot, draft, adapters): draft
-                       for draft in drafts}
+            futures = {pool.submit(_run_check, snapshot, members[0], adapters): members
+                       for members in groups.values()}
             for future in as_completed(futures):
                 # _run_check 已把适配器异常归一成 unknown；这里仍不吞异常，交给 main 折 JSON。
-                draft = futures[future]
-                results[draft] = future.result()
-                # 行序是完成序（面板按 draft 覆盖，不看顺序）；checked[] 仍是台账键序。
+                members = futures[future]
+                group_result = future.result()
+                for draft in members:
+                    results[draft] = _spread_group_result(snapshot["prs"][draft], group_result)
+                # 组内按台账键序打 row；行序仍是查询完成序（面板按 draft 覆盖，不看顺序）。
                 if json_lines:
-                    _print_json_line(_row_line(draft, results[draft]))
+                    for draft in members:
+                        _print_json_line(_row_line(draft, results[draft]))
     checked = []
     all_ok = True
     for draft in drafts:  # 按台账键排序输出，与并发完成顺序无关

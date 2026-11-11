@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.22.6'
+    const PLUGIN_VERSION = '0.22.7'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。
@@ -350,6 +350,7 @@ window.__ModuleLoader__.load({
       'sediment.manualSub': '平台查不到时按人工确认写 PR 台账，来源记为「手动确认」；下次查合入仍以平台结果为准。',
       'sediment.manualDone': 'PR 状态已手动记为：{state}',
       'sediment.primary.checkAll': '查全部合入状态',
+      'sediment.primary.closeBatch': '合入后收尾',
       'sediment.checking': '查合入中',
       'sediment.checkingProgress': '查合入中 {n}/{m}',
       'sediment.pushTarget': '推送目标 {label}',
@@ -406,6 +407,10 @@ window.__ModuleLoader__.load({
       'sediment.primary.check': '查合入状态',
       'sediment.primary.close': '生成收尾指令',
       'sediment.secondary.pr': '提 PR（{n}）',
+      'sediment.secondary.checkHint': '查台账里全部待合入的 PR；同一个 PR 只查平台一次',
+      'sediment.prShared': '同 PR {n} 份',
+      'sediment.prSharedHint': '同一 PR 有 {n} 份草稿',
+      'sediment.detail.prShared': '同一 PR 有 {n} 份草稿',
       'sediment.target': '目标',
       'sediment.targetChange': '换',
       'sediment.targetNone': '还没有选目标',
@@ -810,6 +815,7 @@ window.__ModuleLoader__.load({
       'sediment.manualSub': 'Records a human-confirmed state when the platform check fails. The source is stored as manual; the next check still uses the platform.',
       'sediment.manualDone': 'PR state recorded manually as {state}',
       'sediment.primary.checkAll': 'Check all merge states',
+      'sediment.primary.closeBatch': 'Close after merge',
       'sediment.checking': 'Checking',
       'sediment.checkingProgress': 'Checking merge states {n}/{m}',
       'sediment.pushTarget': 'Push target {label}',
@@ -866,6 +872,10 @@ window.__ModuleLoader__.load({
       'sediment.primary.check': 'Check merge status',
       'sediment.primary.close': 'Generate close prompt',
       'sediment.secondary.pr': 'Open PR ({n})',
+      'sediment.secondary.checkHint': 'Checks every pending PR in the ledger; each PR is queried once',
+      'sediment.prShared': 'Same PR ({n})',
+      'sediment.prSharedHint': '{n} drafts share this PR',
+      'sediment.detail.prShared': '{n} drafts share this PR',
       'sediment.target': 'Target',
       'sediment.targetChange': 'Change',
       'sediment.targetNone': 'No target yet',
@@ -4359,6 +4369,29 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       })
       const sedPick = sedSorted[Math.max(0, Math.min(sedSel, sedSorted.length - 1))] || null
 
+      // 同一 PR 常覆盖多份草稿（一批决定提一个 PR）。查合入按 PR 合并查询后，
+      // 列表行与详情要能看出「这几行是同一个 PR」，否则读者会以为每行各查一次。
+      // 键与 `scripts/pr_status.py` 的 `_check_group_key` 同一套归一：repo 转小写、
+      // number 转字符串、url 去尾斜杠；脚本按该键并组查一次，界面按该键计份数。
+      const sedPrKey = (draft) => {
+        const pr = draft && draft.pr
+        if (!pr) return ''
+        const repo = String(pr.repo || '').trim().toLowerCase()
+        const number = pr.number === null || pr.number === undefined ? '' : String(pr.number).trim()
+        const url = String(pr.url || '').trim().replace(/\/+$/, '')
+        if (url) return 'url|' + url + '|' + repo + '|' + number
+        const platform = String(pr.platform || '').trim()
+        return 'no-url|' + platform + '|' + repo + '|' + number
+      }
+      const sedPrCounts = (() => {
+        const counts = {}
+        sedDrafts.forEach((draft) => {
+          const key = sedPrKey(draft)
+          if (key) counts[key] = (counts[key] || 0) + 1
+        })
+        return counts
+      })()
+
       const flash = React.useCallback((text) => {
         setToast(text)
         if (toastTimer.current) clearTimeout(toastTimer.current)
@@ -5681,12 +5714,22 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         return age > max ? age : max
       }, 0)
       const sedPrimaryKind = sedDoc && sedDoc.primary ? String(sedDoc.primary.kind || 'none') : 'none'
+      // 批次条的主操作跟当前筛选：切到「待合入」时，主按钮换成查合入（只剩已合入行时换成收尾）；
+      // 否则混合队列里「继续 groom」会一直占着主按钮，PR 那一侧的动作没有入口。
+      // 这里只换按钮位置，两个动作的作用域仍是整批。
+      const sedBatchKind = sedFilter === 'check'
+        ? ((Number(sedCounts.prOpen) || 0) > 0
+          ? 'check'
+          : ((Number(sedCounts.prMerged) || 0) > 0 ? 'close' : sedPrimaryKind))
+        : sedPrimaryKind
       // 批次条的「查合入」查的是整批，详情里的查单条；两处标签分开写，免得读者分不清作用域。
-      const sedPrimaryLabel = sedPrimaryKind === 'check'
+      const sedPrimaryLabel = sedBatchKind === 'check'
         ? tr('sediment.primary.checkAll')
-        : (sedDoc && sedDoc.primary && sedDoc.primary.label
-          ? String(sedDoc.primary.label)
-          : tr('sediment.batch.none'))
+        : (sedBatchKind === 'close' && sedPrimaryKind !== 'close'
+          ? tr('sediment.primary.closeBatch')
+          : (sedDoc && sedDoc.primary && sedDoc.primary.label
+            ? String(sedDoc.primary.label)
+            : tr('sediment.batch.none')))
       const sedUnassessed = Number(sedCounts.unassessed) || 0
       const sedNeedDecision = Number(sedCounts.needDecision) || 0
       const sedNeedRerun = Number(sedCounts.needRerun) || 0
@@ -5701,20 +5744,34 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       ]
 
       const runSedPrimary = () => {
-        if (sedPrimaryKind === 'none') return
-        if (sedPrimaryKind === 'restore') {
+        if (sedBatchKind === 'none') return
+        if (sedBatchKind === 'restore') {
           const text = String((sedDoc && sedDoc.prompts && sedDoc.prompts.restore) || '')
           if (text) fillDraft(text)
           else flash(tr('sediment.prompt.empty'))
           return
         }
         // 查合入不再生成指令：有写权限时直接查平台并回写台账，结果回到行里。
-        if (sedPrimaryKind === 'check' && canWrite) {
-          checkAllPrs()
+        if (sedBatchKind === 'check') {
+          if (canWrite) checkAllPrs()
+          else openPrompt('check')
+          return
+        }
+        if (sedBatchKind === 'close') {
+          openPrompt('close')
           return
         }
         openPrompt(sedPrimaryKind)
       }
+
+      // 混合队列在「待合入」以外的筛选下也留住查合入入口：主按钮会被 groom 占着。
+      const sedCheckSecondary = sedPrOpen > 0 && sedBatchKind !== 'check'
+        ? h('button', {
+          type: 'button', className: 'scp-btn',
+          title: tr('sediment.secondary.checkHint'),
+          onClick: () => { if (canWrite) checkAllPrs(); else openPrompt('check') },
+        }, tr('sediment.primary.checkAll'))
+        : null
 
       const sedBatch = view === 'sediment' ? h('div', { className: 'scp-batch' },
         h('span', { className: 'scp-batch-strong' }, tr('sediment.batch.total', { n: sedDrafts.length })),
@@ -5734,16 +5791,17 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           ? h('span', { className: 'scp-batch-age', 'data-over': sedOldest > 14 ? 'true' : 'false' }, tr('sediment.batch.oldest', { n: sedOldest }))
           : null,
         h('span', { className: 'scp-spacer' }),
-        sedDecided > 0 && sedPrimaryKind !== 'pr'
+        sedDecided > 0 && sedBatchKind !== 'pr'
           ? h('button', {
             type: 'button', className: 'scp-btn',
             onClick: () => openPrompt('pr'),
           }, tr('sediment.secondary.pr', { n: sedDecided }))
           : null,
+        sedCheckSecondary,
         h('button', {
           type: 'button',
           className: 'scp-btn scp-btn--primary',
-          disabled: sedPrimaryKind === 'none' || checkBusy === '__all__',
+          disabled: sedBatchKind === 'none' || checkBusy === '__all__',
           onClick: runSedPrimary,
         }, checkBusy === '__all__'
           ? (checkRun && checkRun.active && checkRun.total > 0
@@ -5833,6 +5891,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   h('span', {}, String(grouped[group].length))),
                 grouped[group].map(({ draft, index }) => {
                   const age = draft.ageDays
+                  const prShared = draft.pr ? (sedPrCounts[sedPrKey(draft)] || 0) : 0
                   // 查合入进行中：已到的行显示状态或失败原因，还没到的标「查询中」。
                   const runState = checkRun && checkRun.states ? checkRun.states[draft.key] : null
                   const runPending = !runState && checkRun && checkRun.active
@@ -5863,6 +5922,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                           : h('span', { className: 'scp-chip', 'data-tone': SED_CHIP_TONE[draft.stageTone] || 'none' }, draft.stage || draft.state),
                         draft.pr && draft.pr.number
                           ? h('span', { className: 'scp-chip' }, '#' + draft.pr.number)
+                          : null,
+                        prShared > 1
+                          ? h('span', { className: 'scp-chip', title: tr('sediment.prSharedHint', { n: prShared }) }, tr('sediment.prShared', { n: prShared }))
                           : null,
                         runState
                           ? h('span', {
@@ -5976,13 +6038,17 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             ? ['#' + sedPick.pr.number, prStateLabel, prSourceLabel, prChecked].filter(Boolean).join(' · ')
             : tr('sediment.detail.noPr')
           const prUrl = sedPick.pr && sedPick.pr.url ? String(sedPick.pr.url) : ''
+          const prSharedCount = sedPick.pr ? (sedPrCounts[sedPrKey(sedPick)] || 0) : 0
           blocks.push(h('div', { className: 'scp-list-block' },
             h('div', { className: 'scp-section-label' }, tr('sediment.detail.promotion')),
             h('div', { className: 'scp-sed-kv' },
               h('div', { className: 'scp-sed-kv-row' }, h('dt', {}, tr('sediment.detail.case')), h('dd', {}, landing)),
               h('div', { className: 'scp-sed-kv-row' }, h('dt', {}, tr('sediment.detail.pr')),
                 h('dd', {}, prText,
-                  prUrl ? h('a', { className: 'scp-sed-link', href: prUrl, target: '_blank', rel: 'noopener noreferrer' }, prUrl) : null)))))
+                  prUrl ? h('a', { className: 'scp-sed-link', href: prUrl, target: '_blank', rel: 'noopener noreferrer' }, prUrl) : null,
+                  prSharedCount > 1
+                    ? h('span', { className: 'scp-sed-hint' }, tr('sediment.detail.prShared', { n: prSharedCount }))
+                    : null)))))
 
           const prRowBusy = checkBusy === sedPick.key || checkBusy === '__all__'
           const prActionButtons = sedPick.pr ? [
