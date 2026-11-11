@@ -3728,5 +3728,182 @@ const KB_ERROR = {
   expect('同 URL 异 repo/号：不标成同一 PR', !view.text.includes('同 PR 2 份'), view.text.slice(-300))
 }
 
+// ── 多选与撤销 ──────────────────────────────────────────────────────────────
+function rowCheckNodes(view) {
+  return byClass(view, 'scp-row-check').filter((node) => String((node.props && node.props['aria-label']) || '').startsWith('勾选'))
+}
+
+function clickWith(node, extra) {
+  if (!node || typeof node.props.onClick !== 'function') throw new Error('node has no onClick')
+  node.props.onClick(Object.assign({
+    preventDefault() {}, stopPropagation() {}, target: { tagName: 'BUTTON' }, currentTarget: node,
+  }, extra || {}))
+}
+
+{
+  // 诊断视图：勾两单 → 主操作变成「沉淀所选 2 单」；填入后回执可清空。
+  const t = await mount('multi', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await settleTimes(t, 2)
+  let checks = rowCheckNodes(view)
+  expect('多选：每行都有勾选框', checks.length === 2, String(checks.length))
+  clickWith(checks[0])
+  view = await t.settle()
+  expect('多选：勾一行后批次条写已选 1 项', view.text.includes('已选 1 项'), view.text.slice(0, 400))
+  expect('多选：主操作按所选', !!findButton(view, '沉淀所选 1 单'), view.text.slice(0, 400))
+  checks = rowCheckNodes(view)
+  clickWith(checks[1])
+  view = await t.settle()
+  expect('多选：已选 2 项', view.text.includes('已选 2 项') && !!findButton(view, '沉淀所选 2 单'), view.text.slice(0, 400))
+  click(findButton(view, '沉淀所选 2 单'))
+  view = await t.settle()
+  const modalText = byClass(view, 'scp-prompt').map((node) => nodeText(node)).join('\n')
+  expect('多选沉淀：名单只含所选', modalText.includes(ID) && modalText.includes('2026-09-07-glm53-pd-sfa-c8-hang'), modalText.slice(0, 300))
+  expect('多选沉淀：指令写所选范围', modalText.includes('诊断总览所选的 2 单'), modalText.slice(0, 300))
+  click(findButton(view, '填入输入框'))
+  await t.settle()
+  expect('多选沉淀：填入含两单', t.lastDraft().includes(ID) && t.lastDraft().includes('2026-09-07-glm53-pd-sfa-c8-hang'), t.lastDraft())
+  click(findToolbar(t.view()))
+  view = await settleTimes(t, 2)
+  expect('多选沉淀：回执写已填入未发送', view.text.includes('已填入输入框') && view.text.includes('尚未发送'), view.text.slice(0, 400))
+  click(findButton(view, '清空输入框'))
+  view = await t.settle()
+  expect('回执：清空前先确认', view.text.includes('确认清空'), view.text.slice(0, 400))
+  click(findButton(view, '确认清空'))
+  await t.settle()
+  expect('回执：确认后清空输入框', t.lastDraft() === '', t.lastDraft())
+}
+
+{
+  // 跨筛选保留选择：切到「进行中」后另一单不在当前筛选，给「只看已选」。
+  const t = await mount('multi', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await settleTimes(t, 2)
+  clickWith(rowCheckNodes(view)[0])
+  view = await t.settle()
+  clickWith(rowCheckNodes(view)[1])
+  view = await t.settle()
+  click(byClass(view, 'scp-filter-item').find((node) => nodeText(node).includes('进行中')))
+  view = await t.settle()
+  expect('跨筛选选择：计数保留、标出另一项', view.text.includes('已选 2 项') && view.text.includes('1 项不在当前筛选'), view.text.slice(0, 400))
+  const onlyBtn = findButton(view, '只看已选')
+  expect('跨筛选选择：给只看已选', !!onlyBtn, view.text.slice(0, 400))
+  click(onlyBtn)
+  view = await t.settle()
+  expect('只看已选：列表只剩选中行', byClass(view, 'scp-pal-row').length === 1, String(byClass(view, 'scp-pal-row').length))
+  click(findButton(view, '显示全部'))
+  view = await t.settle()
+  expect('显示全部：回到当前筛选且选择还在', byClass(view, 'scp-pal-row').length === 1
+    && view.text.includes('已选 2 项') && view.text.includes('1 项不在当前筛选'), view.text.slice(0, 300))
+}
+
+{
+  // Esc 先清空选择、再关面板；Cmd/Ctrl+Z 退回选择集与筛选。
+  const t = await mount('multi', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await settleTimes(t, 2)
+  pressKey(' ', { target: { tagName: 'BUTTON', className: 'scp-pal-row' } })
+  view = await t.settle()
+  expect('空格：切换焦点行的选择', view.text.includes('已选 1 项'), view.text.slice(0, 300))
+  pressKey(' ', { target: { tagName: 'BUTTON', className: 'scp-pal-row' } })
+  view = await t.settle()
+  expect('空格：再按取消', !view.text.includes('已选 1 项'), view.text.slice(0, 300))
+  clickWith(rowCheckNodes(view)[0])
+  view = await t.settle()
+  clickWith(rowCheckNodes(view)[1])
+  view = await t.settle()
+  expect('选择撤销：先有 2 项', view.text.includes('已选 2 项'))
+  pressKey('Escape')
+  view = await t.settle()
+  expect('选择撤销：Esc 只清选择', !view.text.includes('已选 2 项') && byClass(view, 'scp-pal').length > 0, view.text.slice(0, 300))
+  pressKey('z', { metaKey: true })
+  view = await t.settle()
+  expect('选择撤销：Cmd+Z 退回 2 项', view.text.includes('已选 2 项'), view.text.slice(0, 300))
+  pressKey('a', { metaKey: true })
+  view = await t.settle()
+  expect('选择撤销：Cmd+A 全选当前筛选', view.text.includes('已选 2 项'), view.text.slice(0, 300))
+  pressKey('Escape')
+  view = await t.settle()
+  pressKey('Escape')
+  await t.settle()
+  expect('选择撤销：选择为空后 Esc 关面板', byClass(t.view(), 'scp-pal').length === 0)
+}
+
+{
+  // 沉淀视图：勾两份已决定 → 提 PR 指令按所选 key 现算；请求带 promptKeys。
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = await openSedimentView(t)
+  const checks = rowCheckNodes(view)
+  clickWith(checks[1])
+  view = await t.settle()
+  clickWith(rowCheckNodes(view)[2])
+  view = await t.settle()
+  expect('所选提 PR：主操作带条数', !!findButton(view, '提 PR 2 份'), view.text.slice(0, 400))
+  const before = t.rpcCalls.length
+  click(findButton(view, '提 PR 2 份'))
+  view = await settleTimes(t, 2)
+  const scoped = t.rpcCalls.slice(before).filter((call) => call.endpoint === 'copilot-sediment').pop()
+  expect('所选提 PR：请求带所选 key', !!scoped && Array.isArray(scoped.args.promptKeys)
+    && scoped.args.promptKeys.length === 2
+    && scoped.args.promptKeys.includes('2026-11-01-eplb-103900')
+    && scoped.args.promptKeys.includes('2026-10-26-glm53-moe-shuffle'), JSON.stringify(scoped && scoped.args))
+  expect('所选提 PR：弹层显示按所选生成的指令', byClass(view, 'scp-prompt').some((node) => nodeText(node).includes('按 /knowledge-groom 第 5 步提一个 PR')), view.text.slice(-300))
+}
+
+{
+  // 沉淀视图：撤销所选——名单来自选择集，不用手删 --draft-key。
+  const t = await mount('recent', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = await openSedimentView(t)
+  clickWith(rowCheckNodes(view)[0])
+  view = await t.settle()
+  expect('所选撤销：主操作是继续 groom', !!findButton(view, '继续 groom 1 份'), view.text.slice(0, 400))
+  click(findButton(view, '更多 ▾'))
+  view = await t.settle()
+  const undoItem = byClass(view, 'scp-batch-item').find((node) => nodeText(node) === '撤销沉淀 1 份')
+  expect('所选撤销：菜单里有撤销入口', !!undoItem, view.text.slice(0, 400))
+  click(undoItem)
+  view = await t.settle()
+  const prompt = byClass(view, 'scp-prompt').map((node) => nodeText(node)).join('\n')
+  expect('所选撤销：范围写所选', prompt.includes('范围：所选 1 份'), prompt.slice(0, 300))
+  expect('所选撤销：只带这一份 key', prompt.includes('--draft-key 2026-10-28-pd-prefill-hang')
+    && !prompt.includes('2026-11-01-eplb-103900'), prompt.slice(0, 500))
+}
+
+{
+  // 沉淀视图：查合入按所选 key 发起，不是整批。
+  const queue = makeCheckQueue()
+  const t = await mount('recent', { sediment: queue, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = await openSedimentView(t)
+  clickWith(rowCheckNodes(view)[0])
+  view = await t.settle()
+  clickWith(rowCheckNodes(view)[1])
+  view = await t.settle()
+  const before = t.rpcCalls.length
+  click(findButton(view, '查合入 2 份'))
+  await settleTimes(t, 2)
+  const call = t.rpcCalls.slice(before).filter((item) => item.endpoint === 'copilot-pr-target'
+    && item.args && item.args.action === 'check-all').pop()
+  expect('所选查合入：带 keys', !!call && Array.isArray(call.args.keys) && call.args.keys.length === 2, JSON.stringify(call && call.args))
+}
+
+{
+  // 面板写入类动作：回执带撤销，撤销把旧状态写回去。
+  const queue = makeCheckQueue()
+  const t = await mount('recent', { sediment: queue, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = await openSedimentView(t)
+  click(byClass(view, 'scp-sed-row').find((node) => nodeText(node).includes('#419')))
+  view = await t.settle()
+  click(findButton(view, '标记已合入'))
+  view = await settleTimes(t, 2)
+  expect('写入回执：标出已标记', view.text.includes('已标记 已合入') && !!findButton(view, '撤销'), view.text.slice(0, 400))
+  const before = t.rpcCalls.length
+  click(findButton(view, '撤销'))
+  view = await settleTimes(t, 2)
+  const undoCall = t.rpcCalls.slice(before).filter((call) => call.endpoint === 'copilot-pr-target'
+    && call.args && call.args.action === 'mark').pop()
+  expect('写入回执：撤销写回旧状态', !!undoCall && undoCall.args.state === 'open', JSON.stringify(undoCall && undoCall.args))
+  expect('写入回执：撤销后写已恢复', view.text.includes('已恢复：待合入'), view.text.slice(0, 400))
+}
+
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')
 process.exit(failures === 0 ? 0 : 1)

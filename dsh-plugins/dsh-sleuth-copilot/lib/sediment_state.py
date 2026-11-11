@@ -1158,8 +1158,12 @@ def _attach_prompts(root: Path, rows: list, target_info: dict, adapters: list,
     }
 
 
-def collect(root, only: str = "") -> dict:
-    """队列投影。只读：不写文件、不 fetch；失败抛 SedimentError。"""
+def collect(root, only: str = "", prompt_keys=None) -> dict:
+    """队列投影。只读：不写文件、不 fetch；失败抛 SedimentError。
+
+    prompt_keys 只收窄批次指令的名单（界面多选后用），不影响 drafts/counts：
+    队列仍给全量，指令按所选生成，两边的条数各自说清，不互相冒充。
+    """
     root = Path(root).expanduser().resolve()
     deps = _scripts(root)
     gm, gs, prs, ts = deps["gm"], deps["gs"], deps["pr"], deps["ts"]
@@ -1267,7 +1271,11 @@ def collect(root, only: str = "") -> dict:
     row_keys = {r["key"] for r in records}
     if only:
         records = [r for r in records if r["source"]["sessionId"] == only]
-    prompts = _attach_prompts(root, records, target_info, adapters, inbox)
+    prompt_records = records
+    if prompt_keys:
+        wanted = set(str(key) for key in prompt_keys if key)
+        prompt_records = [r for r in records if r["key"] in wanted]
+    prompts = _attach_prompts(root, prompt_records, target_info, adapters, inbox)
     counts = _counts(records)
     return {
         "generatedAt": now_iso(),
@@ -1278,7 +1286,7 @@ def collect(root, only: str = "") -> dict:
         "counts": counts,
         "target": target_info,
         "ledgerError": ledger_error,
-        "primary": _primary(records, prompts),
+        "primary": _primary(prompt_records, prompts),
         "prompts": prompts,
         "drafts": records,
         "history": [item for item in _history(inbox, done_drafts, ledger, gm)
@@ -1308,9 +1316,12 @@ def main(argv=None) -> int:
     parser.add_argument("--root", required=True, help="ascend-sleuth 检出根目录")
     parser.add_argument("--json", action="store_true", help="输出 JSON（默认人读一屏）")
     parser.add_argument("--only", default="", help="只保留来源为该诊断 session 的草稿")
+    parser.add_argument("--prompt-keys", default="",
+                        help="只按这些草稿 key（逗号分隔）生成批次指令；队列与计数仍给全量")
     args = parser.parse_args(argv)
+    prompt_keys = [key.strip() for key in str(args.prompt_keys or "").split(",") if key.strip()]
     try:
-        payload = collect(args.root, only=args.only)
+        payload = collect(args.root, only=args.only, prompt_keys=prompt_keys)
     except SedimentError as exc:
         print(json.dumps({"ok": False, "code": exc.code, "message": exc.message},
                          ensure_ascii=False))

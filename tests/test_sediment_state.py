@@ -263,6 +263,22 @@ class StateTest(SedimentCase):
         self.assertEqual(row["ageSource"], "mtime")
         self.assertGreaterEqual(row["ageDays"], 19)
 
+    def test_prompt_keys_scope_batch_prompts_only(self):
+        # 面板多选后按 key 现算批次指令：队列与计数仍是全量，只有指令名单收窄。
+        write_draft(self.repo, key="draft-a", cid="DRAFT-A")
+        write_draft(self.repo, key="draft-b", cid="DRAFT-B")
+        write_assessment(self.repo, "draft-a", fresh_commit(self.repo))
+        write_assessment(self.repo, "draft-b", fresh_commit(self.repo))
+        write_ledger(self.repo, target=GITHUB_TARGET)
+        payload = ss.collect(self.repo, prompt_keys=["draft-b"])
+        self.assertEqual(len(payload["drafts"]), 2)
+        self.assertEqual(payload["counts"]["decided"], 2)
+        self.assertIn("draft-b", payload["prompts"]["pr"])
+        self.assertNotIn("draft-a", payload["prompts"]["pr"])
+        other = ss.collect(self.repo, prompt_keys=["draft-a"])
+        self.assertIn("draft-a", other["prompts"]["pr"])
+        self.assertNotIn("draft-b", other["prompts"]["pr"])
+
     def test_stale_assessment_needs_rerun(self):
         write_draft(self.repo)
         old_commit = fresh_commit(self.repo)
