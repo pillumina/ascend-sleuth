@@ -23,13 +23,14 @@ predicted_effect:
   from: "0（词条已产出但没有任何闸门引用，等于永不加载）"
   to: "1（interrupt-deep-debug-gap 的 branches[].refs 含该 id，verify_references 的覆盖环通过）"
   measure:
-    command: "python -c \"import pathlib,sys; t=pathlib.Path('skills/diagnose/references/collect-gates.yaml').read_text(encoding='utf-8'); n=t.count('hccn-tool-qos-pfc-tc-dscp'); print(n); sys.exit(0 if n==1 else 1)\""
+    command: >-
+      python -c "import yaml,sys; d=yaml.safe_load(open('skills/diagnose/references/collect-gates.yaml',encoding='utf-8')); g=[x for x in d['gates'] if x['id']=='interrupt-deep-debug-gap'][0]; refs=[r for b in g['branches'] for r in (b.get('refs') or [])]; ok='hccn-tool-qos-pfc-tc-dscp' in refs; print(ok); sys.exit(0 if ok else 1)"
     expect_exit: 0
-    expect_stdout: "1"
+    expect_stdout: "True"
 validation:
   method: metrics_compare
   baseline: 绑定前该词条声明了 category 却不在任何闸门分支里，verify_references 的覆盖环应报红
-  success_criteria: verify_references.py --check 通过，且 measure 命令输出 1、退出码 0
+  success_criteria: verify_references.py --check 通过，且 measure 输出 True、退出码 0（解析 YAML 后确认该 id 在 branches[].refs 里，不是只出现在文件文本里）
   rollback: 从 collect-gates.yaml 的 refs 里删掉该 id 即可整体回退，不影响其它词条
 gate:
   condition: 诊断进入多机通信网络面、需要 PFC 与 TC 的配置或统计时
