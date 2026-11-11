@@ -79,13 +79,17 @@ def _action(a, human, stale, human_valid=True, target_state=None):
 
 
 def _target_for_row(root: Path, assessed_ref, target_commit, *, target_ref, explicit_commit,
-                    configured_target_ref, configured_commit):
+                    configured_target_ref, configured_commit, resolve_commit=None):
     """这一行按哪个基准比较：显式 ref > 评估记录的 ref > 配置目标 > 兜底 commit。
 
     返回 (commit, ref, source, state, warnings, error)。state 只覆盖 ref 自身的问题
     （ref_missing / ref_changed）；评估与目标的历史关系由调用方判断。error 要进
     stale_reasons（阻塞升格）；warnings 只是提示，不改变新鲜度。
+
+    `resolve_commit` 由调用方传入时按 ref 复用解析结果：inbox 的评估记录常指向同一个目标
+    ref，逐行各起一次 `git rev-parse` 是随条目数增长的开销。
     """
+    resolve = resolve_commit or normalize_commit
     warnings = []
     if target_ref:
         if explicit_commit:
@@ -93,7 +97,7 @@ def _target_for_row(root: Path, assessed_ref, target_commit, *, target_ref, expl
         return (None, target_ref, "explicit", "ref_missing", warnings,
                 f"显式目标 ref {target_ref} 解析不到（先 fetch 或确认远端）")
     if assessed_ref:
-        assessed_target = normalize_commit(root, assessed_ref)
+        assessed_target = resolve(root, assessed_ref)
         if not assessed_target:
             return (None, assessed_ref, "assessment", "ref_missing", warnings,
                     f"评估记录的 target_ref {assessed_ref} 解析不到（先 fetch 或确认远端）")
@@ -124,9 +128,35 @@ def status_rows(root: Path, target_commit: str, inbox: Path, *,
     target_source / target_warnings。target_state 枚举：ok / ref_missing /
     not_comparable / target_behind / ref_changed；无评估（或评估缺
     compared_against_commit，无法判定关系）时为 None。
+
+    新鲜度判据要查 git 三类查询（ref → commit、祖先关系、知识库 diff），原来每份评估各查一遍。
+    一次计算里同 ref / 同 commit 对的答案不会变，这里按输入缓存：队列上百份草稿时把几百次
+    子进程缩到不同基准的个数次，判据本身不动。
     """
-    explicit_commit = normalize_commit(root, target_ref) if target_ref else None
-    configured_commit = normalize_commit(root, configured_target_ref) if configured_target_ref else None
+    commit_cache = {}
+    ancestor_cache = {}
+    changes_cache = {}
+
+    def resolve_commit(repo, ref):
+        if ref not in commit_cache:
+            commit_cache[ref] = normalize_commit(repo, ref)
+        return commit_cache[ref]
+
+    def ancestor(older, newer):
+        pair = (older, newer)
+        if pair not in ancestor_cache:
+            ancestor_cache[pair] = is_ancestor(root, older, newer)
+        return ancestor_cache[pair]
+
+    def knowledge_diff(older, newer):
+        pair = (older, newer)
+        if pair not in changes_cache:
+            changes_cache[pair] = knowledge_changes(root, older, newer)
+        return changes_cache[pair]
+
+    explicit_commit = resolve_commit(root, target_ref) if target_ref else None
+    configured_commit = (
+        resolve_commit(root, configured_target_ref) if configured_target_ref else None)
     rows = []
     drafts = find_drafts(inbox)
     known = {d.key for d in drafts}
@@ -164,7 +194,8 @@ def status_rows(root: Path, target_commit: str, inbox: Path, *,
                 root, assessed_ref, target_commit, target_ref=target_ref,
                 explicit_commit=explicit_commit,
                 configured_target_ref=configured_target_ref,
-                configured_commit=configured_commit)
+                configured_commit=configured_commit,
+                resolve_commit=resolve_commit)
             target["short"] = short_sha(target["commit"]) if target["commit"] else None
         if draft_error:
             stale_reasons.append(draft_error)
@@ -183,15 +214,15 @@ def status_rows(root: Path, target_commit: str, inbox: Path, *,
             elif not target["commit"]:
                 target["state"] = "ref_missing"
                 stale_reasons.append("没有可用的比较基准 commit")
-            elif is_ancestor(root, assessed, target["commit"]):
+            elif ancestor(assessed, target["commit"]):
                 target["state"] = "ok"
-                changed = knowledge_changes(root, assessed, target["commit"])
+                changed = knowledge_diff(assessed, target["commit"])
                 if changed:
                     stale_reasons.append(f"知识库在评估后前进了 {len(changed)} 个文件")
-            elif is_ancestor(root, target["commit"], assessed):
+            elif ancestor(target["commit"], assessed):
                 # 方向是目标落后：文案不能沿用「前进了 N 个文件」。
                 target["state"] = "target_behind"
-                behind = knowledge_changes(root, target["commit"], assessed)
+                behind = knowledge_diff(target["commit"], assessed)
                 stale_reasons.append(
                     f"目标 {short_sha(target['commit'])} 落后于评估基准 "
                     f"{short_sha(assessed)} 的 {len(behind)} 个知识文件")

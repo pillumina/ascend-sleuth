@@ -17,7 +17,8 @@ from tests.groom_fixtures import (  # noqa: E402
     write_json,
 )
 from groom_status import print_decision_prompts, status_rows  # noqa: E402
-from groom_common import assessment_path, work_order_id  # noqa: E402
+import groom_common  # noqa: E402
+from groom_common import assessment_path, case_fingerprint, work_order_id  # noqa: E402
 
 
 class StatusTest(unittest.TestCase):
@@ -153,6 +154,41 @@ class StatusTest(unittest.TestCase):
         with redirect_stdout(out):
             print_decision_prompts(rows)
         self.assertIn("重新确认", out.getvalue())
+
+    def test_freshness_git_calls_are_shared_between_drafts(self):
+        """同一评估基准的草稿共用 ref 解析、祖先判定与知识库 diff。
+
+        台账与评估记录常指向同一个目标 ref 和 commit；逐行各起子进程是随条目数增长的开销。
+        这里钉上限：3 份同基准草稿只解析 1 次 ref、判 1 次祖先、取 1 次 diff。
+        """
+        commit = self.meta_doc["commit"]
+        git(self.repo, "update-ref", "refs/remotes/origin/main", commit)
+        draft_text = self.draft.read_text(encoding="utf-8")
+        sidecar = yaml.safe_load(
+            assessment_path(self.inbox, "draft-a").read_text(encoding="utf-8"))
+        sidecar["draft_sha256"] = case_fingerprint(yaml.safe_load(draft_text)["cases"][0])
+        sidecar["provenance"]["target_ref"] = "refs/remotes/origin/main"
+        for key in ("draft-b", "draft-c"):
+            (self.inbox / f"{key}.case.yaml").write_text(draft_text, encoding="utf-8")
+            assessment_path(self.inbox, key).write_text(
+                yaml.safe_dump(sidecar, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        calls = []
+        original = groom_common.run_git
+
+        def counted(args, cwd, **kwargs):
+            calls.append(" ".join(args[:2]))
+            return original(args, cwd, **kwargs)
+
+        groom_common.run_git = counted
+        try:
+            rows = status_rows(self.repo, commit, self.inbox)
+        finally:
+            groom_common.run_git = original
+        self.assertEqual(len(rows), 3)
+        self.assertEqual([row["target_state"] for row in rows], ["ok", "ok", "ok"])
+        self.assertEqual(calls.count("rev-parse --verify"), 1)
+        self.assertEqual(calls.count("merge-base --is-ancestor"), 1)
+        self.assertEqual(calls.count("diff --name-only"), 1)
 
     def test_corrupt_sidecar_is_reported_not_crash(self):
         path = assessment_path(self.inbox, "draft-a")

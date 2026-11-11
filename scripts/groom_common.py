@@ -32,6 +32,7 @@ except ImportError:  # pragma: no cover - 环境问题，明确报错而不是�
     sys.exit("需要 PyYAML：pip install pyyaml")
 
 from exec_log_path import log_lock, resolve_checkout_dir  # noqa: E402
+import _yaml  # noqa: E402
 
 SCHEMA_ASSESSMENT = "groom-assessment/v1"
 SCHEMA_SNAPSHOT = "groom-snapshot/v1"
@@ -98,8 +99,11 @@ def dump_yaml(obj) -> str:
 
 
 def load_yaml(path: Path):
+    # 走 `_yaml` 的快路径：libyaml 的 CSafeLoader，解析结果与 safe_load 相同（异常措辞随解析
+    # 后端略有差异）；没编出 C 扩展时回落纯 Python。沉淀队列一次取数要解析上百份草稿与评估
+    # 记录，没有 C 扩展时这项开销明显。
     with open(path, encoding="utf-8-sig") as fh:
-        return yaml.safe_load(fh)
+        return yaml.load(fh, Loader=_yaml.Loader)
 
 
 def load_json(path: Path):

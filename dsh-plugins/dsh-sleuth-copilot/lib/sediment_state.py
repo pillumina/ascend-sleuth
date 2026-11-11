@@ -1013,7 +1013,7 @@ def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
         "source": source,
         "promotion": promotion,
         "pr": pr,
-        "next": {"kind": kind, "label": ("重新评估（继续 groom）" if state == "pr_closed" else ACTION_LABEL.get(kind, "")), "prompt": ""},
+        "next": {"kind": kind, "label": ("重新评估（继续 groom）" if state == "pr_closed" else ACTION_LABEL.get(kind, ""))},
         "writeback": _writeback(source["mismatch"], source["sessionId"],
                                 promotion["caseId"], key),
         "undo": {
@@ -1102,8 +1102,7 @@ def _closed_record(root: Path, gm, key: str, close_entry: dict, draft, inbox: Pa
         "promotion": promotion,
         "pr": _pr_view(pr_entry),
         "next": {"kind": kind,
-                 "label": ("恢复草稿" if kind == "restore" else ACTION_LABEL.get(kind, "")),
-                 "prompt": ""},
+                 "label": ("恢复草稿" if kind == "restore" else ACTION_LABEL.get(kind, ""))},
         "writeback": _writeback(source["mismatch"], source["sessionId"],
                                 promotion["caseId"], key),
         "undo": {"available": False, "prompt": ""},
@@ -1136,12 +1135,17 @@ def _primary(rows: list, prompts: dict) -> dict:
 
 def _attach_prompts(root: Path, rows: list, target_info: dict, adapters: list,
                     inbox: Path) -> dict:
+    """批次指令只出一份，放顶层 `prompts`：同一份指令复制进每一行会让 payload 随条目数
+    平方增长（待提 PR 的批次指令本身就是逐条列表），界面取用时仍按 kind 从顶层拿。
+
+    单行的动作指令只有 `restore`（恢复草稿命令）逐行不同，它在行的 `restore` 字段里。
+    """
     groom_rows = [r for r in rows if r["state"] in ("unassessed", "need_decision", "need_rerun", "pr_closed")]
     decided = [r for r in rows if r["state"] == "decided"]
     checking = [r for r in rows if r["state"] == "pr_open"]
     closing = [r for r in rows if r["state"] == "pr_merged"]
     restoring = [r for r in rows if r["next"]["kind"] == "restore"]
-    prompts = {
+    return {
         "groom": _prompt_groom(_inbox_rel(root, inbox), rows) if groom_rows else "",
         "pr": _prompt_pr(root, inbox, target_info, adapters, decided),
         "check": _prompt_check(root, inbox, adapters, checking),
@@ -1152,10 +1156,6 @@ def _attach_prompts(root: Path, rows: list, target_info: dict, adapters: list,
         "checkDetail": _check_detail(adapters, checking),
         "closeDetail": _close_detail(target_info, closing),
     }
-    for row in rows:
-        kind = row["next"]["kind"]
-        row["next"]["prompt"] = row.get("restore") or "" if kind == "restore" else prompts.get(kind, "")
-    return prompts
 
 
 def collect(root, only: str = "") -> dict:
