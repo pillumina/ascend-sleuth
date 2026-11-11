@@ -22,13 +22,14 @@ predicted_effect:
   from: "0（反向缺链）"
   to: "1（related_references 含 hccn-tool-qos-pfc-tc-dscp，verify_references 的悬挂检查通过）"
   measure:
-    command: "python -c \"import pathlib,sys; t=pathlib.Path('references/tools/hccn-tool-network-diagnosis.yaml').read_text(encoding='utf-8'); n=t.count('hccn-tool-qos-pfc-tc-dscp'); print(n); sys.exit(0 if n==1 else 1)\""
+    command: >-
+      python -c "import yaml,sys; d=yaml.safe_load(open('references/tools/hccn-tool-network-diagnosis.yaml',encoding='utf-8')); ok='hccn-tool-qos-pfc-tc-dscp' in (d.get('related_references') or []); print(ok); sys.exit(0 if ok else 1)"
     expect_exit: 0
-    expect_stdout: "1"
+    expect_stdout: "True"
 validation:
   method: metrics_compare
   baseline: 改动前该词条 related_references 不含队列流控面词条
-  success_criteria: measure 输出 1、退出码 0，且 verify_references.py --check 通过
+  success_criteria: measure 输出 True、退出码 0（解析 YAML 后确认该 id 在 related_references 列表里，不是只出现在文件文本里），且 verify_references.py --check 通过
   rollback: 删掉那一行引用即可；不涉及词条正文，回滚无内容损失
 gate:
   condition: 从链路诊断词条出发，需要跳到 PFC / TC 配置与统计面时
