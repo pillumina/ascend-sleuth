@@ -4,7 +4,7 @@
 // 四个面共用一份数据、一套动作与一条偏好：
 //   1. conversation.input.dock    状态条（可收起，收起状态记住）
 //   2. conversation.input.right   输入区工具条入口（带待回报角标）
-//   3. shell.overlay              诊断总览（全库列表 + 键盘操作 + 改状态）
+//   3. shell.overlay              诊断工作台（全库列表 + 键盘操作 + 改状态）
 //   4. 共享的写入菜单与表单：收尾 / 重开 / 沉淀状态；回报结果生成指令（该轴暂无脚本写入口）
 //
 // 读：Host 半的 copilot-state（判据在 scripts/_trace_state.py）。
@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.23.2'
+    const PLUGIN_VERSION = '0.24.0'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。
@@ -41,6 +41,54 @@ window.__ModuleLoader__.load({
     // 取小值，宁可多给一个入口也不把内容藏起来。
     const LEDE_TOGGLE_MIN = 110
 
+    // ── 读屏播报（常驻 live region）────────────────────────────────────────
+    // 读屏只在「容器已存在、内容发生变化」时播报；节点带着文字一起创建时常常不播。
+    // 因此在 body 上放两个常驻容器（polite / assertive），所有结果与错误都写它们；
+    // 视觉上的提示行 / toast 仍按原样出现和消失。
+    const ANN_POLITE_ID = 'dsh-sleuth-copilot-status'
+    const ANN_ASSERTIVE_ID = 'dsh-sleuth-copilot-alert'
+    function announcerNode(urgent) {
+      const id = urgent ? ANN_ASSERTIVE_ID : ANN_POLITE_ID
+      let node = typeof document.getElementById === 'function' ? document.getElementById(id) : null
+      if (node) return node
+      node = document.createElement('div')
+      node.id = id
+      node.className = 'scp-sr-only'
+      node.setAttribute('role', urgent ? 'alert' : 'status')
+      node.setAttribute('aria-live', urgent ? 'assertive' : 'polite')
+      node.setAttribute('aria-atomic', 'true')
+      if (!document.body || typeof document.body.appendChild !== 'function') return null
+      document.body.appendChild(node)
+      return node
+    }
+    // 区域要在第一条消息之前就存在，否则读屏不播报；状态条挂载时就把两个容器建好。
+    function ensureAnnouncementRegions() {
+      if (typeof document === 'undefined') return
+      try { announcerNode(false); announcerNode(true) } catch { /* 替身渲染环境没有可用 DOM */ }
+    }
+    function announce(text, urgent) {
+      const value = String(text || '').trim()
+      if (!value || typeof document === 'undefined') return
+      try {
+        const node = announcerNode(urgent)
+        if (!node) return
+        // 同一句话连续出现（连点两次复制）时先清空，否则读屏认为内容没变。
+        node.textContent = ''
+        const write = () => { node.textContent = value }
+        if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(write)
+        else write()
+      } catch { /* 替身渲染环境没有可用 DOM，忽略 */ }
+    }
+    // 查合入的进度（n/m）每 500ms 变一次：播报节流到 3 秒，避免读屏刷屏。
+    let lastCheckAnnounceAt = 0
+    function announceCheckProgress(run) {
+      if (!run || !run.total) return
+      const now = Date.now()
+      if (now - lastCheckAnnounceAt < 3000) return
+      lastCheckAnnounceAt = now
+      announce(tr('sediment.checkingProgress', { n: Math.min(run.seen, run.total), m: run.total }))
+    }
+
     // ── 文案 ────────────────────────────────────────────────────────────────
     const ZH = {
       'region': '诊断状态条',
@@ -53,7 +101,7 @@ window.__ModuleLoader__.load({
       'picker.empty': '没有匹配的诊断。',
       'picker.current': '当前',
       'picker.followOff': '取消固定',
-      'picker.open': '打开诊断总览',
+      'picker.open': '打开诊断工作台',
       'action.pin': '固定到状态条',
       'action.unpin': '取消固定',
       'hint.pinned': '状态条已固定到这一单。',
@@ -76,7 +124,7 @@ window.__ModuleLoader__.load({
       'hint.keepOn': '状态条展开后常驻：点状态条外不再收起。',
       'hint.keepOff': '状态条不再常驻：点状态条外收起。',
       'action.more': '更多操作',
-      'action.ledger': '诊断总览',
+      'action.ledger': '诊断工作台',
       'action.copySummary': '复制结论摘要',
       'action.copyResume': '复制续接指令',
       'action.copySediment': '复制沉淀指令',
@@ -239,7 +287,7 @@ window.__ModuleLoader__.load({
       'report.none': '这单还没有人读报告。',
       'evidence.none': '本次没记证据文件',
       'candidates.none': '没有沉淀候选',
-      'shortcut.open': '{keys} 打开总览',
+      'shortcut.open': '{keys} 打开工作台',
       'hint.undo': '重新打开；只清掉收尾方式（ending），收尾时间与停止原因保留。',
       'hint.reopened': '已撤销上一次收尾。',
       'hint.readonly': '当前会话是只读档位，改不了状态。',
@@ -292,20 +340,23 @@ window.__ModuleLoader__.load({
       'write.requirements': '（缺：{fields}）',
       'write.permissionHint': '面板写不进这一单（沙箱或文件权限拒绝）。可以生成一条指令，交给会话里的 agent 用脚本写；不会自动发送。',
       'write.permissionRetry': '生成指令（填入输入框）',
-      'palette.title': '诊断总览',
+      'palette.title': '诊断工作台',
       'palette.filterLabel': '筛选',
       'palette.filter.all': '全部',
       'palette.filter.open': '进行中',
       'palette.filter.pending': '待回报',
       'palette.filter.sediment': '可沉淀',
       'palette.empty': '没有符合条件的诊断。',
+      'palette.emptyAll': '还没有诊断记录。跑一次 /diagnose 之后，这里会列出全库的诊断。',
+      'palette.emptyFiltered': '当前筛选没有匹配的诊断。',
+      'palette.clearFilters': '清除筛选与搜索',
       'palette.loading': '正在读 traces/…',
       'palette.unavailable': '读不到 traces/：{message}',
       'palette.count': '共 {n} 单',
       'palette.loadFailed': '读取失败',
       'palette.reading': '正在读取',
-      'palette.close': '关闭诊断总览',
-      'tool.title': '诊断总览',
+      'palette.close': '关闭诊断工作台',
+      'tool.title': '诊断工作台',
       'tool.pending': '{n} 单待回报',
       // ── 沉淀队列（v1）──────────────────────────────────────────────
       'palette.view.diagnosis': '诊断',
@@ -577,7 +628,7 @@ window.__ModuleLoader__.load({
       'picker.empty': 'No matching diagnosis.',
       'picker.current': 'Current',
       'picker.followOff': 'Unpin',
-      'picker.open': 'Open diagnosis overview',
+      'picker.open': 'Open the diagnosis workbench',
       'action.pin': 'Pin to the status bar',
       'action.unpin': 'Unpin',
       'hint.pinned': 'The status bar is pinned to this diagnosis.',
@@ -600,7 +651,7 @@ window.__ModuleLoader__.load({
       'hint.keepOn': 'Status bar stays expanded: clicking outside no longer collapses it.',
       'hint.keepOff': 'Status bar no longer stays expanded: clicking outside collapses it.',
       'action.more': 'More actions',
-      'action.ledger': 'Diagnosis overview',
+      'action.ledger': 'Diagnosis workbench',
       'action.copySummary': 'Copy summary',
       'action.copyResume': 'Copy resume command',
       'action.copySediment': 'Copy sediment command',
@@ -763,7 +814,7 @@ window.__ModuleLoader__.load({
       'report.none': 'No report yet.',
       'evidence.none': 'No evidence files recorded',
       'candidates.none': 'No sediment candidates',
-      'shortcut.open': '{keys} opens the overview',
+      'shortcut.open': '{keys} opens the workbench',
       'hint.undo': 'Reopened; only the closing kind (ending) is cleared; the close time and stop reason stay.',
       'hint.reopened': 'The last close was undone.',
       'hint.readonly': 'This session is read-only; state cannot be changed.',
@@ -816,20 +867,23 @@ window.__ModuleLoader__.load({
       'write.requirements': ' (missing: {fields})',
       'write.permissionHint': 'The panel cannot write this trace (refused by the sandbox or file permissions). Generate a command so the agent in this session can write it with the script; nothing is sent automatically.',
       'write.permissionRetry': 'Generate a command (fill input)',
-      'palette.title': 'Diagnosis overview',
+      'palette.title': 'Diagnosis workbench',
       'palette.filterLabel': 'Filter',
       'palette.filter.all': 'All',
       'palette.filter.open': 'Open',
       'palette.filter.pending': 'Outcome pending',
       'palette.filter.sediment': 'To sediment',
       'palette.empty': 'No diagnosis matches.',
+      'palette.emptyAll': 'No diagnoses yet. Run /diagnose once and this list shows every diagnosis.',
+      'palette.emptyFiltered': 'No diagnosis matches the current filter.',
+      'palette.clearFilters': 'Clear filters and search',
       'palette.loading': 'Reading traces/…',
       'palette.unavailable': 'Cannot read traces/: {message}',
       'palette.count': '{n} total',
       'palette.loadFailed': 'Read failed',
       'palette.reading': 'Reading…',
-      'palette.close': 'Close the diagnosis overview',
-      'tool.title': 'Diagnosis overview',
+      'palette.close': 'Close the diagnosis workbench',
+      'tool.title': 'Diagnosis workbench',
       'tool.pending': '{n} pending outcomes',
       // ── Sediment queue (v1) ────────────────────────────────────────
       'palette.view.diagnosis': 'Diagnosis',
@@ -1124,22 +1178,22 @@ window.__ModuleLoader__.load({
 
     // ── 样式 ────────────────────────────────────────────────────────────────
     const CSS = [
-      '.scp-root,.scp-pal{--scp-surface:#ffffff;--scp-surface-2:#f6f7f9;--scp-surface-3:#eceff4;--scp-border:#e5e8ee;--scp-border-strong:#d7dce5;--scp-text:#1a1f29;--scp-muted:#647082;--scp-faint:#98a2b3;--scp-accent:#3b63e0;--scp-accent-soft:#eef2fe;--scp-accent-line:#c9d5fb;--scp-on-accent:#ffffff;--scp-ok:#0e8a5f;--scp-ok-soft:#e7f6ef;--scp-warn:#b25e09;--scp-warn-soft:#fdf2e4;--scp-bad:#c42b1c;--scp-bad-soft:#fdecea;--scp-idle:#98a2b3;--scp-shadow:0 1px 2px rgba(16,24,40,.04),0 12px 30px -20px rgba(16,24,40,.22);}',
+      '.scp-root,.scp-pal{--scp-surface:#ffffff;--scp-surface-2:#f6f7f9;--scp-surface-3:#eceff4;--scp-border:#e5e8ee;--scp-border-strong:#d7dce5;--scp-text:#1a1f29;--scp-muted:#647082;--scp-faint:#98a2b3;--scp-accent:#3b63e0;--scp-accent-soft:#eef2fe;--scp-accent-line:#c9d5fb;--scp-on-accent:#ffffff;--scp-ok:#0e8a5f;--scp-ok-soft:#e7f6ef;--scp-warn:#b25e09;--scp-warn-soft:#fdf2e4;--scp-bad:#c42b1c;--scp-bad-soft:#fdecea;--scp-idle:#647082;--scp-shadow:0 1px 2px rgba(16,24,40,.04),0 12px 30px -20px rgba(16,24,40,.22);--scp-fs-cap:10.5px;--scp-fs-meta:11px;--scp-fs-label:11.5px;--scp-fs-sm:12px;--scp-fs-body:12.5px;--scp-fs-row:13px;--scp-fs-title:15px;--scp-fw-regular:400;--scp-fw-medium:500;--scp-fw-semi:600;--scp-fw-bold:650;--scp-lh-tight:1.35;--scp-lh-base:1.55;--scp-lh-prose:1.75;--scp-sp-1:4px;--scp-sp-2:8px;--scp-sp-3:12px;--scp-sp-4:16px;--scp-sp-5:20px;--scp-sp-6:24px;}',
       'body[data-ds-dark-theme] .scp-root,body[data-ds-dark-theme] .scp-pal,[data-theme="dark"] .scp-root,[data-theme="dark"] .scp-pal{--scp-surface:#1c1f26;--scp-surface-2:#242832;--scp-surface-3:#2e333e;--scp-border:#2e3441;--scp-border-strong:#3d4553;--scp-text:#eaedf3;--scp-muted:#a6afbd;--scp-faint:#7a8494;--scp-accent:#8aa5ff;--scp-accent-soft:rgba(138,165,255,.14);--scp-accent-line:rgba(138,165,255,.3);--scp-on-accent:#10131a;--scp-ok:#45d08a;--scp-ok-soft:rgba(69,208,138,.12);--scp-warn:#f5b34a;--scp-warn-soft:rgba(245,179,74,.12);--scp-bad:#f0796e;--scp-bad-soft:rgba(240,121,110,.12);--scp-idle:#6f7886;--scp-shadow:0 1px 2px rgba(0,0,0,.4),0 16px 36px -20px rgba(0,0,0,.7);}',
       '.scp-root{position:relative;container-type:inline-size;width:calc(100% - 2 * var(--dsh-composer-side-clearance, 0px));max-width:var(--dsh-composer-card-max-width, 100%);margin:0 auto;box-sizing:border-box;font-family:inherit;color:var(--scp-text);--scp-tone:var(--scp-accent);}',
       // 浮层改成向下展开时会盖到输入卡上；状态条是输入卡前面的兄弟节点，抬一层才点得到。
       '.scp-root[data-popover-down="true"]{z-index:9;}',
       '.scp-root *,.scp-pal *{box-sizing:border-box;}',
       '.scp-handle-wrap{display:flex;justify-content:center;width:100%;}',
-      '.scp-handle{display:inline-flex;align-items:center;gap:7px;max-width:min(72%,560px);height:22px;padding:0 10px;border-radius:999px;border:1px solid var(--scp-border);background:color-mix(in srgb,var(--scp-surface) 62%,transparent);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:var(--scp-muted);font:inherit;font-size:11px;line-height:1;cursor:pointer;transition:background-color 160ms ease,color 160ms ease,border-color 160ms ease,opacity 360ms ease;}',
-      '.scp-handle-title,.scp-handle-meta{transition:opacity 360ms ease;}',
-      '.scp-handle[data-idle="true"] .scp-handle-title,.scp-handle[data-idle="true"] .scp-handle-meta{opacity:.42;}',
-      '.scp-handle[data-idle="true"]:hover .scp-handle-title,.scp-handle[data-idle="true"]:hover .scp-handle-meta,.scp-handle[data-idle="true"]:focus-visible .scp-handle-title,.scp-handle[data-idle="true"]:focus-visible .scp-handle-meta{opacity:1;}',
+      '.scp-handle{display:inline-flex;align-items:center;gap:7px;max-width:min(72%,560px);height:22px;padding:0 10px;border-radius:999px;border:1px solid var(--scp-border);background:color-mix(in srgb,var(--scp-surface) 62%,transparent);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:var(--scp-muted);font:inherit;font-size:var(--scp-fs-meta);line-height:1;cursor:pointer;transition:background-color 160ms ease,color 160ms ease,border-color 160ms ease,opacity 360ms ease;}',
+      '.scp-handle .scp-ring,.scp-handle .scp-chevron{transition:opacity 360ms ease;}',
+      '.scp-handle[data-idle="true"] .scp-ring,.scp-handle[data-idle="true"] .scp-chevron{opacity:.45;}',
+      '.scp-handle[data-idle="true"]:hover .scp-ring,.scp-handle[data-idle="true"]:hover .scp-chevron,.scp-handle[data-idle="true"]:focus-visible .scp-ring,.scp-handle[data-idle="true"]:focus-visible .scp-chevron{opacity:1;}',
       '.scp-handle:hover{background:var(--scp-surface-2);color:var(--scp-text);border-color:var(--scp-border-strong);}',
       '.scp-handle .scp-ring{width:7px;height:7px;}',
-      '.scp-handle-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;color:var(--scp-text);}',
+      '.scp-handle-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:var(--scp-fw-medium);color:var(--scp-text);}',
       '.scp-handle-meta{flex:none;font-variant-numeric:tabular-nums;color:var(--scp-muted);}',
-      '.scp-handle-pending{flex:none;color:var(--scp-warn);font-weight:600;}',
+      '.scp-handle-pending{flex:none;color:var(--scp-warn);font-weight:var(--scp-fw-semi);}',
       '.scp-handle .scp-chevron{opacity:.65;}',
       '.scp-surface{display:flex;flex-direction:column;gap:6px;padding:6px 10px;border:1px solid var(--scp-border);border-radius:12px;background:color-mix(in srgb, var(--scp-surface) 76%, transparent);transition:border-color 180ms ease,background-color 180ms ease;}',
       '.scp-root[data-mode="bound"] .scp-surface,.scp-root[data-mode="recent"] .scp-surface{padding:7px 10px;}',
@@ -1148,125 +1202,120 @@ window.__ModuleLoader__.load({
       '.scp-ring{flex:none;width:8px;height:8px;border-radius:50%;background:var(--scp-tone);}',
       '.scp-root[data-live="true"] .scp-ring{animation:scp-pulse 2.8s ease-out infinite;}',
       '@keyframes scp-pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--scp-tone) 30%, transparent)}70%{box-shadow:0 0 0 6px transparent}100%{box-shadow:0 0 0 0 transparent}}',
-      '.scp-scope{flex:none;display:inline-flex;align-items:center;gap:1px;padding:1px 3px;border:none;border-radius:6px;background:transparent;font:inherit;font-size:10.5px;line-height:1.6;color:var(--scp-muted);cursor:pointer;transition:background-color 120ms ease,color 120ms ease;}',
+      '.scp-scope{flex:none;display:inline-flex;align-items:center;gap:1px;padding:1px 3px;border:none;border-radius:6px;background:transparent;font:inherit;font-size:var(--scp-fs-cap);line-height:1.6;color:var(--scp-muted);cursor:pointer;transition:background-color 120ms ease,color 120ms ease;}',
       '.scp-scope:hover{background:var(--scp-surface-2);color:var(--scp-text);}',
       '.scp-scope svg{opacity:.7;}',
       '.scp-case{flex:1 1 auto;min-width:0;padding:0;border:none;background:transparent;font:inherit;font-size:13px;font-weight:600;line-height:1.55;letter-spacing:.005em;text-align:left;color:var(--scp-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;border-radius:6px;}',
       '.scp-case:hover{color:var(--scp-accent);}',
-      '.scp-season{flex:none;font-size:11px;color:var(--scp-faint);}',
       '.scp-spacer{flex:1 1 auto;min-width:6px;}',
-      '.scp-step{flex:none;font-size:10.5px;font-variant-numeric:tabular-nums;color:var(--scp-muted);}',
+      '.scp-step{flex:none;font-size:var(--scp-fs-cap);font-variant-numeric:tabular-nums;color:var(--scp-muted);}',
       '.scp-foot{display:flex;align-items:center;gap:8px;min-width:0;padding:0 2px;overflow:hidden;}',
       '.scp-track{flex:none;display:inline-flex;align-items:center;gap:2px;}',
       '.scp-tick{width:7px;height:3px;border-radius:2px;background:var(--scp-surface-3);transition:background-color 180ms ease;}',
       '.scp-tick[data-state="done"]{background:color-mix(in srgb, var(--scp-tone) 32%, transparent);}',
       '.scp-tick[data-state="now"]{background:var(--scp-tone);}',
-      '.scp-now{font-size:11px;line-height:1.6;color:var(--scp-muted);margin-left:2px;font-variant-numeric:tabular-nums;}',
-      '.scp-meta{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:11px;line-height:1.6;color:var(--scp-muted);white-space:nowrap;}',
-      '.scp-wait{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:1.6;color:var(--scp-text);}',
-      '.scp-wait b{font-weight:600;color:var(--scp-text);}',
-      '.scp-wait-tag{color:var(--scp-muted);font-weight:500;}',
+      '.scp-now{font-size:var(--scp-fs-meta);line-height:1.6;color:var(--scp-muted);margin-left:2px;font-variant-numeric:tabular-nums;}',
+      '.scp-meta{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:var(--scp-fs-meta);line-height:1.6;color:var(--scp-muted);white-space:nowrap;}',
+      '.scp-wait{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--scp-fs-sm);line-height:1.6;color:var(--scp-text);}',
+      '.scp-wait b{font-weight:var(--scp-fw-semi);color:var(--scp-text);}',
+      '.scp-wait-tag{color:var(--scp-muted);font-weight:var(--scp-fw-medium);}',
       '.scp-chips{flex:none;display:inline-flex;align-items:center;gap:5px;}',
-      '.scp-chip{flex:none;font-size:11px;line-height:1.6;padding:0 5px;border-radius:5px;white-space:nowrap;color:var(--scp-muted);background:var(--scp-surface-2);}',
+      '.scp-chip{flex:none;font-size:var(--scp-fs-meta);line-height:1.6;padding:0 5px;border-radius:5px;white-space:nowrap;color:var(--scp-muted);background:var(--scp-surface-2);}',
       '.scp-chip[data-tone="brand"]{color:color-mix(in srgb,var(--scp-accent) 66%,var(--scp-text));background:var(--scp-accent-soft);}',
       '.scp-chip[data-tone="warn"]{color:color-mix(in srgb,var(--scp-warn) 66%,var(--scp-text));background:var(--scp-warn-soft);}',
       '.scp-chip[data-tone="success"]{color:color-mix(in srgb,var(--scp-ok) 66%,var(--scp-text));background:var(--scp-ok-soft);}',
       '.scp-chip[data-tone="error"]{color:color-mix(in srgb,var(--scp-bad) 66%,var(--scp-text));background:var(--scp-bad-soft);}',
-      '.scp-badge{flex:none;font-size:10.5px;line-height:1.6;font-weight:600;padding:1px 7px;border-radius:5px;color:color-mix(in srgb,var(--scp-tone) 66%,var(--scp-text));background:color-mix(in srgb, var(--scp-tone) 9%, transparent);}',
-      '.scp-btn{font:inherit;font-size:12.5px;line-height:1.7;padding:3px 10px;border-radius:8px;border:1px solid var(--scp-border);background:var(--scp-surface);color:var(--scp-text);cursor:pointer;white-space:nowrap;transition:background-color 120ms ease,border-color 120ms ease,color 120ms ease;}',
+      '.scp-badge{flex:none;font-size:var(--scp-fs-cap);line-height:1.6;font-weight:var(--scp-fw-semi);padding:1px 7px;border-radius:5px;color:color-mix(in srgb,var(--scp-tone) 66%,var(--scp-text));background:color-mix(in srgb, var(--scp-tone) 9%, transparent);}',
+      '.scp-btn{font:inherit;font-size:var(--scp-fs-body);line-height:1.7;padding:3px 10px;border-radius:8px;border:1px solid var(--scp-border);background:var(--scp-surface);color:var(--scp-text);cursor:pointer;white-space:nowrap;transition:background-color 120ms ease,border-color 120ms ease,color 120ms ease;}',
       '.scp-btn:hover{background:var(--scp-surface-2);border-color:var(--scp-border-strong);}',
       '.scp-btn:disabled{opacity:.45;cursor:not-allowed;}',
-      '.scp-btn--primary{border:none;border-radius:999px;padding:5px 14px;background:var(--scp-accent);color:var(--scp-on-accent);font-weight:600;}',
+      '.scp-btn--primary{border:none;border-radius:999px;padding:5px 14px;background:var(--scp-accent);color:var(--scp-on-accent);font-weight:var(--scp-fw-semi);}',
       '.scp-btn--primary:hover{background:color-mix(in srgb, var(--scp-accent) 88%, var(--scp-text));}',
-      '.scp-btn--quiet{border:none;background:transparent;border-radius:999px;padding:3px 9px;color:var(--scp-accent);font-weight:600;}',
+      '.scp-btn--quiet{border:none;background:transparent;border-radius:999px;padding:3px 9px;color:var(--scp-accent);font-weight:var(--scp-fw-semi);}',
       '.scp-btn--quiet:hover{background:var(--scp-accent-soft);color:var(--scp-accent);}',
       '.scp-btn--ghost{background:transparent;border-color:transparent;}',
       '.scp-btn--ghost:hover{background:var(--scp-surface-2);}',
       '.scp-icon{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:none;border-radius:7px;background:transparent;color:var(--scp-muted);cursor:pointer;transition:background-color 120ms ease,color 120ms ease;}',
       '.scp-icon:hover{background:var(--scp-surface-2);color:var(--scp-text);}',
-      '.scp-icon:focus-visible,.scp-collapse:focus-visible,.scp-btn:focus-visible,.scp-tool-btn:focus-visible,.scp-case:focus-visible,.scp-scope:focus-visible,.scp-pal-row:focus-visible,.scp-filter-item:focus-visible,.scp-picker-row:focus-visible{outline:2px solid var(--scp-accent);outline-offset:2px;}',
+      '.scp-icon:focus-visible,.scp-collapse:focus-visible,.scp-btn:focus-visible,.scp-tool-btn:focus-visible,.scp-case:focus-visible,.scp-scope:focus-visible,.scp-dock-sed-open:focus-visible,.scp-pal-row:focus-visible,.scp-filter-item:focus-visible,.scp-picker-row:focus-visible{outline:2px solid var(--scp-accent);outline-offset:2px;}',
       '.scp-icon svg{display:block;}',
       '.scp-pin[data-on="true"]{background:var(--scp-accent-soft);color:var(--scp-accent);}',
-      '.scp-collapse{flex:none;display:inline-flex;align-items:center;gap:2px;height:24px;padding:0 4px;border:none;border-radius:7px;background:transparent;color:var(--scp-muted);font:inherit;font-size:11px;line-height:1;cursor:pointer;transition:background-color 120ms ease,color 120ms ease;}',
+      '.scp-collapse{flex:none;display:inline-flex;align-items:center;gap:2px;height:24px;padding:0 4px;border:none;border-radius:7px;background:transparent;color:var(--scp-muted);font:inherit;font-size:var(--scp-fs-meta);line-height:1;cursor:pointer;transition:background-color 120ms ease,color 120ms ease;}',
       '.scp-collapse:hover{background:var(--scp-surface-2);color:var(--scp-text);}',
       '.scp-collapse .scp-chevron{opacity:.7;}',
       '.scp-collapse-text{display:none;}',
       '.scp-chevron{transition:transform 180ms ease;}',
       '.scp-chevron[data-open="true"]{transform:rotate(180deg);}',
-      '.scp-empty-note{font-size:11px;line-height:1.6;color:var(--scp-faint);}',
-      '.scp-pal-notice{margin:0 0 8px;padding:6px 9px;border-radius:8px;border:1px solid color-mix(in srgb, var(--scp-warn) 30%, var(--scp-border));background:var(--scp-warn-soft);color:var(--scp-text);font-size:11.5px;line-height:1.6;display:flex;align-items:center;gap:10px;}',
+      '.scp-empty-note{font-size:var(--scp-fs-meta);line-height:1.6;color:var(--scp-muted);}',
+      '.scp-pal-notice{margin:0 0 8px;padding:6px 9px;border-radius:8px;border:1px solid color-mix(in srgb, var(--scp-warn) 30%, var(--scp-border));background:var(--scp-warn-soft);color:var(--scp-text);font-size:var(--scp-fs-label);line-height:1.6;display:flex;align-items:center;gap:10px;}',
       '.scp-pal-notice-text{flex:1 1 auto;min-width:0;}',
       '.scp-pal-notice .scp-btn{flex:none;height:24px;padding:0 10px;font-size:var(--scp-fs-label);}',
-      '.scp-pal-error{display:flex;align-items:center;gap:10px;padding:18px 22px;color:var(--scp-muted);font-size:12.5px;line-height:1.7;border-top:1px solid var(--scp-border);border-bottom:1px solid var(--scp-border);}',
+      '.scp-pal-error{display:flex;align-items:center;gap:10px;padding:18px 22px;color:var(--scp-muted);font-size:var(--scp-fs-body);line-height:1.7;border-top:1px solid var(--scp-border);border-bottom:1px solid var(--scp-border);}',
       '.scp-pal-error-title{flex:0 1 auto;min-width:0;text-align:center;}',
       '.scp-pal-error--center{flex-direction:column;justify-content:center;gap:var(--scp-sp-3);border:0;padding:var(--scp-sp-6);}',
-      '.scp-hint{padding:2px 4px 0;font-size:11px;line-height:1.6;color:var(--scp-muted);}',
-      '.scp-picker{position:absolute;left:8px;bottom:calc(100% + 8px);z-index:45;width:340px;max-height:min(52vh,380px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--scp-border-strong);border-radius:14px;background:var(--scp-surface);box-shadow:var(--scp-shadow);animation:scp-pop 150ms ease-out;}',
+      '.scp-hint{padding:2px 4px 0;font-size:var(--scp-fs-meta);line-height:1.6;color:var(--scp-muted);}',
+      '.scp-picker{position:absolute;left:8px;bottom:calc(100% + 8px);z-index:45;width:340px;max-height:min(52vh,380px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--scp-border-strong);border-radius:12px;background:var(--scp-surface);box-shadow:var(--scp-shadow);animation:scp-pop 150ms ease-out;}',
       '.scp-picker-head{padding:9px 10px;border-bottom:1px solid var(--scp-border);}',
-      '.scp-picker-title{font-size:11.5px;line-height:1.7;color:var(--scp-muted);padding:0 2px 6px;}',
-      '.scp-picker-search{width:100%;font:inherit;font-size:12.5px;line-height:1.6;padding:5px 9px;border-radius:8px;border:1px solid var(--scp-border);background:var(--scp-surface-2);color:var(--scp-text);}',
-      '.scp-picker-search:focus{outline:2px solid var(--scp-accent-line);outline-offset:0;}',
+      '.scp-picker-title{font-size:var(--scp-fs-label);line-height:1.7;color:var(--scp-muted);padding:0 2px 6px;}',
+      '.scp-picker-search{width:100%;font:inherit;font-size:var(--scp-fs-body);line-height:1.6;padding:5px 9px;border-radius:8px;border:1px solid var(--scp-border);background:var(--scp-surface-2);color:var(--scp-text);}',
+      '.scp-picker-search:focus{outline:2px solid var(--scp-accent);outline-offset:0;}',
       '.scp-picker-list{overflow:auto;padding:6px;}',
       '.scp-picker-row{display:flex;align-items:center;gap:8px;width:100%;padding:7px 8px;border:none;border-radius:8px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 100ms ease;}',
       '.scp-picker-row:hover{background:var(--scp-surface-2);}',
       '.scp-picker-row[data-on="true"]{background:var(--scp-accent-soft);}',
-      '.scp-picker-current{flex:none;font-size:10.5px;font-weight:600;line-height:1;padding:2px 6px;border-radius:4px;color:var(--scp-accent);background:var(--scp-accent-soft);}',
-      '.scp-picker-foot-note{flex:1 1 auto;min-width:0;font-size:11.5px;line-height:1.6;color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
+      '.scp-picker-current{flex:none;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);line-height:1;padding:2px 6px;border-radius:4px;color:var(--scp-accent);background:var(--scp-accent-soft);}',
+      '.scp-picker-foot-note{flex:1 1 auto;min-width:0;font-size:var(--scp-fs-label);line-height:1.6;color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
       '.scp-picker-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px;}',
-      '.scp-picker-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;font-weight:550;line-height:1.5;}',
-      '.scp-picker-meta{font-size:11px;line-height:1.5;color:var(--scp-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '.scp-picker-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--scp-fs-body);font-weight:var(--scp-fw-semi);line-height:1.5;}',
+      '.scp-picker-meta{font-size:var(--scp-fs-meta);line-height:1.5;color:var(--scp-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
       '.scp-picker-foot{display:flex;align-items:center;gap:8px;padding:8px 10px;border-top:1px solid var(--scp-border);}',
-      '.scp-picker-empty{padding:18px 10px;text-align:center;font-size:11.5px;color:var(--scp-faint);}',
-      '.scp-menu{position:absolute;right:8px;bottom:calc(100% + 8px);z-index:50;width:302px;max-height:min(64vh,540px);display:flex;flex-direction:column;overflow:hidden;padding:6px;border:1px solid var(--scp-border-strong);border-radius:14px;background:var(--scp-surface);box-shadow:var(--scp-shadow);animation:scp-pop 150ms ease-out;}',
+      '.scp-picker-empty{padding:18px 10px;text-align:center;font-size:var(--scp-fs-label);color:var(--scp-muted);}',
+      '.scp-menu{position:absolute;right:8px;bottom:calc(100% + 8px);z-index:50;width:302px;max-height:min(64vh,540px);display:flex;flex-direction:column;overflow:hidden;padding:6px;border:1px solid var(--scp-border-strong);border-radius:12px;background:var(--scp-surface);box-shadow:var(--scp-shadow);animation:scp-pop 150ms ease-out;}',
       '.scp-menu-scroll{flex:1 1 auto;min-height:0;overflow:auto;}',
       '.scp-menu-scroll[data-overflow="true"]{-webkit-mask-image:linear-gradient(180deg,transparent,#000 8px,#000 calc(100% - 12px),transparent);mask-image:linear-gradient(180deg,transparent,#000 8px,#000 calc(100% - 12px),transparent);}',
       '@keyframes scp-pop{from{opacity:0;transform:translateY(6px) scale(.99)}to{opacity:1;transform:none}}',
       '.scp-menu-head{display:flex;align-items:center;justify-content:space-between;padding:2px 6px 6px;}',
-      '.scp-menu-title{font-size:11px;line-height:1.7;color:var(--scp-muted);}',
-      '.scp-menu-group{margin:4px 0 2px;padding:7px 7px 0;font-size:11px;line-height:1.6;letter-spacing:.05em;color:var(--scp-faint);border-top:1px solid var(--scp-border);}',
+      '.scp-menu-title{font-size:var(--scp-fs-meta);line-height:1.7;color:var(--scp-muted);}',
+      '.scp-menu-group{margin:4px 0 2px;padding:7px 7px 0;font-size:var(--scp-fs-meta);line-height:1.6;letter-spacing:.05em;color:var(--scp-muted);border-top:1px solid var(--scp-border);}',
       '.scp-menu-group:first-of-type{border-top:none;}',
-      '.scp-menu-item{display:flex;width:100%;align-items:center;gap:8px;padding:7px 9px;border:none;border-radius:7px;background:transparent;color:var(--scp-text);font:inherit;font-size:12.5px;line-height:1.6;text-align:left;cursor:pointer;transition:background-color 100ms ease;}',
+      '.scp-menu-item{display:flex;width:100%;align-items:center;gap:8px;padding:7px 9px;border:none;border-radius:7px;background:transparent;color:var(--scp-text);font:inherit;font-size:var(--scp-fs-body);line-height:1.6;text-align:left;cursor:pointer;transition:background-color 100ms ease;}',
       '.scp-menu-item:hover{background:var(--scp-surface-2);}',
       '.scp-menu-item:disabled{opacity:.45;cursor:not-allowed;}',
       '.scp-menu-item[data-danger="true"]{color:var(--scp-bad);}',
       '.scp-form{display:flex;flex-direction:column;gap:9px;padding:4px 8px 8px;}',
       '.scp-field{display:flex;flex-direction:column;gap:4px;}',
-      '.scp-field-label{font-size:11.5px;line-height:1.6;color:var(--scp-muted);}',
-      '.scp-input,.scp-select,.scp-textarea{font:inherit;font-size:12.5px;line-height:1.6;padding:5px 9px;border-radius:8px;border:1px solid var(--scp-border);background:var(--scp-surface-2);color:var(--scp-text);width:100%;}',
-      '.scp-input:focus,.scp-select:focus,.scp-textarea:focus{outline:2px solid var(--scp-accent-line);outline-offset:0;}',
+      '.scp-field-label{font-size:var(--scp-fs-label);line-height:1.6;color:var(--scp-muted);}',
+      '.scp-input,.scp-select,.scp-textarea{font:inherit;font-size:var(--scp-fs-body);line-height:1.6;padding:5px 9px;border-radius:8px;border:1px solid var(--scp-border);background:var(--scp-surface-2);color:var(--scp-text);width:100%;}',
+      '.scp-input:focus,.scp-select:focus,.scp-textarea:focus{outline:2px solid var(--scp-accent);outline-offset:0;}',
       '.scp-textarea{resize:vertical;min-height:96px;}',
       '.scp-form-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:4px;}',
-      '.scp-form-error{font-size:11.5px;line-height:1.6;color:var(--scp-bad);}',
-      '.scp-form-hint{font-size:11px;line-height:1.6;color:var(--scp-muted);}',
-      '.scp-preview{display:flex;flex-direction:column;gap:4px;padding:9px 10px;border-radius:9px;background:var(--scp-surface-2);border:1px solid var(--scp-border);}',
-      '.scp-preview-label{font-size:10.5px;letter-spacing:.04em;color:var(--scp-muted);}',
-      '.scp-preview-text{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.7;color:var(--scp-text);white-space:pre-wrap;overflow-wrap:anywhere;max-height:132px;overflow:auto;}',
+      '.scp-form-error{font-size:var(--scp-fs-label);line-height:1.6;color:var(--scp-bad);}',
+      '.scp-form-hint{font-size:var(--scp-fs-meta);line-height:1.6;color:var(--scp-muted);}',
+      '.scp-preview{display:flex;flex-direction:column;gap:4px;padding:9px 10px;border-radius:10px;background:var(--scp-surface-2);border:1px solid var(--scp-border);}',
+      '.scp-preview-label{font-size:var(--scp-fs-cap);letter-spacing:.04em;color:var(--scp-muted);}',
+      '.scp-preview-text{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-meta);line-height:1.7;color:var(--scp-text);white-space:pre-wrap;overflow-wrap:anywhere;max-height:132px;overflow:auto;}',
       '.scp-root[data-pending="true"] .scp-ring{background:var(--scp-warn);}',
       '.scp-root[data-flash="true"] .scp-ring{animation:scp-flash 1.4s ease-out;}',
       '@keyframes scp-flash{0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--scp-tone) 45%, transparent)}55%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}',
-      '.scp-pal-list,.scp-pal-side,.scp-menu,.scp-picker-list{scrollbar-width:thin;scrollbar-color:var(--scp-border-strong) transparent;}',
-      '.scp-pal-list::-webkit-scrollbar,.scp-pal-side::-webkit-scrollbar,.scp-menu::-webkit-scrollbar,.scp-picker-list::-webkit-scrollbar{width:10px;height:10px;}',
-      '.scp-pal-list::-webkit-scrollbar-thumb,.scp-pal-side::-webkit-scrollbar-thumb,.scp-menu::-webkit-scrollbar-thumb,.scp-picker-list::-webkit-scrollbar-thumb{background:var(--scp-border-strong);border-radius:999px;border:3px solid transparent;background-clip:content-box;}',
-      '.scp-pal-list::-webkit-scrollbar-track,.scp-pal-side::-webkit-scrollbar-track,.scp-menu::-webkit-scrollbar-track,.scp-picker-list::-webkit-scrollbar-track{background:transparent;}',
+      '.scp-pal-list,.scp-pal-side,.scp-menu-scroll,.scp-actions-menu,.scp-cmd-list,.scp-prompt,.scp-report,.scp-picker-list{scrollbar-width:thin;scrollbar-color:var(--scp-border-strong) transparent;}',
+      '.scp-pal-list::-webkit-scrollbar,.scp-pal-side::-webkit-scrollbar,.scp-menu-scroll::-webkit-scrollbar,.scp-actions-menu::-webkit-scrollbar,.scp-cmd-list::-webkit-scrollbar,.scp-prompt::-webkit-scrollbar,.scp-report::-webkit-scrollbar,.scp-picker-list::-webkit-scrollbar{width:10px;height:10px;}',
+      '.scp-pal-list::-webkit-scrollbar-thumb,.scp-pal-side::-webkit-scrollbar-thumb,.scp-menu-scroll::-webkit-scrollbar-thumb,.scp-actions-menu::-webkit-scrollbar-thumb,.scp-cmd-list::-webkit-scrollbar-thumb,.scp-prompt::-webkit-scrollbar-thumb,.scp-report::-webkit-scrollbar-thumb,.scp-picker-list::-webkit-scrollbar-thumb{background:var(--scp-border-strong);border-radius:999px;border:3px solid transparent;background-clip:content-box;}',
+      '.scp-pal-list::-webkit-scrollbar-track,.scp-pal-side::-webkit-scrollbar-track,.scp-menu-scroll::-webkit-scrollbar-track,.scp-actions-menu::-webkit-scrollbar-track,.scp-cmd-list::-webkit-scrollbar-track,.scp-prompt::-webkit-scrollbar-track,.scp-report::-webkit-scrollbar-track,.scp-picker-list::-webkit-scrollbar-track{background:transparent;}',
       '.scp-tool-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:none;border-radius:8px;background:transparent;color:var(--scp-muted);cursor:pointer;transition:background-color 120ms ease,color 120ms ease;}',
       '.scp-tool-btn:hover{background:var(--scp-surface-2);color:var(--scp-text);}',
       '.scp-tool-btn[data-tone="brand"]{color:var(--scp-accent);}',
       '.scp-tool-btn[data-tone="success"]{color:var(--scp-ok);}',
       '.scp-tool-btn[data-tone="warn"]{color:var(--scp-warn);}',
       '.scp-tool-btn[data-tone="error"]{color:var(--scp-bad);}',
-      '.scp-tool-badge{position:absolute;top:-2px;right:-3px;min-width:14px;height:14px;padding:0 4px;border-radius:999px;background:var(--scp-warn);color:#ffffff;font-size:9.5px;line-height:14px;text-align:center;font-weight:600;}',
+      '.scp-tool-badge{position:absolute;top:-2px;right:-3px;min-width:14px;height:14px;padding:0 4px;border-radius:999px;background:var(--scp-warn);color:var(--scp-on-accent);font-size:var(--scp-fs-cap);line-height:14px;text-align:center;font-weight:var(--scp-fw-semi);}',
       '.scp-pal-backdrop{position:fixed;inset:0;z-index:60;display:flex;align-items:flex-start;justify-content:center;padding:9vh 18px 18px;background:rgba(20,26,38,.26);-webkit-backdrop-filter:blur(8px) saturate(1.04);backdrop-filter:blur(8px) saturate(1.04);}',
       'body[data-ds-dark-theme] .scp-pal-backdrop,[data-theme="dark"] .scp-pal-backdrop{background:rgba(0,0,0,.5);}',
-      `/* ── 诊断总览：排版、布局与控件 ─────────────────────────────────────
+      `/* ── 诊断工作台：排版、布局与控件 ─────────────────────────────────────
    新控件的字号取八档：--scp-fs-cap 10.5 / meta 11 / label 11.5 / sm 12 /
    body 12.5 / row 13 / title 15 / hero 16.5；字重取四档 400 / 500 / 600 / 650。
    间距集中在 4 / 8 / 12 / 16 / 20 / 24；圆角按控件、卡片、窗口分三档。
    状态条共用的 .scp-menu-note / .scp-case 仍是固定值；间距与圆角沿用既有档位，未逐项 token 化。 */
-.scp-pal{position:relative;display:flex;flex-direction:column;width:min(960px,94vw);max-height:78vh;overflow:hidden;border:1px solid var(--scp-border-strong);border-radius:18px;background:var(--scp-surface);color:var(--scp-text);box-shadow:var(--scp-shadow);outline:none;animation:scp-pop 190ms cubic-bezier(.2,.9,.3,1);
-  --scp-fs-cap:10.5px;--scp-fs-meta:11px;--scp-fs-label:11.5px;--scp-fs-sm:12px;--scp-fs-body:12.5px;--scp-fs-row:13px;--scp-fs-title:15px;
-  --scp-fw-regular:400;--scp-fw-medium:500;--scp-fw-semi:600;--scp-fw-bold:650;
-  --scp-lh-tight:1.35;--scp-lh-base:1.55;--scp-lh-prose:1.75;
-  --scp-sp-1:4px;--scp-sp-2:8px;--scp-sp-3:12px;--scp-sp-4:16px;--scp-sp-5:20px;--scp-sp-6:24px;
+.scp-pal{position:relative;display:flex;flex-direction:column;width:min(960px,94vw);max-height:78vh;overflow:hidden;border:1px solid var(--scp-border-strong);border-radius:16px;background:var(--scp-surface);color:var(--scp-text);box-shadow:var(--scp-shadow);outline:none;animation:scp-pop 190ms cubic-bezier(.2,.9,.3,1);
   --scp-ctl-h:32px;--scp-ctl-h-sm:28px;--scp-ctl-h-input:34px;--scp-ctl-r:8px;--scp-side-pad-x:24px;}
 .scp-pal-top{display:flex;align-items:center;gap:var(--scp-sp-3);padding:var(--scp-sp-4) var(--scp-sp-5);border-bottom:1px solid var(--scp-border);}
 .scp-pal-heading{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px;}
@@ -1276,15 +1325,15 @@ window.__ModuleLoader__.load({
 .scp-view-tab{display:inline-flex;align-items:center;gap:5px;height:var(--scp-ctl-h-sm);padding:0 12px;border:0;background:transparent;font:inherit;font-size:var(--scp-fs-sm);font-weight:var(--scp-fw-medium);line-height:1;border-radius:7px;color:var(--scp-muted);cursor:pointer;white-space:nowrap;transition:background-color 120ms ease,color 120ms ease;}
 .scp-view-tab:hover{color:var(--scp-text);}
 .scp-view-tab[data-on="true"]{background:var(--scp-surface);color:var(--scp-text);font-weight:var(--scp-fw-semi);box-shadow:0 1px 2px rgba(16,24,40,.08);}
-.scp-view-tab b{font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);color:var(--scp-faint);font-variant-numeric:tabular-nums;}
+body[data-ds-dark-theme] .scp-view-tab[data-on="true"],[data-theme="dark"] .scp-view-tab[data-on="true"]{box-shadow:0 1px 2px rgba(0,0,0,.5);}
+.scp-view-tab b{font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);color:var(--scp-muted);font-variant-numeric:tabular-nums;}
 .scp-view-tab[data-on="true"] b{color:var(--scp-accent);}
 .scp-pal .scp-icon{width:28px;height:28px;border-radius:8px;}
 .scp-pal-main{display:flex;min-height:0;flex:1 1 auto;}
 .scp-pal-main--empty{display:flex;align-items:center;justify-content:center;}
 .scp-pal-main--empty .scp-pal-empty{flex:0 1 auto;}
-.scp-pal-list{flex:0 0 clamp(280px,34%,380px);max-width:380px;min-width:280px;overflow:auto;padding:var(--scp-sp-3);border-right:1px solid var(--scp-border);}
-@media (min-width:1200px){.scp-pal-list{flex:0 0 400px;max-width:400px;min-width:280px;}}
-.scp-search{display:flex;align-items:center;gap:6px;margin:0 0 var(--scp-sp-2);padding:0 10px;height:var(--scp-ctl-h-input);border:1px solid var(--scp-border);border-radius:9px;background:var(--scp-surface);}
+.scp-pal-list{flex:0 0 clamp(300px,40%,400px);max-width:400px;min-width:280px;overflow:auto;padding:var(--scp-sp-3);border-right:1px solid var(--scp-border);}
+.scp-search{display:flex;align-items:center;gap:6px;margin:0 0 var(--scp-sp-2);padding:0 10px;height:var(--scp-ctl-h-input);border:1px solid var(--scp-border);border-radius:8px;background:var(--scp-surface);}
 .scp-search input{flex:1;min-width:0;border:0;outline:none;background:transparent;color:var(--scp-text);font:inherit;font-size:var(--scp-fs-body);line-height:1.5;}
 .scp-search input::placeholder{color:var(--scp-faint);}
 .scp-search .scp-kbd{flex:none;}
@@ -1292,7 +1341,7 @@ window.__ModuleLoader__.load({
 .scp-filter-item{display:inline-flex;align-items:center;gap:5px;height:var(--scp-ctl-h-sm);padding:0 10px;border:1px solid transparent;border-radius:999px;background:var(--scp-surface-2);font:inherit;font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);line-height:1;color:var(--scp-muted);cursor:pointer;white-space:nowrap;transition:background-color 120ms ease,border-color 120ms ease,color 120ms ease;}
 .scp-filter-item:hover{background:var(--scp-surface-3);color:var(--scp-text);}
 .scp-filter-item[data-on="true"]{background:var(--scp-accent-soft);border-color:var(--scp-accent-line);color:var(--scp-accent);font-weight:var(--scp-fw-semi);}
-.scp-filter-item b{font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);color:var(--scp-faint);font-variant-numeric:tabular-nums;}
+.scp-filter-item b{font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);color:var(--scp-muted);font-variant-numeric:tabular-nums;}
 .scp-filter-item[data-on="true"] b{color:var(--scp-accent);}
 .scp-pal-row{position:relative;display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:none;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 120ms ease;}
 .scp-pal-row:hover{background:var(--scp-surface-2);}
@@ -1305,20 +1354,20 @@ window.__ModuleLoader__.load({
 .scp-pal-row-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:4px;}
 .scp-pal-row-line{display:flex;align-items:baseline;gap:8px;min-width:0;}
 .scp-pal-row-meta-main{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.scp-pal-row-meta-main .scp-chip{margin-left:6px;height:16px;padding:0 5px;font-size:10.5px;}
+.scp-pal-row-meta-main .scp-chip{margin-left:6px;height:16px;padding:0 5px;font-size:var(--scp-fs-cap);}
 .scp-pal-row-time{flex:none;font-size:var(--scp-fs-meta);font-variant-numeric:tabular-nums;color:var(--scp-muted);}
-.scp-pal-row-title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--scp-fs-row);font-weight:var(--scp-fw-semi);line-height:var(--scp-lh-base);color:var(--scp-text);}
+.scp-pal-row-title{flex:1 1 auto;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:break-word;font-size:var(--scp-fs-row);font-weight:var(--scp-fw-semi);line-height:var(--scp-lh-base);color:var(--scp-text);}
 .scp-pal-row-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);white-space:nowrap;}
 .scp-pal-row-step{flex:none;font-size:var(--scp-fs-meta);font-weight:var(--scp-fw-medium);font-variant-numeric:tabular-nums;color:var(--scp-muted);}
 .scp-pal-side{flex:1 1 auto;min-width:0;overflow:auto;padding:var(--scp-sp-5) var(--scp-side-pad-x) 0;display:flex;flex-direction:column;background:var(--scp-surface-2);}
 .scp-pal-side>*:not(.scp-pal-empty){flex:none;}
 .scp-pal-side>.scp-callout{margin-top:var(--scp-sp-3);}
-.scp-pal .scp-badge{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:6px;font-size:var(--scp-fs-label);font-weight:var(--scp-fw-semi);line-height:1;color:var(--scp-tone);background:color-mix(in srgb,var(--scp-tone) 12%,transparent);}
+.scp-pal .scp-badge{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:6px;font-size:var(--scp-fs-label);font-weight:var(--scp-fw-semi);line-height:1;color:color-mix(in srgb,var(--scp-tone) 66%,var(--scp-text));background:color-mix(in srgb,var(--scp-tone) 12%,transparent);}
 .scp-pal .scp-chip{display:inline-flex;align-items:center;height:22px;padding:0 9px;border:1px solid var(--scp-border);border-radius:6px;font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);line-height:1;white-space:nowrap;color:var(--scp-muted);background:var(--scp-surface);}
-.scp-pal .scp-chip[data-tone="brand"]{color:var(--scp-accent);background:var(--scp-accent-soft);border-color:var(--scp-accent-line);}
-.scp-pal .scp-chip[data-tone="warn"]{color:var(--scp-warn);background:var(--scp-warn-soft);border-color:color-mix(in srgb,var(--scp-warn) 26%,var(--scp-border));}
-.scp-pal .scp-chip[data-tone="success"]{color:var(--scp-ok);background:var(--scp-ok-soft);border-color:color-mix(in srgb,var(--scp-ok) 26%,var(--scp-border));}
-.scp-pal .scp-chip[data-tone="error"]{color:var(--scp-bad);background:var(--scp-bad-soft);border-color:color-mix(in srgb,var(--scp-bad) 26%,var(--scp-border));}
+.scp-pal .scp-chip[data-tone="brand"]{color:color-mix(in srgb,var(--scp-accent) 66%,var(--scp-text));background:var(--scp-accent-soft);border-color:var(--scp-accent-line);}
+.scp-pal .scp-chip[data-tone="warn"]{color:color-mix(in srgb,var(--scp-warn) 66%,var(--scp-text));background:var(--scp-warn-soft);border-color:color-mix(in srgb,var(--scp-warn) 26%,var(--scp-border));}
+.scp-pal .scp-chip[data-tone="success"]{color:color-mix(in srgb,var(--scp-ok) 66%,var(--scp-text));background:var(--scp-ok-soft);border-color:color-mix(in srgb,var(--scp-ok) 26%,var(--scp-border));}
+.scp-pal .scp-chip[data-tone="error"]{color:color-mix(in srgb,var(--scp-bad) 66%,var(--scp-text));background:var(--scp-bad-soft);border-color:color-mix(in srgb,var(--scp-bad) 26%,var(--scp-border));}
 .scp-pal .scp-step{font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);font-variant-numeric:tabular-nums;color:var(--scp-muted);}
 /* 诊断详情抬头（识别行）：一行状态与身份 + 问题背景（可展开）。
    真机 trace 的 summary 首句常见一两百到七八百字，当标题放大加粗会占掉详情的大半屏；这里把它降到
@@ -1369,18 +1418,18 @@ window.__ModuleLoader__.load({
 .scp-def dd{margin:0;font-size:var(--scp-fs-body);font-weight:var(--scp-fw-regular);line-height:var(--scp-lh-base);color:var(--scp-text);overflow-wrap:anywhere;}
 .scp-tl-row{display:grid;grid-template-columns:56px 1fr;gap:2px 12px;padding:var(--scp-sp-2) 0;border-top:1px solid var(--scp-border);}
 .scp-tl-row:first-of-type{border-top:0;}
-.scp-tl-step{font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);line-height:var(--scp-lh-base);font-variant-numeric:tabular-nums;color:var(--scp-faint);}
+.scp-tl-step{font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);line-height:var(--scp-lh-base);font-variant-numeric:tabular-nums;color:var(--scp-muted);}
 .scp-tl-body{min-width:0;font-size:var(--scp-fs-body);line-height:var(--scp-lh-prose);color:var(--scp-text);}
 .scp-tl-meta{font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);}
-.scp-tl-reason{margin-top:2px;font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);color:var(--scp-faint);}
+.scp-tl-reason{margin-top:2px;font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);color:var(--scp-muted);}
 .scp-history-row{display:flex;align-items:baseline;gap:8px;min-width:0;font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);}
-.scp-history-when{flex:none;font-size:var(--scp-fs-meta);font-variant-numeric:tabular-nums;color:var(--scp-faint);}
+.scp-history-when{flex:none;font-size:var(--scp-fs-meta);font-variant-numeric:tabular-nums;color:var(--scp-muted);}
 .scp-history-kind{flex:none;font-size:var(--scp-fs-cap);line-height:1.6;padding:1px 7px;border-radius:5px;background:var(--scp-surface-2);color:var(--scp-muted);font-weight:var(--scp-fw-medium);}
 .scp-history-text{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--scp-text);}
-.scp-history-note{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--scp-faint);}
+.scp-history-note{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--scp-muted);}
 .scp-actions{position:sticky;bottom:0;display:flex;flex-wrap:wrap;align-items:center;gap:var(--scp-sp-2);margin:var(--scp-sp-5) calc(-1 * var(--scp-side-pad-x)) 0;padding:var(--scp-sp-3) var(--scp-side-pad-x) var(--scp-sp-4);border-top:1px solid var(--scp-border);background:var(--scp-surface-2);box-shadow:0 -8px 16px -12px color-mix(in srgb,var(--scp-text) 24%,transparent);}
-.scp-actions::before,.scp-sed-actions::before{top:-20px;height:20px;}
-.scp-actions-menu{position:absolute;right:calc(var(--scp-side-pad-x) + 4px);bottom:100px;z-index:7;width:min(340px,calc(100% - 32px));max-height:min(58vh,520px);display:flex;flex-direction:column;overflow:auto;padding:6px;border:1px solid var(--scp-border-strong);border-radius:14px;background:var(--scp-surface);box-shadow:var(--scp-shadow);outline:none;}
+.scp-actions::before,.scp-sed-actions::before{content:"";position:absolute;left:0;right:0;top:-20px;height:20px;background:linear-gradient(to top,var(--scp-surface-2),transparent);pointer-events:none;}
+.scp-actions-menu{position:absolute;right:calc(var(--scp-side-pad-x) + 4px);bottom:100px;z-index:7;width:min(340px,calc(100% - 32px));max-height:min(58vh,520px);display:flex;flex-direction:column;overflow:auto;padding:6px;border:1px solid var(--scp-border-strong);border-radius:12px;background:var(--scp-surface);box-shadow:var(--scp-shadow);outline:none;}
 .scp-actions-menu .scp-menu-scroll{flex:1 1 auto;min-height:0;overflow:auto;}
 .scp-cmd-group{padding:6px 10px 2px;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);letter-spacing:.04em;color:var(--scp-muted);}
 .scp-pal .scp-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--scp-ctl-h);padding:0 14px;border:1px solid var(--scp-border);border-radius:var(--scp-ctl-r);background:var(--scp-surface);color:var(--scp-text);font:inherit;font-size:var(--scp-fs-sm);font-weight:var(--scp-fw-medium);line-height:1;white-space:nowrap;cursor:pointer;transition:background-color 120ms ease,border-color 120ms ease,color 120ms ease;}
@@ -1392,9 +1441,9 @@ window.__ModuleLoader__.load({
 .scp-pal .scp-btn--ghost:hover{background:var(--scp-surface-2);color:var(--scp-text);}
 .scp-pal .scp-btn--quiet{border-color:transparent;background:transparent;color:var(--scp-accent);font-weight:var(--scp-fw-semi);padding:0 10px;}
 .scp-pal .scp-btn--quiet:hover{background:var(--scp-accent-soft);color:var(--scp-accent);}
-.scp-pal .scp-cmd-backdrop{position:absolute;inset:0;z-index:4;display:flex;justify-content:center;align-items:flex-start;padding-top:11vh;background:color-mix(in srgb,var(--scp-text) 12%,transparent);}
+.scp-pal .scp-cmd-backdrop{position:absolute;inset:0;z-index:9;display:flex;justify-content:center;align-items:flex-start;padding-top:11vh;background:color-mix(in srgb,var(--scp-text) 12%,transparent);}
 .scp-pal .scp-cmd{width:min(520px,calc(100% - 32px));max-height:58vh;display:flex;flex-direction:column;border:1px solid var(--scp-border-strong);border-radius:12px;background:var(--scp-surface);box-shadow:var(--scp-shadow);overflow:hidden;}
-.scp-pal .scp-cmd:focus-within{border-color:var(--scp-accent-line);box-shadow:0 0 0 2px var(--scp-accent-line);}
+.scp-pal .scp-cmd:focus-within{border-color:var(--scp-accent);box-shadow:0 0 0 2px var(--scp-accent);}
 .scp-pal .scp-cmd input{border:0;border-bottom:1px solid var(--scp-border);outline:none;padding:var(--scp-sp-3) var(--scp-sp-4);font:inherit;font-size:var(--scp-fs-row);background:transparent;color:var(--scp-text);}
 .scp-pal .scp-cmd-where{padding:var(--scp-sp-2) var(--scp-sp-4) 0;font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .scp-pal[data-cmd="true"]>.scp-pal-foot{visibility:hidden;}
@@ -1408,15 +1457,18 @@ window.__ModuleLoader__.load({
 .scp-pal .scp-preview{display:flex;flex-direction:column;gap:var(--scp-sp-1);padding:var(--scp-sp-3);border-radius:var(--scp-ctl-r);background:var(--scp-surface-2);border:1px solid var(--scp-border);}
 .scp-pal .scp-preview-label{font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);letter-spacing:.02em;color:var(--scp-muted);}
 .scp-pal .scp-preview-text{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-label);line-height:var(--scp-lh-prose);}
-.scp-search:focus-within{border-color:var(--scp-accent-line);box-shadow:0 0 0 2px var(--scp-accent-line);}
+.scp-search:focus-within{border-color:var(--scp-accent);box-shadow:0 0 0 2px var(--scp-accent);}
 .scp-link{border:0;background:transparent;padding:0;font:inherit;font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);line-height:var(--scp-lh-base);color:var(--scp-accent);cursor:pointer;text-align:left;overflow-wrap:anywhere;}
 .scp-link:hover{text-decoration:underline;}
 .scp-pal-foot{display:flex;align-items:center;gap:var(--scp-sp-3);min-width:0;padding:10px var(--scp-sp-5);border-top:1px solid var(--scp-border);font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);background:var(--scp-surface);}
 .scp-kbd{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 4px;border-radius:5px;border:1px solid var(--scp-border);background:var(--scp-surface-2);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-medium);color:var(--scp-muted);}
 .scp-version{font-size:var(--scp-fs-cap);color:var(--scp-faint);font-variant-numeric:tabular-nums;}
 .scp-pal-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--scp-sp-2);flex:1 1 auto;min-height:200px;padding:var(--scp-sp-6);color:var(--scp-muted);font-size:var(--scp-fs-body);line-height:var(--scp-lh-prose);text-align:center;}
-.scp-menu-note{margin-left:auto;max-width:52%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;line-height:1.6;color:var(--scp-warn);}
-.scp-toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);max-width:min(80%,520px);padding:7px 14px;border-radius:var(--scp-r-pill,999px);background:var(--scp-surface);border:1px solid var(--scp-border-strong);box-shadow:var(--scp-shadow);font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);color:var(--scp-text);white-space:normal;text-align:center;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;animation:scp-toast 170ms ease-out;}
+.scp-menu-note{margin-left:auto;max-width:52%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--scp-fs-cap);line-height:1.6;color:var(--scp-warn);}
+.scp-toast:empty{display:none;}
+.scp-hint:empty{display:none;}
+.scp-sr-only{position:absolute!important;width:1px!important;height:1px!important;margin:-1px!important;padding:0!important;border:0!important;overflow:hidden!important;clip-path:inset(50%)!important;white-space:nowrap!important;}
+.scp-toast{position:absolute;left:50%;bottom:52px;transform:translateX(-50%);max-width:min(80%,520px);padding:7px 14px;border-radius:var(--scp-r-pill,999px);background:var(--scp-surface);border:1px solid var(--scp-border-strong);box-shadow:var(--scp-shadow);font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);color:var(--scp-text);white-space:normal;text-align:center;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;animation:scp-toast 170ms ease-out;}
 @keyframes scp-toast{from{opacity:0;transform:translate(-50%,6px)}to{opacity:1;transform:translate(-50%,0)}}
 .scp-skel{height:12px;border-radius:6px;background:linear-gradient(90deg,var(--scp-surface-2),color-mix(in srgb, var(--scp-surface-2) 30%, transparent),var(--scp-surface-2));background-size:200% 100%;animation:scp-shimmer 1.5s ease-in-out infinite;}
 @keyframes scp-shimmer{from{background-position:120% 0}to{background-position:-80% 0}}
@@ -1427,7 +1479,7 @@ window.__ModuleLoader__.load({
 .scp-root[data-tone="idle"]{--scp-tone:var(--scp-idle);}
 .scp-pal button:focus-visible,.scp-view-tab:focus-visible,.scp-check-action:focus-visible,.scp-sed-row:focus-visible,.scp-cmd-item:focus-visible,.scp-pick:focus-visible,.scp-details-toggle:focus-visible,.scp-link:focus-visible{outline:2px solid var(--scp-accent);outline-offset:2px;}
 .scp-pal ::selection{background:var(--scp-accent-line);}
-@container (max-width: 720px){.scp-meta,.scp-chips{display:none;}.scp-case{font-size:12px;}.scp-collapse-text{display:none;}}
+@container (max-width: 720px){.scp-meta{display:none;}.scp-chips{flex-wrap:nowrap;}.scp-collapse-text{display:none;}}
 @media (max-width: 900px){
   .scp-pal{--scp-side-pad-x:16px;}
   .scp-pal-main{flex-direction:column;}
@@ -1440,24 +1492,24 @@ window.__ModuleLoader__.load({
   .scp-pal-foot .scp-foot-note{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 }
 @media (max-width: 520px){.scp-pal-backdrop{padding:4vh 10px 10px;}.scp-pal{max-height:88vh;}.scp-picker{width:min(330px,calc(100vw - 32px));}}
-@media (prefers-reduced-motion: reduce){.scp-handle{transition:none;}.scp-ring{animation:none;}.scp-btn,.scp-icon,.scp-tick,.scp-pal-row,.scp-sed-row,.scp-chevron,.scp-check-action,.scp-filter-item,.scp-view-tab,.scp-write-side .scp-menu-item{transition:none;}.scp-pal,.scp-menu,.scp-toast,.scp-picker{animation:none;}.scp-skel{animation:none;}}`,
+`,
       `/* ── 沉淀队列（v1）──────────────────────────────────────────────── */
 .scp-batch{display:flex;align-items:center;gap:var(--scp-sp-2);padding:10px var(--scp-sp-5);border-bottom:1px solid var(--scp-border);background:var(--scp-surface);flex:none;min-width:0;}
 .scp-batch-strong{font-size:var(--scp-fs-body);font-weight:var(--scp-fw-semi);line-height:var(--scp-lh-base);white-space:nowrap;}
 .scp-batch-chip{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:5px;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);line-height:1;white-space:nowrap;}
-.scp-batch-chip[data-tone="warn"]{background:var(--scp-warn-soft);color:var(--scp-warn);}
-.scp-batch-chip[data-tone="accent"]{background:var(--scp-accent-soft);color:var(--scp-accent);}
-.scp-batch-chip[data-tone="ok"]{background:var(--scp-ok-soft);color:var(--scp-ok);}
-.scp-batch-chip[data-tone="bad"]{background:var(--scp-bad-soft);color:var(--scp-bad);}
+.scp-batch-chip[data-tone="warn"]{background:var(--scp-warn-soft);color:color-mix(in srgb,var(--scp-warn) 66%,var(--scp-text));}
+.scp-batch-chip[data-tone="accent"]{background:var(--scp-accent-soft);color:color-mix(in srgb,var(--scp-accent) 66%,var(--scp-text));}
+.scp-batch-chip[data-tone="ok"]{background:var(--scp-ok-soft);color:color-mix(in srgb,var(--scp-ok) 66%,var(--scp-text));}
+.scp-batch-chip[data-tone="bad"]{background:var(--scp-bad-soft);color:color-mix(in srgb,var(--scp-bad) 66%,var(--scp-text));}
 .scp-batch-chip[data-tone="gray"]{background:var(--scp-surface-3);color:var(--scp-muted);}
-.scp-batch-age{font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-faint);white-space:nowrap;}
+.scp-batch-age{font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);white-space:nowrap;}
 .scp-batch-age[data-over="true"]{color:var(--scp-bad);font-weight:var(--scp-fw-semi);}
 .scp-sed-side{gap:0;padding:var(--scp-sp-5) var(--scp-side-pad-x) 0;}
 .scp-sed-side>.scp-callout{margin-top:var(--scp-sp-3);}
 .scp-sed-side>.scp-list-block{margin-top:var(--scp-sp-3);}
 .scp-sed-side>.scp-sed-hint{margin-top:6px;}
 .scp-sed-side>.scp-list-block>.scp-section-label{margin:0 0 var(--scp-sp-2);}
-.scp-sed-group{display:flex;align-items:center;justify-content:space-between;padding:var(--scp-sp-3) 8px 6px;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);letter-spacing:.02em;color:var(--scp-faint);}
+.scp-sed-group{display:flex;align-items:center;justify-content:space-between;padding:var(--scp-sp-3) 8px 6px;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);letter-spacing:.02em;color:var(--scp-muted);}
 .scp-sed-row{position:relative;display:flex;gap:10px;width:100%;padding:10px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 120ms ease;}
 .scp-sed-row:hover{background:var(--scp-surface-2);}
 .scp-sed-row[data-on="true"]{background:var(--scp-accent-soft);}
@@ -1467,9 +1519,9 @@ window.__ModuleLoader__.load({
 .scp-sed-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px;}
 .scp-sed-line{display:flex;align-items:baseline;gap:8px;min-width:0;}
 .scp-sed-title{flex:1 1 auto;min-width:0;font-size:var(--scp-fs-row);font-weight:var(--scp-fw-semi);line-height:var(--scp-lh-base);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.scp-sed-age{flex:none;font-size:var(--scp-fs-meta);font-variant-numeric:tabular-nums;color:var(--scp-faint);}
+.scp-sed-age{flex:none;font-size:var(--scp-fs-meta);font-variant-numeric:tabular-nums;color:var(--scp-muted);}
 .scp-sed-age[data-over="true"]{color:var(--scp-bad);font-weight:var(--scp-fw-semi);}
-.scp-sed-meta{display:flex;align-items:center;gap:6px;min-width:0;font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.scp-sed-meta{display:flex;align-items:center;gap:6px;min-width:0;font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .scp-sed-meta .scp-chip{height:20px;padding:0 7px;font-size:var(--scp-fs-cap);}
 .scp-stepper{display:flex;padding:2px 0;}
 .scp-sed-step{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;}
@@ -1483,22 +1535,23 @@ window.__ModuleLoader__.load({
 .scp-sed-step-label{font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);line-height:var(--scp-lh-tight);color:var(--scp-muted);text-align:center;white-space:nowrap;}
 .scp-sed-step[data-state="done"] .scp-sed-step-label,.scp-sed-step[data-state="current"] .scp-sed-step-label{color:var(--scp-text);}
 .scp-sed-step[data-state="current"] .scp-sed-step-label{font-weight:var(--scp-fw-semi);}
-.scp-sed-step-note{font-size:var(--scp-fs-cap);line-height:var(--scp-lh-tight);color:var(--scp-faint);text-align:center;white-space:nowrap;}
+.scp-sed-step-note{font-size:var(--scp-fs-cap);line-height:var(--scp-lh-tight);color:var(--scp-muted);text-align:center;white-space:nowrap;}
 .scp-sed-step-note[data-bad="true"]{color:var(--scp-bad);}
 .scp-target-row{display:flex;align-items:center;gap:var(--scp-sp-2);padding:var(--scp-sp-2) var(--scp-sp-3);border:1px solid var(--scp-border);border-radius:10px;background:var(--scp-surface-2);font-size:var(--scp-fs-label);min-width:0;}
-.scp-target-label{color:var(--scp-faint);flex:none;}
+.scp-target-label{color:var(--scp-muted);flex:none;}
 .scp-target-pill{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:6px;background:var(--scp-surface);border:1px solid var(--scp-border-strong);font-weight:var(--scp-fw-semi);font-size:var(--scp-fs-label);color:var(--scp-text);white-space:nowrap;}
 .scp-target-hint{color:var(--scp-muted);font-size:var(--scp-fs-meta);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .scp-veil{position:absolute;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;background:rgba(20,26,38,.38);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);}
 body[data-ds-dark-theme] .scp-veil,[data-theme="dark"] .scp-veil{background:rgba(0,0,0,.55);}
+body[data-ds-dark-theme] .scp-pal .scp-cmd-backdrop,[data-theme="dark"] .scp-pal .scp-cmd-backdrop{background:rgba(0,0,0,.45);}
 .scp-modal{width:min(680px,calc(100% - 40px));max-height:74vh;display:flex;flex-direction:column;background:var(--scp-surface);border:1px solid var(--scp-border-strong);border-radius:16px;box-shadow:var(--scp-shadow);overflow:hidden;}
 .scp-modal-top{display:flex;align-items:flex-start;gap:var(--scp-sp-3);padding:var(--scp-sp-4) var(--scp-sp-5) var(--scp-sp-3);border-bottom:1px solid var(--scp-border);}
 .scp-modal-title{font-size:var(--scp-fs-title);font-weight:var(--scp-fw-bold);line-height:var(--scp-lh-tight);}
 .scp-modal-sub{font-size:var(--scp-fs-label);font-weight:var(--scp-fw-regular);color:var(--scp-muted);margin-top:3px;line-height:var(--scp-lh-base);}
 .scp-modal-body{overflow:auto;padding:var(--scp-sp-3) var(--scp-sp-5);display:flex;flex-direction:column;gap:var(--scp-sp-3);}
 .scp-modal-foot{display:flex;align-items:center;gap:var(--scp-sp-2);padding:var(--scp-sp-3) var(--scp-sp-5);border-top:1px solid var(--scp-border);}
-.scp-prompt{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-label);line-height:var(--scp-lh-prose);white-space:pre-wrap;background:var(--scp-surface-2);border:1px solid var(--scp-border);border-radius:9px;padding:var(--scp-sp-3) var(--scp-sp-3);color:var(--scp-text);max-height:250px;overflow:auto;-webkit-mask-image:linear-gradient(to bottom,#000 88%,transparent);mask-image:linear-gradient(to bottom,#000 88%,transparent);}
-.scp-prompt-cap{font-size:var(--scp-fs-cap);color:var(--scp-faint);margin-top:-5px;}
+.scp-prompt{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-label);line-height:var(--scp-lh-prose);white-space:pre-wrap;background:var(--scp-surface-2);border:1px solid var(--scp-border);border-radius:10px;padding:var(--scp-sp-3) var(--scp-sp-3);color:var(--scp-text);max-height:250px;overflow:auto;-webkit-mask-image:linear-gradient(to bottom,#000 88%,transparent);mask-image:linear-gradient(to bottom,#000 88%,transparent);}
+.scp-prompt-cap{font-size:var(--scp-fs-cap);color:var(--scp-muted);margin-top:-5px;}
 .scp-details-toggle{width:fit-content;border:0;background:transparent;color:var(--scp-accent);font:inherit;font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);padding:1px 0;cursor:pointer;}
 .scp-details-toggle:hover{text-decoration:underline;}
 .scp-warn-list{display:flex;flex-direction:column;gap:var(--scp-sp-1);font-size:var(--scp-fs-label);color:var(--scp-muted);line-height:var(--scp-lh-base);}
@@ -1512,8 +1565,8 @@ body[data-ds-dark-theme] .scp-veil,[data-theme="dark"] .scp-veil{background:rgba
 .scp-pick-title{font-size:var(--scp-fs-body);font-weight:var(--scp-fw-semi);display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
 .scp-pick-sub{font-size:var(--scp-fs-label);color:var(--scp-muted);margin-top:2px;line-height:var(--scp-lh-base);}
 .scp-sed-table{width:100%;border-collapse:collapse;font-size:var(--scp-fs-label);}
-.scp-sed-table th{text-align:left;font-weight:var(--scp-fw-semi);color:var(--scp-faint);font-size:var(--scp-fs-cap);letter-spacing:.02em;padding:0 6px 5px;border-bottom:1px solid var(--scp-border);}
-.scp-sed-table td{padding:6px;border-bottom:1px solid color-mix(in srgb,var(--scp-border) 60%,transparent);vertical-align:top;}
+.scp-sed-table th{text-align:left;font-weight:var(--scp-fw-semi);color:var(--scp-muted);font-size:var(--scp-fs-cap);letter-spacing:.02em;padding:0 6px 5px;border-bottom:1px solid var(--scp-border);}
+.scp-sed-table td{padding:6px;border-bottom:1px solid color-mix(in srgb,var(--scp-border) 72%,transparent);vertical-align:top;}
 .scp-sed-table tr:last-child td{border-bottom:0;}
 .scp-sed-kv{display:flex;flex-direction:column;gap:6px;font-size:var(--scp-fs-body);line-height:var(--scp-lh-base);}
 .scp-sed-kv-row{display:grid;grid-template-columns:64px 1fr;gap:var(--scp-sp-2);min-width:0;}
@@ -1526,33 +1579,33 @@ body[data-ds-dark-theme] .scp-veil,[data-theme="dark"] .scp-veil{background:rgba
 .scp-sed-history{display:flex;flex-direction:column;gap:6px;width:100%;margin-top:10px;padding-top:var(--scp-sp-2);border-top:1px solid var(--scp-border);}
 .scp-sed-history-row{display:flex;align-items:center;gap:var(--scp-sp-2);font-size:var(--scp-fs-label);color:var(--scp-muted);min-width:0;}
 .scp-sed-history-title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--scp-text);}
-.scp-dock-sed{display:flex;align-items:center;gap:7px;min-width:0;margin-top:1px;padding:5px 2px 0;border-top:1px solid var(--scp-border);font-size:11px;}
+.scp-dock-sed{display:flex;align-items:center;gap:7px;min-width:0;margin-top:1px;padding:5px 2px 0;border-top:1px solid var(--scp-border);font-size:var(--scp-fs-meta);}
 .scp-dock-sed-dot{width:6px;height:6px;border-radius:50%;background:var(--scp-warn);flex:none;}
 .scp-dock-sed-dot[data-tone="ok"]{background:var(--scp-ok);}
 .scp-dock-sed-dot[data-tone="bad"]{background:var(--scp-bad);}
 .scp-dock-sed-dot[data-tone="accent"]{background:var(--scp-accent);}
-.scp-dock-sed-label{color:var(--scp-faint);flex:none;}
-.scp-dock-sed-stage{color:var(--scp-text);font-weight:550;white-space:nowrap;}
+.scp-dock-sed-label{color:var(--scp-muted);flex:none;}
+.scp-dock-sed-stage{color:var(--scp-text);font-weight:var(--scp-fw-semi);white-space:nowrap;}
 .scp-dock-sed-sep{color:var(--scp-border-strong);flex:none;}
-.scp-dock-sed-days{color:var(--scp-warn);font-weight:650;flex:none;font-variant-numeric:tabular-nums;}
+.scp-dock-sed-days{color:var(--scp-warn);font-weight:var(--scp-fw-bold);flex:none;font-variant-numeric:tabular-nums;}
 .scp-dock-sed-next{color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
-.scp-dock-sed-open{flex:none;border:0;background:var(--scp-accent-soft);color:var(--scp-accent);font:inherit;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:6px;cursor:pointer;}
+.scp-dock-sed-open{flex:none;border:0;background:var(--scp-accent-soft);color:var(--scp-accent);font:inherit;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);padding:2px 7px;border-radius:6px;cursor:pointer;}
 /* 知识库落后提示：一行内联提示，不占诊断状态的位置；琥珀是「欠账」色，沿用 warn 变量。 */
-.scp-kb-notice{display:flex;align-items:center;gap:6px;min-width:0;padding:0 2px;color:var(--scp-warn);font-size:11px;line-height:1.6;}
+.scp-kb-notice{display:flex;align-items:center;gap:6px;min-width:0;padding:0 2px;color:var(--scp-warn);font-size:var(--scp-fs-meta);line-height:1.6;}
 .scp-kb-notice-dot{flex:none;width:5px;height:5px;border-radius:50%;background:var(--scp-warn);}
 .scp-kb-notice-main{flex:0 1 auto;min-width:0;display:flex;align-items:baseline;gap:6px;overflow:hidden;}
-.scp-kb-notice-text{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.scp-kb-notice-note{font-size:10.5px;line-height:1.6;color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.scp-kb-notice .scp-btn{flex:none;font-size:11px;line-height:1.5;padding:0 4px;border:0;background:transparent;color:var(--scp-warn);font-weight:600;}
+.scp-kb-notice-text{font-weight:var(--scp-fw-semi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.scp-kb-notice-note{font-size:var(--scp-fs-cap);line-height:1.6;color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.scp-kb-notice .scp-btn{flex:none;font-size:var(--scp-fs-meta);line-height:1.5;padding:0 4px;border:0;background:transparent;color:var(--scp-warn);font-weight:var(--scp-fw-semi);}
 .scp-kb-notice .scp-kb-go:hover{background:var(--scp-warn-soft);}
-.scp-kb-notice .scp-kb-later{color:var(--scp-muted);font-weight:500;}
+.scp-kb-notice .scp-kb-later{color:var(--scp-muted);font-weight:var(--scp-fw-medium);}
 .scp-kb-notice .scp-kb-later:hover{background:var(--scp-surface-2);color:var(--scp-text);}
 /* 连败上屏：同样是一行内联提示，用错误色与「有更新」区分。 */
-.scp-kb-error{display:flex;align-items:center;gap:6px;min-width:0;padding:0 2px;color:var(--scp-bad);font-size:11px;line-height:1.6;}
+.scp-kb-error{display:flex;align-items:center;gap:6px;min-width:0;padding:0 2px;color:var(--scp-bad);font-size:var(--scp-fs-meta);line-height:1.6;}
 .scp-kb-error-dot{flex:none;width:5px;height:5px;border-radius:50%;background:var(--scp-bad);}
 .scp-kb-error-main{flex:1 1 auto;min-width:0;display:flex;}
-.scp-kb-error-text{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.scp-kb-error .scp-btn{flex:none;font-size:11px;line-height:1.5;padding:0 4px;border:0;background:transparent;color:var(--scp-bad);font-weight:600;}
+.scp-kb-error-text{font-weight:var(--scp-fw-semi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.scp-kb-error .scp-btn{flex:none;font-size:var(--scp-fs-meta);line-height:1.5;padding:0 4px;border:0;background:transparent;color:var(--scp-bad);font-weight:var(--scp-fw-semi);}
 .scp-kb-error .scp-btn:hover{background:var(--scp-bad-soft);}
 @container (max-width: 720px){.scp-kb-notice,.scp-kb-error{flex-wrap:wrap;}.scp-kb-notice-note{display:none;}}
 body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,[data-theme="dark"] .scp-actions,[data-theme="dark"] .scp-sed-actions{box-shadow:0 -8px 16px -12px rgba(0,0,0,.55);}
@@ -1576,17 +1629,19 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 .scp-batch{position:relative;display:block;}
 .scp-batch-line{display:flex;align-items:center;gap:var(--scp-sp-2);min-width:0;flex-wrap:wrap;}
 .scp-batch-line + .scp-batch-line{margin-top:4px;}
-.scp-batch-note{font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+.scp-batch-note{font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
 .scp-batch-menu{position:absolute;right:var(--scp-sp-5);top:calc(100% - 2px);z-index:8;width:min(300px,calc(100% - 32px));padding:5px;border:1px solid var(--scp-border-strong);border-radius:12px;background:var(--scp-surface);box-shadow:var(--scp-shadow);}
 .scp-batch-item{display:flex;align-items:center;gap:8px;width:100%;padding:7px 9px;border:0;border-radius:8px;background:transparent;color:var(--scp-text);font:inherit;font-size:var(--scp-fs-body);text-align:left;cursor:pointer;}
 .scp-batch-item:hover{background:var(--scp-surface-2);}
 .scp-batch-item:disabled{opacity:.55;cursor:not-allowed;}
-.scp-batch-item-n{margin-left:auto;font-size:var(--scp-fs-cap);color:var(--scp-faint);font-variant-numeric:tabular-nums;}
+.scp-batch-item-n{margin-left:auto;font-size:var(--scp-fs-cap);color:var(--scp-muted);font-variant-numeric:tabular-nums;}
 .scp-batch-empty{padding:6px 9px;font-size:var(--scp-fs-meta);color:var(--scp-muted);line-height:var(--scp-lh-base);}
 .scp-receipt{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px var(--scp-sp-5);border-bottom:1px solid var(--scp-border);background:var(--scp-surface-2);font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);flex:none;}
 .scp-receipt-strong{color:var(--scp-text);font-weight:var(--scp-fw-medium);}
 .scp-receipt .scp-btn{height:22px;padding:0 8px;font-size:var(--scp-fs-meta);}
-@media (max-width:760px){.scp-batch{flex-wrap:wrap;gap:6px 8px;}.scp-batch .scp-spacer{display:none;}.scp-sed-step-label,.scp-sed-step-note{font-size:var(--scp-fs-cap);}.scp-target-row{flex-wrap:wrap;}}`,
+@media (max-width:760px){.scp-batch{flex-wrap:wrap;gap:6px 8px;}.scp-batch .scp-spacer{display:none;}.scp-sed-step-label,.scp-sed-step-note{font-size:var(--scp-fs-cap);}.scp-target-row{flex-wrap:wrap;}}
+/* 减少动态效果：过渡全部归零（含状态条、菜单、选择器、复选框）；静置淡出仍是瞬时变化。 */
+@media (prefers-reduced-motion: reduce){.scp-handle,.scp-handle-title,.scp-handle-meta,.scp-ring,.scp-surface,.scp-scope,.scp-collapse,.scp-case,.scp-btn,.scp-icon,.scp-tick,.scp-pal-row,.scp-sed-row,.scp-chevron,.scp-check-action,.scp-filter-item,.scp-view-tab,.scp-menu-item,.scp-menu-note,.scp-tool-btn,.scp-picker-row,.scp-row-check,.scp-select-toggle,.scp-batch-item,.scp-dock-sed-open,.scp-pick{transition:none;}.scp-pal,.scp-menu,.scp-toast,.scp-picker,.scp-cmd,.scp-skel,.scp-ring{animation:none;}}`,
     ].join('\n')
 
     // ── 兜底中文名（词表缺项时用，正常路径由 scripts/_trace_state.py 给）──────
@@ -1940,6 +1995,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         })
       })
       if (!patched) return
+      announceCheckProgress(run)
       store.sediment = Object.assign({}, store.sediment, {
         data: Object.assign({}, data, { drafts: nextDrafts }),
       })
@@ -2257,8 +2313,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const total = Number(options.total) || ids.length
       const totalText = query && total > ids.length ? '；该筛选全量 ' + total + ' 单' : ''
       const scopeText = bySelection
-        ? '范围 = 诊断总览所选的 ' + ids.length + ' 单'
-        : '范围 = 诊断总览「可沉淀」筛选当前列出的 ' + ids.length + ' 单' + scope + totalText
+        ? '范围 = 诊断工作台所选的 ' + ids.length + ' 单'
+        : '范围 = 诊断工作台「可沉淀」筛选当前列出的 ' + ids.length + ' 单' + scope + totalText
       return '用 /to-postmortem 批量沉淀这些 session：' + ids.join('、') + '\n'
         + scopeText + '；trace 在 traces/<session>.yaml。\n'
         + '先跑 python3 scripts/sediment_batch.py --json 核对分组与证据：名单外、或名单内被判「已沉淀 / 没素材」的，'
@@ -2914,10 +2970,15 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         form.fields.map((field) => {
           if (field.showWhen && !field.showWhen(values)) return null
           const label = h('span', { className: 'scp-field-label' }, field.label + (field.required ? ' *' : ''))
+          const fieldId = 'scp-field-' + String(form.kind || 'form') + '-' + field.name
+          const hintId = fieldId + '-hint'
           if (field.type === 'select') {
             return h('label', { key: field.name, className: 'scp-field' }, label,
               h('select', {
                 className: 'scp-select',
+                id: fieldId,
+                required: field.required ? true : undefined,
+                'aria-describedby': field.hint ? hintId : undefined,
                 autoFocus: field === firstVisible,
                 value: values[field.name],
                 onChange: (event) => change(field.name, event.target.value),
@@ -2931,6 +2992,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             return h('label', { key: field.name, className: 'scp-field' }, label,
               h('textarea', {
                 className: 'scp-textarea',
+                id: fieldId,
+                required: field.required ? true : undefined,
+                'aria-describedby': field.hint ? hintId : undefined,
                 rows: field.rows || undefined,
                 autoFocus: field === firstVisible,
                 value: values[field.name],
@@ -2942,17 +3006,20 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             h('input', {
               className: 'scp-input',
               type: 'text',
+              id: fieldId,
+              required: field.required ? true : undefined,
+              'aria-describedby': field.hint ? hintId : undefined,
               autoFocus: field === firstVisible,
               value: values[field.name],
               placeholder: field.placeholder || '',
               onChange: (event) => change(field.name, event.target.value),
             }),
-            field.hint ? h('span', { className: 'scp-form-hint' }, field.hint) : null)
+            field.hint ? h('span', { className: 'scp-form-hint', id: hintId }, field.hint) : null)
         }),
         preview ? h('div', { className: 'scp-preview' },
           h('span', { className: 'scp-preview-label' }, tr('form.preview')),
           h('pre', { className: 'scp-preview-text' }, preview)) : null,
-        error || localError ? h('div', { className: 'scp-form-error' }, error || localError) : null,
+        error || localError ? h('div', { className: 'scp-form-error', role: 'alert' }, error || localError) : null,
         h('div', { className: 'scp-form-actions' },
           h('button', { type: 'button', className: 'scp-btn scp-btn--ghost', onClick: onCancel }, tr('form.cancel')),
           h('button', { type: 'submit', className: 'scp-btn scp-btn--primary', disabled: busy },
@@ -3494,7 +3561,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             title: item.disabled ? disabledReason : undefined,
             onClick: item.onSelect,
           }, item.label, item.note ? h('span', { className: 'scp-menu-note' }, item.note) : null)))),
-        error ? h('div', { className: 'scp-form-error', style: { padding: '4px 6px' } }, error) : null,
+        error ? h('div', { className: 'scp-form-error', role: 'alert', style: { padding: '4px 6px' } }, error) : null,
         fallbackBlock())
     }
 
@@ -3563,9 +3630,16 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const [anchor, setAnchor] = React.useState(null)
         // 键盘收起后把焦点放回收起态胶囊，别落回 body
         const restoreFocusRef = React.useRef(false)
+        // 内层浮层（更多操作 / 选择器）关闭后把焦点还给触发它的按钮；展开时给第一个控件。
+        const moreBtnRef = React.useRef(null)
+        const scopeBtnRef = React.useRef(null)
+        const menuWasOpenRef = React.useRef(false)
+        const pickerWasOpenRef = React.useRef(false)
+        const expandFocusRef = React.useRef(false)
 
         const flash = React.useCallback((text) => {
           setHint(text)
+          announce(text)
           if (hintTimer.current) clearTimeout(hintTimer.current)
           hintTimer.current = setTimeout(() => setHint(''), 4600)
         }, [])
@@ -3628,6 +3702,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           }
         }, [s.prefs.dockCollapsed, bumpIdle])
 
+        React.useEffect(() => {
+          ensureAnnouncementRegions()
+        }, [])
+
         React.useEffect(() => () => {
           if (idleTimer.current) clearTimeout(idleTimer.current)
           if (flashTimer.current) clearTimeout(flashTimer.current)
@@ -3653,14 +3731,20 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           return undefined
         }, [s.data, s.sessionId])
 
-        // ⌘⇧D / Ctrl+Shift+D 打开诊断总览；⌘K / Ctrl+K 打开总览并进入命令面板。
+        // ⌘⇧D / Ctrl+Shift+D 打开诊断工作台；⌘K / Ctrl+K 打开工作台并进入命令面板。
         React.useEffect(() => {
           const onKey = (event) => {
+            // 宿主已经处理过的组合不再抢；状态条不该覆盖别的应用级快捷键。
+            if (event.defaultPrevented) return
             const key = String(event.key || '').toLowerCase()
             const mod = event.metaKey || event.ctrlKey
             if (!mod) return
             if (key === 'k') {
+              // 总览开着时 ⌘K 归总览自己（切进命令面板），这里不重复处理。
+              if (store.paletteOpen) return
               event.preventDefault()
+              setMenuOpen(false)
+              setPickerOpen(false)
               const current = store.data && store.data.ok !== false ? store.data : null
               if (!current) return
               const all = current.all || []
@@ -3831,6 +3915,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         function toggleCollapsed() {
           // 展开是新一轮交互：上一次「关菜单」的标记不该带到现在
           if (collapsed) menuDismissedAtRef.current = 0
+          if (collapsed) expandFocusRef.current = true
           savePrefs({ dockCollapsed: !collapsed })
           setMenuOpen(false)
           setPickerOpen(false)
@@ -3895,6 +3980,30 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           if (node && typeof node.focus === 'function') node.focus()
         }, [collapsed])
 
+        // 展开方向：胶囊被卸载后焦点会回 body，落到展开态的第一个控件（范围标签）。
+        React.useEffect(() => {
+          if (collapsed || !expandFocusRef.current) return
+          expandFocusRef.current = false
+          const node = scopeBtnRef.current
+          if (node && typeof node.focus === 'function') { try { node.focus() } catch { /* 替身无焦点 API */ } }
+        }, [collapsed])
+
+        // 内层浮层关闭：把焦点还给触发按钮，用户的 Tab 起点不丢。
+        React.useEffect(() => {
+          if (menuWasOpenRef.current && !menuOpen) {
+            const node = moreBtnRef.current
+            if (node && typeof node.focus === 'function') { try { node.focus() } catch { /* 同上 */ } }
+          }
+          menuWasOpenRef.current = menuOpen
+        }, [menuOpen])
+        React.useEffect(() => {
+          if (pickerWasOpenRef.current && !pickerOpen) {
+            const node = scopeBtnRef.current
+            if (node && typeof node.focus === 'function') { try { node.focus() } catch { /* 同上 */ } }
+          }
+          pickerWasOpenRef.current = pickerOpen
+        }, [pickerOpen])
+
         // 焦点在状态条内时 Esc 收起；菜单或选择器开着就先关内层。
         function onRootKeyDown(event) {
           if (!event || event.key !== 'Escape') return
@@ -3953,7 +4062,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               type: 'button',
               className: 'scp-handle',
               'data-idle': idle ? 'true' : 'false',
-              'aria-label': tr('action.expand'),
+              'aria-label': tr('action.expand') + '：' + title + (meta ? '，' + meta : '') + (pending ? '，' + tr('chip.feedback') : ''),
               title,
               onClick: toggleCollapsed,
             },
@@ -4144,7 +4253,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               collapsed ? null : h('div', { className: 'scp-foot' },
                 h('span', { className: 'scp-empty-note' }, tr('empty.body')))),
             // 这个分支也要挂 hint：没有诊断单时点「去同步 / 稍后」的结果得看得见。
-            hint ? h('div', { className: 'scp-hint', role: 'status' }, hint) : null)
+            h('div', { className: 'scp-hint', role: 'status' }, hint || ''))
         }
 
         const bound = !!data.bound && primary.sessionId === data.bound.sessionId
@@ -4231,6 +4340,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               className: 'scp-picker-search',
               type: 'text',
               value: query,
+              'aria-label': tr('picker.search'),
               placeholder: tr('picker.search'),
               onChange: (event) => setQuery(event.target.value),
             })),
@@ -4282,7 +4392,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
         const menu = menuOpen ? h('div', {
           className: 'scp-menu',
-          role: 'menu',
+          // 表单态里只有 form / 输入 / 普通按钮；继续用 menu 角色会让读屏按菜单模式导航。
+          role: menuForm ? 'dialog' : 'menu',
           'aria-label': tr('menu.title'),
           style: menuStyle || undefined,
         },
@@ -4332,7 +4443,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('button', {
                 type: 'button',
                 className: 'scp-scope',
-                'aria-label': tr('picker.title'),
+                ref: scopeBtnRef,
+                'aria-label': tr('picker.title') + '：' + scopeLabel,
                 title: tr('picker.title'),
                 'aria-expanded': pickerOpen ? 'true' : 'false',
                 onClick: () => { setPickerOpen((value) => !value); setMenuOpen(false) },
@@ -4350,6 +4462,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('button', { type: 'button', className: 'scp-btn scp-btn--quiet', onClick: runPrimary }, action.label),
               collapsed ? null : h('button', {
                 type: 'button', className: 'scp-icon', title: tr('action.more'), 'aria-label': tr('action.more'),
+                ref: moreBtnRef,
                 'aria-haspopup': 'menu',
                 'aria-expanded': menuOpen ? 'true' : 'false',
                 onClick: () => { setMenuForm(null); setMenuOpen((value) => !value); setPickerOpen(false) },
@@ -4368,7 +4481,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 key: chip.key, className: 'scp-chip', 'data-tone': chip.tone,
               }, chip.text))) : null),
             sedimentRow),
-          hint ? h('div', { className: 'scp-hint', role: 'status' }, hint) : null)
+          h('div', { className: 'scp-hint', role: 'status' }, hint || ''))
       }
     }
 
@@ -4397,7 +4510,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         pending > 0 ? h('span', { className: 'scp-tool-badge' }, pending > 9 ? '9+' : String(pending)) : null)
     }
 
-    // ── 面 3：诊断总览（浮层）─────────────────────────────────────────────
+    // ── 面 3：诊断工作台（浮层）─────────────────────────────────────────────
     function Palette() {
       const s = useStore()
       const data = s.data && s.data.ok !== false ? s.data : null
@@ -4462,6 +4575,11 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const promptRef = React.useRef(null)
       const promptToken = React.useRef(0)
       const targetRef = React.useRef(null)
+      const manualRef = React.useRef(null)
+      const cmdRef = React.useRef(null)
+      const moreBtnRef = React.useRef(null)
+      const menuWasOpenRef = React.useRef(false)
+      const modalReturnRef = React.useRef(null)
       const toastTimer = React.useRef(null)
       const panelRef = React.useRef(null)
       const actionMenuRef = React.useRef(null)
@@ -4693,6 +4811,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
       const flash = React.useCallback((text) => {
         setToast(text)
+        announce(text)
         if (toastTimer.current) clearTimeout(toastTimer.current)
         toastTimer.current = setTimeout(() => setToast(''), 4600)
       }, [])
@@ -4872,6 +4991,27 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         }
       }, [s.paletteOpen])
 
+      // 内层浮层（指令 / 推送目标 / 手动改状态）关闭后把焦点还给打开它的按钮。
+      const anyModalOpen = !!promptKind || targetOpen || manualOpen
+      React.useEffect(() => {
+        if (anyModalOpen) {
+          modalReturnRef.current = typeof document !== 'undefined' ? document.activeElement : null
+          return
+        }
+        const node = modalReturnRef.current
+        modalReturnRef.current = null
+        if (node && node.isConnected && typeof node.focus === 'function') { try { node.focus() } catch { /* 同上 */ } }
+      }, [anyModalOpen])
+
+      // 「更多操作」关闭后焦点回到触发按钮（打开时焦点已移进浮层）。
+      React.useEffect(() => {
+        if (menuWasOpenRef.current && !menuOpen) {
+          const node = moreBtnRef.current
+          if (node && node.isConnected && typeof node.focus === 'function') { try { node.focus() } catch { /* 同上 */ } }
+        }
+        menuWasOpenRef.current = menuOpen
+      }, [menuOpen])
+
       React.useEffect(() => {
         if (!s.paletteOpen) return undefined
         const node = panelRef.current
@@ -4880,8 +5020,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           const target = event.target
           const typing = target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName || '')
           // Tab 在浮层内环绕：aria-modal=true 时焦点不该跑到遮罩下面。
-          if (event.key === 'Tab' && !cmdOpen && !promptKind) {
-            const root = panelRef.current
+          if (event.key === 'Tab') {
+            // 最上层弹层里环绕：指令 / 目标 / 手动 / 命令面板盖在列表上时，Tab 不能落到背景。
+            const root = promptRef.current || targetRef.current || manualRef.current || cmdRef.current || panelRef.current
             if (root && typeof root.querySelectorAll === 'function') {
               const focusables = Array.from(root.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'))
                 .filter((item) => item && item.offsetParent !== null)
@@ -4900,6 +5041,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           if ((event.metaKey || event.ctrlKey) && String(event.key || '').toLowerCase() === 'k') {
             event.preventDefault()
             if (view === 'sediment') return
+            setMenuOpen(false)
+            setMenuForm(null)
             setCmdOpen(true)
             setCmdQuery('')
             setCmdIndex(0)
@@ -5093,7 +5236,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
       // 详情抬头的三个钩子必须放在任何提前 return 之前：总览关着时 Palette 提前返回，打开后
       // 又多出这三个钩子，React 会报「hook 数量与上次渲染不一致」，整个 shell.overlay 槽位崩掉，
-      // 表现就是点「诊断总览」没有反应。依赖值都从已声明的 state 现算，不依赖后面才赋值的局部变量。
+      // 表现就是点「诊断工作台」没有反应。依赖值都从已声明的 state 现算，不依赖后面才赋值的局部变量。
       const ledeRow = visibleRows[selected] || null
       const ledeText = ledeRow ? (String(ledeRow.summary || '').trim() || caseTitle(ledeRow)) : ''
       const ledeOpen = Boolean(ledeRow) && ledeOpenId === ledeRow.sessionId
@@ -5300,12 +5443,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         type: 'button',
         className: 'scp-filter-item',
         'data-on': filter === key ? 'true' : 'false',
+        'aria-pressed': filter === key ? 'true' : 'false',
         onClick: () => savePrefs({ paletteFilter: key }),
       }, tr('palette.filter.' + key), h('b', {}, data ? String(filterCounts[key] || 0) : '—')))
 
       // 首屏不铺满复选框：给一个小入口，点开才把行前的框全部露出来（触屏没有悬停）。
       const selectToggle = h('button', {
         type: 'button', className: 'scp-select-toggle', title: tr('sel.enterHint'),
+        'aria-pressed': selectingOn ? 'true' : 'false',
         onClick: enterSelection,
       }, tr('sel.enter'))
 
@@ -5336,7 +5481,11 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         h('div', { className: 'scp-filters', role: 'group', 'aria-label': tr('palette.filterLabel') },
           filterButtons, selectingOn ? null : selectToggle),
         !data ? skeleton
-          : visibleRows.length === 0 ? h('div', { className: 'scp-pal-empty' }, emptyMark, tr('palette.empty'))
+          : visibleRows.length === 0 ? h('div', { className: 'scp-pal-empty' }, emptyMark, tr('palette.emptyFiltered'),
+            h('button', {
+              type: 'button', className: 'scp-btn',
+              onClick: () => { setSearchText(''); savePrefs({ paletteFilter: 'all' }); selectIndex(0) },
+            }, tr('palette.clearFilters')))
             : visibleRows.map((item, index) => {
               const extra = item.extra || {}
               const metaPieces = []
@@ -5367,6 +5516,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   'data-pending': isPending(item) ? 'true' : 'false',
                   'data-on': index === selected ? 'true' : 'false',
                   'data-sel': checked ? 'true' : 'false',
+                  onFocus: () => { if (selected !== index) selectIndex(index) },
                   style: { '--scp-tone': TONE_VAR[toneOf(item)] || TONE_VAR.idle },
                   onClick: (event) => {
                     const e = event || {}
@@ -5591,7 +5741,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 h('span', { className: 'scp-check-state' }, extra.hasReport ? tr('label.hasReport') : tr('report.none'))),
               reportState.open
                 ? (reportState.loading ? h('div', { className: 'scp-mono' }, tr('report.loading'))
-                  : reportState.error ? h('div', { className: 'scp-form-error' }, reportState.error)
+                  : reportState.error ? h('div', { className: 'scp-form-error', role: 'alert' }, reportState.error)
                     : h('pre', { className: 'scp-report' }, reportState.text))
                 : null),
             h('div', { className: 'scp-section-label' }, tr('section.timeline')),
@@ -5606,7 +5756,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   : null),
               timelineState.open
                 ? (timelineState.loading ? h('div', { className: 'scp-mono' }, tr('timeline.loading'))
-                  : timelineState.error ? h('div', { className: 'scp-form-error' }, timelineState.error)
+                  : timelineState.error ? h('div', { className: 'scp-form-error', role: 'alert' }, timelineState.error)
                     : timelineState.items.length
                       ? timelineState.items.map((entry, index) => h('div', { key: 'tl-' + index, className: 'scp-tl-row' },
                         h('span', { className: 'scp-tl-step' }, entry.step ? '第 ' + entry.step + ' 步' : '—'),
@@ -5657,6 +5807,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 rowAction.key === 'copy' ? null : h('button', { type: 'button', className: 'scp-btn', onClick: () => copyAndFlash(summaryText(row, data)) }, tr('action.copySummary')),
                 h('button', {
                   type: 'button', className: 'scp-btn scp-btn--ghost',
+                  ref: moreBtnRef,
                   'aria-haspopup': 'dialog', 'aria-expanded': menuOpen ? 'true' : 'false',
                   'data-more-button': 'true',
                   onClick: () => {
@@ -5672,7 +5823,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         : (data && filtered.length === 0 ? null : h('div', { className: 'scp-pal-side' },
           h('div', { className: 'scp-pal-empty' },
             emptyMark,
-            !data ? tr('palette.loading') : tr('palette.empty'))))
+            !data ? tr('palette.loading') : tr('palette.emptyFiltered'))))
 
       const actionMenu = menuOpen && row && !loadFailed && view === 'diagnosis'
         ? h('div', { className: 'scp-actions-menu', role: 'dialog', 'aria-label': tr('menu.title'), ref: actionMenuRef, tabIndex: -1 },
@@ -6447,7 +6598,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const some = !all && ids.some((id) => selSet.has(id))
         return h('button', {
           type: 'button', className: 'scp-row-check', role: 'checkbox',
-          'aria-checked': all ? 'true' : 'false',
+          'aria-checked': all ? 'true' : (some ? 'mixed' : 'false'),
           'data-mixed': some ? 'true' : 'false',
           'aria-label': tr('sel.allBatch', { n: ids.length }),
           tabIndex: -1,
@@ -6459,7 +6610,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         type: 'button',
         className: 'scp-row-check',
         role: 'checkbox',
-        'aria-checked': allChecked ? 'true' : 'false',
+        'aria-checked': allChecked ? 'true' : (someChecked ? 'mixed' : 'false'),
         'data-mixed': someChecked ? 'true' : 'false',
         'aria-label': tr('sel.all', { n: visibleRows.length }),
         tabIndex: -1,
@@ -6532,7 +6683,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       },
         h('div', { className: 'scp-batch-line' },
           noSelectionYet ? null : selectAllControl,
-          h('span', { className: 'scp-batch-strong' },
+          h('span', { className: 'scp-batch-strong', role: 'status' },
             noSelectionYet ? tr('sel.emptyTitle') : tr('sel.count', { n: selectedCount })),
           h('span', { className: 'scp-batch-note' },
             noSelectionYet ? tr('sel.emptyHint') : tr('sel.inFilter', { n: selVisibleRows.length })),
@@ -6707,6 +6858,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                     className: 'scp-sed-row',
                     'data-on': index === sedSel ? 'true' : 'false',
                     'data-sel': checked ? 'true' : 'false',
+                    onFocus: () => { if (sedSel !== index) setSedSel(index) },
                     onClick: (event) => {
                       const e = event || {}
                       if (e.shiftKey) toggleRowSelection(draft, index, 'range')
@@ -6749,13 +6901,13 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                         runState
                           ? h('span', {
                             className: 'scp-chip',
-                            'data-tone': runState.ok ? 'ok' : 'bad',
+                            'data-tone': runState.ok ? 'success' : 'error',
                             title: runState.ok ? (runState.checkedAt || '') : (runState.message || ''),
                           }, runState.ok
                             ? tr('sediment.prState.' + runState.state)
                             : checkErrorText(runState.error))
                           : (runPending
-                            ? h('span', { className: 'scp-chip', 'data-tone': 'accent' }, tr('sediment.checking'))
+                            ? h('span', { className: 'scp-chip', 'data-tone': 'brand' }, tr('sediment.checking'))
                             : null),
                         draft.decision
                           ? h('span', {}, sedDecisionLabel(draft.decision))
@@ -7099,7 +7251,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               ? h('div', { className: 'scp-sed-hint' }, tr('sel.scopedLoading'))
               : null,
             scopedActive && scopedPrompt.error
-              ? h('div', { className: 'scp-form-error' }, tr('sel.scopedFailed', { reason: scopedPrompt.error }))
+              ? h('div', { className: 'scp-form-error', role: 'alert' }, tr('sel.scopedFailed', { reason: scopedPrompt.error }))
               : null,
             promptText
               ? h('div', { className: 'scp-prompt' }, promptText)
@@ -7149,6 +7301,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   type: 'button',
                   className: 'scp-pick',
                   'data-on': targetRemote === name ? 'true' : 'false',
+                  'aria-pressed': targetRemote === name ? 'true' : 'false',
                   onClick: () => {
                     setTargetRemote(name)
                     if (item.base) setTargetBase(String(item.base))
@@ -7171,6 +7324,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('span', { className: 'scp-target-label' }, tr('sediment.target.base')),
               h('input', {
                 className: 'scp-input', style: { width: '180px' }, type: 'text',
+                'aria-label': tr('sediment.target.base'),
                 value: targetBase, onChange: (event) => setTargetBase(event.target.value),
               }),
               h('span', { className: 'scp-target-hint' }, tr('sediment.targetNote')))),
@@ -7192,7 +7346,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       },
         h('div', {
           className: 'scp-modal', style: { width: 'min(520px, calc(100% - 40px))' },
-          role: 'dialog', 'aria-modal': 'true', 'aria-label': tr('sediment.manualTitle'), tabIndex: -1,
+          role: 'dialog', 'aria-modal': 'true', 'aria-label': tr('sediment.manualTitle'), tabIndex: -1, ref: manualRef,
         },
           h('div', { className: 'scp-modal-top' },
             h('div', { style: { flex: '1 1 auto', minWidth: 0 } },
@@ -7210,6 +7364,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               type: 'button',
               className: 'scp-pick',
               'data-on': ((sedPick.pr && sedPick.pr.state) || 'unknown') === state ? 'true' : 'false',
+              'aria-pressed': ((sedPick.pr && sedPick.pr.state) || 'unknown') === state ? 'true' : 'false',
               disabled: checkBusy === sedPick.key || checkBusy === '__all__' || !canWrite,
               onClick: () => markState(sedPick.key, state),
             },
@@ -7252,9 +7407,19 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('span', { className: 'scp-pal-sub' }, view === 'sediment'
                 ? [tr('sediment.batch.total', { n: sedDrafts.length }), sedTargetHint].join(' · ')
                 : subParts.join(' · '))),
-            h('div', { className: 'scp-views', role: 'tablist', 'aria-label': tr('palette.title') },
+            h('div', {
+              className: 'scp-views', role: 'tablist', 'aria-label': tr('palette.title'),
+              onKeyDown: (event) => {
+                if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+                event.preventDefault()
+                const next = view === 'diagnosis' ? 'sediment' : 'diagnosis'
+                setMenuOpen(false); setMenuForm(null); setPaletteView(next)
+              },
+            },
               h('button', {
                 type: 'button', role: 'tab',
+                id: 'scp-tab-diagnosis', 'aria-controls': 'scp-pal-panel',
+                tabIndex: view === 'diagnosis' ? 0 : -1,
                 className: 'scp-view-tab',
                 'aria-selected': view === 'diagnosis' ? 'true' : 'false',
                 'data-on': view === 'diagnosis' ? 'true' : 'false',
@@ -7262,6 +7427,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               }, tr('palette.view.diagnosis'), h('b', {}, loadFailed ? '—' : loading ? '…' : String(rows.length))),
               h('button', {
                 type: 'button', role: 'tab',
+                id: 'scp-tab-sediment', 'aria-controls': 'scp-pal-panel',
+                tabIndex: view === 'sediment' ? 0 : -1,
                 className: 'scp-view-tab',
                 'aria-selected': view === 'sediment' ? 'true' : 'false',
                 'data-on': view === 'sediment' ? 'true' : 'false',
@@ -7278,15 +7445,24 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           loadFailed ? null : diagBatch,
           loadFailed ? null : receiptBar,
           loadFailed
-            ? h('div', { className: 'scp-pal-main scp-pal-main--empty' },
+            ? h('div', {
+              className: 'scp-pal-main scp-pal-main--empty',
+              id: 'scp-pal-panel', role: 'tabpanel', 'aria-labelledby': view === 'sediment' ? 'scp-tab-sediment' : 'scp-tab-diagnosis',
+            },
               h('div', { className: 'scp-pal-error scp-pal-error--center' },
                 h('div', { className: 'scp-pal-error-title' }, tr('palette.unavailable', { message: (s.data && s.data.message) || s.message || '' })),
                 h('button', { type: 'button', className: 'scp-btn', onClick: () => refresh(true) }, tr('action.retry'))))
             : data && view === 'diagnosis' && rows.length === 0
-              ? h('div', { className: 'scp-pal-main scp-pal-main--empty' },
-                h('div', { className: 'scp-pal-empty' }, emptyMark, tr('palette.empty'),
+              ? h('div', {
+                className: 'scp-pal-main scp-pal-main--empty',
+                id: 'scp-pal-panel', role: 'tabpanel', 'aria-labelledby': view === 'sediment' ? 'scp-tab-sediment' : 'scp-tab-diagnosis',
+              },
+                h('div', { className: 'scp-pal-empty' }, emptyMark, tr('palette.emptyAll'),
                   h('button', { type: 'button', className: 'scp-btn', onClick: () => refresh(true) }, tr('action.refresh'))))
-              : h('div', { className: 'scp-pal-main' }, view === 'sediment' ? sedList : list, view === 'sediment' ? sedSide : side),
+              : h('div', {
+                className: 'scp-pal-main',
+                id: 'scp-pal-panel', role: 'tabpanel', 'aria-labelledby': view === 'sediment' ? 'scp-tab-sediment' : 'scp-tab-diagnosis',
+              }, view === 'sediment' ? sedList : list, view === 'sediment' ? sedSide : side),
           h('div', { className: 'scp-pal-foot' },
             loadFailed ? null : h('span', { className: 'scp-foot-hints' },
               h('span', { className: 'scp-kbd' }, '↑'),
@@ -7315,7 +7491,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             className: 'scp-cmd-backdrop',
             onMouseDown: (event) => { if (event.target === event.currentTarget) setCmdOpen(false) },
           },
-            h('div', { className: 'scp-cmd', role: 'dialog', 'aria-modal': 'true', 'aria-label': tr('cmd.placeholder') },
+            h('div', { className: 'scp-cmd', role: 'dialog', 'aria-modal': 'true', 'aria-label': tr('cmd.placeholder'), ref: cmdRef },
               h('div', { className: 'scp-cmd-where' }, tr('cmd.where') + (row ? caseTitle(row) : '')),
               h('input', {
                 ref: cmdInputRef, value: cmdQuery, placeholder: tr('cmd.placeholder'),
@@ -7343,7 +7519,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   })
                   : h('div', { className: 'scp-cmd-empty' }, tr('cmd.empty'))),
               h('div', { className: 'scp-pal-foot' }, h('span', {}, tr('cmd.hint'))))) : null,
-          toast ? h('span', { className: 'scp-toast', role: 'status', title: toast }, toast) : null))
+          h('span', { className: 'scp-toast', role: 'status', title: toast || undefined }, toast || '')))
     }
 
     // ── 打开其它会话（轨迹写了 harness_session 时可用）────────────────────

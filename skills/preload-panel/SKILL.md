@@ -66,7 +66,7 @@ DSH_HOME 位置、profile 名、命令行是否随包、token 是否落日志、
 | 要在装之前确认包能加载，或界面不可用 | 路由四：HTTP 脚本安装（先要有日志地址与 token） |
 
 **默认装四个包**：面板包 `dsh-sleuth-panels`、`dsh-sleuth-vllm-kb`（设置页左侧栏的「vllm-kb」一栏，
-四个 `vllm_kb_*` 工具默认关）、独立的 `dsh-sleuth-copilot`（输入框上方的诊断状态条与诊断总览）、
+四个 `vllm_kb_*` 工具默认关）、独立的 `dsh-sleuth-copilot`（输入框上方的诊断状态条与诊断工作台）、
 独立的 `dsh-sleuth-canvas`（左侧栏「诊断画布」整页，离线渲染 `traces/`）。路由三对后三个包各再跑一次
 `add`；路由五在插件页粘贴四次；路由四用 `--all` 一次装齐；路由二用 `install_bundle` 装四次。四个包
 分开登记：装面板不会带上另外三个。状态条与诊断画布都是独立包，卸掉它们不影响面板。
@@ -361,7 +361,7 @@ version 与 `lib/client.js` 的 `PLUGIN_VERSION` 一起改，再按原路重装�
 |---|---|---|
 | 状态条 | `dsh-plugins/dsh-sleuth-copilot/` | `conversation.input.dock` id `sleuth-copilot`(55) |
 | 输入区入口 | 同上 | `conversation.input.right` id `sleuth-copilot-toolbar`(5) |
-| 诊断总览 | 同上 | `shell.overlay` id `sleuth-copilot-palette`(60) |
+| 诊断工作台 | 同上 | `shell.overlay` id `sleuth-copilot-palette`(60) |
 
 它只读 `traces/`（Host 半跑 `lib/copilot_state.py`）；状态修改只在用户点开表单、确认提交后经
 `scripts/trace_transition.py` 写回，带内容指纹做并发保护。上游查证不发网络请求：菜单按

@@ -1,8 +1,8 @@
 {
   "name": "dsh-sleuth-copilot",
-  "version": "0.23.2",
+  "version": "0.24.0",
   "private": true,
-  "description": "ascend-sleuth 诊断交互层：状态条、诊断总览、沉淀队列、一键复制指令与收尾/重开/沉淀状态写入",
+  "description": "ascend-sleuth 诊断交互层：状态条、诊断工作台、沉淀队列、一键复制指令与收尾/重开/沉淀状态写入",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {
@@ -33,6 +33,6 @@
   },
   "meta": {
     "title": "ascend-sleuth 诊断状态条",
-    "description": "输入框上方的诊断状态、诊断总览与沉淀队列：读状态、复制指令、提 PR 目标与收尾/重开/沉淀状态写入。"
+    "description": "输入框上方的诊断状态、诊断工作台与沉淀队列：读状态、复制指令、提 PR 目标与收尾/重开/沉淀状态写入。"
   }
 }
