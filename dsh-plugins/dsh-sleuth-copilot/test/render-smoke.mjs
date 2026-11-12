@@ -1939,6 +1939,8 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   view = await t.settle()
   expect('沉淀队列：批次条出现', byClass(view, 'scp-batch').length === 1)
   expect('沉淀队列：3 行草稿', byClass(view, 'scp-sed-row').length === 3, String(byClass(view, 'scp-sed-row').length))
+  expect('沉淀队列：行包装带沉淀标记', byClass(view, 'scp-row-wrap--sed').length === 3,
+    String(byClass(view, 'scp-row-wrap--sed').length))
   expect('沉淀队列：显示目标', view.text.includes('origin · main · GitCode'))
   expect('沉淀队列：按下一步分组', view.text.includes('待继续 groom') && view.text.includes('待提 PR'))
   expect('沉淀队列：显示年龄', view.text.includes('16 天'))
@@ -4034,6 +4036,11 @@ function clickWith(node, extra) {
     cssRule('.scp-row-wrap>.scp-row-check').includes('position:absolute')
       && cssRule('.scp-row-wrap').includes('position:relative'),
     cssRule('.scp-row-wrap') + ' || ' + cssRule('.scp-row-wrap>.scp-row-check'))
+  // 沉淀行的状态点贴行首（不是垂直居中），复选框要跟着它对齐，不能落在行中间。
+  expect('排版：沉淀行复选框贴行首状态点',
+    cssRule('.scp-row-wrap--sed>.scp-row-check').includes('top:8px')
+      && !cssRule('.scp-row-wrap--sed>.scp-row-check').includes('translateY'),
+    cssRule('.scp-row-wrap--sed>.scp-row-check'))
   // 批次条左右两组同行：一行放得下就并排，放不下才整组换到下一行。
   expect('排版：批次条一组一行放不下才换行',
     cssRule('.scp-batch').includes('flex-wrap:wrap')

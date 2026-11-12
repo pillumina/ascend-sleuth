@@ -1522,7 +1522,7 @@ body[data-ds-dark-theme] .scp-view-tab[data-on="true"],[data-theme="dark"] .scp-
 .scp-sed-side>.scp-sed-hint{margin-top:6px;}
 .scp-sed-side>.scp-list-block>.scp-section-label{margin:0 0 var(--scp-sp-2);}
 .scp-sed-group{display:flex;align-items:center;justify-content:space-between;padding:var(--scp-sp-3) 8px 6px;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);letter-spacing:.02em;color:var(--scp-muted);}
-.scp-sed-row{position:relative;display:flex;gap:10px;width:100%;padding:10px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 120ms ease;}
+.scp-sed-row{position:relative;display:flex;gap:10px;width:100%;padding:10px 10px 10px 14px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 120ms ease;}
 .scp-sed-row:hover{background:var(--scp-surface-2);}
 .scp-sed-row[data-on="true"]{background:var(--scp-accent-soft);}
 .scp-sed-row::before{content:"";position:absolute;left:4px;top:50%;width:2px;height:18px;margin-top:-9px;border-radius:1px;background:transparent;pointer-events:none;}
@@ -1626,6 +1626,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 .scp-row-check{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-left:3px;padding:0;border:0;border-radius:6px;background:transparent;cursor:pointer;opacity:0;pointer-events:none;transition:opacity 120ms ease;}
 /* 行前复选框覆在状态点的位置上：默认不占宽，悬停 / 选择态 / 已勾选时盖住状态点，行首不再留 24px 空槽。 */
 .scp-row-wrap>.scp-row-check{position:absolute;left:6px;top:50%;transform:translateY(-50%);z-index:2;margin-left:0;}
+/* 沉淀行的状态点贴行首（10px 内边距 + 7px 上边距 + 6px 圆点，中心在 20px），复选框跟着它对齐。 */
+.scp-row-wrap--sed>.scp-row-check{top:8px;transform:none;}
 .scp-row-wrap:hover .scp-row-check,.scp-row-wrap:focus-within .scp-row-check{opacity:1;pointer-events:auto;}
 .scp-pal-list[data-selecting="true"] .scp-row-check{opacity:1;pointer-events:auto;}
 .scp-row-check[aria-checked="true"]{opacity:1;pointer-events:auto;}
@@ -6939,7 +6941,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                         draft.source && draft.source.sessionId
                           ? h('span', {}, draft.source.sessionId)
                           : null)))
-                  return h('div', { key: draft.key, className: 'scp-row-wrap' },
+                  return h('div', { key: draft.key, className: 'scp-row-wrap scp-row-wrap--sed' },
                     h('button', {
                       key: 'check',
                       type: 'button',
