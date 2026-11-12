@@ -992,6 +992,12 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('最近一单：状态条不显示计数类标签', !view.text.includes('已排除 3 条'))
   expect('最近一单：版本串与 package.json 一致', view.nodes.some((node) => node.props && node.props['data-version'] === PKG_VERSION), PKG_VERSION)
   expect('工具条：带待回报角标', view.text.includes('1 单待回报'), view.text.slice(0, 400))
+  // 工具条是独立注册面，不在 .scp-root 里：token 必须同时挂到 .scp-tool-btn，否则角标没有底色。
+  const toolTokenRule = cssRule('.scp-root,.scp-pal,.scp-tool-btn')
+  const styleText = (styleTags[styleTags.length - 1] || {}).textContent || ''
+  expect('工具条：token 覆盖到入口按钮', toolTokenRule.includes('--scp-warn') && toolTokenRule.includes('--scp-fs-cap'),
+    toolTokenRule.slice(0, 120))
+  expect('工具条：暗色 token 也覆盖入口按钮', styleText.includes('body[data-ds-dark-theme] .scp-tool-btn'))
   expect('标题按钮可打开台账', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断工作台：')))
 }
 

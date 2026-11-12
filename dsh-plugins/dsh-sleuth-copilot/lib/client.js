@@ -91,6 +91,8 @@ window.__ModuleLoader__.load({
     }
     // 查合入的进度（n/m）每 500ms 变一次：播报节流到 3 秒，避免读屏刷屏。
     let lastCheckAnnounceAt = 0
+    // 同一角色可能同时存在两份表单（状态条菜单与工作台菜单），字段 id 不能只按表单 kind 生成。
+    let formSeq = 0
     function announceCheckProgress(run) {
       if (!run || !run.total) return
       const now = Date.now()
@@ -1188,8 +1190,8 @@ window.__ModuleLoader__.load({
 
     // ── 样式 ────────────────────────────────────────────────────────────────
     const CSS = [
-      '.scp-root,.scp-pal{--scp-surface:#ffffff;--scp-surface-2:#f6f7f9;--scp-surface-3:#eceff4;--scp-border:#e5e8ee;--scp-border-strong:#d7dce5;--scp-text:#1a1f29;--scp-muted:#647082;--scp-faint:#98a2b3;--scp-accent:#3b63e0;--scp-accent-soft:#eef2fe;--scp-accent-line:#c9d5fb;--scp-on-accent:#ffffff;--scp-ok:#0e8a5f;--scp-ok-soft:#e7f6ef;--scp-warn:#b25e09;--scp-warn-soft:#fdf2e4;--scp-bad:#c42b1c;--scp-bad-soft:#fdecea;--scp-idle:#647082;--scp-shadow:0 1px 2px rgba(16,24,40,.04),0 12px 30px -20px rgba(16,24,40,.22);--scp-fs-cap:10.5px;--scp-fs-meta:11px;--scp-fs-label:11.5px;--scp-fs-sm:12px;--scp-fs-body:12.5px;--scp-fs-row:13px;--scp-fs-title:15px;--scp-fw-regular:400;--scp-fw-medium:500;--scp-fw-semi:600;--scp-fw-bold:650;--scp-lh-tight:1.35;--scp-lh-base:1.55;--scp-lh-prose:1.75;--scp-sp-1:4px;--scp-sp-2:8px;--scp-sp-3:12px;--scp-sp-4:16px;--scp-sp-5:20px;--scp-sp-6:24px;}',
-      'body[data-ds-dark-theme] .scp-root,body[data-ds-dark-theme] .scp-pal,[data-theme="dark"] .scp-root,[data-theme="dark"] .scp-pal{--scp-surface:#1c1f26;--scp-surface-2:#242832;--scp-surface-3:#2e333e;--scp-border:#2e3441;--scp-border-strong:#3d4553;--scp-text:#eaedf3;--scp-muted:#a6afbd;--scp-faint:#7a8494;--scp-accent:#8aa5ff;--scp-accent-soft:rgba(138,165,255,.14);--scp-accent-line:rgba(138,165,255,.3);--scp-on-accent:#10131a;--scp-ok:#45d08a;--scp-ok-soft:rgba(69,208,138,.12);--scp-warn:#f5b34a;--scp-warn-soft:rgba(245,179,74,.12);--scp-bad:#f0796e;--scp-bad-soft:rgba(240,121,110,.12);--scp-idle:#6f7886;--scp-shadow:0 1px 2px rgba(0,0,0,.4),0 16px 36px -20px rgba(0,0,0,.7);}',
+      '.scp-root,.scp-pal,.scp-tool-btn{--scp-surface:#ffffff;--scp-surface-2:#f6f7f9;--scp-surface-3:#eceff4;--scp-border:#e5e8ee;--scp-border-strong:#d7dce5;--scp-text:#1a1f29;--scp-muted:#647082;--scp-faint:#98a2b3;--scp-accent:#3b63e0;--scp-accent-soft:#eef2fe;--scp-accent-line:#c9d5fb;--scp-on-accent:#ffffff;--scp-ok:#0e8a5f;--scp-ok-soft:#e7f6ef;--scp-warn:#b25e09;--scp-warn-soft:#fdf2e4;--scp-bad:#c42b1c;--scp-bad-soft:#fdecea;--scp-idle:#647082;--scp-shadow:0 1px 2px rgba(16,24,40,.04),0 12px 30px -20px rgba(16,24,40,.22);--scp-fs-cap:10.5px;--scp-fs-meta:11px;--scp-fs-label:11.5px;--scp-fs-sm:12px;--scp-fs-body:12.5px;--scp-fs-row:13px;--scp-fs-title:15px;--scp-fw-regular:400;--scp-fw-medium:500;--scp-fw-semi:600;--scp-fw-bold:650;--scp-lh-tight:1.35;--scp-lh-base:1.55;--scp-lh-prose:1.75;--scp-sp-1:4px;--scp-sp-2:8px;--scp-sp-3:12px;--scp-sp-4:16px;--scp-sp-5:20px;--scp-sp-6:24px;}',
+      'body[data-ds-dark-theme] .scp-root,body[data-ds-dark-theme] .scp-pal,body[data-ds-dark-theme] .scp-tool-btn,[data-theme="dark"] .scp-root,[data-theme="dark"] .scp-pal,[data-theme="dark"] .scp-tool-btn{--scp-surface:#1c1f26;--scp-surface-2:#242832;--scp-surface-3:#2e333e;--scp-border:#2e3441;--scp-border-strong:#3d4553;--scp-text:#eaedf3;--scp-muted:#a6afbd;--scp-faint:#7a8494;--scp-accent:#8aa5ff;--scp-accent-soft:rgba(138,165,255,.14);--scp-accent-line:rgba(138,165,255,.3);--scp-on-accent:#10131a;--scp-ok:#45d08a;--scp-ok-soft:rgba(69,208,138,.12);--scp-warn:#f5b34a;--scp-warn-soft:rgba(245,179,74,.12);--scp-bad:#f0796e;--scp-bad-soft:rgba(240,121,110,.12);--scp-idle:#6f7886;--scp-shadow:0 1px 2px rgba(0,0,0,.4),0 16px 36px -20px rgba(0,0,0,.7);}',
       '.scp-root{position:relative;container-type:inline-size;width:calc(100% - 2 * var(--dsh-composer-side-clearance, 0px));max-width:var(--dsh-composer-card-max-width, 100%);margin:0 auto;box-sizing:border-box;font-family:inherit;color:var(--scp-text);--scp-tone:var(--scp-accent);}',
       // 浮层改成向下展开时会盖到输入卡上；状态条是输入卡前面的兄弟节点，抬一层才点得到。
       '.scp-root[data-popover-down="true"]{z-index:9;}',
@@ -2957,6 +2959,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       })
       // 必填项缺值：给一行说明，不要按了提交像没反应。
       const [localError, setLocalError] = React.useState('')
+      const formSeqRef = React.useRef(0)
+      if (!formSeqRef.current) formSeqRef.current = ++formSeq
       function change(name, value) {
         if (localError) setLocalError('')
         setValues((prev) => Object.assign({}, prev, { [name]: value }))
@@ -2982,7 +2986,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         form.fields.map((field) => {
           if (field.showWhen && !field.showWhen(values)) return null
           const label = h('span', { className: 'scp-field-label' }, field.label + (field.required ? ' *' : ''))
-          const fieldId = 'scp-field-' + String(form.kind || 'form') + '-' + field.name
+          const fieldId = 'scp-field-' + formSeqRef.current + '-' + field.name
           const hintId = fieldId + '-hint'
           if (field.type === 'select') {
             return h('label', { key: field.name, className: 'scp-field' }, label,
@@ -5054,6 +5058,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           if ((event.metaKey || event.ctrlKey) && String(event.key || '').toLowerCase() === 'k') {
             event.preventDefault()
             if (view === 'sediment') return
+            // 指令 / 推送目标 / 手动改状态的弹层盖在命令面板之上：这时开面板只会开在遮罩下面。
+            if (promptKind || targetOpen || manualOpen) return
             setMenuOpen(false)
             setMenuForm(null)
             setCmdOpen(true)
