@@ -38,13 +38,15 @@ globalThis.window = {
     removeItem: (key) => storage.delete(key),
   },
 }
+const annNodes = new Map()
 globalThis.document = {
   visibilityState: 'visible',
+  getElementById: (id) => annNodes.get(id) || null,
   createElement: () => ({
     setAttribute() {}, remove() {}, appendChild() {}, select() {},
     style: {}, textContent: '', value: '',
   }),
-  body: { appendChild() {}, removeChild() {} },
+  body: { appendChild(node) { if (node && node.id) annNodes.set(node.id, node) }, removeChild() {} },
   head: { appendChild(tag) { if (tag && typeof tag.textContent === 'string') styleTags.push(tag) } },
   addEventListener(type, fn) {
     if (!documentHandlers.has(type)) documentHandlers.set(type, new Set())
@@ -300,6 +302,10 @@ function findButton(view, label) {
 function findAria(view, label) {
   return view.nodes.find((node) => node.type === 'button' && node.props && node.props['aria-label'] === label)
 }
+function findAriaPrefix(tree, prefix) {
+  return findNode(tree, (node) => node.props && typeof node.props['aria-label'] === 'string' && node.props['aria-label'].startsWith(prefix))
+}
+
 
 function findButtonContains(view, label) {
   return view.nodes.find((node) => node.type === 'button' && nodeText(node).includes(label))
@@ -986,7 +992,13 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('最近一单：状态条不显示计数类标签', !view.text.includes('已排除 3 条'))
   expect('最近一单：版本串与 package.json 一致', view.nodes.some((node) => node.props && node.props['data-version'] === PKG_VERSION), PKG_VERSION)
   expect('工具条：带待回报角标', view.text.includes('1 单待回报'), view.text.slice(0, 400))
-  expect('标题按钮可打开台账', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断总览：')))
+  // 工具条是独立注册面，不在 .scp-root 里：token 必须同时挂到 .scp-tool-btn，否则角标没有底色。
+  const toolTokenRule = cssRule('.scp-root,.scp-pal,.scp-tool-btn')
+  const styleText = (styleTags[styleTags.length - 1] || {}).textContent || ''
+  expect('工具条：token 覆盖到入口按钮', toolTokenRule.includes('--scp-warn') && toolTokenRule.includes('--scp-fs-cap'),
+    toolTokenRule.slice(0, 120))
+  expect('工具条：暗色 token 也覆盖入口按钮', styleText.includes('body[data-ds-dark-theme] .scp-tool-btn'))
+  expect('标题按钮可打开台账', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断工作台：')))
 }
 
 {
@@ -994,7 +1006,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const view = t.view()
   expect('收起：只剩一行（无 foot）', byClass(view, 'scp-foot').length === 0)
   expect('收起：不显示完整单号', !view.text.includes(ID))
-  const expand = findAria(view, '展开状态条')
+  const expand = findAriaPrefix(view, '展开状态条')
   expect('收起：给出展开按钮', !!expand)
   click(expand)
   const after = await t.settle()
@@ -1116,7 +1128,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('默认收起：是居中的窄把手', byClass(view, 'scp-handle').length === 1)
   expect('默认收起：初始不透明', byClass(view, 'scp-handle')[0].props['data-idle'] === 'false')
   expect('默认收起：把手带案例标题', view.text.includes('vllm-ascend GLM-5.3'))
-  const expand = findAria(view, '展开状态条')
+  const expand = findAriaPrefix(view, '展开状态条')
   click(expand)
   const after = await t.settle()
   const prefs = JSON.parse(storage.get(PREFS_KEY))
@@ -1127,7 +1139,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const t = await mount('multi')
   const view = t.view()
   expect('多单：默认显示最近一单', view.text.includes('vllm-ascend GLM-5.3'))
-  click(findAria(view, '跟踪哪一单'))
+  click(findAriaPrefix(view, '跟踪哪一单'))
   const opened = await t.settle()
   expect('选择器：列出多单', opened.text.includes('vllm-ascend PD 分离'), opened.text.slice(0, 300))
   expect('选择器：当前行带「当前」标记', byClass(opened, 'scp-picker-current').length === 1,
@@ -1153,7 +1165,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 
 {
   const t = await mount('multi', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: { 'sess-1': '2026-09-07-glm53-pd-sfa-c8-hang' } } })
-  click(findAria(t.view(), '跟踪哪一单'))
+  click(findAriaPrefix(t.view(), '跟踪哪一单'))
   const opened = await t.settle()
   expect('选择器：已固定时脚注让位、给「取消固定」',
     byClass(opened, 'scp-picker-foot-note').length === 0 && !!findButton(opened, '取消固定'),
@@ -1162,7 +1174,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 
 {
   const t = await mount('multi', { upstream: false })
-  click(findAria(t.view(), '跟踪哪一单'))
+  click(findAriaPrefix(t.view(), '跟踪哪一单'))
   const opened = await t.settle()
   const target = opened.nodes.find((node) => node.type === 'button' && nodeText(node).includes('vllm-ascend PD 分离'))
   click(target)
@@ -1181,14 +1193,14 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('待回报：根节点标出 pending', section && section.props['data-pending'] === 'true')
   pressKey('d', { metaKey: true, shiftKey: true })
   const opened = await t.settle()
-  expect('快捷键：⌘⇧D 打开总览', byClass(opened, 'scp-pal').length === 1)
+  expect('快捷键：⌘⇧D 打开工作台', byClass(opened, 'scp-pal').length === 1)
 }
 
 {
   // 快捷键提示按平台显示：macOS 用 ⌘，Windows / Linux 用 Ctrl。
   const t = await mount('recent')
   const toolbar = findToolbar(t.view())
-  expect('快捷键：macOS 工具条提示 ⌘⇧D', String(toolbar.props.title).includes('⌘⇧D 打开总览'), toolbar.props.title)
+  expect('快捷键：macOS 工具条提示 ⌘⇧D', String(toolbar.props.title).includes('⌘⇧D 打开工作台'), toolbar.props.title)
   click(toolbar)
   const view = await t.settle()
   expect('快捷键：macOS 底部提示 ⌘K', view.text.includes('⌘K'), view.text.slice(-160))
@@ -1199,7 +1211,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   globalThis.navigator.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
   const t = await mount('recent')
   const toolbar = findToolbar(t.view())
-  expect('快捷键：Windows 工具条提示 Ctrl+Shift+D', String(toolbar.props.title).includes('Ctrl+Shift+D 打开总览'), toolbar.props.title)
+  expect('快捷键：Windows 工具条提示 Ctrl+Shift+D', String(toolbar.props.title).includes('Ctrl+Shift+D 打开工作台'), toolbar.props.title)
   click(toolbar)
   const view = await t.settle()
   expect('快捷键：Windows 底部提示 Ctrl+K', view.text.includes('Ctrl+K') && !view.text.includes('⌘K'), view.text.slice(-160))
@@ -1511,7 +1523,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const t = await mount('recent')
   click(findToolbar(t.view()))
   let view = await t.settle()
-  expect('台账：标题在', view.text.includes('诊断总览'))
+  expect('台账：标题在', view.text.includes('诊断工作台'))
   expect('台账：列出人读案例标题', view.text.includes('vllm-ascend GLM-5.3 在 A3 跑推理时 MoE routing TopK 触发 vector core exception'))
   expect('台账：筛选按钮带计数', view.text.includes('全部 1') && view.text.includes('待回报 1'))
   const listNodes = byClass(view, 'scp-pal-list')
@@ -1730,17 +1742,17 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 
 {
   const t = await mount('recent')
-  const open = findNode(t.view(), (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断总览：'))
+  const open = findNode(t.view(), (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断工作台：'))
   click(open)
   const view = await t.settle()
-  expect('标题按钮：打开台账并选中该单', view.text.includes('诊断总览') && view.text.includes('vllm-ascend GLM-5.3'))
+  expect('标题按钮：打开台账并选中该单', view.text.includes('诊断工作台') && view.text.includes('vllm-ascend GLM-5.3'))
 }
 
 {
   const t = await mount('recent', { prefs: { dockCollapsed: true, paletteFilter: 'all', pins: {} } })
   const collapsed = t.view()
   expect('沉淀行：收起态不出现', byClass(collapsed, 'scp-dock-sed').length === 0)
-  click(findAria(collapsed, '展开状态条'))
+  click(findAriaPrefix(collapsed, '展开状态条'))
   await t.settle()
   const expanded = await t.settle()
   expect('沉淀行：展开后出现', byClass(expanded, 'scp-dock-sed').length === 1, expanded.text.slice(0, 240))
@@ -3859,7 +3871,7 @@ function clickWith(node, extra) {
   view = await t.settle()
   const modalText = byClass(view, 'scp-prompt').map((node) => nodeText(node)).join('\n')
   expect('多选沉淀：名单只含所选', modalText.includes(ID) && modalText.includes('2026-09-07-glm53-pd-sfa-c8-hang'), modalText.slice(0, 300))
-  expect('多选沉淀：指令写所选范围', modalText.includes('诊断总览所选的 2 单'), modalText.slice(0, 300))
+  expect('多选沉淀：指令写所选范围', modalText.includes('诊断工作台所选的 2 单'), modalText.slice(0, 300))
   click(findButton(view, '填入输入框'))
   await t.settle()
   expect('多选沉淀：填入含两单', t.lastDraft().includes(ID) && t.lastDraft().includes('2026-09-07-glm53-pd-sfa-c8-hang'), t.lastDraft())
@@ -4053,6 +4065,108 @@ function clickWith(node, extra) {
   clickWith(batchBox)
   view = await t.settle()
   expect('整批勾选：选中 1 项而不是全部', view.text.includes('已选 1 项') && !!findButton(view, '沉淀所选 1 单'), view.text.slice(0, 400))
+}
+
+
+{
+  // 0.24：焦点行同步、筛选按下态、tab 关联、混合勾选、方向键切视图。
+  const t = await mount('multi', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await settleTimes(t, 2)
+
+  const filters = byClass(view, 'scp-filter-item')
+  expect('筛选：按下态对读屏可见', filters.length === 4
+    && filters.every((n) => n.props['aria-pressed'] === (n.props['data-on'] === 'true' ? 'true' : 'false')))
+
+  const tabs = byClass(view, 'scp-view-tab')
+  const panel = byClass(view, 'scp-pal-main')[0]
+  expect('视图切换：tab 关联 tabpanel', tabs.length === 2
+    && tabs.every((n) => n.props['aria-controls'] === 'scp-pal-panel')
+    && !!panel && panel.props.role === 'tabpanel' && panel.props.id === 'scp-pal-panel')
+
+  const rows = byClass(view, 'scp-pal-row')
+  expect('列表：多行夹具', rows.length >= 2, String(rows.length))
+  rows[1].props.onFocus()
+  view = await t.settle()
+  const afterFocus = byClass(view, 'scp-pal-row')
+  expect('键盘：焦点行成为当前行', afterFocus[1].props['data-on'] === 'true' && afterFocus[0].props['data-on'] !== 'true')
+
+  pressKey(' ')
+  view = await t.settle()
+  const allBox = byClass(view, 'scp-row-check').find((n) => String(n.props['aria-label'] || '').includes('全选当前筛选'))
+  expect('勾选：全选控件报半选', !!allBox && allBox.props['aria-checked'] === 'mixed', allBox && String(allBox.props['aria-checked']))
+
+  byClass(view, 'scp-views')[0].props.onKeyDown({ key: 'ArrowRight', preventDefault() {} })
+  view = await t.settle()
+  expect('视图切换：方向键切到沉淀', view.text.includes('沉淀队列'), view.text.slice(0, 300))
+}
+
+{
+  // 常驻 live region：区域在挂载时就建好，操作结果写进 role=status 容器。
+  const t = await mount('multi', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  const polite = annNodes.get('dsh-sleuth-copilot-status')
+  expect('播报：容器在挂载时就存在', !!polite)
+  click(findAria(t.view(), '展开后常驻'))
+  await t.settle()
+  expect('播报：结果写进常驻 status', String(polite.textContent).length > 0, String(polite.textContent))
+}
+
+{
+  // 表单字段带 required / aria-describedby；提交失败的错误行是 role=alert。
+  const t = await mount('recent')
+  click(findAria(t.view(), '更多操作'))
+  let view = await t.settle()
+  click(findButton(view, '已定位（根因明确）'))
+  view = await t.settle()
+  const requiredInput = findNode(view, (node) => node.type === 'select' && node.props && node.props.required === true)
+  expect('表单：必填字段带 required', !!requiredInput)
+  const form = findNode(view, (node) => node.type === 'form')
+  form.props.onSubmit({ preventDefault() {} })
+  view = await t.settle()
+  const err = byClass(view, 'scp-form-error')[0]
+  expect('表单：校验错误是 alert', !!err && err.props.role === 'alert' && view.text.includes('请先填'), err && String(err.props.role))
+}
+
+
+{
+  // 筛选无命中：给筛选空态与「清除筛选与搜索」，点一下回到全量。
+  const t = await mount('multi', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await settleTimes(t, 2)
+  const search = findInput(view, '搜索单号 / case / 关键词')
+  search.props.onChange({ target: { value: 'zzz-没有这一单' } })
+  view = await t.settle()
+  expect('空态：筛选无命中用自己的文案', view.text.includes('当前筛选没有匹配的诊断') && !view.text.includes('还没有诊断记录'), view.text.slice(-300))
+  expect('空态：筛选无命中给清除入口', !!findButton(view, '清除筛选与搜索'))
+  click(findButton(view, '清除筛选与搜索'))
+  view = await t.settle()
+  expect('空态：清除后回到列表', byClass(view, 'scp-pal-row').length >= 2, String(byClass(view, 'scp-pal-row').length))
+}
+
+{
+  // 字段 id 带实例序号：同一角色重开表单不会复用同一批 id（两份表单可能同时存在）。
+  const t = await mount('recent')
+  click(findAria(t.view(), '更多操作'))
+  let view = await t.settle()
+  click(findButton(view, '已定位（根因明确）'))
+  view = await t.settle()
+  const idsOf = (tree) => tree.nodes.filter((n) => n.props && typeof n.props.id === 'string' && n.props.id.startsWith('scp-field-')).map((n) => n.props.id)
+  const first = idsOf(view)
+  expect('表单：字段 id 带实例序号', first.length > 0 && first.every((id) => /^scp-field-\d+-/.test(id)) && new Set(first).size === first.length, JSON.stringify(first))
+}
+
+{
+  // 指令弹层盖在命令面板之上：这时按 ⌘K 不能再把命令面板开到遮罩下面。
+  const t = await mount('multi')
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  click(findButton(view, '沉淀当前筛选 1 单'))
+  view = await t.settle()
+  expect('弹层：先打开指令预览', byClass(view, 'scp-modal').length === 1)
+  pressKey('k', { metaKey: true })
+  view = await t.settle()
+  expect('弹层：⌘K 不打开命令面板', byClass(view, 'scp-cmd').length === 0 && byClass(view, 'scp-modal').length === 1,
+    String(byClass(view, 'scp-cmd').length))
 }
 
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')
