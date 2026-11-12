@@ -25,6 +25,7 @@ return {
       { id: 'knowledge', label: '知识库' },
       { id: 'metrics', label: '指标' },
       { id: 'evolve', label: '自演进' },
+      { id: 'autoclose', label: '自动收尾' },
     ]
 
     const styleHost = typeof styles !== 'undefined' && styles !== null ? styles : ctx.get('styles')
@@ -849,7 +850,7 @@ return {
           React.createElement('div', { className: 'sleu-console-head' },
             React.createElement('div', null,
               React.createElement('div', { className: 'sleu-console-title' }, PANEL_LABEL),
-              React.createElement('div', { className: 'sleu-console-sub' }, '知识库同步 · 全库读数与判据判决 · 自演进'),
+              React.createElement('div', { className: 'sleu-console-sub' }, '知识库同步 · 全库读数与判据判决 · 自演进 · 自动收尾'),
             ),
           ),
           React.createElement('div', { className: 'sleu-console-tabs', role: 'tablist' },

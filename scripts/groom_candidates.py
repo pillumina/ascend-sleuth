@@ -30,9 +30,10 @@ from _lexical import tokens_of
 from _stdio import pin_utf8_stdio
 from groom_common import (
     SCHEMA_WORK_ORDER, Draft, canonical_content_sha, case_fingerprint, draft_cases,
-    draft_text_of, dump_json, find_drafts, load_json, load_yaml, now_iso, sanitize_key,
-    shared_inbox, short_sha, work_order_id,
+    draft_text_of, dump_json, find_drafts, load_assessment, load_json, load_yaml, now_iso,
+    sanitize_key, shared_inbox, short_sha, work_order_id,
 )
+import pr_status
 
 DEFAULT_TOP = 6
 HARD_TOP = 8
@@ -304,6 +305,8 @@ def main():
                     help="候选不足时用同分类/全库最高分补到至少 N 条（默认 3）")
     ap.add_argument("--out", default=None, help="工作单输出路径（默认共享 inbox 的 .groom/runs/）")
     ap.add_argument("--run-id", default=None, help="本次运行 id（默认按 commit + 时间生成）")
+    ap.add_argument("--skip-open-pr", action="store_true",
+                    help="跳过已登记 PR 且评估仍有效的草稿（避免重复比较；PR 关闭或评估失效时照常处理）")
     args = ap.parse_args()
 
     meta = load_json(Path(args.snapshot))
@@ -341,8 +344,45 @@ def main():
     run_id = args.run_id or f"{short_sha(meta.get('commit'))}-{now_iso().replace(':', '').replace('-', '')[:15]}"
     out_path = Path(args.out) if args.out else (inbox / ".groom" / "runs" / sanitize_key(run_id) / "work-orders.json")
 
+    skipped = []
+    skip_keys = {}
+    if args.skip_open_pr:
+        try:
+            ledger = pr_status.load_ledger(Path(meta["repo"]))
+            prs = ledger.get("prs") if isinstance(ledger.get("prs"), dict) else {}
+        except Exception:
+            prs = {}
+        for draft in drafts:
+            entry = prs.get(draft.key)
+            if not isinstance(entry, dict):
+                continue
+            state = str(entry.get("state") or "").lower()
+            if state not in ("open", "unknown"):
+                continue
+            try:
+                doc = load_assessment(inbox, draft.key)
+            except Exception:
+                continue
+            human = doc.get("human_decision") or {}
+            if not doc.get("human_decision_valid"):
+                continue
+            if str(human.get("decision") or "") not in ("new_pattern", "variant", "covered"):
+                continue
+            binding = doc.get("content_binding") or {}
+            try:
+                cases = draft_cases(draft)
+                sha = canonical_content_sha(cases[0]) if cases else ""
+            except Exception:
+                sha = ""
+            if sha and sha == binding.get("sha256"):
+                skip_keys[draft.key] = (f"PR {state}、评估有效（{human.get('decision')}），"
+                                        "跳过重复比较")
+
     orders = []
     for draft in drafts:
+        if draft.key in skip_keys:
+            skipped.append({"draft": draft.key, "reason": skip_keys[draft.key]})
+            continue
         cases = draft_cases(draft)
         if not cases:
             continue
@@ -387,11 +427,14 @@ def main():
             "worktree": str(snapshot), "index": meta.get("index"),
         },
         "orders": orders,
+        "skipped": skipped,
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(dump_json(doc), encoding="utf-8")
     print(f"工作单：{out_path}")
     print(f"  草稿 {len(orders)} 份 · 快照 {meta.get('short')} · 候选上限 {top}")
+    for item in skipped:
+        print(f"  - {item['draft']}: 跳过（{item['reason']}）")
     for order in orders:
         cands = ", ".join(c["id"] for c in order["candidates"]) or "（无）"
         print(f"  - {order['draft']['draft_key']}: {len(order['candidates'])} 候选"

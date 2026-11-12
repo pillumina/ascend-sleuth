@@ -1,0 +1,22 @@
+# ascend-sleuth 自动收尾（独立插件包）
+#
+# 形态：profile 级常驻插件，apply(ctx) 里挂一个定时器，按间隔跑
+# `scripts/groom_sweep.py`。不注册 tab、不改 Copilot、不碰其他面板。
+#
+# 安装即用：`repo` 留空时按会话检出 / 插件所在检出 / 进程 cwd 自动发现；
+# `python` 留空时探测 python3 / python / py -3。面板里的「查询间隔」写到
+# `<主检出>/postmortems/inbox/.groom/autoclose-config.json`，默认 24 小时。
+#
+# 装：plugin_manager install_bundle(target: <本目录绝对路径>)
+#     或 <安装目录>/runtime/cli/bin/dsh plugin --profile <profile> add "<本目录绝对路径>"
+# 装完需要重启 DSH；卸载 remove_bundle 后同样重启，ctx.effect 的清理函数会停掉定时器。
+# 手动兜底不受影响：Copilot 的「已合入 · 待收尾」指令与 groom 开场照旧。
+- insert:
+    - id: dsh-sleuth-autoclose
+      name: 'dsh-sleuth-autoclose'
+      config:
+        enabled: true
+        repo: ''
+        intervalMinutes: 1440
+        python: ''
+        runOnStart: true

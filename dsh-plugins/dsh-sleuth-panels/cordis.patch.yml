@@ -7,6 +7,16 @@
 # 两者都不替换自带组件，只是附加。
 #
 # lib/index.js 与 lib/client.js 是生成物（scripts/build_panel_bundle.js），勿手改。
+#
+# 自动收尾插件 dsh-sleuth-autoclose 是面板包的依赖，随面板一起装；面板开关只启用/停用定时器，
+# 不需要单独安装或卸载这个插件。config 是首次安装的默认值，面板保存后以
+# postmortems/inbox/.groom/autoclose-config.json 为准。
 - insert:
     - id: dsh-sleuth-panels
       name: 'dsh-sleuth-panels'
+    - id: dsh-sleuth-autoclose
+      name: 'dsh-sleuth-autoclose'
+      config:
+        enabled: true
+        intervalMinutes: 1440
+        runOnStart: true

@@ -239,6 +239,8 @@ python3 scripts/trace_entry_activity.py --local-only       # 只写本机明细�
 后两条路装的是同一个包，落进 profile 的是同一处状态，差别只在谁去调插件管理器：模型的工具、
 脚本，还是用户点界面。
 
+面板包 `dsh-sleuth-panels` 依赖 `dsh-sleuth-autoclose`；装面板会同时启用自动收尾。面板页的开关只启停后台任务，不需要单独安装或卸载 autoclose。
+
 ### 快速开始
 
 在 DSH 对话中粘贴（或直接 `/skill:preload-panel`）：
