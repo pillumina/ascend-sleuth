@@ -66,6 +66,16 @@ window.__ModuleLoader__.load({
       if (typeof document === 'undefined') return
       try { announcerNode(false); announcerNode(true) } catch { /* 替身渲染环境没有可用 DOM */ }
     }
+    // 插件卸载时把两个容器一起清掉：样式表已卸载，留着带文字的节点会变成页面底部的可见文字。
+    function removeAnnouncementRegions() {
+      if (typeof document === 'undefined') return
+      for (const id of [ANN_POLITE_ID, ANN_ASSERTIVE_ID]) {
+        try {
+          const node = typeof document.getElementById === 'function' ? document.getElementById(id) : null
+          if (node && node.parentNode && typeof node.parentNode.removeChild === 'function') node.parentNode.removeChild(node)
+        } catch { /* 忽略 */ }
+      }
+    }
     function announce(text, urgent) {
       const value = String(text || '').trim()
       if (!value || typeof document === 'undefined') return
@@ -3711,6 +3721,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         React.useEffect(() => () => {
           if (idleTimer.current) clearTimeout(idleTimer.current)
           if (flashTimer.current) clearTimeout(flashTimer.current)
+          removeAnnouncementRegions()
         }, [])
 
         // 步骤前进时让状态点轻闪一次；只在同一单上比较，首屏不闪。
@@ -4465,7 +4476,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               collapsed ? null : h('button', {
                 type: 'button', className: 'scp-icon', title: tr('action.more'), 'aria-label': tr('action.more'),
                 ref: moreBtnRef,
-                'aria-haspopup': 'menu',
+                'aria-haspopup': menuForm ? 'dialog' : 'menu',
                 'aria-expanded': menuOpen ? 'true' : 'false',
                 onClick: () => { setMenuForm(null); setMenuOpen((value) => !value); setPickerOpen(false) },
               }, IconMore()),
