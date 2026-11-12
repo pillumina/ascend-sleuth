@@ -24,7 +24,7 @@ references:
   {}
 tools:
   {}
-cold: {cases: 171}
+cold: {cases: 172}
 cold_never_looked_up:
 - a5-950dt-memory-spec
 - a5-950pr-memory-spec
