@@ -40,6 +40,8 @@ window.__ModuleLoader__.load({
     // 离线渲染没有布局引擎，拿不到尺寸时退回这个字数近似：四行在 400–510px 列宽下约 110–150 字，
     // 取小值，宁可多给一个入口也不把内容藏起来。
     const LEDE_TOGGLE_MIN = 110
+    // 选中行取时间线四层的去抖：方向键连按时只发最后一次，不堆子进程。
+    const LAYERS_DEBOUNCE_MS = 130
 
     // ── 读屏播报（常驻 live region）────────────────────────────────────────
     // 读屏只在「容器已存在、内容发生变化」时播报；节点带着文字一起创建时常常不播。
@@ -222,7 +224,12 @@ window.__ModuleLoader__.load({
       'source.field': '现场验证',
       'source.vendor': '厂商答复',
       'section.overview': '概览',
-      'section.upstream': '上游查证',
+      'section.upstream': '上游与查证',
+      'upstream.note': 'issue · PR · 维护者回复',
+      'upstream.fixCount': '{n} 条',
+      'upstream.noFix': '无上游修复记录',
+      'upstream.expand': '展开剩余 {n} 条',
+      'upstream.collapse': '收起',
       'section.sessions': '会话归属',
       'sessions.origin': '原始会话',
       'sessions.resumed': '续接会话',
@@ -237,7 +244,52 @@ window.__ModuleLoader__.load({
       'hint.sessionService': '当前界面没有切会话的接口。',
       'hint.sessionNoId': '没有会话号，补写后再试。',
       'section.missing': '还缺什么',
-      'section.timeline': '步骤时间线',
+      'section.timeline': '诊断步骤',
+      'section.incident': '现场故障时间线',
+      'section.failureProcess': '故障过程（日志）',
+      'incident.env': '现场环境：',
+      'incident.count': '{n} 条',
+      'incident.unknownCount': '{n} 条时点未知',
+      'incident.noTimeCount': '{n} 条时刻未记录',
+      'incident.unknown': '时点未知',
+      'incident.dateOnly': '时刻未记录',
+      'incident.legacyChip': '未记录',
+      'incident.legacyTitle': '未记录 · 旧单不回填',
+      'incident.legacy': '这单没有现场时间线',
+      'incident.legacyNote': '历史轨迹按当时的记录保留，不回填；缺的时序不猜，现场信息仍看上面的问题背景与证据文件。',
+      'incident.empty': '尚无现场事实',
+      'incident.emptyNote': '现场侧的可观察事件（现象、变更、规避与恢复）还没有写入这一单。',
+      'incident.corrected': '已更正',
+      'incident.foot': '只放现场可观察事件（现象、变更、规避与恢复）。「故障过程（日志）」与「上游与查证」两段在下面；推断与因果判断写在诊断步骤里。',
+      'failureProcess.count': '{n} 条',
+      'failureProcess.clockOff': '日志时间与墙钟不一致',
+      'failureProcess.window': '窗口 {range}',
+      'failureProcess.windowUnknown': '窗口未记录',
+      'failureProcess.foot': '日志原文在证据文件里；这里只留状态转折与重复区间，判断写在诊断步骤里。',
+      'action.expandProcess': '展开过程',
+      'action.collapseProcess': '收起过程',
+      'timelineSource.log': '日志',
+      'timelineSource.user': '用户',
+      'timelineSource.issue': 'issue',
+      'timelineSource.comment': '评论',
+      'timelineSource.commit': '提交',
+      'timelineSource.doc': '文档',
+      'timelineSource.field_test': '现场复测',
+      'timelineSource.observation': '观察记录',
+      'timelineSource.maintainer': '维护者',
+      'timelineSource.vendor': '厂商',
+      'chip.revisions': '修订 {n} 次',
+      'layers.loading': '正在读时间线…',
+      'layers.failed': '读不到时间线：{message}',
+      'layers.failedShort': '读取失败',
+      'truncated.showFirst': '显示前 {n} 条',
+      'history.revision': '修订',
+      'revision.kind.fact_corrected': '事实更正',
+      'revision.kind.conclusion_overturned': '结论翻转',
+      'revision.kind.scope_changed': '范围变更',
+      'revision.kind.severity_changed': '严重级变更',
+      'revision.kind.sediment_changed': '沉淀变更',
+      'revision.removed': '已删除 {id}',
       'materials.none': '没有记下具体材料，按上面的「在等」继续。',
       'action.copyMaterials': '复制清单',
       'action.materialResume': '填入续接指令',
@@ -750,7 +802,12 @@ window.__ModuleLoader__.load({
       'source.field': 'Field verification',
       'source.vendor': 'Vendor reply',
       'section.overview': 'Overview',
-      'section.upstream': 'Upstream',
+      'section.upstream': 'Upstream and verification',
+      'upstream.note': 'issue · PR · maintainer replies',
+      'upstream.fixCount': '{n} item(s)',
+      'upstream.noFix': 'No upstream fix recorded',
+      'upstream.expand': 'Show the other {n}',
+      'upstream.collapse': 'Collapse',
       'section.sessions': 'Session attribution',
       'sessions.origin': 'Origin session',
       'sessions.resumed': 'Resumed in',
@@ -765,7 +822,52 @@ window.__ModuleLoader__.load({
       'hint.sessionService': 'This interface has no session-switch hook.',
       'hint.sessionNoId': 'No session id; write one back and retry.',
       'section.missing': 'Still missing',
-      'section.timeline': 'Step timeline',
+      'section.timeline': 'Diagnosis steps',
+      'section.incident': 'Incident timeline',
+      'section.failureProcess': 'Failure process (logs)',
+      'incident.env': 'Environment: ',
+      'incident.count': '{n} item(s)',
+      'incident.unknownCount': '{n} with unknown time',
+      'incident.noTimeCount': '{n} with date only',
+      'incident.unknown': 'time unknown',
+      'incident.dateOnly': 'time not recorded',
+      'incident.legacyChip': 'not recorded',
+      'incident.legacyTitle': 'not recorded · old trace, not backfilled',
+      'incident.legacy': 'No incident timeline in this trace',
+      'incident.legacyNote': 'The trace is kept as recorded and not backfilled; the timeline is not guessed. The background and evidence above still stand.',
+      'incident.empty': 'No incident facts yet',
+      'incident.emptyNote': 'No field-side observable event (symptom, change, workaround, recovery) has been written to this trace yet.',
+      'incident.corrected': 'corrected',
+      'incident.foot': 'Field-side observable events only (symptom, change, workaround, recovery). Logs and upstream verification are the next two sections; inference belongs to the diagnosis steps.',
+      'failureProcess.count': '{n} item(s)',
+      'failureProcess.clockOff': 'log clock differs from wall clock',
+      'failureProcess.window': 'Window {range}',
+      'failureProcess.windowUnknown': 'Window not recorded',
+      'failureProcess.foot': 'Raw log lines live in the evidence files; only state turns and repeat spans are kept here. Judgement belongs to the diagnosis steps.',
+      'action.expandProcess': 'Show process',
+      'action.collapseProcess': 'Hide process',
+      'timelineSource.log': 'log',
+      'timelineSource.user': 'user',
+      'timelineSource.issue': 'issue',
+      'timelineSource.comment': 'comment',
+      'timelineSource.commit': 'commit',
+      'timelineSource.doc': 'doc',
+      'timelineSource.field_test': 'field test',
+      'timelineSource.observation': 'observation',
+      'timelineSource.maintainer': 'maintainer',
+      'timelineSource.vendor': 'vendor',
+      'chip.revisions': 'revised {n}×',
+      'layers.loading': 'Reading the timeline…',
+      'layers.failed': 'Cannot read the timeline: {message}',
+      'layers.failedShort': 'read failed',
+      'truncated.showFirst': 'showing the first {n}',
+      'history.revision': 'revision',
+      'revision.kind.fact_corrected': 'fact corrected',
+      'revision.kind.conclusion_overturned': 'conclusion overturned',
+      'revision.kind.scope_changed': 'scope changed',
+      'revision.kind.severity_changed': 'severity changed',
+      'revision.kind.sediment_changed': 'sediment changed',
+      'revision.removed': 'removed {id}',
       'materials.none': 'No specific material recorded; continue from Waiting above.',
       'action.copyMaterials': 'Copy list',
       'action.materialResume': 'Fill resume command',
@@ -1432,6 +1534,44 @@ body[data-ds-dark-theme] .scp-view-tab[data-on="true"],[data-theme="dark"] .scp-
 .scp-tl-body{min-width:0;font-size:var(--scp-fs-body);line-height:var(--scp-lh-prose);color:var(--scp-text);}
 .scp-tl-meta{font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);}
 .scp-tl-reason{margin-top:2px;font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);color:var(--scp-muted);}
+/* 段头一行：标题 + 右侧计数 / 提示（现场条数、日志条数、上游条数）。 */
+.scp-section-row{display:flex;align-items:baseline;gap:8px;margin:var(--scp-sp-5) 0 var(--scp-sp-2);min-width:0;}
+.scp-section-row .scp-section-label{margin:0;}
+.scp-section-note{margin-left:auto;flex:none;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-faint);}
+/* 现场故障时间线：时间两行（日期 / 时刻）+ 竖轨圆点 + 事实与来源片。 */
+.scp-it{display:flex;flex-direction:column;padding:var(--scp-sp-1) var(--scp-sp-4);border-radius:10px;background:var(--scp-surface);border:1px solid color-mix(in srgb,var(--scp-border) 72%,transparent);}
+.scp-it-env{padding:2px 2px 0;font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);}
+.scp-it-row{display:grid;grid-template-columns:86px 12px 1fr;column-gap:12px;padding:9px 0;min-width:0;}
+.scp-it-time{display:flex;flex-direction:column;gap:1px;padding-top:1px;line-height:1.35;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.scp-it-date{font-size:var(--scp-fs-cap);letter-spacing:.02em;color:var(--scp-faint);}
+.scp-it-hm{font-size:var(--scp-fs-body);font-weight:var(--scp-fw-medium);color:var(--scp-text);}
+.scp-it-hm[data-missing="true"]{font-size:var(--scp-fs-meta);font-weight:var(--scp-fw-regular);color:var(--scp-faint);}
+.scp-it-unknown{font-size:var(--scp-fs-meta);color:var(--scp-faint);padding-top:2px;}
+.scp-it-rail{position:relative;min-height:100%;}
+.scp-it-dot{position:absolute;left:3px;top:6px;width:6px;height:6px;border-radius:50%;background:var(--scp-accent);box-shadow:0 0 0 3px var(--scp-surface);}
+.scp-it-row[data-time="unknown"] .scp-it-dot{background:var(--scp-surface);border:1px solid var(--scp-border-strong);}
+.scp-it-row:not(:last-child) .scp-it-rail::after{content:"";position:absolute;left:5px;top:16px;bottom:-18px;width:1px;background:color-mix(in srgb,var(--scp-border-strong) 82%,transparent);}
+.scp-it-body{min-width:0;}
+.scp-it-text{font-size:var(--scp-fs-body);line-height:var(--scp-lh-prose);color:var(--scp-text);overflow-wrap:anywhere;}
+.scp-it-meta{margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);}
+.scp-it-src{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:5px;font-size:var(--scp-fs-cap);line-height:1;color:var(--scp-muted);background:var(--scp-surface-2);}
+.scp-it-note{font-size:var(--scp-fs-label);line-height:var(--scp-lh-prose);color:var(--scp-muted);}
+.scp-it-foot{margin:2px 0 0;padding:0 2px;font-size:var(--scp-fs-cap);line-height:var(--scp-lh-base);color:var(--scp-faint);}
+/* 故障过程（日志）：默认收起；时钟偏差用 warn，节点 quote 与文件:行走等宽。 */
+.scp-lp-clock{margin:0 0 2px;font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-warn);}
+.scp-lp-list{display:flex;flex-direction:column;padding-left:12px;border-left:1px solid color-mix(in srgb,var(--scp-border-strong) 60%,transparent);}
+.scp-lp-row{display:grid;grid-template-columns:64px 1fr;column-gap:10px;padding:6px 0;min-width:0;}
+.scp-lp-time{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-label);line-height:var(--scp-lh-prose);color:var(--scp-muted);white-space:nowrap;}
+.scp-lp-body{min-width:0;}
+.scp-lp-what{font-size:var(--scp-fs-body);line-height:var(--scp-lh-prose);color:var(--scp-text);overflow-wrap:anywhere;}
+.scp-lp-quote{margin-top:2px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-cap);line-height:1.6;color:var(--scp-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.scp-lp-meta{margin-top:2px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:var(--scp-fs-cap);line-height:1.6;color:var(--scp-muted);}
+/* 上游与查证的时间线：>3 条折叠时保留前三条，展开不换段。 */
+.scp-up-list{display:flex;flex-direction:column;gap:3px;padding-top:6px;border-top:1px solid var(--scp-border);}
+.scp-up-row{display:grid;grid-template-columns:128px 1fr;column-gap:12px;min-width:0;font-size:var(--scp-fs-body);line-height:var(--scp-lh-prose);}
+.scp-up-when{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-label);line-height:var(--scp-lh-prose);color:var(--scp-muted);white-space:nowrap;}
+.scp-up-what{min-width:0;color:var(--scp-text);overflow-wrap:anywhere;}
+.scp-up-note{font-size:var(--scp-fs-label);line-height:var(--scp-lh-prose);color:var(--scp-muted);}
 .scp-history-row{display:flex;align-items:baseline;gap:8px;min-width:0;font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);}
 .scp-history-when{flex:none;font-size:var(--scp-fs-meta);font-variant-numeric:tabular-nums;color:var(--scp-muted);}
 .scp-history-kind{flex:none;font-size:var(--scp-fs-cap);line-height:1.6;padding:1px 7px;border-radius:5px;background:var(--scp-surface-2);color:var(--scp-muted);font-weight:var(--scp-fw-medium);}
@@ -2212,6 +2352,94 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       return tr('stepsShort', { n: current > 0 ? current : '—', m: max })
     }
 
+    // 现场时间线的时间写到材料给到的那一级：日期必有、时刻可能缺。解析不出就是 null，
+    // 由调用方渲染成「时点未知」；不换算时区、不补精度。
+    function stampParts(at) {
+      if (!at) return null
+      const match = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}(?::\d{2})?))?/.exec(String(at))
+      if (!match) return null
+      return { date: match[1], time: match[2] || '' }
+    }
+
+    function stampText(at) {
+      const parts = stampParts(at)
+      if (!parts) return tr('incident.unknown')
+      return parts.time ? parts.date + ' ' + parts.time : parts.date
+    }
+
+    // 证据按钮只写文件名（+ 行号），完整路径进 title 与剪贴板；长路径不撑开一行。
+    function fileLabel(path) {
+      const text = String(path || '')
+      const parts = text.split('/')
+      return parts[parts.length - 1] || text
+    }
+
+    function fileLineLabel(path, line) {
+      const label = fileLabel(path)
+      return line ? label + ':' + line : label
+    }
+
+    function timelineSourceLabel(source) {
+      const value = String(source || '')
+      if (!value) return ''
+      const key = 'timelineSource.' + value
+      const label = tr(key)
+      return label === key ? value : label
+    }
+
+    function revisionKindLabel(kind) {
+      const value = String(kind || '')
+      if (!value) return ''
+      const key = 'revision.kind.' + value
+      const label = tr(key)
+      return label === key ? value : label
+    }
+
+    function revisionTargetLabel(target) {
+      const value = String(target || '')
+      if (value.indexOf('removed:') === 0) return tr('revision.removed', { id: value.slice(8) })
+      return value
+    }
+
+    // 修订行正文：每条 change 写「目标：旧值 → 新值」；删除条目没有新值，只写旧值。
+    function revisionText(revision) {
+      const changes = revision && Array.isArray(revision.changes) ? revision.changes : []
+      return changes.map((change) => {
+        const target = revisionTargetLabel(change && change.target)
+        const before = String((change && change.before) || '') || tr('label.none')
+        const removed = String((change && change.target) || '').indexOf('removed:') === 0
+        if (removed) return target + '：' + before
+        const after = String((change && change.after) || '') || tr('label.none')
+        return target + '：' + before + ' → ' + after
+      }).join('；')
+    }
+
+    // 选中行的三段时间线 + 修订（copilot-timeline 的 layers）：null 与缺键都按「未记录」，
+    // [] 才是「查过但为空」；*Total 是截断前的条数，段头用它并写明「显示前 N 条」。
+    function normalizeTimelineLayers(value) {
+      const doc = value && typeof value === 'object' ? value : {}
+      const listOrNull = (item) => {
+        if (item === null || item === undefined) return null
+        return Array.isArray(item) ? item : null
+      }
+      const countOf = (item, total) => {
+        const number = Number(total)
+        if (Number.isFinite(number) && number >= 0) return number
+        return Array.isArray(item) ? item.length : 0
+      }
+      return {
+        incidentEnv: String(doc.incidentEnv || ''),
+        incident: listOrNull(doc.incident),
+        incidentTotal: countOf(doc.incident, doc.incidentTotal),
+        failureProcess: doc.failureProcess && typeof doc.failureProcess === 'object' ? doc.failureProcess : null,
+        upstream: listOrNull(doc.upstream),
+        upstreamTotal: countOf(doc.upstream, doc.upstreamTotal),
+        revisions: Array.isArray(doc.revisions) ? doc.revisions : [],
+        revisionsTotal: countOf(doc.revisions, doc.revisionsTotal),
+      }
+    }
+
+    // 案例标题：状态条与总览显示给人看的一句话；单号只进 tooltip 与详情。
     // 案例标题：状态条与工作台显示给人看的一句话；单号只进 tooltip 与详情。
     // 取 summary 第一句（到第一个句读），截断交给 CSS——不手写省略号，也不把内部单号当标题。
     function caseTitle(row) {
@@ -2496,8 +2724,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       return !isOpen(row) || isPending(row) || !!derived.needSed || !!derived.needPromote || !!derived.needReview || sedState !== 'none'
     }
 
-    // 写入历史：transitions / reports / reviews 合成一条时间线，只展示最近几条。
-    function historyEntries(row, data) {
+    // 写入历史：transitions / reports / reviews / revisions 合成一条时间线，只展示最近几条。
+    function historyEntries(row, data, revisions) {
       const entries = []
       for (const item of Array.isArray(row.transitions) ? row.transitions : []) {
         if (!item || typeof item !== 'object') continue
@@ -2525,6 +2753,19 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           at: String(item.at || ''),
           text: REVIEW_LABELS[item.verdict] || String(item.verdict || ''),
           note: String(item.note || ''),
+        })
+      }
+      // 修订记录：类别、before → after、改的原因都在一行里；正文走 revisionText。
+      const revisionList = Array.isArray(revisions) ? revisions : []
+      for (const item of revisionList) {
+        if (!item || typeof item !== 'object') continue
+        entries.push({
+          kind: 'revision',
+          // 类别列写修订的种类（事实更正 / 结论翻转 …），不回落到笼统的「修订」。
+          label: revisionKindLabel(item.kind) || tr('history.revision'),
+          at: String(item.at || ''),
+          text: revisionText(item),
+          note: String(item.reason || ''),
         })
       }
       entries.sort((left, right) => String(right.at).localeCompare(String(left.at)))
@@ -4553,6 +4794,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const [cmdQuery, setCmdQuery] = React.useState('')
       const [cmdIndex, setCmdIndex] = React.useState(0)
       const [timelineState, setTimelineState] = React.useState({ open: false, loading: false, items: [], error: '' })
+      // 故障过程（日志）默认收起，按单号记住展开态；上游时间线超过 3 条才折叠，同样按单号记。
+      const [processOpenId, setProcessOpenId] = React.useState('')
+      const [upstreamOpenId, setUpstreamOpenId] = React.useState('')
       const [toast, setToast] = React.useState('')
       const [reportState, setReportState] = React.useState({ open: false, loading: false, text: '', error: '' })
       const reportToken = React.useRef(0)
@@ -5272,6 +5516,55 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         setLedeOverflow(ledeOpen || el.scrollHeight > el.clientHeight + 1)
       }, [ledeRow ? ledeRow.sessionId : '', ledeText, ledeOpen])
 
+      // 选中行的三段时间线 + 修订：选中即取（同一 sessionId + updatedAt 命中缓存，10 秒轮询不重复拉）；
+      // 步骤列表仍由「展开步骤」按需取，两者互不替代。
+      const [layersState, setLayersState] = React.useState({ key: '', loading: false, error: '', data: null })
+      const [layersRetry, setLayersRetry] = React.useState(0)
+      const layersCacheRef = React.useRef(new Map())
+      const layersToken = React.useRef(0)
+      const layersKey = s.paletteOpen && view === 'diagnosis' && ledeRow
+        ? String(ledeRow.sessionId || '') + '|' + String(ledeRow.updatedAt || '')
+        : ''
+      React.useEffect(() => {
+        // 换行 / 关面板都让上一单的在途响应作废：token 先自增，命中缓存也要作废，
+        // 否则旧请求晚到会把上一单的时间线写进这一单的状态。
+        layersToken.current += 1
+        const token = layersToken.current
+        // 只在诊断视图取：沉淀视图的选中行不是诊断单，不用起这一次子进程。
+        if (!s.paletteOpen || view !== 'diagnosis' || !ledeRow) return
+        const key = layersKey
+        const cached = layersCacheRef.current.get(key)
+        if (cached) {
+          setLayersState({ key, loading: false, error: '', data: cached })
+          return
+        }
+        const target = ledeRow
+        setLayersState({ key, loading: true, error: '', data: null })
+        // 去抖：连按方向键时先清掉上一个 timer，只让停留的那一单起子进程。
+        const timer = setTimeout(() => {
+          if (layersToken.current !== token) return
+          rpcCall('copilot-timeline', {
+            cwd: store.cwd,
+            tracesDir: data && data.tracesDir,
+            sessionId: store.sessionId,
+            traceFile: target.file,
+          }).then((res) => {
+            if (layersToken.current !== token) return
+            if (res && res.ok) {
+              const layers = normalizeTimelineLayers(res)
+              layersCacheRef.current.set(key, layers)
+              setLayersState({ key, loading: false, error: '', data: layers })
+            } else {
+              setLayersState({ key, loading: false, error: (res && res.message) || tr('layers.failedShort'), data: null })
+            }
+          }, (error) => {
+            if (layersToken.current !== token) return
+            setLayersState({ key, loading: false, error: String((error && error.message) || error), data: null })
+          })
+        }, LAYERS_DEBOUNCE_MS)
+        return () => clearTimeout(timer)
+      }, [s.paletteOpen, view, layersKey, layersRetry])
+
       // 沉淀详情抬头同样按「识别行 + 正文背景」渲染：与诊断详情共用一套样式与展开逻辑，
       // 只把正文换成草稿标题（标题就是来源 trace 的 summary 首句）。
       const sedPickKey = sedPick ? String(sedPick.key || '') : ''
@@ -5579,11 +5872,275 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const upstream = row && row.derived ? (row.derived.upstream || null) : null
       const evidenceList = row ? (extra.evidenceList || []) : []
       const candidateList = row ? (extra.sedimentCandidateList || []) : []
-      const history = row ? historyEntries(row, data) : []
       const closeInfo = row ? lastClose(row) : null
       const originSession = row ? (row.harnessSession || '') : ''
       const resumedSessions = row ? (row.resumeSessions || []).filter((sid) => sid && sid !== originSession) : []
       const currentSession = store.sessionId || ''
+
+      // ── 三段时间线 + 修订（选中即取；面板第四层诊断步骤来自 trace 的步骤列表）────────
+      // 明细来自 copilot-timeline 的 layers：null 与缺键都按「未记录」，[] 是「查过但为空」；
+      // 加载中 / 读取失败在「现场故障时间线」段里单独给一行，其余三段等数据到了再渲染。
+      const rowLayerKey = row ? String(row.sessionId || '') + '|' + String(row.updatedAt || '') : ''
+      const layerData = layersState.data && layersState.key === rowLayerKey ? layersState.data : null
+      const layersError = row && layersState.key === rowLayerKey ? layersState.error : ''
+      const layersLoading = Boolean(row) && !layerData && !layersError
+      const incidentEnv = layerData ? String(layerData.incidentEnv || '') : ''
+      const incidentItems = layerData ? layerData.incident : null
+      const failureProcess = layerData ? layerData.failureProcess : null
+      const upstreamTimeline = layerData ? layerData.upstream : null
+      const revisions = layerData ? layerData.revisions : []
+      const incidentTotal = layerData ? layerData.incidentTotal : 0
+      const upstreamTotal = layerData ? layerData.upstreamTotal : 0
+      const revisionsTotal = layerData ? layerData.revisionsTotal : 0
+      const history = row ? historyEntries(row, data, revisions) : []
+      const processOpen = Boolean(row) && processOpenId === row.sessionId
+      const upstreamOpen = Boolean(row) && upstreamOpenId === row.sessionId
+      const retryLayers = () => {
+        layersCacheRef.current.delete(rowLayerKey)
+        setLayersRetry(layersRetry + 1)
+      }
+      // 被修订改过的条目 id：现场条目据此加「已更正」片；删除动作（removed:<id>）不在此列。
+      const correctedTargets = new Set()
+      revisions.forEach((revision) => {
+        const changes = revision && Array.isArray(revision.changes) ? revision.changes : []
+        changes.forEach((change) => {
+          const target = String((change && change.target) || '')
+          if (target && target.indexOf('removed:') !== 0) correctedTargets.add(target)
+        })
+      })
+
+      // 现场故障时间线：默认展开。加载中 / 读取失败各给一行；日期只有与上一条已知日期
+      // 不同才写（同日不再重复），时点未知与只有日期各有自己的写法。
+      const incidentBlock = (() => {
+        if (!row) return null
+        let noteText = ''
+        let body
+        let showFoot = false
+        if (layersLoading) {
+          body = h('div', { className: 'scp-mono' }, tr('layers.loading'))
+        } else if (layersError) {
+          body = h('div', { className: 'scp-list-block' },
+            h('div', { className: 'scp-form-error' }, tr('layers.failed', { message: layersError })),
+            h('button', { type: 'button', className: 'scp-check-action', onClick: retryLayers }, tr('action.retry')))
+        } else {
+          showFoot = true
+          const items = incidentItems || []
+          const unknownCount = items.filter((item) => !stampParts(item && item.at)).length
+          const dateOnlyCount = items.filter((item) => {
+            const parts = stampParts(item && item.at)
+            return Boolean(parts) && !parts.time
+          }).length
+          const notePieces = []
+          if (incidentItems === null) {
+            notePieces.push(tr('incident.legacyTitle'))
+          } else {
+            notePieces.push(tr('incident.count', { n: incidentTotal }))
+            if (unknownCount) notePieces.push(tr('incident.unknownCount', { n: unknownCount }))
+            if (dateOnlyCount) notePieces.push(tr('incident.noTimeCount', { n: dateOnlyCount }))
+            // 截断不藏：条数写总数，另加一句「显示前 N 条」。
+            if (incidentTotal > items.length) notePieces.push(tr('truncated.showFirst', { n: items.length }))
+          }
+          noteText = notePieces.join(' · ')
+          const envNode = incidentEnv
+            ? h('div', { className: 'scp-it-env' }, tr('incident.env'), inlineTokens(incidentEnv))
+            : null
+          let lastDate = null
+          body = incidentItems === null
+            ? h('div', { className: 'scp-list-block' },
+              envNode,
+              h('div', { className: 'scp-upstream-row' },
+                h('span', { className: 'scp-chip', 'data-tone': 'warn' }, tr('incident.legacyChip')),
+                h('span', { className: 'scp-check-state' }, tr('incident.legacy'))),
+              h('div', { className: 'scp-it-note' }, tr('incident.legacyNote')))
+            : !items.length
+              ? h('div', { className: 'scp-list-block' },
+                envNode,
+                h('div', { className: 'scp-it-note' }, tr('incident.empty'), ' · ', tr('incident.emptyNote')))
+              : h('div', { className: 'scp-it' },
+                envNode,
+                items.map((item, index) => {
+                  const parts = stampParts(item && item.at)
+                  // 同日只写一次日期：与上一条已知日期相同就不重复，只有日期没有时刻也照此去重。
+                  const showDate = Boolean(parts) && parts.date !== lastDate
+                  if (parts) lastDate = parts.date
+                  const evidence = (item && item.evidence) || {}
+                  const files = Array.isArray(evidence.files) ? evidence.files : []
+                  const line = evidence.line
+                  const corrected = correctedTargets.has(String((item && item.id) || ''))
+                  return h('div', {
+                    key: 'incident-' + index,
+                    className: 'scp-it-row',
+                    'data-time': parts ? (parts.time ? 'known' : 'date') : 'unknown',
+                  },
+                    h('div', { className: 'scp-it-time' },
+                      parts
+                        ? [
+                          showDate ? h('span', { key: 'date', className: 'scp-it-date' }, parts.date) : null,
+                          h('span', {
+                            key: 'time',
+                            className: 'scp-it-hm',
+                            'data-missing': parts.time ? 'false' : 'true',
+                          }, parts.time || tr('incident.dateOnly')),
+                        ]
+                        : h('span', { className: 'scp-it-unknown' }, tr('incident.unknown'))),
+                    h('div', { className: 'scp-it-rail', 'aria-hidden': 'true' }, h('span', { className: 'scp-it-dot' })),
+                    h('div', { className: 'scp-it-body' },
+                      h('div', { className: 'scp-it-text' }, inlineTokens((item && item.what) || '')),
+                      h('div', { className: 'scp-it-meta' },
+                        item && item.source
+                          ? h('span', { key: 'source', className: 'scp-it-src' }, timelineSourceLabel(item.source))
+                          : null,
+                        corrected
+                          ? h('span', { key: 'corrected', className: 'scp-chip', 'data-tone': 'warn' }, tr('incident.corrected'))
+                          : null,
+                        item && item.atNote ? h('span', { key: 'at-note' }, inlineTokens(item.atNote)) : null,
+                        files.map((filePath, fileIndex) => h('button', {
+                          key: 'evidence-' + fileIndex,
+                          type: 'button',
+                          className: 'scp-link',
+                          title: line ? String(filePath) + ':' + line : String(filePath),
+                          onClick: () => copyAndFlash(line ? String(filePath) + ':' + line : String(filePath)),
+                        }, fileLineLabel(filePath, line))))))
+                }))
+        }
+        return h('div', { key: 'incident' },
+          h('div', { className: 'scp-section-row' },
+            h('div', { className: 'scp-section-label' }, tr('section.incident')),
+            noteText ? h('div', { className: 'scp-section-note' }, noteText) : null),
+          body,
+          showFoot ? h('p', { className: 'scp-it-foot' }, tr('incident.foot')) : null)
+      })()
+
+      // 故障过程（日志）：默认收起；段头给条数，有 clock_note 时提示日志时间与墙钟不一致。
+      const processBlock = (() => {
+        if (!row || !failureProcess) return null
+        const nodes = Array.isArray(failureProcess.nodes) ? failureProcess.nodes : []
+        const windowValue = failureProcess.window || null
+        const windowRange = windowValue
+          ? [windowValue.from, windowValue.to].filter(Boolean).join(' – ')
+          : ''
+        const notePieces = [tr('failureProcess.count', { n: nodes.length })]
+        if (failureProcess.clockNote) notePieces.push(tr('failureProcess.clockOff'))
+        return h('div', { key: 'failure-process' },
+          h('div', { className: 'scp-section-row' },
+            h('div', { className: 'scp-section-label' }, tr('section.failureProcess')),
+            h('div', { className: 'scp-section-note' }, notePieces.join(' · '))),
+          h('div', { className: 'scp-list-block' },
+            h('div', { className: 'scp-upstream-row' },
+              h('button', {
+                type: 'button',
+                className: 'scp-check-action',
+                onClick: () => setProcessOpenId(processOpen ? '' : row.sessionId),
+              }, processOpen ? tr('action.collapseProcess') : tr('action.expandProcess')),
+              h('span', { className: 'scp-check-state' }, windowRange
+                ? tr('failureProcess.window', { range: windowRange })
+                : tr('failureProcess.windowUnknown'))),
+            processOpen && failureProcess.clockNote
+              ? h('div', { className: 'scp-lp-clock' }, failureProcess.clockNote)
+              : null,
+            processOpen
+              ? h('div', { className: 'scp-lp-list' }, nodes.map((node, index) => {
+                const parts = stampParts(node && node.at)
+                const evidence = (node && node.evidence) || {}
+                const filePath = evidence.file ? String(evidence.file) : ''
+                const line = evidence.line
+                return h('div', { key: 'log-node-' + index, className: 'scp-lp-row' },
+                  h('div', { className: 'scp-lp-time' }, parts ? (parts.time || parts.date) : tr('incident.unknown')),
+                  h('div', { className: 'scp-lp-body' },
+                    h('div', { className: 'scp-lp-what' }, inlineTokens((node && node.what) || '')),
+                    node && node.quote ? h('div', { className: 'scp-lp-quote', title: node.quote }, node.quote) : null,
+                    h('div', { className: 'scp-lp-meta' },
+                      node && node.repeat ? h('span', { key: 'repeat' }, inlineTokens(node.repeat)) : null,
+                      filePath ? h('button', {
+                        key: 'evidence',
+                        type: 'button',
+                        className: 'scp-link',
+                        title: line ? filePath + ':' + line : filePath,
+                        onClick: () => copyAndFlash(line ? filePath + ':' + line : filePath),
+                      }, fileLineLabel(filePath, line)) : null)))
+              }))
+              : null,
+            processOpen ? h('p', { className: 'scp-it-foot' }, tr('failureProcess.foot')) : null))
+      })()
+
+      // 上游与查证：现有状态行（锚点 / 查证 / 查上游按钮）+ 上游时间线。
+      // 默认 >3 条折叠；upstream 为 null 时只显示状态行（有 case 才出现）。
+      const upstreamBlock = (() => {
+        if (!row) return null
+        if (!row.activeCase && upstreamTimeline === null) return null
+        const upstreamRows = upstreamTimeline || []
+        const visibleRows = upstreamOpen ? upstreamRows : upstreamRows.slice(0, 3)
+        const hiddenCount = Math.max(upstreamRows.length - visibleRows.length, 0)
+        const notePieces = []
+        if (upstreamTimeline !== null) {
+          notePieces.push(tr('upstream.fixCount', { n: upstreamTotal }))
+          // 截断不藏：段头写总数，另加一句「显示前 N 条」。
+          if (upstreamTotal > upstreamRows.length) notePieces.push(tr('truncated.showFirst', { n: upstreamRows.length }))
+        }
+        notePieces.push(tr('upstream.note'))
+        const timelineNode = upstreamTimeline === null
+          ? null
+          : (upstreamRows.length
+            ? h('div', { key: 'upstream-list', className: 'scp-up-list' },
+              visibleRows.map((item, index) => {
+                const files = item && item.evidence && Array.isArray(item.evidence.files)
+                  ? item.evidence.files : []
+                return h('div', { key: 'upstream-row-' + index, className: 'scp-up-row' },
+                  h('span', { className: 'scp-up-when' }, stampText(item && item.at)),
+                  h('span', { className: 'scp-up-what' },
+                    inlineTokens((item && item.what) || ''),
+                    item && item.ref ? h('span', { key: 'ref', className: 'scp-chip' }, item.ref) : null,
+                    item && item.source
+                      ? h('span', { key: 'source', className: 'scp-it-src' }, timelineSourceLabel(item.source))
+                      : null,
+                    files.map((filePath, fileIndex) => h('button', {
+                      key: 'evidence-' + fileIndex,
+                      type: 'button',
+                      className: 'scp-link',
+                      title: String(filePath),
+                      onClick: () => copyAndFlash(String(filePath)),
+                    }, fileLabel(filePath)))))
+              }))
+            : h('div', { key: 'upstream-none', className: 'scp-up-note' }, tr('upstream.noFix')))
+        const toggleNode = upstreamTimeline !== null && (hiddenCount > 0 || upstreamOpen)
+          ? h('div', { key: 'upstream-toggle', className: 'scp-upstream-row' },
+            h('button', {
+              type: 'button',
+              className: 'scp-check-action',
+              onClick: () => setUpstreamOpenId(upstreamOpen ? '' : row.sessionId),
+            }, upstreamOpen ? tr('upstream.collapse') : tr('upstream.expand', { n: hiddenCount })))
+          : null
+        return h('div', { key: 'upstream' },
+          h('div', { className: 'scp-section-row' },
+            h('div', { className: 'scp-section-label' }, tr('section.upstream')),
+            h('div', { className: 'scp-section-note' }, notePieces.join(' · '))),
+          h('div', { className: 'scp-upstream' },
+            row.activeCase
+              ? h('div', { className: 'scp-upstream-row' },
+                h('span', { className: 'scp-check-label' }, tr('upstream.anchors')),
+                upstream && upstream.anchors && upstream.anchors.length
+                  ? upstream.anchors.map((anchor) => h('span', { key: anchor, className: 'scp-chip' }, anchor))
+                  : h('span', { className: 'scp-mono' }, tr('upstream.none')))
+              : null,
+            row.activeCase && upstream && upstream.lastVerified
+              ? h('div', { className: 'scp-upstream-row' },
+                h('span', { className: 'scp-check-state' }, tr('upstream.lastVerified') + '：' + upstream.lastVerified),
+                upstream.verificationSource
+                  ? h('span', { className: 'scp-check-state' }, tr('upstream.source') + '：' + upstream.verificationSource)
+                  : null)
+              : null,
+            row.activeCase
+              ? h('div', { className: 'scp-upstream-row' },
+                h('span', { className: 'scp-chip' }, data.upstream && data.upstream.ready ? tr('upstream.ready') : tr('upstream.notReady')),
+                h('button', {
+                  type: 'button',
+                  className: 'scp-check-action',
+                  onClick: () => fillDraft(upstreamDraft(row, data.upstream)),
+                }, tr('action.upstream')))
+              : null,
+            timelineNode,
+            toggleNode))
+      })()
 
       const diagSed = row
         ? (sedDrafts.find((draft) => draft && draft.source && draft.source.sessionId === row.sessionId) || null)
@@ -5643,6 +6200,16 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               identityChips(row).slice(0, 3).map((chip) => h('span', {
                 key: chip.key, className: 'scp-chip', 'data-tone': chip.tone,
               }, chip.text)),
+              revisionsTotal
+                ? h('span', {
+                  key: 'revisions',
+                  className: 'scp-chip',
+                  'data-tone': 'warn',
+                  title: revisionsTotal > revisions.length
+                    ? tr('truncated.showFirst', { n: revisions.length })
+                    : undefined,
+                }, tr('chip.revisions', { n: revisionsTotal }))
+                : null,
               store.sessionId && pinnedIdFor(store.sessionId) === row.sessionId
                 ? h('span', { key: 'pinned', className: 'scp-chip', 'data-tone': 'brand' }, tr('chip.pinned'))
                 : null,
@@ -5693,23 +6260,6 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 type: 'button', className: 'scp-check-action',
                 onClick: () => checklistAction(row, item),
               }, item.action) : null))) : null,
-            row.activeCase ? h('div', {},
-              h('div', { className: 'scp-section-label' }, tr('section.upstream')),
-              h('div', { className: 'scp-upstream' },
-                h('div', { className: 'scp-upstream-row' },
-                  h('span', { className: 'scp-check-label' }, tr('upstream.anchors')),
-                  upstream && upstream.anchors && upstream.anchors.length
-                    ? upstream.anchors.map((anchor) => h('span', { key: anchor, className: 'scp-chip' }, anchor))
-                    : h('span', { className: 'scp-mono' }, tr('upstream.none'))),
-                upstream && upstream.lastVerified ? h('div', { className: 'scp-upstream-row' },
-                  h('span', { className: 'scp-check-state' }, tr('upstream.lastVerified') + '：' + upstream.lastVerified),
-                  upstream.verificationSource ? h('span', { className: 'scp-check-state' }, tr('upstream.source') + '：' + upstream.verificationSource) : null) : null,
-                h('div', { className: 'scp-upstream-row' },
-                  h('span', { className: 'scp-chip' }, data.upstream && data.upstream.ready ? tr('upstream.ready') : tr('upstream.notReady')),
-                  h('button', {
-                    type: 'button', className: 'scp-check-action',
-                    onClick: () => fillDraft(upstreamDraft(row, data.upstream)),
-                  }, tr('action.upstream'))))) : null,
             h('div', { className: 'scp-section-label' }, tr('section.sessions')),
             h('div', { className: 'scp-list-block' },
               originSession
@@ -5740,6 +6290,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 }, tr('action.copyLinkCommand'))
                 : null,
               h('div', { className: 'scp-check-state' }, tr('sessions.hint'))),
+            incidentBlock,
+            processBlock,
+            upstreamBlock,
             h('div', { className: 'scp-section-label' }, tr('section.evidence')),
             h('div', { className: 'scp-list-block' },
               evidenceList.length ? evidenceList.map((filePath) => h('div', { key: filePath, className: 'scp-evidence-row' },
@@ -5806,7 +6359,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             h('div', { className: 'scp-history' },
               history.length ? history.map((item, index) => h('div', { key: 'h-' + index, className: 'scp-history-row' },
                 h('span', { className: 'scp-history-when' }, formatTime(item.at) || tr('none')),
-                h('span', { className: 'scp-history-kind' }, tr('history.' + item.kind)),
+                h('span', { className: 'scp-history-kind' }, item.label || tr('history.' + item.kind)),
                 h('span', { className: 'scp-history-text', title: item.text }, item.text),
                 item.note ? h('span', { className: 'scp-history-note', title: item.note }, item.note) : null))
                 : h('div', { className: 'scp-mono' }, tr('history.none')),

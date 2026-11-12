@@ -115,6 +115,25 @@ class WriterTest(unittest.TestCase):
         # 第二次 resolved 时原状态是 in_progress（重开过），按规则应更新
         self.assertTrue(self.load()["resolved_at"])
 
+    def test_summary_change_on_transition_gets_revision(self):
+        # 状态转移顺带改结论也要留修订：否则面板上「结论改过没」不可见。
+        self.make()
+        tt.apply_transition(ROOT, self.traces, "s1", args(to="resolved", summary="新结论：HCCL 超时"))
+        doc = self.load()
+        self.assertEqual(len(doc["revisions"]), 1)
+        rev = doc["revisions"][0]
+        self.assertEqual(rev["kind"], "fact_corrected")
+        self.assertEqual(rev["changes"][0]["target"], "summary")
+        self.assertEqual(rev["changes"][0]["before"], "训练挂起")
+        self.assertEqual(rev["changes"][0]["after"], "新结论：HCCL 超时")
+        self.assertIn("summary", rev["hashes"])
+
+    def test_same_summary_on_transition_adds_no_revision(self):
+        self.make()
+        tt.apply_transition(ROOT, self.traces, "s1", args(to="resolved", summary="训练挂起"))
+        doc = self.load()
+        self.assertNotIn("revisions", doc)
+
     def test_reopen_keeps_prev_ending_and_drops_top_level(self):
         self.make()
         tt.apply_transition(ROOT, self.traces, "s1", args(to="escalated", handed_to="张工"))
@@ -290,6 +309,31 @@ class WriterTest(unittest.TestCase):
         doc = self.load()
         self.assertNotIn("feedback", doc)
         self.assertEqual(doc["reports"][-1]["source"], "vendor")
+
+    def test_unquoted_report_and_review_at_written_back(self):
+        # 手写 trace 里 at 没加引号 → PyYAML 解析成 datetime：json.dumps 会抛 TypeError，
+        # 写回后的字符串也会和旧 datetime 判不相等。写入口要能把旧记录原样写回去，
+        # 连续回报（reports 增长）也不能被自己的写入后校验回滚。
+        self.make(status="resolved", extra=(
+            'reports:\n'
+            '  - {at: 2026-10-30T09:00:00+08:00, by: user, source: field, result: resolved, note: "旧回报"}\n'
+            'reviews:\n'
+            '  - {at: 2026-10-30T09:10:00+08:00, by: user, verdict: report_revision, note: "旧复核"}\n'))
+        tt.apply_transition(ROOT, self.traces, "s1",
+                            args(field="report", report_source="field", report_result="from_report"))
+        tt.apply_transition(ROOT, self.traces, "s1",
+                            args(field="report", report_source="field", report_result="from_report",
+                                 report_note="第二次回报"))
+        doc = self.load()
+        self.assertEqual(len(doc["reports"]), 3)
+        self.assertEqual(doc["reports"][0]["at"], "2026-10-30T09:00:00+08:00")
+        self.assertEqual(doc["reports"][0]["note"], "旧回报")
+        tt.apply_transition(ROOT, self.traces, "s1",
+                            args(field="review", verdict="report_revision", review_note="补一句"))
+        doc = self.load()
+        self.assertEqual(len(doc["reviews"]), 2)
+        self.assertEqual(doc["reviews"][0]["at"], "2026-10-30T09:10:00+08:00")
+        self.assertEqual(doc["reviews"][0]["note"], "旧复核")
 
     def test_report_enum_rejected(self):
         self.make(status="resolved")
