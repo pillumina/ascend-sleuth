@@ -1475,6 +1475,10 @@ body[data-ds-dark-theme] .scp-view-tab[data-on="true"],[data-theme="dark"] .scp-
 .scp-root[data-tone="warn"]{--scp-tone:var(--scp-warn);}
 .scp-root[data-tone="error"]{--scp-tone:var(--scp-bad);}
 .scp-root[data-tone="idle"]{--scp-tone:var(--scp-idle);}
+/* 按下反馈：主按钮与安静按钮保持自己的底色，其余按钮 / 行在按住时压暗一档。 */
+.scp-btn:not(.scp-btn--primary):not(.scp-btn--quiet):not(.scp-btn--ghost):active{background:var(--scp-surface-3);border-color:var(--scp-border-strong);}
+.scp-icon:active,.scp-collapse:active,.scp-scope:active,.scp-tool-btn:active,.scp-dock-sed-open:active,.scp-filter-item:active,.scp-view-tab:active{background:var(--scp-surface-3);}
+.scp-pal-row:active,.scp-sed-row:active,.scp-menu-item:active:not(:disabled),.scp-picker-row:active,.scp-batch-item:active:not(:disabled){background:var(--scp-surface-3);}
 .scp-pal button:focus-visible,.scp-view-tab:focus-visible,.scp-check-action:focus-visible,.scp-sed-row:focus-visible,.scp-cmd-item:focus-visible,.scp-pick:focus-visible,.scp-details-toggle:focus-visible,.scp-link:focus-visible{outline:2px solid var(--scp-accent);outline-offset:2px;}
 .scp-pal ::selection{background:var(--scp-accent-line);}
 @container (max-width: 720px){.scp-meta{display:none;}.scp-chips{flex-wrap:nowrap;}.scp-collapse-text{display:none;}}
@@ -1557,7 +1561,7 @@ body[data-ds-dark-theme] .scp-pal .scp-cmd-backdrop,[data-theme="dark"] .scp-pal
 .scp-pick-list{display:flex;flex-direction:column;gap:var(--scp-sp-2);}
 .scp-pick{display:flex;gap:var(--scp-sp-3);align-items:flex-start;padding:var(--scp-sp-3);border:1px solid var(--scp-border);border-radius:10px;background:var(--scp-surface);cursor:pointer;text-align:left;}
 .scp-pick[data-on="true"]{background:var(--scp-accent-soft);border-color:var(--scp-accent-line);}
-.scp-pick:disabled{opacity:.55;cursor:not-allowed;}
+.scp-pick:disabled{opacity:.45;cursor:not-allowed;}
 .scp-radio{width:14px;height:14px;border-radius:50%;border:2px solid var(--scp-border-strong);flex:none;margin-top:1px;}
 .scp-pick[data-on="true"] .scp-radio{border-color:var(--scp-accent);background:var(--scp-accent);box-shadow:inset 0 0 0 3px var(--scp-accent-soft);}
 .scp-pick-title{font-size:var(--scp-fs-body);font-weight:var(--scp-fw-semi);display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
@@ -1631,7 +1635,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 .scp-batch-menu{position:absolute;right:var(--scp-sp-5);top:calc(100% - 2px);z-index:8;width:min(300px,calc(100% - 32px));padding:5px;border:1px solid var(--scp-border-strong);border-radius:12px;background:var(--scp-surface);box-shadow:var(--scp-shadow);}
 .scp-batch-item{display:flex;align-items:center;gap:8px;width:100%;padding:7px 9px;border:0;border-radius:8px;background:transparent;color:var(--scp-text);font:inherit;font-size:var(--scp-fs-body);text-align:left;cursor:pointer;}
 .scp-batch-item:hover{background:var(--scp-surface-2);}
-.scp-batch-item:disabled{opacity:.55;cursor:not-allowed;}
+.scp-batch-item:disabled{opacity:.45;cursor:not-allowed;}
 .scp-batch-item-n{margin-left:auto;font-size:var(--scp-fs-cap);color:var(--scp-muted);font-variant-numeric:tabular-nums;}
 .scp-batch-empty{padding:6px 9px;font-size:var(--scp-fs-meta);color:var(--scp-muted);line-height:var(--scp-lh-base);}
 .scp-receipt{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px var(--scp-sp-5);border-bottom:1px solid var(--scp-border);background:var(--scp-surface-2);font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);flex:none;}
