@@ -137,6 +137,7 @@ knowledge/
 ## 文档
 
 - [文档总目录](docs/README.md)：全部文档按"什么时候读"分层
+- [版本说明](RELEASE.md)：当前版本的能力、已知限制与安装
 - [演示走查](docs/demo-walkthrough.md)：从一次诊断到知识演化的完整演示，不需要动手
 - [诊断面板](dsh-plugins/ascend-panel/README.md)：DSH 会话中的可视化面板（可选增强）
 - [知识获取](docs/guide/knowledge-acquisition.md)：三种起步形态与稀疏拉取白名单
