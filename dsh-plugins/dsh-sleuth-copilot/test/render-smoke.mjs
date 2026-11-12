@@ -4127,5 +4127,47 @@ function clickWith(node, extra) {
   expect('表单：校验错误是 alert', !!err && err.props.role === 'alert' && view.text.includes('请先填'), err && String(err.props.role))
 }
 
+
+{
+  // 筛选无命中：给筛选空态与「清除筛选与搜索」，点一下回到全量。
+  const t = await mount('multi', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await settleTimes(t, 2)
+  const search = findInput(view, '搜索单号 / case / 关键词')
+  search.props.onChange({ target: { value: 'zzz-没有这一单' } })
+  view = await t.settle()
+  expect('空态：筛选无命中用自己的文案', view.text.includes('当前筛选没有匹配的诊断') && !view.text.includes('还没有诊断记录'), view.text.slice(-300))
+  expect('空态：筛选无命中给清除入口', !!findButton(view, '清除筛选与搜索'))
+  click(findButton(view, '清除筛选与搜索'))
+  view = await t.settle()
+  expect('空态：清除后回到列表', byClass(view, 'scp-pal-row').length >= 2, String(byClass(view, 'scp-pal-row').length))
+}
+
+{
+  // 字段 id 带实例序号：同一角色重开表单不会复用同一批 id（两份表单可能同时存在）。
+  const t = await mount('recent')
+  click(findAria(t.view(), '更多操作'))
+  let view = await t.settle()
+  click(findButton(view, '已定位（根因明确）'))
+  view = await t.settle()
+  const idsOf = (tree) => tree.nodes.filter((n) => n.props && typeof n.props.id === 'string' && n.props.id.startsWith('scp-field-')).map((n) => n.props.id)
+  const first = idsOf(view)
+  expect('表单：字段 id 带实例序号', first.length > 0 && first.every((id) => /^scp-field-\d+-/.test(id)) && new Set(first).size === first.length, JSON.stringify(first))
+}
+
+{
+  // 指令弹层盖在命令面板之上：这时按 ⌘K 不能再把命令面板开到遮罩下面。
+  const t = await mount('multi')
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  click(findButton(view, '沉淀当前筛选 1 单'))
+  view = await t.settle()
+  expect('弹层：先打开指令预览', byClass(view, 'scp-modal').length === 1)
+  pressKey('k', { metaKey: true })
+  view = await t.settle()
+  expect('弹层：⌘K 不打开命令面板', byClass(view, 'scp-cmd').length === 0 && byClass(view, 'scp-modal').length === 1,
+    String(byClass(view, 'scp-cmd').length))
+}
+
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')
 process.exit(failures === 0 ? 0 : 1)

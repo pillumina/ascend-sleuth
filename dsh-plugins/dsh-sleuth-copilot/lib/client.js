@@ -46,41 +46,37 @@ window.__ModuleLoader__.load({
     // 因此在 body 上放两个常驻容器（polite / assertive），所有结果与错误都写它们；
     // 视觉上的提示行 / toast 仍按原样出现和消失。
     const ANN_POLITE_ID = 'dsh-sleuth-copilot-status'
-    const ANN_ASSERTIVE_ID = 'dsh-sleuth-copilot-alert'
-    function announcerNode(urgent) {
-      const id = urgent ? ANN_ASSERTIVE_ID : ANN_POLITE_ID
-      let node = typeof document.getElementById === 'function' ? document.getElementById(id) : null
+    function announcerNode() {
+      let node = typeof document.getElementById === 'function' ? document.getElementById(ANN_POLITE_ID) : null
       if (node) return node
       node = document.createElement('div')
-      node.id = id
+      node.id = ANN_POLITE_ID
       node.className = 'scp-sr-only'
-      node.setAttribute('role', urgent ? 'alert' : 'status')
-      node.setAttribute('aria-live', urgent ? 'assertive' : 'polite')
+      node.setAttribute('role', 'status')
+      node.setAttribute('aria-live', 'polite')
       node.setAttribute('aria-atomic', 'true')
       if (!document.body || typeof document.body.appendChild !== 'function') return null
       document.body.appendChild(node)
       return node
     }
-    // 区域要在第一条消息之前就存在，否则读屏不播报；状态条挂载时就把两个容器建好。
+    // 区域要在第一条消息之前就存在，否则读屏不播报；状态条挂载时就把它建好。
     function ensureAnnouncementRegions() {
       if (typeof document === 'undefined') return
-      try { announcerNode(false); announcerNode(true) } catch { /* 替身渲染环境没有可用 DOM */ }
+      try { announcerNode() } catch { /* 替身渲染环境没有可用 DOM */ }
     }
-    // 插件卸载时把两个容器一起清掉：样式表已卸载，留着带文字的节点会变成页面底部的可见文字。
+    // 插件卸载时把容器清掉：样式表已卸载，留着带文字的节点会变成页面底部的可见文字。
     function removeAnnouncementRegions() {
       if (typeof document === 'undefined') return
-      for (const id of [ANN_POLITE_ID, ANN_ASSERTIVE_ID]) {
-        try {
-          const node = typeof document.getElementById === 'function' ? document.getElementById(id) : null
-          if (node && node.parentNode && typeof node.parentNode.removeChild === 'function') node.parentNode.removeChild(node)
-        } catch { /* 忽略 */ }
-      }
+      try {
+        const node = typeof document.getElementById === 'function' ? document.getElementById(ANN_POLITE_ID) : null
+        if (node && node.parentNode && typeof node.parentNode.removeChild === 'function') node.parentNode.removeChild(node)
+      } catch { /* 忽略 */ }
     }
-    function announce(text, urgent) {
+    function announce(text) {
       const value = String(text || '').trim()
       if (!value || typeof document === 'undefined') return
       try {
-        const node = announcerNode(urgent)
+        const node = announcerNode()
         if (!node) return
         // 同一句话连续出现（连点两次复制）时先清空，否则读屏认为内容没变。
         node.textContent = ''
@@ -379,6 +375,7 @@ window.__ModuleLoader__.load({
       'sediment.error': '读不到沉淀队列：{message}',
       'sediment.empty': '队列已清空',
       'sediment.emptyHint': '诊断收尾时点「沉淀为 case」，草稿会进入这里等周批。',
+      'sediment.emptyFiltered': '当前筛选没有匹配的草稿。',
       'sediment.goDiagnosis': '去诊断',
       'sediment.history': '最近完成',
       'sediment.target.pick': '有多个远端，先选一个',
@@ -906,6 +903,7 @@ window.__ModuleLoader__.load({
       'sediment.error': 'Cannot read the sediment queue: {message}',
       'sediment.empty': 'Queue is clear',
       'sediment.emptyHint': 'Use "Draft a case" at diagnosis wrap-up; drafts wait here for the weekly batch.',
+      'sediment.emptyFiltered': 'No draft matches the current filter.',
       'sediment.goDiagnosis': 'Go to diagnosis',
       'sediment.history': 'Recently completed',
       'sediment.target.pick': 'Multiple remotes; choose one first',
@@ -1309,10 +1307,10 @@ window.__ModuleLoader__.load({
       '.scp-root[data-pending="true"] .scp-ring{background:var(--scp-warn);}',
       '.scp-root[data-flash="true"] .scp-ring{animation:scp-flash 1.4s ease-out;}',
       '@keyframes scp-flash{0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--scp-tone) 45%, transparent)}55%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}',
-      '.scp-pal-list,.scp-pal-side,.scp-menu-scroll,.scp-actions-menu,.scp-cmd-list,.scp-prompt,.scp-report,.scp-picker-list{scrollbar-width:thin;scrollbar-color:var(--scp-border-strong) transparent;}',
-      '.scp-pal-list::-webkit-scrollbar,.scp-pal-side::-webkit-scrollbar,.scp-menu-scroll::-webkit-scrollbar,.scp-actions-menu::-webkit-scrollbar,.scp-cmd-list::-webkit-scrollbar,.scp-prompt::-webkit-scrollbar,.scp-report::-webkit-scrollbar,.scp-picker-list::-webkit-scrollbar{width:10px;height:10px;}',
-      '.scp-pal-list::-webkit-scrollbar-thumb,.scp-pal-side::-webkit-scrollbar-thumb,.scp-menu-scroll::-webkit-scrollbar-thumb,.scp-actions-menu::-webkit-scrollbar-thumb,.scp-cmd-list::-webkit-scrollbar-thumb,.scp-prompt::-webkit-scrollbar-thumb,.scp-report::-webkit-scrollbar-thumb,.scp-picker-list::-webkit-scrollbar-thumb{background:var(--scp-border-strong);border-radius:999px;border:3px solid transparent;background-clip:content-box;}',
-      '.scp-pal-list::-webkit-scrollbar-track,.scp-pal-side::-webkit-scrollbar-track,.scp-menu-scroll::-webkit-scrollbar-track,.scp-actions-menu::-webkit-scrollbar-track,.scp-cmd-list::-webkit-scrollbar-track,.scp-prompt::-webkit-scrollbar-track,.scp-report::-webkit-scrollbar-track,.scp-picker-list::-webkit-scrollbar-track{background:transparent;}',
+      '.scp-pal-list,.scp-pal-side,.scp-menu-scroll,.scp-actions-menu,.scp-cmd-list,.scp-prompt,.scp-report,.scp-modal-body,.scp-picker-list{scrollbar-width:thin;scrollbar-color:var(--scp-border-strong) transparent;}',
+      '.scp-pal-list::-webkit-scrollbar,.scp-pal-side::-webkit-scrollbar,.scp-menu-scroll::-webkit-scrollbar,.scp-actions-menu::-webkit-scrollbar,.scp-cmd-list::-webkit-scrollbar,.scp-prompt::-webkit-scrollbar,.scp-report::-webkit-scrollbar,.scp-modal-body::-webkit-scrollbar,.scp-picker-list::-webkit-scrollbar{width:10px;height:10px;}',
+      '.scp-pal-list::-webkit-scrollbar-thumb,.scp-pal-side::-webkit-scrollbar-thumb,.scp-menu-scroll::-webkit-scrollbar-thumb,.scp-actions-menu::-webkit-scrollbar-thumb,.scp-cmd-list::-webkit-scrollbar-thumb,.scp-prompt::-webkit-scrollbar-thumb,.scp-report::-webkit-scrollbar-thumb,.scp-modal-body::-webkit-scrollbar-thumb,.scp-picker-list::-webkit-scrollbar-thumb{background:var(--scp-border-strong);border-radius:999px;border:3px solid transparent;background-clip:content-box;}',
+      '.scp-pal-list::-webkit-scrollbar-track,.scp-pal-side::-webkit-scrollbar-track,.scp-menu-scroll::-webkit-scrollbar-track,.scp-actions-menu::-webkit-scrollbar-track,.scp-cmd-list::-webkit-scrollbar-track,.scp-prompt::-webkit-scrollbar-track,.scp-report::-webkit-scrollbar-track,.scp-modal-body::-webkit-scrollbar-track,.scp-picker-list::-webkit-scrollbar-track{background:transparent;}',
       '.scp-tool-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:none;border-radius:8px;background:transparent;color:var(--scp-muted);cursor:pointer;transition:background-color 120ms ease,color 120ms ease;}',
       '.scp-tool-btn:hover{background:var(--scp-surface-2);color:var(--scp-text);}',
       '.scp-tool-btn[data-tone="brand"]{color:var(--scp-accent);}',
@@ -1323,9 +1321,9 @@ window.__ModuleLoader__.load({
       '.scp-pal-backdrop{position:fixed;inset:0;z-index:60;display:flex;align-items:flex-start;justify-content:center;padding:9vh 18px 18px;background:rgba(20,26,38,.26);-webkit-backdrop-filter:blur(8px) saturate(1.04);backdrop-filter:blur(8px) saturate(1.04);}',
       'body[data-ds-dark-theme] .scp-pal-backdrop,[data-theme="dark"] .scp-pal-backdrop{background:rgba(0,0,0,.5);}',
       `/* ── 诊断工作台：排版、布局与控件 ─────────────────────────────────────
-   新控件的字号取八档：--scp-fs-cap 10.5 / meta 11 / label 11.5 / sm 12 /
-   body 12.5 / row 13 / title 15 / hero 16.5；字重取四档 400 / 500 / 600 / 650。
-   间距集中在 4 / 8 / 12 / 16 / 20 / 24；圆角按控件、卡片、窗口分三档。
+   字号七档：--scp-fs-cap 10.5 / meta 11 / label 11.5 / sm 12 / body 12.5 / row 13 / title 15；
+   字重四档 400 / 500 / 600 / 650。间距集中在 4 / 8 / 12 / 16 / 20 / 24；
+   圆角按控件 / 卡片 / 浮层 / 窗口四档 8 / 10 / 12 / 16。
    状态条共用的 .scp-case 仍是固定值；.scp-menu-note 与其余控件一样从 token 取值；间距档未重新洗牌。 */
 .scp-pal{position:relative;display:flex;flex-direction:column;width:min(960px,94vw);max-height:78vh;overflow:hidden;border:1px solid var(--scp-border-strong);border-radius:16px;background:var(--scp-surface);color:var(--scp-text);box-shadow:var(--scp-shadow);outline:none;animation:scp-pop 190ms cubic-bezier(.2,.9,.3,1);
   --scp-ctl-h:32px;--scp-ctl-h-sm:28px;--scp-ctl-h-input:34px;--scp-ctl-r:8px;--scp-side-pad-x:24px;}
@@ -2214,7 +2212,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       return tr('stepsShort', { n: current > 0 ? current : '—', m: max })
     }
 
-    // 案例标题：状态条与总览显示给人看的一句话；单号只进 tooltip 与详情。
+    // 案例标题：状态条与工作台显示给人看的一句话；单号只进 tooltip 与详情。
     // 取 summary 第一句（到第一个句读），截断交给 CSS——不手写省略号，也不把内部单号当标题。
     function caseTitle(row) {
       const summary = String((row && row.summary) || '').trim()
@@ -2755,7 +2753,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
     // ── 沉淀队列的小工具（只排版，不判状态；状态来自 sediment_state.py）──────
     const SED_CHIP_TONE = { warn: 'warn', bad: 'error', accent: 'brand', ok: 'success', gray: '' }
-    const SED_DOT = { warn: 'var(--scp-warn)', bad: 'var(--scp-bad)', accent: 'var(--scp-accent)', ok: 'var(--scp-ok)', gray: 'var(--scp-faint)' }
+    const SED_DOT = { warn: 'var(--scp-warn)', bad: 'var(--scp-bad)', accent: 'var(--scp-accent)', ok: 'var(--scp-ok)', gray: 'var(--scp-muted)' }
 
     function sedGroupOf(draft) {
       const state = String((draft && draft.state) || '')
@@ -3002,7 +3000,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 field.emptyValue && String(field.placeholder || '')
                   ? h('option', { value: '' }, field.placeholder)
                   : null,
-                field.options.map((option) => h('option', { key: String(option.value), value: option.value }, option.label))))
+                field.options.map((option) => h('option', { key: String(option.value), value: option.value }, option.label))),
+              field.hint ? h('span', { className: 'scp-form-hint', id: hintId }, field.hint) : null)
           }
           if (field.type === 'textarea') {
             return h('label', { key: field.name, className: 'scp-field' }, label,
@@ -3016,7 +3015,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 value: values[field.name],
                 placeholder: field.placeholder || '',
                 onChange: (event) => change(field.name, event.target.value),
-              }))
+              }),
+              field.hint ? h('span', { className: 'scp-form-hint', id: hintId }, field.hint) : null)
           }
           return h('label', { key: field.name, className: 'scp-field' }, label,
             h('input', {
@@ -3757,7 +3757,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             const mod = event.metaKey || event.ctrlKey
             if (!mod) return
             if (key === 'k') {
-              // 总览开着时 ⌘K 归总览自己（切进命令面板），这里不重复处理。
+              // 工作台开着时 ⌘K 归工作台自己（切进命令面板），这里不重复处理。
               if (store.paletteOpen) return
               event.preventDefault()
               setMenuOpen(false)
@@ -4600,6 +4600,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const toastTimer = React.useRef(null)
       const panelRef = React.useRef(null)
       const actionMenuRef = React.useRef(null)
+      const diagTabRef = React.useRef(null)
+      const sedTabRef = React.useRef(null)
       React.useEffect(() => {
         if (!menuOpen) return undefined
         const el = actionMenuRef.current
@@ -5253,7 +5255,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       }, [s.paletteOpen, view, visibleRows.length, sedSel, promptKind, targetOpen, manualOpen, cmdOpen,
         selectedCount, batchMenu, onlySelOn, selectingOn])
 
-      // 详情抬头的三个钩子必须放在任何提前 return 之前：总览关着时 Palette 提前返回，打开后
+      // 详情抬头的三个钩子必须放在任何提前 return 之前：工作台关着时 Palette 提前返回，打开后
       // 又多出这三个钩子，React 会报「hook 数量与上次渲染不一致」，整个 shell.overlay 槽位崩掉，
       // 表现就是点「诊断工作台」没有反应。依赖值都从已声明的 state 现算，不依赖后面才赋值的局部变量。
       const ledeRow = visibleRows[selected] || null
@@ -6645,7 +6647,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       }
 
       const receiptMine = receipt && (receipt.view || 'sediment') === view
-      const receiptBar = receiptMine ? h('div', { className: 'scp-receipt', role: 'status' },
+      const receiptBar = receiptMine ? h('div', { className: 'scp-receipt' },
         h('span', { className: 'scp-receipt-strong' }, receipt.kind === 'write'
           ? (receipt.undone
             ? tr('sel.receiptRestored', { state: tr('sediment.prState.' + receipt.prev) })
@@ -6702,7 +6704,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       },
         h('div', { className: 'scp-batch-line' },
           noSelectionYet ? null : selectAllControl,
-          h('span', { className: 'scp-batch-strong', role: 'status' },
+          h('span', { className: 'scp-batch-strong' },
             noSelectionYet ? tr('sel.emptyTitle') : tr('sel.count', { n: selectedCount })),
           h('span', { className: 'scp-batch-note' },
             noSelectionYet ? tr('sel.emptyHint') : tr('sel.inFilter', { n: selVisibleRows.length })),
@@ -6844,7 +6846,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   item.at ? h('span', { className: 'scp-sed-hint' }, formatTime(item.at) || item.at) : null)))
               : null)
           : visibleRows.length === 0
-            ? h('div', { className: 'scp-pal-empty' }, tr('palette.empty'))
+            ? h('div', { className: 'scp-pal-empty' }, tr('sediment.emptyFiltered'))
             : (() => {
               const order = ['groom', 'pr', 'check', 'other']
               const labels = {
@@ -7433,10 +7435,12 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 event.preventDefault()
                 const next = view === 'diagnosis' ? 'sediment' : 'diagnosis'
                 setMenuOpen(false); setMenuForm(null); setPaletteView(next)
+                const node = next === 'diagnosis' ? diagTabRef.current : sedTabRef.current
+                if (node && typeof node.focus === 'function') { try { node.focus() } catch { /* 同上 */ } }
               },
             },
               h('button', {
-                type: 'button', role: 'tab',
+                type: 'button', role: 'tab', ref: diagTabRef,
                 id: 'scp-tab-diagnosis', 'aria-controls': 'scp-pal-panel',
                 tabIndex: view === 'diagnosis' ? 0 : -1,
                 className: 'scp-view-tab',
@@ -7445,7 +7449,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 onClick: () => { setMenuOpen(false); setMenuForm(null); setPaletteView('diagnosis') },
               }, tr('palette.view.diagnosis'), h('b', {}, loadFailed ? '—' : loading ? '…' : String(rows.length))),
               h('button', {
-                type: 'button', role: 'tab',
+                type: 'button', role: 'tab', ref: sedTabRef,
                 id: 'scp-tab-sediment', 'aria-controls': 'scp-pal-panel',
                 tabIndex: view === 'sediment' ? 0 : -1,
                 className: 'scp-view-tab',
