@@ -235,6 +235,162 @@ fix_emitted: false            # 本次有没有给出可执行的修复或规避
 - `fix_emitted: false` 的常见情形：等上游修复、只定位到根因、根因清楚但规避方案未验证。它与 `feedback.outcome` 不是一回事：前者说"我们给没给"，后者说"给了的那个管不管用"。
 - 两个字段都缺时面板不占位（不显示徽标），也不会报错——代价只是这类单在列表上与 benign 无差别，所以收尾时必写。
 
+## 顶层 `incident_env` 与 `incident_timeline`（现场故障时间线）
+
+本节与下面两节的字段是面板前三段时间线的数据源：现场故障时间线（客户环境里发生的事，下称「现场侧」）→ 故障过程（日志）→ 上游与查证；面板第四层是诊断步骤，来自 `trace[]` 的步骤事件。`revisions` 是这三段当前值的修订记录，不是第四层。全都可选；旧 trace 没有就按「未记录」显示，**不回填**——回填只能靠事后回忆，会把事后想到的写成当时看到的。
+
+**写时机**：步骤 1 收集症状时写现场侧与环境；读日志定位时写故障过程；查上游时写上游；每次改当前值经 content 写入口（`scripts/trace_transition.py --field content`），写入口自动落一条修订。
+
+`incident_env` 一行写现场环境，`incident_timeline` 按材料时序记现场侧发生的事实。字段缺省或写 `null` 都按「未记录」；写 `[]` 表示字段在、还没有事实。
+
+```yaml
+incident_env: "平台 / 框架 / 版本 / 部署形态，一行"
+
+incident_timeline:
+  - id: inc-1
+    at: "YYYY-MM-DDTHH:MM:SS+08:00"
+    at_note: "起服务约 8 分钟后"
+    what: "日志开始重复打同一行，计数冻结"
+    source: log
+    step: 1
+    evidence: {files: ["traces/evidence/<sid>/worker.log"], quote: "日志原文一行", line: 12}
+```
+
+| 字段 | 要求 |
+|---|---|
+| `id` | `inc-<n>`，在本列表内唯一；`revisions` 按它指认改的是哪一条 |
+| `at` | 材料给到什么精度写到什么精度；只有日期就写 `YYYY-MM-DD`；没有时点写 `null` |
+| `at_note` | 相对时间原文（「重启后第 3 次迭代」这类），`at` 为空时它可能仍是唯一的时序线索 |
+| `what` | 一句话事实，不写推断；判断留在诊断步骤的 `reason` |
+| `source` | `log` / `user` / `issue` / `comment` / `commit` / `doc` / `field_test` / `observation` |
+| `step` | 来源步骤（整数），回答「这条事实是哪一步拿到的」 |
+| `evidence` | 证据指针：`files`（相对仓库根的路径，形如 `traces/evidence/<sid>/…`）、`quote`（原文）、`line`（行号） |
+
+`id` / `what` / `source` 必填，`at` 可空；其余字段按手上有什么写。列表最多 16 条（写入口校验）——现场事实超过 16 条时先合并同类、只留转折；面板段头按总数显示，超出面板显示量时写「显示前 N 条」。
+
+**只收现场侧**：现象、变更（谁改了什么）、规避与恢复。上游的 issue / PR / 维护者答复进 `upstream_timeline`，不混进这一段。
+
+**`at` 照材料原值写，不换算时区、不补精度**。日志与墙钟有时差时写在 `failure_process.clock_note`，不在每条时间戳上改算。
+
+## 顶层 `failure_process`（日志证据层）
+
+从日志里读出的一段过程：从哪个状态转到哪个状态、在哪一行开始、重复了多久。面板默认收起，有 `clock_note` 时在段头提示日志时间与墙钟不一致。
+
+```yaml
+failure_process:
+  axis: time
+  window: {from: "YYYY-MM-DDTHH:MM:SS+08:00", to: "YYYY-MM-DDTHH:MM:SS+08:00"}
+  clock_note: "日志时间比墙钟晚 8 h（日志 08:34:22 = 墙钟 16:34:22）"
+  nodes:
+    - id: fp-1
+      at: "YYYY-MM-DDTHH:MM:SS+08:00"
+      x: null
+      what: "从空闲转入重试"
+      quote: "日志原文一行"
+      repeat: "每 ~1 s 一次，持续到 YYYY-MM-DDTHH:MM:SS+08:00（约 50 min）"
+      evidence: {file: "traces/evidence/<sid>/evidence.txt", line: 17}
+```
+
+- `axis` 取 `time` / `step` / `request`。当前面板只按 `time` 渲染，另两种轴仍要写 `axis` 与 `x`，为后续读端留字段。
+- `nodes` **最多 8 条**：挑状态转折的节点，不按日志行数记。全量日志不进 trace，原文落 `traces/evidence/<sid>/`。
+- `nodes` 里 `id` / `what` / `quote` 必填；`axis` 与 `nodes` 是整段必填项，`window` / `clock_note` 可省。
+- `quote` 是日志原文一行。`repeat` 记重复节奏与持续时长，用来表达「同一行打了几千次」而不贴几千行。
+- **时钟偏差必写**：多机日志、或日志与墙钟对不上时，`clock_note` 写清谁比谁差多少。不写它，读者会把日志时间当墙钟时间排先后。
+- `evidence.file` 与 `line` 指回原件，读者能按行重读。
+- **写时机**：读日志定位（步骤 3–5）时边读边记；一批日志只提炼转折点，不做全量转录。
+- 只放可观察事实：节点写「日志出现了什么」，推断写进对应步骤的 `reason`。
+
+## 顶层 `upstream_timeline`（上游与查证时间线）
+
+上游侧的事件与查证结论：issue 何时开、维护者怎么回、PR 何时合入、哪个版本带这个修复。面板「上游与查证」段读它。
+
+```yaml
+upstream_timeline:
+  - id: up-1
+    at: "YYYY-MM-DD"
+    what: "维护者确认是已知问题，指向修复 PR"
+    source: comment
+    ref: "#13976"
+    evidence: {files: ["traces/evidence/<sid>/issue.txt"]}
+```
+
+| 字段 | 要求 |
+|---|---|
+| `id` | `up-<n>`，在本列表内唯一 |
+| `at` | 同现场侧：照材料精度，没有时点写 `null` |
+| `what` | 事件一句话事实。「维护者说 X」与「由此判断 Y」分开写 |
+| `source` | `issue` / `comment` / `commit` / `doc` / `maintainer` / `vendor` / `field_test` / `observation` |
+| `ref` | issue / PR / commit 编号或链接，原文照抄 |
+| `evidence` | 证据指针，同现场侧 |
+
+- **写时机**：查上游时每拿到一条证据记一条——步骤 5 的上游 follow-up、vllm-kb 的修复链查询都算。
+- **只放查到的事实**：维护者说了什么、PR 合没合、哪个 release 声称带修复。对部署版本的判断写进结论与 `reason`，不写成上游事实。
+- **字段存在且为空**（`upstream_timeline: []`）表示查过、上游没有修复记录，面板显示「无上游修复记录」；字段缺省或写 `null` 表示没查过（旧单），面板不显示这一句。三态不要混。
+- **「已修复」是待验证的假设**：PR 或 issue 已 closed 不等于部署版本带这个修复，落地实证的结论写进 `what`，不把「升级即可」直接当上游事实。
+- 列表最多 12 条（写入口校验）；超出时先合并同一条 issue / PR 的多次回复，不逐条搬。
+
+## 顶层 `revisions`（修订记录，只追加）
+
+trace 的当前值会变：用户更正、新证据推翻结论、上游状态变了。变的时候留一条修订，写清改前、改后与为什么改。
+
+```yaml
+revisions:
+  - at: "YYYY-MM-DDTHH:MM:SS+08:00"
+    by: agent
+    kind: fact_corrected
+    changes:
+      - {target: inc-3, before: "旧值", after: "新值"}
+      - {target: failure_process, before: "旧 axis / window / clock_note 的 JSON", after: "新的 JSON"}
+      - {target: "removed:<id>", before: "被删条目的摘要", after: ""}
+    reason: "为什么改（新证据 / 用户更正）"
+    evidence: {files: ["traces/evidence/<sid>/..."]}
+    hashes: {incident_timeline: "sha256:..."}
+```
+
+**当前值只经写入口改**：`summary`、`incident_env`、`incident_timeline`、`failure_process`、`upstream_timeline` 用 `scripts/trace_transition.py --field content --content-file <json>` 写。写入口只更新 `set` 里给出的字段，按 id 比对生成这条修订，并给被改字段记 `hashes`。
+
+```bash
+python3 scripts/trace_transition.py <sid> --field content --content-file /tmp/content.json --by agent --json
+```
+
+`/tmp/content.json` 的形状（`set` 至少一个字段；没有变化时写入口返回 `E_NO_CHANGE`，不产生修订）：
+
+```json
+{
+  "set": {
+    "incident_env": "平台 / 框架 / 版本 / 部署形态，一行",
+    "incident_timeline": [{"id": "inc-1", "at": "YYYY-MM-DDTHH:MM:SS+08:00", "what": "…", "source": "log", "step": 1}]
+  },
+  "kind": "fact_corrected",
+  "reason": "用户更正起服务时间",
+  "evidence": {"files": ["traces/evidence/<sid>/msg.txt"]}
+}
+```
+
+| `kind` | 什么时候用 |
+|---|---|
+| `fact_corrected` | 现场事实写错或补全（时间、原文、来源） |
+| `conclusion_overturned` | 结论被新证据推翻，`summary` 与相关段一起改 |
+| `scope_changed` | 问题范围变了（如从单机扩到多机） |
+| `severity_changed` | `severity` 改了（先停改成可打补丁，或反过来） |
+| `sediment_changed` | 沉淀状态或候选变了 |
+
+`changes` 的写法：
+
+- `target` 三选一：被整体替换的字段名（如 `incident_timeline` / `failure_process` / `summary`）、当前条目的 id（`inc-3` / `fp-2` / `up-1`）、或删除条目的 `removed:<id>`。
+- `before` / `after` 写人读摘要，不抄整段 JSON——面板的写入历史要让人一眼看出改了什么。
+- 新增条目 `before` 写空串；删除条目 `after` 写空串，`target` 用 `removed:<id>`，校验不要求被删的 id 还在当前列表里。
+- 例外是 `failure_process` 的结构字段（`axis` / `window` / `clock_note`）：它们没有单条 id，变化时 `target` 写 `failure_process`，`before` / `after` 写这几个键的 compact JSON（不是整段字段）；节点变化仍按 id 一条一条记。
+- `hashes` 由写入口填，不手写。
+
+`by` 取 `user` / `agent` / `cli`，由写入口的 `--by` 传：agent 自发改写传 `agent`，脚本与人工命令行传 `cli`；面板当前没有 content 写路径。
+
+**状态转移顺带改摘要也要留修订**：收尾时用 `trace_transition.py --to … --summary …` 改 `summary`，写入口会追加一条 `fact_corrected` 修订（before / after 与 `summary` 的 hash）；与 content 写入口同一份口径。
+
+**手改会被查出来**：写入口给每个被改字段记 `hashes`，`python3 scripts/verify_trace_status.py --all` 重算当前值时与最近一条带该字段的修订比对，不等即绕过；另有一条兜底——内容字段有值、却没有任何修订 hash 时直接报错，首次手写或删掉整段 `revisions` 也跑不掉。`summary` 不在这条兜底里（它还有状态转移这一条合法的写入路径）。
+
+**报告同步**：改了会影响结论或时间线的字段，报告对应小节与第 10 节修订记录同一次改完（规则见同目录 `report-template.md` 第 2 节）。
+
 ## 零执行评估所需的三项记录
 
 trace 不止当过程记录读，还有第二个用途：换一个探索策略在这段历史上走一遍（同一批决策点，换不同的展开方式与停止点），用来判断当时的做法好不好。这个用途对记录有三项要求，缺了它，重放只能按写的人事后回忆重讲：

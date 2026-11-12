@@ -195,6 +195,17 @@ strength: self-report              # 来源会话自证，取值见本节字段�
 
 改汇总脚本时要处理两件事。检索命中的案例（9005）与最终沉淀的案例（12430）不是同一个，两个 id 各算一次触达。被排除的五个案例（`excluded_cases`）也算触达，它们是「检索到但被排除」，与「命中」分开计数。
 
+轨迹里另记四类给面板详情用的字段。它们只在本机、不进本机明细的聚合、也不上仓：
+
+| 字段 | 内容 | 消费方 |
+|---|---|---|
+| `incident_env` + `incident_timeline` | 现场环境一行；现场侧的可观察事实（id、时间、来源、证据指针） | 面板详情的「现场故障时间线」直接读轨迹 |
+| `failure_process` | 日志证据层：轴、窗口、日志与墙钟的偏差（`clock_note`）、最多 8 个转折节点 | 面板详情的「故障过程（日志）」 |
+| `upstream_timeline` | 上游与查证事件（issue / PR / 维护者答复 / 落地实证结论） | 面板详情的「上游与查证」 |
+| `revisions` | 当前值的追加式修订记录（类别、before / after、原因、被改字段的哈希） | 面板详情的修订标记与「写入历史」 |
+
+这四类字段的口径见 `skills/diagnose/references/diagnosis-trace.md`。写入口是 `scripts/trace_transition.py --field content`，它按 id 比对生成 `revisions`，并给被改字段记 `hashes`。它们不进 `entry-activity.local` 的汇总，也不参与任何读数。
+
 ### 3.2 什么时候汇总、谁触发
 
 三个动作、两个 PR 流，顺序固定。

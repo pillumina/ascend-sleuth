@@ -40,6 +40,50 @@ const TRACE_FIXTURE = [
   'harness_session: "origin-session"',
   'excluded_cases: []',
   'report_file: "alt-smoke.md"',
+  'incident_env: "A3-910C · vllm-ascend 0.23.0 · CANN 9.0.0"',
+  'incident_timeline:',
+  '  - id: inc-1',
+  '    at: "2026-09-08T15:20:00+08:00"',
+  '    what: "服务起来后首个并发长 prompt 请求崩溃，WorkerProc 退出"',
+  '    source: log',
+  '    step: 1',
+  '    evidence:',
+  '      files: ["traces/evidence/2026-09-08-copilot-smoke/crash.log"]',
+  '      quote: "ERROR 09-08 15:20:00 WorkerProc hit an exception."',
+  '      line: 17',
+  '  - id: inc-2',
+  '    at: "2026-09-08T15:26:00+08:00"',
+  '    what: "关掉 TopK dispatch 后压测 2 小时未复现"',
+  '    source: field_test',
+  '    step: 5',
+  'failure_process:',
+  '  axis: time',
+  '  window:',
+  '    from: "2026-09-08T15:20:00+08:00"',
+  '    to: "2026-09-08T15:29:00+08:00"',
+  '  clock_note: "日志时间比墙钟晚 8 h（日志 07:20:00 = 墙钟 15:20:00）"',
+  '  nodes:',
+  '    - id: fp-1',
+  '      at: "2026-09-08T15:20:00+08:00"',
+  '      what: "首次崩溃，WorkerProc 退出"',
+  '      quote: "ERROR 09-08 15:20:00 WorkerProc hit an exception."',
+  '      repeat: "每 ~1 s 一次，持续到 15:29:00"',
+  '      evidence:',
+  '        file: "traces/evidence/2026-09-08-copilot-smoke/evidence.txt"',
+  '        line: 17',
+  'upstream_timeline:',
+  '  - id: up-1',
+  '    at: "2026-08-12"',
+  '    what: "PR #13831 合入，修 dspark_proposer.py"',
+  '    source: commit',
+  '    ref: "#13831"',
+  'revisions:',
+  '  - at: "2026-09-08T15:26:00+08:00"',
+  '    by: agent',
+  '    kind: fact_corrected',
+  '    changes:',
+  '      - {target: inc-2, before: "首次崩溃后服务自动恢复", after: "服务未恢复，WorkerProc 退出"}',
+  '    reason: "新证据：日志显示 WorkerProc 退出后没有重启"',
   'sediment_candidates:',
   '  - kind: case',
   '    summary: "夹具候选：vendor TopKV2 kernel 崩溃"',
@@ -83,10 +127,41 @@ const TRACE2_FIXTURE = [
   '  outcome: pending',
   'active_case: ""',
   'harness_session: "legacy-session"',
+  // 旧单没有四层数据：`incident_timeline: null` 与缺键一样按「未记录」，`revisions: null` 给 []。
+  'incident_timeline: null',
+  'revisions: null',
   'trace:',
   '  - role: user',
   '    step: 1',
   '    content: "老单用户事件"',
+  '',
+].join('\n')
+
+// 修订上限夹具：revisions 是 append-only、不设上限。读侧只留最近 24 条（尾部），
+// revisionsTotal 仍报总数；这单只用来验证截断方向，不参与写通道。
+const TRACE3_ID = '2026-09-01-copilot-many-revisions'
+const TRACE3_FILE = TRACE3_ID + '.yaml'
+const MANY_REVISIONS = 30
+const TRACE3_FIXTURE = [
+  'session_id: "' + TRACE3_ID + '"',
+  'status: in_progress',
+  'summary: "修订上限夹具：30 条修订。"',
+  'created_at: "2026-09-01T10:00:00+08:00"',
+  'updated_at: "2026-09-01T10:00:00+08:00"',
+  'harness_session: "many-rev-session"',
+  'revisions:',
+  ...Array.from({ length: MANY_REVISIONS }, (_, i) => [
+    '  - at: "2026-09-01T10:00:00+08:00"',
+    '    by: agent',
+    '    kind: fact_corrected',
+    '    changes:',
+    '      - {target: summary, before: "旧 ' + (i + 1) + '", after: "新 ' + (i + 1) + '"}',
+    '    reason: "第 ' + (i + 1) + ' 次修订"',
+  ]).flat(),
+  'trace:',
+  '  - role: user',
+  '    step: 1',
+  '    content: "夹具"',
   '',
 ].join('\n')
 
@@ -537,6 +612,14 @@ expect('读：summary 已给的硬件 / 量化档不列为缺口', row
   && !row.extra.missingMaterials.some((item) => item.startsWith('量化档')), JSON.stringify(row && row.extra.missingMaterials))
 expect('读：普通硬件缺口不被过滤', row && row.extra.missingMaterials.includes('硬件侧 plog 与 die 温度'), JSON.stringify(row && row.extra.missingMaterials))
 expect('读：按顶层 report_file 识别报告', row && row.extra.hasReport === true && row.reportFile === 'traces/alt-smoke.md')
+// 四层明细不再随 copilot-state 的薄行下发（80 单最坏会放大到数 MB）：
+// 详情选中行时走 copilot-timeline 取 layers；薄行只留状态字段。
+expect('读：薄行不带四层明细（体积回到状态字段）', row && row.extra
+  && !Object.prototype.hasOwnProperty.call(row.extra, 'incidentEnv')
+  && !Object.prototype.hasOwnProperty.call(row.extra, 'incident')
+  && !Object.prototype.hasOwnProperty.call(row.extra, 'failureProcess')
+  && !Object.prototype.hasOwnProperty.call(row.extra, 'upstream')
+  && !Object.prototype.hasOwnProperty.call(row.extra, 'revisions'), JSON.stringify(row && Object.keys(row.extra || {})))
 const originalSha = row.contentSha256
 
 // 进度端点：还没有 check-all 在跑时 present=false、不报 done（面板不能据此永久停轮询）。
@@ -587,11 +670,64 @@ const timelineRead = await request(rw, {
 const timelineValue = timelineRead.envelope && timelineRead.envelope.result && timelineRead.envelope.result.value
 expect('时间线：读到步骤', timelineValue && timelineValue.ok === true && Array.isArray(timelineValue.timeline) && timelineValue.timeline.length >= 2, JSON.stringify(timelineValue))
 expect('时间线：角色与动作', timelineValue && timelineValue.timeline[0].role === 'user' && timelineValue.timeline[1].action === 'triage', JSON.stringify(timelineValue && timelineValue.timeline))
+expect('时间线：现场环境与现场条目', timelineValue && timelineValue.incidentEnv.includes('vllm-ascend')
+  && Array.isArray(timelineValue.incident) && timelineValue.incident.length === 2
+  && timelineValue.incident[0].at === '2026-09-08T15:20:00+08:00'
+  && timelineValue.incident[0].what.includes('首个并发长 prompt')
+  && timelineValue.incident[0].source === 'log'
+  && timelineValue.incident[0].step === 1
+  && Array.isArray(timelineValue.incident[0].evidence.files)
+  && timelineValue.incident[1].source === 'field_test'
+  && timelineValue.incidentTotal === 2, JSON.stringify(timelineValue && timelineValue.incident))
+expect('时间线：故障过程窗口、时钟偏差与节点', timelineValue && timelineValue.failureProcess
+  && timelineValue.failureProcess.window.to === '2026-09-08T15:29:00+08:00'
+  && timelineValue.failureProcess.nodes.length === 1
+  && timelineValue.failureProcess.nodes[0].quote.includes('WorkerProc hit an exception')
+  && timelineValue.failureProcess.nodes[0].repeat.includes('每 ~1 s 一次')
+  && timelineValue.failureProcess.nodes[0].evidence.line === 17, JSON.stringify(timelineValue && timelineValue.failureProcess))
+expect('时间线：上游条目与来源', timelineValue && Array.isArray(timelineValue.upstream)
+  && timelineValue.upstream[0].ref === '#13831'
+  && timelineValue.upstream[0].source === 'commit'
+  && timelineValue.upstreamTotal === 1, JSON.stringify(timelineValue && timelineValue.upstream))
+expect('时间线：修订 changes 与原因', timelineValue && Array.isArray(timelineValue.revisions)
+  && timelineValue.revisions[0].kind === 'fact_corrected'
+  && timelineValue.revisions[0].changes[0].before.includes('自动恢复')
+  && timelineValue.revisions[0].changes[0].after.includes('未恢复')
+  && timelineValue.revisions[0].reason.includes('新证据')
+  && timelineValue.revisionsTotal === 1, JSON.stringify(timelineValue && timelineValue.revisions))
 const timelineBad = await request(rw, {
   type: 'client-request', rpcId: 'timeline-2', method: 'copilot-timeline',
   payload: { cwd: SANDBOX, tracesDir: TRACES, traceFile: '../x.yaml' },
 }, '/sleuth-copilot/copilot-timeline')
 expect('时间线：非法文件名被拒', timelineBad.envelope.result.value.ok === false && timelineBad.envelope.result.value.code === 'E_SCHEMA')
+// 详情按需取时只解析目标文件：目标坏了按 E_PARSE / E_LOAD 单给，兄弟文件坏了不参与解析。
+writeFileSync(join(TRACES, 'broken-target.yaml'), 'session_id: [unclosed\n', 'utf8')
+const brokenTarget = await request(rw, {
+  type: 'client-request', rpcId: 'timeline-broken', method: 'copilot-timeline',
+  payload: { cwd: SANDBOX, tracesDir: TRACES, traceFile: 'broken-target.yaml' },
+}, '/sleuth-copilot/copilot-timeline')
+const brokenTargetValue = brokenTarget.envelope.result.value
+expect('时间线：目标文件解析失败给 E_PARSE', brokenTargetValue && brokenTargetValue.ok === false
+  && brokenTargetValue.code === 'E_PARSE', JSON.stringify(brokenTargetValue))
+rmSync(join(TRACES, 'broken-target.yaml'))
+writeFileSync(join(TRACES, 'bad-utf8.yaml'), Buffer.from([0xff, 0xfe, 0x00, 0x62]))
+const badUtf8 = await request(rw, {
+  type: 'client-request', rpcId: 'timeline-bad-utf8', method: 'copilot-timeline',
+  payload: { cwd: SANDBOX, tracesDir: TRACES, traceFile: 'bad-utf8.yaml' },
+}, '/sleuth-copilot/copilot-timeline')
+const badUtf8Value = badUtf8.envelope.result.value
+expect('时间线：目标文件读不出给 E_LOAD', badUtf8Value && badUtf8Value.ok === false
+  && badUtf8Value.code === 'E_LOAD', JSON.stringify(badUtf8Value))
+rmSync(join(TRACES, 'bad-utf8.yaml'))
+writeFileSync(join(TRACES, 'broken-sibling.yaml'), 'session_id: [unclosed\n', 'utf8')
+const healthyTimeline = await request(rw, {
+  type: 'client-request', rpcId: 'timeline-sibling', method: 'copilot-timeline',
+  payload: { cwd: SANDBOX, tracesDir: TRACES, traceFile: TRACE_FILE },
+}, '/sleuth-copilot/copilot-timeline')
+const healthyTimelineValue = healthyTimeline.envelope.result.value
+expect('时间线：只读目标文件，坏兄弟文件不影响', healthyTimelineValue && healthyTimelineValue.ok === true
+  && Array.isArray(healthyTimelineValue.timeline), JSON.stringify(healthyTimelineValue && healthyTimelineValue.code))
+rmSync(join(TRACES, 'broken-sibling.yaml'))
 if (hasGit) {
   const sedimentRead = await request(rw, {
     type: 'client-request', rpcId: 'sediment-1', method: 'copilot-sediment',
@@ -964,6 +1100,50 @@ expect('读：非数字 current_step 降级为 0', legacyRow && legacyRow.extra
 expect('读：fixEmitted 透传到薄行与 extra', legacyRow
   && Object.prototype.hasOwnProperty.call(legacyRow, 'fixEmitted') && legacyRow.fixEmitted === null
   && legacyRow.extra.fixEmitted === null, JSON.stringify(legacyRow && legacyRow.fixEmitted))
+// 旧单（没有四层字段）：null = 字段不存在，[] = 字段存在但为空；不回填、不报错。
+expect('读：旧单薄行不带四层字段', legacyRow && legacyRow.extra
+  && !Object.prototype.hasOwnProperty.call(legacyRow.extra, 'incident')
+  && !Object.prototype.hasOwnProperty.call(legacyRow.extra, 'upstream'), JSON.stringify(legacyRow && Object.keys(legacyRow.extra || {})))
+const legacyTimelineRead = await request(rw, {
+  type: 'client-request', rpcId: 'timeline-legacy', method: 'copilot-timeline',
+  payload: { cwd: SANDBOX, tracesDir: TRACES, traceFile: TRACE2_FILE },
+}, '/sleuth-copilot/copilot-timeline')
+const legacyTimelineValue = legacyTimelineRead.envelope && legacyTimelineRead.envelope.result
+  && legacyTimelineRead.envelope.result.value
+// `incident_timeline: null`（显式 null）与缺键（upstream_timeline）都按未记录给 null；
+// `revisions: null` 给空列表——null 不是「查过但为空」。
+expect('时间线：旧单 null / 缺键都按未记录', legacyTimelineValue && legacyTimelineValue.ok === true
+  && legacyTimelineValue.incidentEnv === ''
+  && legacyTimelineValue.incident === null && legacyTimelineValue.incidentTotal === 0
+  && legacyTimelineValue.failureProcess === null
+  && legacyTimelineValue.upstream === null && legacyTimelineValue.upstreamTotal === 0
+  && Array.isArray(legacyTimelineValue.revisions) && legacyTimelineValue.revisions.length === 0
+  && legacyTimelineValue.revisionsTotal === 0,
+JSON.stringify(legacyTimelineValue && {
+  incidentEnv: legacyTimelineValue.incidentEnv, incident: legacyTimelineValue.incident,
+  incidentTotal: legacyTimelineValue.incidentTotal,
+  failureProcess: legacyTimelineValue.failureProcess, upstream: legacyTimelineValue.upstream,
+  upstreamTotal: legacyTimelineValue.upstreamTotal, revisions: legacyTimelineValue.revisions,
+}))
+// 修订超上限：append-only 无上限，读侧只留最近 24 条（尾部），总数不截断。
+writeFileSync(join(TRACES, TRACE3_FILE), TRACE3_FIXTURE, 'utf8')
+const manyRevRead = await request(rw, {
+  type: 'client-request', rpcId: 'timeline-many-revisions', method: 'copilot-timeline',
+  payload: { cwd: SANDBOX, tracesDir: TRACES, traceFile: TRACE3_FILE },
+}, '/sleuth-copilot/copilot-timeline')
+const manyRevValue = manyRevRead.envelope && manyRevRead.envelope.result
+  && manyRevRead.envelope.result.value
+expect('时间线：修订超上限只留最近 24 条、总数不截断', manyRevValue && manyRevValue.ok === true
+  && Array.isArray(manyRevValue.revisions) && manyRevValue.revisions.length === 24
+  && manyRevValue.revisionsTotal === 30
+  && manyRevValue.revisions[0].reason === '第 7 次修订'
+  && manyRevValue.revisions[23].reason === '第 30 次修订',
+JSON.stringify(manyRevValue && {
+  length: manyRevValue.revisions && manyRevValue.revisions.length,
+  total: manyRevValue.revisionsTotal,
+  first: manyRevValue.revisions && manyRevValue.revisions[0] && manyRevValue.revisions[0].reason,
+  last: manyRevValue.revisions && manyRevValue.revisions[23] && manyRevValue.revisions[23].reason,
+}))
 const legacyTraceSha = createHash('sha256').update(readFileSync(join(TRACES, TRACE2_FILE))).digest('hex')
 const backfill = await transition(rw, {
     sessionId: 'smoke-session', cwd: SANDBOX, traceSessionId: TRACE2_ID, traceFile: TRACE2_FILE,

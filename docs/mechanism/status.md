@@ -36,6 +36,7 @@
 | 数字现算，不写进文档 | [rsi-mechanism.md](rsi-mechanism.md) 「从触发到落地」 | 已落地 | `python3 scripts/index_counts.py` |
 | 记账号的生存范围 | [status.md](status.md) 「代码与文件入口」末段的记账号规则 | 已落地 | `python3 scripts/render_review_summary.py --scan docs/mechanism/rsi-mechanism.md` |
 | 归因事件字段 `component` | [pipeline.md](pipeline.md) 「观测基座：归因事件写入 trace，报告按需聚合」 | 已落地 | `grep -n "attribution" skills/diagnose/references/diagnosis-trace.md` |
+| 诊断详情的四层时间线与追加式修订 | 字段口径：[diagnosis-trace.md](../../skills/diagnose/references/diagnosis-trace.md)「顶层 incident_timeline」至「顶层 revisions」；面板消费：[diagnosis-observability.md](diagnosis-observability.md)「3.1 本机明细」 | 已落地 | `python3 scripts/verify_trace_status.py --all`；`grep -n "field content" scripts/trace_transition.py` |
 | 改进项状态机与 schema 校验 | [pipeline.md](pipeline.md) 「改进项的 schema 与状态机」 | 已落地 | `python3 scripts/verify_proposals.py --check` |
 | 知识层分级 `authorization` 取 auto / review / dual | [pipeline.md](pipeline.md) 「L2 流程与 skill 层：从半闭环到全闭环」 | 已落地 | `grep -h "^authorization:" proposals/ideas/*.yaml \| sort \| uniq -c` |
 | S2 单池校准集 | [pipeline.md](pipeline.md) 「观测基座：归因事件写入 trace，报告按需聚合」 | 已落地 | `ls eval/s2/vllm-ascend.yaml` |

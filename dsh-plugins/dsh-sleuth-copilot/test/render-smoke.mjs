@@ -85,6 +85,41 @@ globalThis.clearInterval = (id) => {
   intervalHandlers.delete(id)
 }
 
+// 面板 layers 去抖（130ms）的计时器替身：默认到点即执行（与真实计时的顺序一致）；
+// 需要验证「连按只发最后一次」时用 holdDebounce() 挂起、flushDebounce() 手动推进。
+const LAYERS_DEBOUNCE_MS = 130
+const realSetTimeout = globalThis.setTimeout
+const realClearTimeout = globalThis.clearTimeout
+const debounceTimers = new Map()
+let debounceSeq = 0
+let debounceHold = false
+globalThis.setTimeout = (fn, ms, ...args) => {
+  if (ms === LAYERS_DEBOUNCE_MS) {
+    if (!debounceHold) return realSetTimeout(fn, 0, ...args)
+    debounceSeq += 1
+    debounceTimers.set(debounceSeq, fn)
+    return debounceSeq
+  }
+  return realSetTimeout(fn, ms, ...args)
+}
+globalThis.clearTimeout = (id) => {
+  if (debounceTimers.has(id)) {
+    debounceTimers.delete(id)
+    return
+  }
+  realClearTimeout(id)
+}
+function holdDebounce() {
+  debounceHold = true
+  debounceTimers.clear()
+}
+function flushDebounce() {
+  debounceHold = false
+  const pending = Array.from(debounceTimers.values())
+  debounceTimers.clear()
+  pending.forEach((fn) => fn())
+}
+
 function pressKey(key, extra) {
   for (const fn of Array.from(keyHandlers)) {
     fn(Object.assign({ key, target: { tagName: 'DIV' }, preventDefault() {} }, extra || {}))
@@ -418,6 +453,94 @@ function makeRow(overrides) {
 
 const CAPS = { canWrite: true, writeRoot: '/repo', reasonCode: '', reason: '' }
 
+// copilot-timeline 返回的四层 fixture（copilot-state 的薄行不再带这些明细）。
+// 现场 4 条覆盖「日期 + 时刻」「同日不重复日期」「只有日期」「时点未知」；
+// 其中 inc-2 被修订改过（加「已更正」片）；上游 2 条（≤3 默认展开）。
+const LAYERS_BASE = {
+  incidentEnv: 'vllm-ascend 0.23.0 · CANN 9.0.0 · A3-910C ×16（TP16 / EP）',
+  incidentTotal: 4,
+  incident: [
+    {
+      id: 'inc-1', at: '2026-09-08T15:20:00+08:00', atNote: '', what: '首个并发长 prompt 请求崩溃，WorkerProc 退出',
+      source: 'log', step: 1,
+      evidence: { files: ['traces/evidence/' + ID + '/crash.log'], quote: 'ERROR 09-08 15:20:00 WorkerProc hit an exception.', line: 17 },
+    },
+    {
+      id: 'inc-2', at: '2026-09-08T15:26:00+08:00', atNote: '', what: '关掉 TopK dispatch 后压测 2 小时未复现',
+      source: 'field_test', step: 5,
+      evidence: { files: ['traces/evidence/' + ID + '/crash.log'], line: 42 },
+    },
+    {
+      id: 'inc-3', at: '2026-09-08', atNote: '', what: '现场把日志与 npu-smi 输出一起贴回',
+      source: 'user', step: 2,
+    },
+    {
+      id: 'inc-4', at: null, atNote: '起服务约 8 分钟后', what: '起服务约 8 分钟后开始出现 507035',
+      source: 'user', step: 1,
+    },
+  ],
+  failureProcess: {
+    axis: 'time',
+    window: { from: '2026-09-08T15:20:00+08:00', to: '2026-09-08T15:29:00+08:00' },
+    clockNote: '日志时间比墙钟晚 8 h（日志 07:20:00 = 墙钟 15:20:00）',
+    nodes: [
+      {
+        id: 'fp-1', at: '2026-09-08T15:20:00+08:00', what: '首次崩溃，WorkerProc 退出',
+        quote: 'ERROR 09-08 15:20:00 WorkerProc hit an exception.', repeat: '每 ~1 s 一次，持续到 15:29:00',
+        evidence: { file: 'traces/evidence/' + ID + '/evidence.txt', line: 17 },
+      },
+      {
+        id: 'fp-2', at: '2026-09-08T15:29:00+08:00', what: '最后一个请求超时，之后不再有日志',
+        quote: 'INFO 09-08 15:29:00 EngineCore abort', evidence: { file: 'traces/evidence/' + ID + '/evidence.txt', line: 24 },
+      },
+    ],
+  },
+  upstreamTotal: 2,
+  upstream: [
+    { id: 'up-1', at: '2026-08-12', what: 'PR #13831 合入，修 dspark_proposer.py', source: 'commit', ref: '#13831' },
+    { id: 'up-2', at: '2026-10-13T11:58:14+08:00', what: '维护者给出根因与修复版本', source: 'maintainer', ref: '#13976' },
+  ],
+  revisionsTotal: 1,
+  revisions: [
+    {
+      at: '2026-09-08T15:26:00+08:00', by: 'agent', kind: 'fact_corrected',
+      changes: [{ target: 'inc-2', before: '首次崩溃后服务自动恢复', after: '服务未恢复，WorkerProc 退出' }],
+      reason: '新证据：日志显示 WorkerProc 退出后没有重启',
+    },
+  ],
+}
+
+function makeLayers(mode) {
+  if (mode === 'closed') {
+    return {
+      incidentEnv: '', incidentTotal: 0, incident: null, failureProcess: null,
+      upstreamTotal: 0, upstream: null, revisionsTotal: 0, revisions: [],
+    }
+  }
+  if (mode === 'emptyLayers') {
+    return {
+      incidentEnv: '', incidentTotal: 0, incident: [], failureProcess: null,
+      upstreamTotal: 0, upstream: [], revisionsTotal: 0, revisions: [],
+    }
+  }
+  if (mode === 'upstreamMany') {
+    return Object.assign({}, LAYERS_BASE, {
+      upstreamTotal: 4,
+      upstream: [
+        { id: 'up-1', at: '2026-08-11', what: '第一条上游事件', source: 'issue', ref: '#1' },
+        { id: 'up-2', at: '2026-08-12', what: '第二条上游事件', source: 'comment', ref: '#2' },
+        { id: 'up-3', at: '2026-08-13', what: '第三条上游事件', source: 'commit', ref: '#3' },
+        { id: 'up-4', at: '2026-08-14', what: '第四条上游事件', source: 'maintainer', ref: '#4' },
+      ],
+    })
+  }
+  if (mode === 'truncated') {
+    // 截断前的总数大于实际返回条数：段头写总数并注明「显示前 N 条」。
+    return Object.assign({}, LAYERS_BASE, { incidentTotal: 30, upstreamTotal: 5, revisionsTotal: 25 })
+  }
+  return LAYERS_BASE
+}
+
 function makeState(mode) {
   const row = makeRow()
   if (mode === 'empty') {
@@ -621,6 +744,14 @@ function makeState(mode) {
       counts: { open: 1, pendingFeedback: 1, toSediment: 0 }, vocab: VOCAB, capabilities: CAPS,
     }
   }
+  // 四层明细由 copilot-timeline 提供（见 makeLayers），薄行只带状态字段；
+  // 这几种 mode 共用同一行数据，差别只在 layers fixture 与选中态。
+  if (mode === 'emptyLayers' || mode === 'upstreamMany' || mode === 'truncated') {
+    return {
+      ok: true, tracesDir: '/repo/traces', bound: row, recent: [row], all: [row],
+      counts: { open: 1, pendingFeedback: 1, toSediment: 0 }, vocab: VOCAB, capabilities: CAPS,
+    }
+  }
   if (mode === 'readonly') {
     return {
       ok: true, tracesDir: '/repo/traces', bound: null, recent: [row], all: [row],
@@ -736,6 +867,15 @@ async function mount(mode, options) {
     ? new Promise((resolve) => { releaseCheckAllGate = resolve })
     : null
   const payload = makeState(mode)
+  // 四层明细走 copilot-timeline；按 mode 给默认 layers，用例可用 opts.layers 覆盖。
+  const layers = opts.layers !== undefined ? opts.layers : makeLayers(mode)
+  // 加载中的用例：把时间线响应挂起，用例手动 releaseTimeline。
+  let releaseTimelineGate = null
+  const timelineGate = opts.timelineGate
+    ? new Promise((resolve) => { releaseTimelineGate = resolve })
+    : null
+  // 读取失败的用例：第一次调用抛错，重试后成功。
+  let timelineFailuresLeft = opts.timelineFailFirst ? 1 : 0
   payload.upstream = opts.upstream === false
     ? { ready: false, reason: 'gh 未登录（gh auth login）' }
     : { ready: true, reason: '' }
@@ -809,10 +949,16 @@ async function mount(mode, options) {
                 return { ok: true, value: { ok: true, from: 'in_progress', to: 'resolved', changed: ['status'] } }
               }
               if (endpoint === 'copilot-timeline') {
-                return { ok: true, value: { ok: true, sessionId: ID, timeline: opts.timeline || [
+                if (timelineGate) await timelineGate
+                if (timelineFailuresLeft > 0) {
+                  timelineFailuresLeft -= 1
+                  throw new Error('时间线读取失败（夹具）')
+                }
+                const responseLayers = typeof opts.layersFor === 'function' ? opts.layersFor(args, layers) : layers
+                return { ok: true, value: Object.assign({ ok: true, sessionId: ID, timeline: opts.timeline || [
                   { role: 'user', step: 1, content: '用户贴了崩溃日志' },
                   { role: 'agent', step: 2, action: 'triage', output: '判定为推理中断类', reason: '签名命中 vector core exception' },
-                ] } }
+                ] }, responseLayers) }
               }
               if (endpoint === 'copilot-report') {
                 if (opts.reportError) return { ok: true, value: { ok: false, code: 'E_NOT_FOUND', message: '这单还没有人读报告' } }
@@ -937,6 +1083,12 @@ async function mount(mode, options) {
       if (!releaseCheckAllGate) return
       const release = releaseCheckAllGate
       releaseCheckAllGate = null
+      release()
+    },
+    releaseTimeline() {
+      if (!releaseTimelineGate) return
+      const release = releaseTimelineGate
+      releaseTimelineGate = null
       release()
     },
     // 触发一次延迟注册的 layout 回调（opts.layoutDeferred 时由用例调）。
@@ -1373,6 +1525,237 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('时间线：调用懒加载 RPC', t.rpcCalls.some((call) => call.endpoint === 'copilot-timeline'))
   const timelineCall = t.rpcCalls.filter((call) => call.endpoint === 'copilot-timeline').pop()
   expect('时间线：带 sessionId（读子进程按会话档位）', !!timelineCall && timelineCall.args.sessionId === 'sess-1', JSON.stringify(timelineCall && timelineCall.args))
+}
+
+{
+  // 四层详情：现场默认展开、日志过程默认收起、上游 ≤3 展开、修订片与「已更正」。
+  const t = await mount('recent')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('四层：现场故障时间线在（默认展开）', view.text.includes('现场故障时间线'))
+  expect('四层：故障过程（日志）在', view.text.includes('故障过程（日志）'))
+  expect('四层：上游与查证在', view.text.includes('上游与查证'))
+  expect('四层：诊断步骤在（改名）', view.text.includes('诊断步骤') && !view.text.includes('步骤时间线'))
+  expect('现场：环境行', view.text.includes('现场环境：') && view.text.includes('A3-910C ×16'), view.text.slice(0, 400))
+  expect('现场：默认展开事实', view.text.includes('首个并发长 prompt 请求崩溃'))
+  expect('现场：四个条目都在', byClass(view, 'scp-it-row').length === 4, String(byClass(view, 'scp-it-row').length))
+  // 3 条同日（含一条只有日期）只写 1 个日期：与上一条已知日期相同就不重复。
+  expect('现场：同一天只写一次日期', byClass(view, 'scp-it-date').length === 1, String(byClass(view, 'scp-it-date').length))
+  expect('现场：时点未知', view.text.includes('时点未知'))
+  expect('现场：只有日期给「时刻未记录」', view.text.includes('时刻未记录'))
+  expect('现场：来源片', byClass(view, 'scp-it-src').length >= 3, String(byClass(view, 'scp-it-src').length))
+  expect('现场：证据文件名:行', view.text.includes('crash.log:17'))
+  expect('现场：被修订条目加「已更正」', view.text.includes('已更正'))
+  click(findButton(view, 'crash.log:17'))
+  expect('现场：证据文件名:行可复制', copied[copied.length - 1].includes('/crash.log:17'), copied[copied.length - 1])
+  expect('过程：默认收起（节点不在）', !view.text.includes('WorkerProc hit an exception.') && !!findButton(view, '展开过程'))
+  expect('过程：段头给条数与时钟不一致', view.text.includes('2 条') && view.text.includes('日志时间与墙钟不一致'))
+  expect('过程：收起时给窗口', view.text.includes('窗口 2026-09-08T15:20:00+08:00 – 2026-09-08T15:29:00+08:00'))
+  click(findButton(view, '展开过程'))
+  const processOpenView = await t.settle()
+  expect('过程：展开后时钟说明与节点', processOpenView.text.includes('日志时间比墙钟晚 8 h')
+    && processOpenView.text.includes('WorkerProc hit an exception.'), processOpenView.text.slice(-600))
+  expect('过程：文件:行', processOpenView.text.includes('evidence.txt:17'))
+  expect('过程：给收起入口', !!findButton(processOpenView, '收起过程'))
+  click(findButton(processOpenView, '收起过程'))
+  const processClosedView = await t.settle()
+  expect('过程：收起后节点隐藏', !processClosedView.text.includes('WorkerProc hit an exception.'))
+  expect('上游：≤3 条默认展开', view.text.includes('13831') && view.text.includes('合入') && view.text.includes('维护者给出根因'))
+  expect('抬头：修订片写「修订 1 次」', view.text.includes('修订 1 次') && !view.text.includes('结论修订'))
+  expect('写入历史：修订行标类别', view.text.includes('事实更正'))
+  expect('写入历史：修订行给 before → after', view.text.includes('首次崩溃后服务自动恢复 → 服务未恢复'),
+    view.text.slice(-600))
+  expect('写入历史：修订行带原因', view.text.includes('新证据：日志显示 WorkerProc 退出后没有重启'))
+}
+
+{
+  // 上游时间线 >3 条：默认折叠前三条，展开给全量，收起回到三条。
+  const t = await mount('upstreamMany')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('上游：>3 条默认折叠', byClass(view, 'scp-up-row').length === 3 && !view.text.includes('第四条上游事件'),
+    String(byClass(view, 'scp-up-row').length))
+  expect('上游：折叠给展开入口', !!findButtonContains(view, '展开剩余 1 条'))
+  click(findButtonContains(view, '展开剩余 1 条'))
+  const opened = await t.settle()
+  expect('上游：展开后给全四条', byClass(opened, 'scp-up-row').length === 4 && opened.text.includes('第四条上游事件'))
+  // 页面里状态条也有一个「收起」：取详情里后出现的那个（上游段的折叠按钮）。
+  const upstreamCollapse = opened.nodes.filter((node) => node.type === 'button' && nodeText(node) === '收起').pop()
+  click(upstreamCollapse)
+  const collapsed = await t.settle()
+  expect('上游：收起回到三条', byClass(collapsed, 'scp-up-row').length === 3)
+}
+
+{
+  // 选中行自动取 layers：10 秒轮询命中 sessionId+updatedAt 缓存，不重复拉同一单。
+  const t = await mount('recent')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  const timelineCalls = t.rpcCalls.filter((call) => call.endpoint === 'copilot-timeline')
+  expect('四层：选中行自动调时间线', timelineCalls.length >= 1, String(timelineCalls.length))
+  const firstCall = timelineCalls[0]
+  expect('四层：自动取 layers 带 traceFile 与 sessionId', !!firstCall
+    && firstCall.args.traceFile === ID + '.yaml' && firstCall.args.sessionId === 'sess-1', JSON.stringify(firstCall && firstCall.args))
+  expect('四层：已渲染现场', view.text.includes('现场环境：'))
+  await t.fireInterval(10000)
+  const polled = await t.settle()
+  const afterPoll = t.rpcCalls.filter((call) => call.endpoint === 'copilot-timeline').length
+  expect('四层：10 秒轮询不重复拉同一单（sessionId+updatedAt 缓存）', afterPoll === timelineCalls.length,
+    JSON.stringify({ before: timelineCalls.length, after: afterPoll }))
+  expect('四层：轮询后现场仍在', polled.text.includes('现场环境：'))
+}
+
+{
+  // 去抖：选中行先挂 130ms 再起子进程；连按换行只发最后一次。
+  holdDebounce()
+  try {
+    const t = await mount('multi')
+    click(findToolbar(t.view()))
+    const opened = await t.settle()
+    expect('去抖：选中行不立即起子进程',
+      t.rpcCalls.filter((call) => call.endpoint === 'copilot-timeline').length === 0,
+      JSON.stringify(t.rpcCalls.map((call) => call.endpoint)))
+    expect('去抖：挂起期间给加载态', opened.text.includes('正在读时间线'))
+    const rowB = opened.nodes.find((node) => node.type === 'button' && nodeText(node).includes('vllm-ascend PD 分离'))
+    expect('去抖：换行前找到第二单', !!rowB)
+    click(rowB)
+    await t.settle()
+    flushDebounce()
+    const view = await t.settle()
+    const calls = t.rpcCalls.filter((call) => call.endpoint === 'copilot-timeline')
+    expect('去抖：连按换行只发最后一次',
+      calls.length === 1 && calls[0].args.traceFile === '2026-09-07-glm53-pd-sfa-c8-hang.yaml',
+      JSON.stringify(calls.map((call) => call.args.traceFile)))
+    expect('去抖：渲染停留的那一单', view.text.includes('现场环境：'))
+  } finally {
+    flushDebounce()
+  }
+}
+
+{
+  // 竞态：A 的响应挂起时切到 B，A 晚到不能覆盖 B 的数据。
+  const layersFor = (args) => {
+    const isA = args.traceFile === ID + '.yaml'
+    return Object.assign({}, LAYERS_BASE, {
+      incidentEnv: isA ? 'A 单环境' : 'B 单环境',
+      incidentTotal: 1,
+      incident: [{
+        id: 'inc-1', at: '2026-09-08T10:00:00+08:00',
+        what: isA ? 'A 单的现场事实' : 'B 单的现场事实', source: 'log', step: 1,
+      }],
+      failureProcess: null,
+      upstreamTotal: 0, upstream: null, revisionsTotal: 0, revisions: [],
+    })
+  }
+  const t = await mount('multi', { timelineGate: true, layersFor })
+  click(findToolbar(t.view()))
+  const opened = await t.settle()
+  const firstCalls = t.rpcCalls.filter((call) => call.endpoint === 'copilot-timeline')
+  expect('竞态：先为 A 发出挂起的时间线请求',
+    firstCalls.length === 1 && firstCalls[0].args.traceFile === ID + '.yaml',
+    JSON.stringify(firstCalls.map((call) => call.args.traceFile)))
+  const rowB = opened.nodes.find((node) => node.type === 'button' && nodeText(node).includes('vllm-ascend PD 分离'))
+  expect('竞态：找到第二单', !!rowB)
+  click(rowB)
+  await t.settle()
+  t.releaseTimeline()
+  const view = await t.settle()
+  expect('竞态：B 的数据生效', view.text.includes('B 单环境') && view.text.includes('B 单的现场事实'),
+    view.text.slice(0, 600))
+  expect('竞态：A 晚到不覆盖 B', !view.text.includes('A 单环境') && !view.text.includes('A 单的现场事实'))
+}
+
+{
+  // 沉淀视图不取诊断单的时间线；切回诊断时命中缓存，不重复拉。
+  const t = await mount('recent')
+  click(findToolbar(t.view()))
+  const opened = await t.settle()
+  const beforeSed = t.rpcCalls.filter((call) => call.endpoint === 'copilot-timeline').length
+  expect('沉淀视图：打开诊断详情先取了一次时间线', beforeSed === 1, String(beforeSed))
+  click(byClass(opened, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  const sedView = await t.settle()
+  const afterSed = t.rpcCalls.filter((call) => call.endpoint === 'copilot-timeline').length
+  expect('沉淀视图：不发起 copilot-timeline', afterSed === beforeSed, JSON.stringify({ beforeSed, afterSed }))
+  click(byClass(sedView, 'scp-view-tab').find((node) => nodeText(node).includes('诊断')))
+  await t.settle()
+  const afterBack = t.rpcCalls.filter((call) => call.endpoint === 'copilot-timeline').length
+  expect('沉淀视图：切回诊断命中缓存，不重复拉', afterBack === beforeSed, JSON.stringify({ beforeSed, afterBack }))
+}
+
+{
+  // 加载中：时间线响应挂起时只给一行；放开后渲染现场。
+  const t = await mount('recent', { timelineGate: true })
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('四层：加载中给一行', view.text.includes('正在读时间线'), view.text.slice(0, 400))
+  expect('四层：加载中不渲染现场条目', byClass(view, 'scp-it-row').length === 0)
+  t.releaseTimeline()
+  const loaded = await t.settle()
+  expect('四层：加载完成后渲染现场', loaded.text.includes('现场环境：') && byClass(loaded, 'scp-it-row').length === 4)
+}
+
+{
+  // 读取失败：给原因与重试；重试成功后渲染现场。
+  const t = await mount('recent', { timelineFailFirst: true })
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('四层：读取失败给原因', view.text.includes('读不到时间线') && view.text.includes('时间线读取失败（夹具）'),
+    view.text.slice(0, 500))
+  const retry = findButton(view, '重试')
+  expect('四层：失败给重试入口', !!retry)
+  click(retry)
+  const retried = await t.settle()
+  expect('四层：重试后渲染现场', retried.text.includes('现场环境：') && byClass(retried, 'scp-it-row').length === 4)
+}
+
+{
+  // 只写了 incident_env：现场条目为 null 也照常显示环境行。
+  const t = await mount('recent', {
+    layers: {
+      incidentEnv: 'A3-910C ×8 · CANN 9.0.0',
+      incidentTotal: 0, incident: null, failureProcess: null,
+      upstreamTotal: 0, upstream: null, revisionsTotal: 0, revisions: [],
+    },
+  })
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('现场：只写环境时也显示环境行', view.text.includes('现场环境：') && view.text.includes('A3-910C ×8'))
+  expect('现场：incident 为 null 仍显示未记录', view.text.includes('未记录 · 旧单不回填'))
+  expect('上游：upstream 为 null 且无 case 时整段不渲染', !view.text.includes('无上游修复记录'))
+}
+
+{
+  // 截断不藏：段头与修订片用总数，另写「显示前 N 条」。
+  const t = await mount('truncated')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('截断：现场段头用总数并注明显示前 N 条',
+    view.text.includes('30 条') && view.text.includes('显示前 4 条'), view.text.slice(0, 700))
+  expect('截断：上游段头用总数并注明显示前 N 条',
+    view.text.includes('5 条') && view.text.includes('显示前 2 条'), view.text.slice(0, 700))
+  expect('截断：修订片用总数', view.text.includes('修订 25 次'))
+}
+
+{
+  // 字段存在但为空（[]）与字段不存在（null）分开显示。
+  const t = await mount('emptyLayers')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('现场：空列表给「尚无现场事实」', view.text.includes('尚无现场事实') && byClass(view, 'scp-it-row').length === 0)
+  expect('上游：空列表给「无上游修复记录」', view.text.includes('无上游修复记录') && byClass(view, 'scp-up-row').length === 0)
+  expect('上游：空列表不给折叠入口', !findButtonContains(view, '展开剩余'))
+}
+
+{
+  // 旧单没有四层字段：现场给「未记录 · 旧单不回填」，过程不渲染，上游只留状态行。
+  const t = await mount('closed')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('现场：旧单给未记录 · 旧单不回填', view.text.includes('未记录 · 旧单不回填') && view.text.includes('这单没有现场时间线'))
+  expect('过程：没有 failureProcess 不渲染', !findButton(view, '展开过程') && !byClass(view, 'scp-lp-list').length)
+  expect('上游：upstream 为 null 只显示状态行', view.text.includes('上游与查证')
+    && view.text.includes('vllm-ascend#15903') && !view.text.includes('无上游修复记录'))
+  expect('修订：旧单不显示修订片', !view.text.includes('修订 1 次'))
 }
 
 {
