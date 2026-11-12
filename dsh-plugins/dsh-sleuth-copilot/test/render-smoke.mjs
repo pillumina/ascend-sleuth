@@ -3629,6 +3629,7 @@ const KB_NOTICE = {
   expect('知识库落后：文案带提交数', view.text.includes('知识库落后 3 个提交'), view.text.slice(0, 300))
   expect('知识库落后：panel>0 提示重启 DSH',
     view.text.includes('这批改动含面板代码：同步后重启 DSH 才能加载新面板。'), view.text.slice(0, 400))
+  expect('知识库落后：带核对时刻', /核对/.test(view.text), view.text.slice(0, 400))
   expect('知识库落后：给「去同步」', !!findButton(view, '去同步'), view.text.slice(0, 400))
   expect('知识库落后：给「稍后」', !!findButton(view, '稍后'), view.text.slice(0, 400))
 
@@ -3759,6 +3760,19 @@ const KB_NOTICE = {
   const view = t.view()
   expect('知识库落后：panel=0 仍有提示行', byClass(view, 'scp-kb-notice').length === 1)
   expect('知识库落后：panel=0 不提示重启', !view.text.includes('含面板代码'), view.text.slice(0, 400))
+}
+
+{
+  // 只有面板代码的提交：文案说面板代码，不冒充知识库。
+  const t = await mount('recent', {
+    kbNotice: { rev: 'abc1234', behind: 2, panel: 0, kind: 'panel', checkedAt: '2026-11-09T14:10:00+08:00' },
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  const view = t.view()
+  expect('面板代码落后：提示行出现', byClass(view, 'scp-kb-notice').length === 1, view.text.slice(0, 300))
+  expect('面板代码落后：文案说面板代码',
+    view.text.includes('面板代码落后 2 个提交，同步后重启 DSH'), view.text.slice(0, 400))
+  expect('面板代码落后：不说知识库落后', !view.text.includes('知识库落后'), view.text.slice(0, 400))
 }
 
 {

@@ -1,8 +1,8 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:9fabca236447)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:08066c88b90d)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:2faf50d5daad)
-//   dsh-plugins/sleuth-console/console-client.js  (sha256:36dab229fc03)
+//   dsh-plugins/sleuth-console/console-client.js  (sha256:2405b5ea8495)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
 // 面板源码是动态插件方言（靠沙箱提供的 host 通信）；这里原文嵌入页面产物，并补一层适配：
@@ -70,7 +70,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:9fabca236447) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:08066c88b90d) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -474,7 +474,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.10.3'
+    const PANEL_VERSION = '0.11.0'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -6368,7 +6368,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       id: 'sleuth-console',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/sleuth-console/console-client.js (sha256:36dab229fc03) 原文开始 ----
+// ---- dsh-plugins/sleuth-console/console-client.js (sha256:2405b5ea8495) 原文开始 ----
 // sleuth-console/console-client.js —— 常驻包里的整页「Ascend Sleuth」（client-only）
 //
 // 为什么单有这一页：指标与自演进读的是**全库**（`metrics/`、`proposals/`、`knowledge/`），
@@ -7005,12 +7005,30 @@ return {
         banner = { kind: 'muted', text: '读不到落后的提交数（git rev-list 没有给出数字）。',
           hint: '稍后再点「立即同步」重试。' }
       } else if (typeof data.behind === 'number' && data.behind > 0) {
-        // 改动面的计数来自 kb_sync 的 --show：本次合并会带进来的目录。面板代码在 dsh-plugins/ 下，
-        // 它更新时旧面板要重启才换，所以在合并前就把这一步说清楚。
-        const panelIncoming = !!(data.surface && Number(data.surface.panel) > 0)
+        // 改动面的计数来自 kb_sync 的 --show：只列这次真会带进来的目录，不写死一份目录名。
+        // 面板代码在 dsh-plugins/ 下，它更新时旧面板要重启才换，所以在合并前就把这一步说清楚。
+        const KB_SURFACE_DIRS = [
+          ['knowledge', 'knowledge/'], ['routing', 'triage-tree.d/'], ['reference', 'references/'],
+          ['methodology', 'skills/'], ['panel', 'dsh-plugins/'], ['other', '其他文件'],
+        ]
+        const surface = data.surface && typeof data.surface === 'object' ? data.surface : null
+        const incoming = surface
+          ? KB_SURFACE_DIRS
+            .filter((item) => Number(surface[item[0]]) > 0)
+            .map((item) => item[1] + ' ' + Number(surface[item[0]]))
+          : []
+        const knowledgeish = surface
+          ? ['knowledge', 'routing', 'reference', 'methodology']
+            .some((key) => Number(surface[key]) > 0)
+          : true
+        const panelIncoming = !!(surface && Number(surface.panel) > 0)
         banner = {
           kind: 'warn',
-          text: '落后 ' + data.behind + ' 个提交。本次合并会把 knowledge/、references/ 与 skills/ 一起更新；知识立即生效，流程文件下次会话生效。'
+          text: '落后 ' + data.behind + ' 个提交。'
+            + (incoming.length
+              ? '本次合并会带进：' + incoming.join('、') + '。'
+              : '本次合并会把 knowledge/、references/ 与 skills/ 一起更新。')
+            + (knowledgeish ? '知识立即生效，流程文件下次会话生效。' : '')
             + (panelIncoming ? '面板代码也会更新：重启 DSH 后生效；从插件页装的要先重装。' : ''),
         }
       } else {

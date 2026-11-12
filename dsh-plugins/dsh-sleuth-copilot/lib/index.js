@@ -50,6 +50,8 @@ const KB_CHECK_MIN_MINUTES = 5
 const KB_CHECK_MAX_MINUTES = 720
 const KB_RECHECK_MIN_MS = 60 * 1000
 const KB_CHECK_TIMEOUT_MS = 30000
+// 本机 HEAD 变了之后的重算：只跑 `--show`（读本地 ref），不联网，超时按本地 git 给。
+const KB_SHOW_TIMEOUT_MS = 10000
 const KB_SETTINGS_REL = '.local/settings.json'
 const KB_STATE_REL = '.local/kb-sync-notify.json'
 const KB_STATE_VERSION = 1
@@ -201,6 +203,9 @@ function kbNowIso() {
 // 内存里给界面的提示：只带界面要显示的数字。reference 与底层 surface.reference 同名，
 // 客户端不用再记两套字段名。受限档位 fetch 被拒时落后数未知：仍然提示有更新，behind 给
 // null（客户端不显示数字），degraded 带原因码、updateAvailable 为 true。
+// kind 决定文案：知识面（knowledge/routing/reference/methodology）有改动说「知识库落后」；
+// 只有面板代码说「面板代码落后」；只有 docs/scripts/tests 等 other 面不提示——与
+// scripts/trace_begin.py 里「docs 改动不提示」是同一条取舍。
 function kbNoticeView(state) {
   if (state === null || typeof state !== 'object') return null
   const rev = typeof state.rev === 'string' ? state.rev : ''
@@ -211,11 +216,20 @@ function kbNoticeView(state) {
   if (!rev) return null
   if (!hasBehind && !(degraded !== '' && updateAvailable)) return null
   if (rev === state.dismissedRev) return null
+  // 旧状态文件 / 旧脚本可能没有 surface：读不到改动面时按知识库更新提示，不静默吞掉。
+  const surfaceKnown = state.surface !== null && typeof state.surface === 'object'
   const surface = normalizeKbSurface(state.surface)
+  const knowledgeish = surface.knowledge + surface.routing + surface.reference + surface.methodology
+  let kind = 'knowledge'
+  if (surfaceKnown && knowledgeish === 0) {
+    kind = surface.panel > 0 ? 'panel' : (degraded !== '' && updateAvailable ? 'unknown' : '')
+  }
+  if (kind === '') return null
   return {
     rev,
     behind: hasBehind ? behind : null,
-    panel: hasBehind ? surface.panel : 0,
+    kind,
+    panel: hasBehind && kind === 'knowledge' ? surface.panel : 0,
     knowledge: hasBehind ? surface.knowledge : 0,
     reference: hasBehind ? surface.reference : 0,
     checkedAt: typeof state.checkedAt === 'string' ? state.checkedAt : '',
@@ -1347,6 +1361,9 @@ export function apply(ctx) {
   let kbLastCheckAt = ''
   let kbLastCheckStart = 0
   let kbCheckFlight = null
+  // 上次检查看到的 HEAD 见证值；本机 HEAD 变了就用 --show 重算，让旧提示失效。
+  let kbHeadWitness = ''
+  let kbHeadFlight = null
   let kbWriteChain = Promise.resolve()
   // 后台调度的单一句柄（timer.timeout 返回的 disposer）与注入到的 timer 服务。
   let kbTimer = null
@@ -1367,6 +1384,34 @@ export function apply(ctx) {
     if (!mainRoot) return null
     if (!(await isFile(join(mainRoot, 'scripts', 'kb_sync.py')))) return null
     return mainRoot
+  }
+
+  // 本机 HEAD 的见证值：读主检出的 `.git/HEAD` 与它指向的 ref（worktree 先按 `gitdir:` 解析）。
+  // 值变了说明检出被别的路径同步过（终端 pull、面板「立即同步」、别的会话），上次检查的落后
+  // 数已过期。认不出形态时返回空串，调用方跳过重算，等下一次定时检查兜底。
+  async function kbHeadWitnessOf(mainRoot) {
+    try {
+      let gitDir = join(mainRoot, '.git')
+      const info = await stat(gitDir)
+      if (info.isFile()) {
+        const text = await readFile(gitDir, 'utf8')
+        const match = /^\s*gitdir:\s*(.+?)\s*$/m.exec(text)
+        if (!match) return ''
+        gitDir = match[1].replace(/\\/g, '/')
+      }
+      let head = (await readFile(join(gitDir, 'HEAD'), 'utf8')).trim()
+      if (head.startsWith('ref: ')) {
+        const ref = head.slice(5).trim()
+        try {
+          head += '|' + (await readFile(join(gitDir, ref), 'utf8')).trim()
+        } catch {
+          // ref 在 packed-refs 里没有 loose 文件：只比 HEAD 指向，等下次检查修正。
+        }
+      }
+      return head
+    } catch {
+      return ''
+    }
   }
 
   // 后台 fetch 的沙箱档位：默认以完全权限跑（sync.check_full_access，默认 true）。
@@ -1636,6 +1681,8 @@ export function apply(ctx) {
       kbLastReason = 'unavailable'
       return kbSnapshot()
     }
+    // 记下这次检查看到的 HEAD：之后本机 HEAD 变了（别的路径同步过），提示要先失效重算。
+    kbHeadWitness = await kbHeadWitnessOf(mainRoot)
     // 探测与取数同一档位：否则子进程在部署默认沙箱里会因工作区根不是仓库被拒。
     // 档位由设置决定（默认完全权限）；手动重查与定时检查读同一份设置。
     const schedule = await readKbSchedule(mainRoot)
@@ -1725,7 +1772,7 @@ export function apply(ctx) {
       version: KB_STATE_VERSION,
       rev: remoteRev,
       behind,
-      surface: normalizeKbSurface(doc.surface),
+      surface: doc.surface && typeof doc.surface === 'object' ? normalizeKbSurface(doc.surface) : null,
       dismissedRev: kbState.dismissedRev,
       checkedAt: kbNowIso(),
       lastError: '',
@@ -1739,6 +1786,59 @@ export function apply(ctx) {
     kbNotice = kbNoticeView(kbState)
     await persistKbState(mainRoot)
     return kbSnapshot()
+  }
+
+  // 本机 HEAD 变了：上次检查的快照过期。不起网络、不动检出，用 `--show`（只读本地 ref）
+  // 重算落后数与改动面；落后归零就撤提示，仍落后就地改数字。读不到 HEAD、脚本失败或结果
+  // 不可用时保留旧提示，等下一次定时检查兜底。
+  async function kbRefreshAfterHeadMove() {
+    if (kbHeadFlight) return kbHeadFlight
+    const pending = (async () => {
+      await kbStateLoaded
+      if (kbCheckFlight) return
+      if (!kbNotice && !(Number.isInteger(kbState.behind) && kbState.behind > 0)) return
+      const mainRoot = await resolveKbRoot()
+      if (!mainRoot) return
+      const witness = await kbHeadWitnessOf(mainRoot)
+      if (!witness || witness === kbHeadWitness) return
+      const schedule = await readKbSchedule(mainRoot)
+      const policy = kbSandboxPolicy(mainRoot, schedule.fullAccess)
+      const python = await resolvePython(mainRoot, policy)
+      if (python === null) return
+      const doc = await runJsonHelper(
+        mainRoot,
+        python,
+        join(mainRoot, 'scripts', 'kb_sync.py'),
+        ['--show', '--json', '--root', shq(mainRoot)],
+        KB_SHOW_TIMEOUT_MS,
+        policy,
+        timeoutMessage('知识库本地重算', KB_SHOW_TIMEOUT_MS, '读取本机检出时可能偏慢'),
+      )
+      if (doc === null || typeof doc !== 'object' || !Object.prototype.hasOwnProperty.call(doc, 'behind')) return
+      const behind = Number(doc.behind)
+      const rev = typeof doc.remote_rev === 'string' ? doc.remote_rev.trim() : ''
+      if (!Number.isInteger(behind) || behind < 0 || !rev) return
+      kbHeadWitness = witness
+      kbState = {
+        version: KB_STATE_VERSION,
+        rev,
+        behind,
+        surface: doc.surface && typeof doc.surface === 'object' ? normalizeKbSurface(doc.surface) : null,
+        dismissedRev: kbState.dismissedRev,
+        checkedAt: kbState.checkedAt,
+        lastError: '',
+        degraded: '',
+        updateAvailable: false,
+        failures: 0,
+      }
+      kbLastError = ''
+      kbNotice = kbNoticeView(kbState)
+      await persistKbState(mainRoot)
+    })().catch(() => {}).finally(() => {
+      if (kbHeadFlight === pending) kbHeadFlight = null
+    })
+    kbHeadFlight = pending
+    return pending
   }
 
   // 单个 inflight：定时检查与手动重查撞在一起时只跑一次子进程。
@@ -1904,6 +2004,9 @@ export function apply(ctx) {
             } else if (endpoint === 'copilot-kb-recheck') {
               result = { ok: true, value: await kbRecheck(payload) }
             } else {
+              // 本机 HEAD 可能被别的路径同步过（终端 pull / 面板「立即同步」/ 别的会话）：
+              // 先让上次检查的快照失效，再取数，界面不会在同步后继续挂着旧的落后数。
+              await kbRefreshAfterHeadMove()
               // 知识库提示随状态下发，不在 computeState 内部拼：那条取数链路与检出无关。
               const value = await stateFor(
                 typeof payload.sessionId === 'string' ? payload.sessionId : '',
