@@ -340,6 +340,23 @@ function cssRule(selector) {
   return end < 0 ? '' : css.slice(start + selector.length + 1, end)
 }
 
+// 同一选择器可能有多段声明（后一段覆盖前一段）：排版契约要能看全部，不能只看第一处。
+function cssRules(selector) {
+  const tag = styleTags[styleTags.length - 1]
+  const css = tag && typeof tag.textContent === 'string' ? tag.textContent : ''
+  const out = []
+  let from = 0
+  for (;;) {
+    const start = css.indexOf(selector + '{', from)
+    if (start < 0) break
+    const end = css.indexOf('}', start)
+    if (end < 0) break
+    out.push(css.slice(start + selector.length + 1, end))
+    from = end + 1
+  }
+  return out
+}
+
 function byClass(view, className) {
   return view.nodes.filter((node) => typeof node.props.className === 'string' && node.props.className.split(/\s+/).includes(className))
 }
@@ -4042,10 +4059,17 @@ function clickWith(node, extra) {
       && !cssRule('.scp-row-wrap--sed>.scp-row-check').includes('translateY'),
     cssRule('.scp-row-wrap--sed>.scp-row-check'))
   // 批次条左右两组同行：一行放得下就并排，放不下才整组换到下一行。
+  // 后一条 .scp-batch 规则会把 display 覆盖回去，必须看全部规则；只看第一条会在改回 block 时误绿。
+  const batchRules = cssRules('.scp-batch')
   expect('排版：批次条一组一行放不下才换行',
-    cssRule('.scp-batch').includes('flex-wrap:wrap')
+    batchRules.some((rule) => rule.includes('flex-wrap:wrap'))
+      && batchRules.some((rule) => rule.includes('position:relative') && rule.includes('display:flex'))
       && cssRule('.scp-batch-line + .scp-batch-line').includes('margin-left:auto'),
-    cssRule('.scp-batch') + ' || ' + cssRule('.scp-batch-line + .scp-batch-line'))
+    batchRules.join(' || ') + ' || ' + cssRule('.scp-batch-line + .scp-batch-line'))
+  // 沉淀行标题列与诊断行对齐靠左内边距 14px；改回 10px 时复选框会压住标题首字。
+  expect('排版：沉淀行标题列与诊断行对齐',
+    cssRule('.scp-sed-row').includes('padding:10px 10px 10px 14px'),
+    cssRule('.scp-sed-row'))
   click(findButton(view, '选择'))
   view = await t.settle()
   expect('选择态：进入后列表标 selecting', byClass(view, 'scp-pal-list')[0].props['data-selecting'] === 'true')
