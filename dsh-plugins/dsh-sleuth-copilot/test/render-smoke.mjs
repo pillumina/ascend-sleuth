@@ -4029,6 +4029,16 @@ function clickWith(node, extra) {
   expect('选择态：样式默认藏复选框', cssRule('.scp-row-check').includes('opacity:0'), cssRule('.scp-row-check'))
   expect('选择态：进入后露出复选框', cssRule('.scp-pal-list[data-selecting="true"] .scp-row-check').includes('opacity:1'),
     cssRule('.scp-pal-list[data-selecting="true"] .scp-row-check'))
+  // 行首不再给复选框留槽位：它绝对定位覆在状态点上，默认不占宽（否则首屏每行左侧都空一截）。
+  expect('排版：行前复选框不占行宽',
+    cssRule('.scp-row-wrap>.scp-row-check').includes('position:absolute')
+      && cssRule('.scp-row-wrap').includes('position:relative'),
+    cssRule('.scp-row-wrap') + ' || ' + cssRule('.scp-row-wrap>.scp-row-check'))
+  // 批次条左右两组同行：一行放得下就并排，放不下才整组换到下一行。
+  expect('排版：批次条一组一行放不下才换行',
+    cssRule('.scp-batch').includes('flex-wrap:wrap')
+      && cssRule('.scp-batch-line + .scp-batch-line').includes('margin-left:auto'),
+    cssRule('.scp-batch') + ' || ' + cssRule('.scp-batch-line + .scp-batch-line'))
   click(findButton(view, '选择'))
   view = await t.settle()
   expect('选择态：进入后列表标 selecting', byClass(view, 'scp-pal-list')[0].props['data-selecting'] === 'true')
