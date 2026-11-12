@@ -39,7 +39,7 @@ from _yaml import load_file
 from exec_log_path import log_lock
 from groom_common import (
     assessment_guard, assessment_path, dump_json, load_json, normalize_commit, now_iso,
-    repo_root, shared_inbox, short_sha,
+    repo_root, sanitize_key, shared_inbox, short_sha,
 )
 from groom_recheck import check as recheck_check
 from groom_snapshot import cleanup_snapshot
@@ -48,6 +48,8 @@ TERMINAL_DECISIONS = ("new_pattern", "variant", "covered")
 SNAPSHOT_IN_USE_MINUTES = 30
 RUNS_KEEP_DAYS = 1          # 工作单可重生成；超过一天视作上一轮的残留（避开在途 run）
 LOCK_KEEP_DAYS = 7          # 只清「对应 sidecar 已不存在」的旧锁；持有中的锁 mtime 会变
+TEMP_KEEP_HOURS = 24        # `.groom/**/*.tmp` 与 `.groom/tmp/`：超过一天视为残留
+SNAPSHOT_ORPHAN_HOURS = 24  # 无主快照：没有任何评估或工作单引用，且超过一天
 
 
 def _binding_mismatches(marker, doc):
@@ -103,6 +105,30 @@ def _snapshot_paths(inbox: Path, snapshot_dir, commit: str, branch: str):
     return base, base / rel, base / f"{rel}.json"
 
 
+def _find_snapshots(inbox: Path, snapshot_dir, commit: str) -> list:
+    """按短 SHA 找出该提交的所有快照（可能多分支）。
+
+    返回 [(branch, base, worktree, meta)]；找不到才允许判「已清」。
+    """
+    base = Path(snapshot_dir) if snapshot_dir else (inbox / ".groom" / "snapshots")
+    short = short_sha(commit)
+    if not base.is_dir():
+        return []
+    suffix = "-" + short
+    found = []
+    for item in sorted(base.iterdir()):
+        if item.is_dir() and item.name.endswith(suffix):
+            branch = item.name[: -len(suffix)]
+            found.append((branch, base, item, base / (item.name + ".json")))
+    for item in sorted(base.iterdir()):
+        if item.is_file() and item.name.endswith(suffix + ".json"):
+            name = item.name[: -len(suffix + ".json")]
+            worktree = base / (name + suffix)
+            if not any(entry[2] == worktree for entry in found):
+                found.append((name, base, worktree, item))
+    return found
+
+
 def _snapshot_in_use(snapshot_dir: Path, commit: str) -> bool:
     """最近一次快照就是它、且刚写不久 → 可能有别的 session 正在用，不删。"""
     latest = snapshot_dir / "latest.json"
@@ -117,8 +143,39 @@ def _snapshot_in_use(snapshot_dir: Path, commit: str) -> bool:
     return (time.time() - latest.stat().st_mtime) < SNAPSHOT_IN_USE_MINUTES * 60
 
 
-def _delete_sidecars(inbox: Path, eligible, report: dict, apply: bool):
+def _previously_deleted(inbox: Path) -> dict:
+    """cleanup-log 里删过的评估：key → {(assessment_id, content_sha256)}。
+
+    只认带身份的记录；旧日志只有 key、没有评估 ID 与内容指纹，不能证明本次该删的
+    就是那一份，所以不据此判「已删」。
+    """
+    path = inbox / ".groom" / "cleanup-log.jsonl"
+    done = {}
+    if not path.is_file():
+        return done
+    try:
+        lines = path.read_text(encoding="utf-8-sig", errors="replace").splitlines()
+    except OSError:
+        return done
+    for line in lines:
+        try:
+            obj = json.loads(line)
+        except ValueError:
+            continue
+        deleted = obj.get("deleted") if isinstance(obj.get("deleted"), dict) else {}
+        for rec in deleted.get("assessment_records") or []:
+            key = str(rec.get("draft") or "")
+            if not key:
+                continue
+            done.setdefault(key, set()).add(
+                (str(rec.get("assessment_id") or ""), str(rec.get("content_sha256") or "")))
+    return done
+
+
+def _delete_sidecars(inbox: Path, eligible, report: dict, apply: bool,
+                     deleted_before: set = None):
     """返回 (removed_paths, decision_details)。删除失败/锁异常都只记录，不抛出。"""
+    deleted_before = deleted_before or {}
     removed_paths, details = set(), []
     for marker in eligible:
         key = str(marker.get("draft") or "").strip()
@@ -126,8 +183,15 @@ def _delete_sidecars(inbox: Path, eligible, report: dict, apply: bool):
             continue
         sidecar = assessment_path(inbox, key)
         if not sidecar.exists():
-            report["deleted"]["kept"].append(key)
-            report["kept_reasons"][key] = "sidecar 不存在"
+            # 上一轮已经删过，且身份与内容指纹都对得上：评估文件本来就不该在，
+            # 不能当成本轮失败一直重试。只按 key 匹配会误伤新评估，必须带身份。
+            record = (str(marker.get("assessment_id") or ""),
+                      str(marker.get("human_decision_content_sha256") or ""))
+            if record in (deleted_before.get(key) or set()):
+                report["already_deleted"]["assessments"].append(key)
+            else:
+                report["deleted"]["kept"].append(key)
+                report["kept_reasons"][key] = "sidecar 不存在"
             continue
 
         def _decide(doc):
@@ -149,6 +213,11 @@ def _delete_sidecars(inbox: Path, eligible, report: dict, apply: bool):
                 report["kept_reasons"][key] = reason
             else:
                 report["deleted"]["assessments"].append(key)
+                report["deleted"]["assessment_records"].append({
+                    "draft": key,
+                    "assessment_id": str(marker.get("assessment_id") or ""),
+                    "content_sha256": str(marker.get("human_decision_content_sha256") or ""),
+                })
                 removed_paths.add(sidecar)
             continue
 
@@ -204,6 +273,11 @@ def _delete_sidecars(inbox: Path, eligible, report: dict, apply: bool):
             })
             removed_paths.add(sidecar)
             report["deleted"]["assessments"].append(key)
+            report["deleted"]["assessment_records"].append({
+                "draft": key,
+                "assessment_id": str(marker.get("assessment_id") or ""),
+                "content_sha256": str(marker.get("human_decision_content_sha256") or ""),
+            })
         finally:
             lock_ctx.__exit__(None, None, None)
     return removed_paths, details
@@ -232,38 +306,42 @@ def _delete_snapshots(inbox: Path, repo: Path, eligible, report: dict, apply: bo
                 "message": f"marker 的 assessed_commit 无法解析：{raw_commit}"})
             continue
         if commit in still_used:
-            continue
-        snap_dir, worktree, meta = _snapshot_paths(inbox, snapshot_dir, commit, branch)
-        if _snapshot_in_use(snap_dir, commit):
             report["skipped_snapshots"].append(
-                {"commit": commit[:12], "reason": "最近一次快照就是它且刚创建，可能有 session 在用"})
+                {"commit": commit[:12], "reason": "仍被其他评估引用"})
             continue
-        if not (worktree.exists() or meta.exists()):
-            report["skipped_snapshots"].append(
-                {"commit": commit[:12], "reason": "快照目录/JSON 不存在（参数不一致或已清）"})
+        found = _find_snapshots(inbox, snapshot_dir, commit)
+        if not found:
+            report["already_deleted"]["snapshots"].append(commit[:12])
             continue
-        if not apply:
-            report["deleted"]["snapshots"].append(commit[:12])
-            continue
-        try:
-            result = cleanup_snapshot_fn(repo, snapshot_dir=snapshot_dir, commit=commit,
-                                         branch=branch)
-        except Exception as exc:
-            report["ok"] = False
-            report["findings"].append({"severity": "error", "code": "snapshot-cleanup-failed",
-                                       "message": f"{commit[:12]}: {exc}"})
-            continue
-        removed = bool(result.get("worktree_removed") or result.get("meta_removed"))
-        if result.get("ok") and removed:
-            report["deleted"]["snapshots"].append(commit[:12])
-        elif result.get("ok"):
-            report["skipped_snapshots"].append(
-                {"commit": commit[:12], "reason": "清理未删除任何东西"})
-        else:
-            report["ok"] = False
-            report["findings"].append({
-                "severity": "error", "code": "snapshot-cleanup-failed",
-                "message": f"{commit[:12]}: {result.get('error', '')}"})
+        for actual_branch, snap_base, worktree, meta in found:
+            if _snapshot_in_use(snap_base, commit):
+                report["skipped_snapshots"].append(
+                    {"commit": commit[:12], "reason": "最近一次快照就是它且刚创建，可能有 session 在用"})
+                continue
+            record = {"commit": commit[:12], "branch": actual_branch, "path": str(worktree)}
+            if not apply:
+                report["deleted"]["snapshots"].append(commit[:12])
+                report["deleted"]["snapshot_records"].append(record)
+                continue
+            try:
+                result = cleanup_snapshot_fn(repo, snapshot_dir=snapshot_dir, commit=commit,
+                                             branch=actual_branch)
+            except Exception as exc:
+                report["ok"] = False
+                report["findings"].append({"severity": "error", "code": "snapshot-cleanup-failed",
+                                           "message": f"{commit[:12]} ({actual_branch}): {exc}"})
+                continue
+            removed = bool(result.get("worktree_removed") or result.get("meta_removed"))
+            if result.get("ok") and removed:
+                report["deleted"]["snapshots"].append(commit[:12])
+                report["deleted"]["snapshot_records"].append(record)
+            elif result.get("ok"):
+                report["already_deleted"]["snapshots"].append(commit[:12])
+            else:
+                report["ok"] = False
+                report["findings"].append({
+                    "severity": "error", "code": "snapshot-cleanup-failed",
+                    "message": f"{commit[:12]} ({actual_branch}): {result.get('error', '')}"})
 
 
 def _clean_runs(inbox: Path, apply: bool, report: dict, keep_days: float):
@@ -273,8 +351,6 @@ def _clean_runs(inbox: Path, apply: bool, report: dict, keep_days: float):
         return
     cutoff = time.time() - keep_days * 86400
     for child in sorted(runs_dir.iterdir()):
-        if not child.is_dir():
-            continue
         try:
             mtime = child.stat().st_mtime
         except OSError:
@@ -283,7 +359,10 @@ def _clean_runs(inbox: Path, apply: bool, report: dict, keep_days: float):
             continue
         if apply:
             try:
-                shutil.rmtree(child)
+                if child.is_dir():
+                    shutil.rmtree(child)
+                else:
+                    child.unlink()
             except OSError as exc:
                 report["ok"] = False
                 report["findings"].append({"severity": "error", "code": "runs-cleanup-failed",
@@ -292,15 +371,156 @@ def _clean_runs(inbox: Path, apply: bool, report: dict, keep_days: float):
         report["deleted"]["runs"].append(child.name)
 
 
-def _clean_stale_locks(inbox: Path, apply: bool, report: dict, keep_days: float):
-    """删「对应 sidecar 已不存在」且超过 keep_days 的锁文件。
+def _clean_temp_files(inbox: Path, apply: bool, report: dict, keep_hours: float):
+    """清 `.groom/` 下超过 keep_hours 的临时文件：`*.tmp` 与 `.groom/tmp/` 里的内容。
 
-    持锁中的文件 mtime 会随写入更新，所以「旧 + 没有对应 sidecar」这两个条件同时成立时，
-    基本可以判定是删除 sidecar 后留下的残锁。`.guard.lock` 没有对应文件，不在清理范围。
+    这些是写盘中断或旧轮次留下的中间件，不承载判断依据；新生成的临时文件不会
+    被同一轮清理碰到（有 keep_hours 窗口）。
+    """
+    base = inbox / ".groom"
+    if not base.is_dir():
+        return
+    cutoff = time.time() - keep_hours * 3600
+    candidates = list(base.rglob("*.tmp"))
+    tmp_dir = base / "tmp"
+    if tmp_dir.is_dir():
+        candidates += [p for p in tmp_dir.rglob("*") if p.is_file()]
+    for path in sorted(set(candidates)):
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:
+            continue
+        if mtime >= cutoff:
+            continue
+        if apply:
+            try:
+                path.unlink()
+            except OSError as exc:
+                report["ok"] = False
+                report["findings"].append({"severity": "error", "code": "temp-cleanup-failed",
+                                           "message": f"{path}: {exc}"})
+                continue
+        report["deleted"]["temp_files"].append(
+            str(path.relative_to(inbox)).replace("\\", "/"))
+
+
+def _referenced_snapshot_commits(inbox: Path, repo: Path, base: Path) -> tuple:
+    """所有还在被引用的快照 commit：评估记录、工作单、latest.json。"""
+    commits, unreadable = _scan_references(inbox, repo)
+    runs = inbox / ".groom" / "runs"
+    if runs.is_dir():
+        for path in sorted(runs.glob("*/work-orders.json")):
+            try:
+                doc = load_json(path) or {}
+            except Exception:
+                # 工作单读不出：它可能引用某个快照，视为引用未知，整轮不删无主快照。
+                unreadable.append(path.name)
+                continue
+            raw = (doc.get("snapshot") or {}).get("commit") if isinstance(doc, dict) else None
+            if raw:
+                normalized = normalize_commit(repo, str(raw))
+                if normalized:
+                    commits.add(normalized)
+    latest = base / "latest.json"
+    if latest.exists():
+        try:
+            doc = load_json(latest) or {}
+        except Exception:
+            unreadable.append(latest.name)
+            doc = {}
+        raw = doc.get("commit") if isinstance(doc, dict) else None
+        if raw:
+            normalized = normalize_commit(repo, str(raw))
+            if normalized:
+                commits.add(normalized)
+    return commits, unreadable
+
+
+def _clean_orphan_snapshots(inbox: Path, repo: Path, apply: bool, report: dict,
+                            snapshot_dir, branch: str, cleanup_snapshot_fn,
+                            keep_hours: float):
+    """删没有任何评估或工作单引用的旧快照（别的轮次留下的无主目录）。"""
+    base = Path(snapshot_dir) if snapshot_dir else (inbox / ".groom" / "snapshots")
+    if not base.is_dir():
+        return
+    referenced, unreadable = _referenced_snapshot_commits(inbox, repo, base)
+    if unreadable:
+        report["ok"] = False
+        report["findings"].append({
+            "severity": "error", "code": "orphan-snapshot-scan-skipped",
+            "message": f"有 {len(unreadable)} 份评估或工作单读不出，无法判断快照是否仍被引用——本轮不删无主快照"})
+        return
+    cutoff = time.time() - keep_hours * 3600
+    for child in sorted(base.iterdir()):
+        if not child.is_dir() or child.name.startswith("."):
+            continue
+        meta = base / f"{child.name}.json"
+        if not meta.exists():
+            continue
+        try:
+            doc = load_json(meta) or {}
+        except Exception:
+            report["ok"] = False
+            report["findings"].append({"severity": "error", "code": "orphan-snapshot-meta",
+                                       "message": f"{meta.name}: 读不出，跳过"})
+            continue
+        commit = normalize_commit(repo, str((doc or {}).get("commit") or ""))
+        if not commit or commit in referenced:
+            continue
+        # 目录可能是别的分支留下的：优先用元数据里的实际分支，其次从目录名
+        # `<safe_branch>-<short_sha>` 回退。不能拿本轮 branch 去猜，否则会去删
+        # 另一条路径，原目录还在而 cleanup_snapshot 仍返回成功。
+        actual_branch = str((doc or {}).get("branch") or "").strip()
+        if not actual_branch:
+            actual_branch = child.name.rsplit("-", 1)[0] if "-" in child.name else branch
+        try:
+            mtime = child.stat().st_mtime
+        except OSError:
+            continue
+        if mtime >= cutoff:
+            continue
+        if not apply:
+            report["deleted"]["orphan_snapshots"].append(commit[:12])
+            continue
+        try:
+            result = cleanup_snapshot_fn(repo, snapshot_dir=base, commit=commit,
+                                         branch=actual_branch)
+        except Exception as exc:
+            report["ok"] = False
+            report["findings"].append({"severity": "error", "code": "orphan-snapshot-failed",
+                                       "message": f"{commit[:12]}（{actual_branch}）：{exc}"})
+            continue
+        if not isinstance(result, dict) or not result.get("ok"):
+            report["ok"] = False
+            detail = result.get("error") if isinstance(result, dict) else ""
+            report["findings"].append({"severity": "error", "code": "orphan-snapshot-failed",
+                                       "message": f"{commit[:12]}（{actual_branch}）：{detail or '清理失败'}"})
+            continue
+        # cleanup_snapshot 找不到路径也会返回成功；以实际目录是否消失为准。
+        if child.exists():
+            report["ok"] = False
+            report["findings"].append({"severity": "error", "code": "orphan-snapshot-still-there",
+                                       "message": f"{child.name}：清理函数返回成功但目录仍在"})
+            continue
+        report["deleted"]["orphan_snapshots"].append(commit[:12])
+
+
+def _clean_stale_locks(inbox: Path, apply: bool, report: dict, keep_days: float):
+    """删「对应 sidecar 已不存在」的锁文件。
+
+    两种残锁直接清：评估记录已归档到 `.done/<key>/assessment.yaml` 的（评估走了，
+    锁不可能再被持有），以及超过 keep_days 的旧锁。持锁中的文件 mtime 会随写入更新，
+    所以「旧 + 没有对应 sidecar」同时成立时判定为残锁。`.guard.lock` 不清。
     """
     assess_dir = inbox / ".groom" / "assessments"
     if not assess_dir.is_dir():
         return
+    archived = set()
+    done_dir = inbox / ".done"
+    if done_dir.is_dir():
+        for child in done_dir.iterdir():
+            if child.is_dir() and (child / "assessment.yaml").exists():
+                archived.add(sanitize_key(child.name))
     cutoff = time.time() - keep_days * 86400
     for lock in sorted(assess_dir.glob("*.lock")):
         if lock.name == ".guard.lock":
@@ -308,12 +528,14 @@ def _clean_stale_locks(inbox: Path, apply: bool, report: dict, keep_days: float)
         target = lock.with_suffix("")
         if target.exists():
             continue
-        try:
-            mtime = lock.stat().st_mtime
-        except OSError:
-            continue
-        if mtime >= cutoff:
-            continue
+        sanitized = lock.name[: -len(".yaml.lock")]
+        if sanitized not in archived:
+            try:
+                mtime = lock.stat().st_mtime
+            except OSError:
+                continue
+            if mtime >= cutoff:
+                continue
         if apply:
             try:
                 lock.unlink()
@@ -329,7 +551,9 @@ def cleanup(body: str, repo: Path, base: str, head: str, apply: bool = False,
             snapshot_dir=None, check_fn=recheck_check,
             cleanup_snapshot_fn=cleanup_snapshot, branch: str = "main",
             pr_label: str = None, runs_keep_days: float = RUNS_KEEP_DAYS,
-            lock_keep_days: float = LOCK_KEEP_DAYS, post_merge: bool = False):
+            lock_keep_days: float = LOCK_KEEP_DAYS,
+            snapshot_orphan_hours: float = SNAPSHOT_ORPHAN_HOURS,
+            temp_keep_hours: float = TEMP_KEEP_HOURS, post_merge: bool = False):
     repo = Path(repo).resolve()
     inbox = shared_inbox(repo)
     findings, ctx = check_fn(body, repo, base, head, False, post_merge=post_merge)
@@ -346,10 +570,13 @@ def cleanup(body: str, repo: Path, base: str, head: str, apply: bool = False,
         "markers": [{k: m.get(k) for k in ("draft", "human_decision", "approval_stale",
                                            "assessed_commit", "assessment_id")} for m in markers],
         "deleted": {"assessments": [], "snapshots": [], "kept": [],
-                    "runs": [], "locks": []},
+                    "assessment_records": [], "snapshot_records": [],
+                    "orphan_snapshots": [], "temp_files": [], "runs": [], "locks": []},
+        "already_deleted": {"assessments": [], "snapshots": []},
         "skipped_snapshots": [],
         "kept_reasons": {},
         "findings": blocking,
+        "complete": False,
     }
     if blocking:
         return report
@@ -367,13 +594,17 @@ def cleanup(body: str, repo: Path, base: str, head: str, apply: bool = False,
         report["kept_reasons"][str(m.get("draft"))] = "非终态决定或审批已过期"
 
     def _phase():
-        removed, details = _delete_sidecars(inbox, eligible, report, apply)
+        removed, details = _delete_sidecars(inbox, eligible, report, apply,
+                                            deleted_before=_previously_deleted(inbox))
         if details:
             report.setdefault("decision_details", []).extend(details)
         _delete_snapshots(inbox, repo, eligible, report, apply, snapshot_dir, branch,
                           cleanup_snapshot_fn, planned_paths=removed)
         _clean_runs(inbox, apply, report, runs_keep_days)
         _clean_stale_locks(inbox, apply, report, lock_keep_days)
+        _clean_orphan_snapshots(inbox, repo, apply, report, snapshot_dir, branch,
+                                cleanup_snapshot_fn, snapshot_orphan_hours)
+        _clean_temp_files(inbox, apply, report, temp_keep_hours)
 
     if apply:
         try:
@@ -409,6 +640,10 @@ def cleanup(body: str, repo: Path, base: str, head: str, apply: bool = False,
                 "severity": "error", "code": "internal-error",
                 "message": f"{exc.__class__.__name__}: {exc}"})
 
+    report["complete"] = bool(report["ok"] and not report["findings"]
+                              and not report["deleted"]["kept"]
+                              and not report["skipped_snapshots"])
+
     if apply:
         entry = {
             "at": report["checked_at"],
@@ -416,10 +651,12 @@ def cleanup(body: str, repo: Path, base: str, head: str, apply: bool = False,
             "base": report["base"], "head": report["head"],
             "applied": True,
             "deleted": report["deleted"],
+            "already_deleted": report["already_deleted"],
             "skipped_snapshots": report["skipped_snapshots"],
             "kept_reasons": report["kept_reasons"],
             "decision_details": report.get("decision_details") or [],
             "ok": report["ok"],
+            "complete": report["complete"],
             "decisions": [{
                 "draft": m.get("draft"),
                 "assessment_id": m.get("assessment_id"),
@@ -476,6 +713,10 @@ def main():
                     help=f"工作单超过这么多天就清（默认 {RUNS_KEEP_DAYS}）")
     ap.add_argument("--keep-lock-days", type=float, default=LOCK_KEEP_DAYS,
                     help=f"无对应 sidecar 的锁超过这么多天就清（默认 {LOCK_KEEP_DAYS}）")
+    ap.add_argument("--keep-snapshot-hours", type=float, default=SNAPSHOT_ORPHAN_HOURS,
+                    help=f"无主快照超过这么多小时就清（默认 {SNAPSHOT_ORPHAN_HOURS}）")
+    ap.add_argument("--keep-temp-hours", type=float, default=TEMP_KEEP_HOURS,
+                    help=f".groom 下的临时文件超过这么多小时就清（默认 {TEMP_KEEP_HOURS}）")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
 
@@ -495,6 +736,8 @@ def main():
                      apply=not args.dry_run, snapshot_dir=args.snapshot_dir,
                      branch=args.branch, pr_label=args.pr,
                      runs_keep_days=args.keep_runs_days, lock_keep_days=args.keep_lock_days,
+                     snapshot_orphan_hours=args.keep_snapshot_hours,
+                     temp_keep_hours=args.keep_temp_hours,
                      post_merge=args.post_merge)
     if args.json:
         print(dump_json(report), end="")
@@ -507,7 +750,9 @@ def main():
                 print(f"    - [{f.get('code')}] {f.get('message')}")
         d = report["deleted"]
         print(f"  评估: {', '.join(d['assessments']) or '（无）'}"
-              f" · 快照: {', '.join(d['snapshots']) or '（无）'}")
+              f" · 快照: {', '.join(d['snapshots']) or '（无）'}"
+              f" · 无主快照: {', '.join(d['orphan_snapshots']) or '（无）'}"
+              f" · 临时文件: {len(d['temp_files'])}")
         print(f"  工作单: {len(d['runs'])} 个 · 残锁: {len(d['locks'])} 个")
         for s in report["skipped_snapshots"]:
             print(f"  跳过快照 {s['commit']}：{s['reason']}")

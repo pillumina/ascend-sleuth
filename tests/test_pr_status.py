@@ -765,6 +765,22 @@ class FlowTest(RepoCase):
         self.assertTrue(payload["ok"], payload)
         self.assertEqual(payload["pr"]["remote"], "origin")
 
+    def test_set_from_url_only(self):
+        code, payload = run_cli("--root", str(self.repo), "--set", "--draft", "draft-a",
+                                "--url", "https://github.com/o/r/pull/7")
+        self.assertEqual(code, 0, payload)
+        self.assertEqual(payload["pr"]["platform"], "github")
+        self.assertEqual(payload["pr"]["repo"], "o/r")
+        self.assertEqual(payload["pr"]["number"], 7)
+
+    def test_set_from_gitlab_url(self):
+        code, payload = run_cli("--root", str(self.repo), "--set", "--draft", "draft-a",
+                                "--url", "https://gitlab.com/o/r/-/merge_requests/9")
+        self.assertEqual(code, 0, payload)
+        self.assertEqual(payload["pr"]["platform"], "gitlab")
+        self.assertEqual(payload["pr"]["repo"], "o/r")
+        self.assertEqual(payload["pr"]["number"], 9)
+
     def test_set_rejects_bad_number(self):
         code, payload = run_cli("--root", str(self.repo), "--set", "--draft", "draft-a",
                                 "--platform", "github", "--repo", "o/r", "--number", "abc",
@@ -1313,6 +1329,49 @@ class CheckAllJsonLinesTest(RepoCase):
         self.assertEqual(code, 0, payload)
         self.assertNotIn("type", payload)
         self.assertEqual([item["draft"] for item in payload["checked"]], ["draft-a"])
+
+
+class LogLockTest(unittest.TestCase):
+    """log_lock 的跨进程语义：抢锁失败要等而不是抛 Permission denied。
+
+    宿主重启瞬间旧进程还握着锁文件句柄（Windows 上 open 都可能被拒），log_lock 必须
+    把这 10 秒都用来轮询——拿得到就 yield True，等满 10 秒才 yield False，不能像
+    修复前那样在 open/locking 失败时直接抛 OSError 给写侧。
+    """
+
+    def test_contended_lock_eventually_acquires(self):
+        import scripts.exec_log_path as elp
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "shared.json"
+            start = threading.Event()
+            released = threading.Event()
+            results = {}
+
+            def holder():
+                with elp.log_lock(target) as locked:
+                    results["holder_locked"] = locked
+                    start.set()
+                    released.wait(5)
+
+            def waiter():
+                start.wait(5)
+                with elp.log_lock(target) as locked:
+                    results["waiter_locked"] = locked
+
+            t1 = threading.Thread(target=holder)
+            t2 = threading.Thread(target=waiter)
+            t1.start()
+            t2.start()
+            # holder 持锁 0.3 秒后松开，waiter 应该在这之后拿到锁。
+            self.assertTrue(start.wait(5))
+            time.sleep(0.3)
+            released.set()
+            t1.join(5)
+            t2.join(5)
+            self.assertFalse(t1.is_alive())
+            self.assertFalse(t2.is_alive())
+            self.assertTrue(results.get("holder_locked"))
+            self.assertTrue(results.get("waiter_locked"))
 
 
 if __name__ == "__main__":

@@ -100,6 +100,8 @@ B、C、D 三条路用的是同一个插件管理器，差别只在谁去调它�
 **默认装四个包**：面板包、vllm-kb 接入插件、诊断状态条、诊断画布。`panel_install.js --all` 与
 `skills/preload-panel` 的常驻安装路都按四个包走；四个包分开登记，装面板不会带上另外三个。
 
+面板包 `dsh-sleuth-panels` 依赖 `dsh-sleuth-autoclose`；装面板会同时启用自动收尾。面板页的开关只启停后台任务，不需要单独安装或卸载 autoclose。
+
 常驻包的两个产物由 `node scripts/build_panel_bundle.js` 把面板源码原文嵌进适配层生成，
 不要手改；源文件改了要重跑生成器。适配层补的是动态沙箱当年自带、常驻包没有的五项：
 

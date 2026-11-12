@@ -245,26 +245,37 @@ def log_lock(path: Path):
     # msvcrt.locking 锁的是"从当前文件位置开始的 N 字节"，所以被锁文件必须先有那 1 字节。
     # 用非阻塞 + 退避轮询而不是 LK_LOCK：后者在争用超时后直接抛异常，写侧拿不到锁就丢记录，
     # 而"等一会儿"正是这里想要的语义。
-    with open(lock_path, "a+b") as fh:
-        if os.path.getsize(lock_path) == 0:
-            fh.write(b"\0")
-            fh.flush()
-        fh.seek(0)
-        acquired = False
-        deadline = time.monotonic() + 10.0
-        while time.monotonic() < deadline:
-            try:
-                msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
-                acquired = True
-                break
-            except OSError:
-                time.sleep(0.02)
+    # open 也在轮询循环内：宿主重启瞬间旧进程还握着文件句柄时，open("a+b") 本身就可能被
+    # 拒绝（Permission denied），把 open 与 locking 一起轮询，两种情况都等而不是立刻抛。
+    deadline = time.monotonic() + 10.0
+    fh = None
+    while time.monotonic() < deadline:
         try:
-            yield acquired
-        finally:
-            if acquired:
+            if fh is None:
+                fh = open(lock_path, "a+b")
+            if os.path.getsize(lock_path) == 0:
+                fh.write(b"\0")
+                fh.flush()
+            fh.seek(0)
+            msvcrt.locking(fh.fileno(), msvcrt.LK_NBLCK, 1)
+            break
+        except OSError:
+            if fh is not None:
+                try:
+                    fh.close()
+                except OSError:
+                    pass
+                fh = None
+            time.sleep(0.02)
+    try:
+        yield fh is not None
+    finally:
+        if fh is not None:
+            try:
                 fh.seek(0)
                 msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+            finally:
+                fh.close()
 
 
 def write_refused_message(what: str, path: Path, exc: OSError) -> str:
