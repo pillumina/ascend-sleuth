@@ -1,0 +1,66 @@
+id: EV-2026-187
+layer: L2
+target_component: skills/diagnose/references/collect-gates.yaml
+title: 通信网络面缺网口 QoS 采集入口——hccn_tool 队列流控词条挂进 interrupt-deep-debug-gap
+status: validated
+authorization: auto
+dimension: evolvability
+supersedes: []
+superseded_by: null
+created_at: 2026-11-11
+source_signals:
+  - signal: coverage_gap
+    evidence: 诊断走到多机通信的网络面时，闸门只给链路与 TLS 两个 hccn_tool 入口，网口 PFC / TC / DSCP 的队列流控没有入口
+    trajectory:
+      - references/tools/hccn-tool-qos-pfc-tc-dscp.yaml
+hypothesis: >-
+  队列流控词条已按用途面独立成条（PFC 位图、优先级与 DSCP 到 TC、TC 缓冲与水线、TC 调度、PFC 与 TC 统计），
+  但 tool 不进候选路由、背景层也不按工具名收窄，闸门是它进诊断上下文的唯一入口；不在闸门上挂一条，
+  这类丢包与吞吐问题的诊断上下文里永远看不到它，只能靠 agent 临场拼命令。
+  挂进已有的网络面分支即可，不新建闸门、不改分支顺序。
+predicted_effect:
+  metric: 队列流控词条在闸门分支里的引用数
+  from: "0（词条已产出但没有任何闸门引用，等于永不加载）"
+  to: "1（interrupt-deep-debug-gap 的 branches[].refs 含该 id，verify_references 的覆盖环通过）"
+  measure:
+    command: >-
+      python -c "import yaml,sys; d=yaml.safe_load(open('skills/diagnose/references/collect-gates.yaml',encoding='utf-8')); g=[x for x in d['gates'] if x['id']=='interrupt-deep-debug-gap'][0]; refs=[r for b in g['branches'] for r in (b.get('refs') or [])]; ok='hccn-tool-qos-pfc-tc-dscp' in refs; print(ok); sys.exit(0 if ok else 1)"
+    expect_exit: 0
+    expect_stdout: "True"
+validation:
+  method: metrics_compare
+  baseline: 绑定前该词条声明了 category 却不在任何闸门分支里，verify_references 的覆盖环应报红
+  success_criteria: verify_references.py --check 通过，且 measure 输出 True、退出码 0（解析 YAML 后确认该 id 在 branches[].refs 里，不是只出现在文件文本里）
+  rollback: 从 collect-gates.yaml 的 refs 里删掉该 id 即可整体回退，不影响其它词条
+gate:
+  condition: 诊断进入多机通信网络面、需要 PFC 与 TC 的配置或统计时
+risk: low
+principle_refs: [2, 8]
+actual_cost:
+  tokens: 1200
+  source: estimate
+decisions:
+  - who: agent
+    when: "2026-11-11"
+    type: proposal
+    conclusion: >-
+      新词条产出的同一轮把闸门绑定一并做掉，避免「词条在库但永不加载」的静默状态；
+      绑定落在已有的 interrupt-deep-debug-gap 网络面分支，只加一行引用并在动作描述里点明网口 QoS。
+  - who: agent
+    when: "2026-11-11"
+    type: action
+    conclusion: >-
+      在 skills/diagnose/references/collect-gates.yaml 的 interrupt-deep-debug-gap 分支 refs 中新增
+      hccn-tool-qos-pfc-tc-dscp，动作描述补「链路面含网口 QoS：PFC 位图、优先级到 TC、TC 缓冲」。
+  - who: agent
+    when: "2026-11-11"
+    type: eval
+    conclusion: >-
+      measure 命令实测输出 1、退出码 0；verify_references.py --check 通过（268 条、id 唯一）；
+      rebuild_generated.py --check 全绿。
+  - who: agent
+    when: "2026-11-11"
+    type: decision
+    conclusion: >-
+      采纳（validated）：改动只新增一个入口，不动分支顺序与判据，回滚代价一行删除；
+      真实效果要在网络类诊断里看该面是否被取用，进观察窗，后续由 trace 的 reference_lookup 结算。
