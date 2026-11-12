@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.23.1'
+    const PLUGIN_VERSION = '0.23.2'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。
@@ -510,6 +510,9 @@ window.__ModuleLoader__.load({
       'sediment.table.decision': '决定',
       'sediment.detail.postmortem': 'postmortem',
       'sediment.detail.stale': '需重跑：{reason}',
+      'sediment.row.stale': '评估过期',
+      'sediment.detail.staleLabel': '评估过期',
+      'sediment.detail.stalePrNote': '合入前复核报评估过期时，先重跑 groom 再更新 PR。',
       'sediment.detail.target': '比较基准',
       'sediment.detail.targetWarnings': '目标提示',
       'sediment.targetState.ref_missing': '目标基准不可用',
@@ -1030,6 +1033,9 @@ window.__ModuleLoader__.load({
       'sediment.table.decision': 'Decision',
       'sediment.detail.postmortem': 'postmortem',
       'sediment.detail.stale': 'Rerun needed: {reason}',
+      'sediment.row.stale': 'Assessment stale',
+      'sediment.detail.staleLabel': 'Assessment stale',
+      'sediment.detail.stalePrNote': 'If the pre-merge review reports a stale assessment, rerun groom and update the PR first.',
       'sediment.detail.target': 'Compare target',
       'sediment.detail.targetWarnings': 'Target hints',
       'sediment.targetState.ref_missing': 'target ref unavailable',
@@ -6725,6 +6731,15 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                         runState
                           ? null
                           : h('span', { className: 'scp-chip', 'data-tone': SED_CHIP_TONE[draft.stageTone] || 'none' }, draft.stage || draft.state),
+                        // 待合入 / 已关闭的行遇到评估过期：阶段仍跟平台状态，过期只在行内提示。
+                        // 已合入的行不给：下一步是收尾，过期没有对应动作。
+                        (draft.state === 'pr_open' || draft.state === 'pr_closed') && draft.stale
+                          ? h('span', {
+                            className: 'scp-chip',
+                            'data-tone': 'warn',
+                            title: (draft.staleReasons || []).join('；'),
+                          }, tr('sediment.row.stale'))
+                          : null,
                         draft.pr && draft.pr.number
                           ? h('span', { className: 'scp-chip' }, '#' + draft.pr.number)
                           : null,
@@ -6979,9 +6994,16 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('span', { className: 'scp-callout-text' }, sedPick.targetWarnings.join('；'))))
           }
           if (sedPick.stale) {
+            // PR 行标「评估过期」，原因后补一句合入前复核怎么办；需要重跑的行（含批准失效）
+            // 阶段已经是「需重跑」，标签沿用「已评估」，具体原因由文字给出。
+            const staleReasonsText = (sedPick.staleReasons || []).join('；')
+            const stalePrState = sedPick.state === 'pr_open' || sedPick.state === 'pr_closed'
+            const staleText = sedPick.state === 'pr_open'
+              ? [staleReasonsText, tr('sediment.detail.stalePrNote')].filter(Boolean).join('；')
+              : staleReasonsText
             head.push(h('div', { key: 'stale', className: 'scp-callout', style: { background: 'var(--scp-bad-soft)', borderColor: 'color-mix(in srgb, var(--scp-bad) 26%, var(--scp-border))' } },
-              h('span', { className: 'scp-callout-label' }, tr('sediment.stepper.assessed')),
-              h('span', { className: 'scp-callout-text' }, (sedPick.staleReasons || []).join('；'))))
+              h('span', { className: 'scp-callout-label' }, tr(stalePrState ? 'sediment.detail.staleLabel' : 'sediment.stepper.assessed')),
+              h('span', { className: 'scp-callout-text' }, staleText)))
           }
           if (sedMismatch !== 'none') {
             head.push(h('div', { key: 'mismatch', className: 'scp-callout', style: { background: 'var(--scp-warn-soft)', borderColor: 'color-mix(in srgb, var(--scp-warn) 26%, var(--scp-border))' } },

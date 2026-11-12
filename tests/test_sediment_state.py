@@ -681,6 +681,39 @@ class AggregateTest(SedimentCase):
         blob = json.dumps(payload, ensure_ascii=False)
         self.assertEqual(blob.count(prompt), 2)
 
+    def test_kb_advance_keeps_submitted_prs_in_queue(self):
+        """知识库前进后，已提交 PR 的行仍留在「待合入」，过期只做行内提示。
+
+        对应反馈：已提交的 PR 在拉取新代码后全部变成「需重跑」，待合入计数归零；
+        撤销数仍对——它按 PR 台账算，与评估新鲜度无关。
+        """
+        assessed = fresh_commit(self.repo)
+        prs = {}
+        for index in range(2):
+            key = f"draft-pr-{index}"
+            write_draft(self.repo, key=key, cid=f"D-PR-{index}")
+            write_assessment(self.repo, key, assessed)
+            prs[key] = pr_entry(number=430 + index)
+        write_draft(self.repo, key="draft-local", cid="D-LOCAL")
+        write_assessment(self.repo, "draft-local", assessed)
+        write_case(self.repo, "knowledge/inference/vllm-ascend/interrupt/CASE-B.yaml",
+                   "CASE-B", title="新 case")
+        git(self.repo, "update-ref", "refs/remotes/origin/main",
+            commit_all(self.repo, "add B"))
+        write_ledger(self.repo, target=GITHUB_TARGET, prs=prs)
+
+        payload = self.collect()
+        self.assertEqual(payload["counts"]["prOpen"], 2)
+        self.assertEqual(payload["counts"]["needRerun"], 1)
+        self.assertIn("pr_status.py", payload["prompts"]["check"])
+        by_key = {row["key"]: row for row in payload["drafts"]}
+        for key in prs:
+            self.assertEqual(by_key[key]["state"], "pr_open")
+            self.assertTrue(by_key[key]["stale"])
+            self.assertFalse(by_key[key]["undo"]["available"])
+        self.assertEqual(by_key["draft-local"]["state"], "need_rerun")
+        self.assertTrue(by_key["draft-local"]["undo"]["available"])
+
     def test_history_reads_last_five_close_log_lines(self):
         log = inbox(self.repo) / ".groom" / "close-log.jsonl"
         log.parent.mkdir(parents=True, exist_ok=True)
@@ -947,7 +980,9 @@ class ClosedDraftQueueTest(SedimentCase):
         self.assertTrue(row["closedDraft"])
         self.assertIn("已出队的草稿", row["title"])
 
-    def test_stale_outranks_pr_open(self):
+    def test_stale_keeps_open_pr_in_queue(self):
+        # 过期不改 PR 阶段：PR 已经开着，重跑 groom 改不了它；队列先把事项跟到合入或关闭，
+        # 过期留成行内提示，查合入入口照常给。
         write_draft(self.repo)
         old_commit = fresh_commit(self.repo)
         write_assessment(self.repo, "2026-10-20-draft-a", old_commit)
@@ -957,7 +992,75 @@ class ClosedDraftQueueTest(SedimentCase):
         git(self.repo, "update-ref", "refs/remotes/origin/main", new_commit)
         write_ledger(self.repo, target=GITHUB_TARGET,
                      prs={"2026-10-20-draft-a": pr_entry(state="open")})
-        row = self.draft(self.collect())
+        payload = self.collect()
+        row = self.draft(payload)
+        self.assertEqual(row["state"], "pr_open")
+        self.assertEqual(row["stage"], "已提 PR · 合入未确认")
+        self.assertEqual(row["next"]["kind"], "check")
+        self.assertTrue(row["stale"])
+        self.assertTrue(any("知识库" in reason for reason in row["staleReasons"]),
+                        row["staleReasons"])
+        self.assertIsNotNone(row["pr"])
+        self.assertEqual(payload["counts"]["prOpen"], 1)
+        self.assertEqual(payload["counts"]["needRerun"], 0)
+        self.assertIn("pr_status.py", payload["prompts"]["check"])
+        self.assertEqual(payload["prompts"]["groom"], "")
+
+    def test_stale_approval_still_needs_reconfirmation(self):
+        # 只失批准、不涉知识变化：授权不成立，要人重新确认批准，PR 开着也先回 groom；
+        # PR 记录仍留在详情里。这与「知识过期」不是同一件事。
+        write_draft(self.repo)
+        write_assessment(self.repo, "2026-10-20-draft-a", fresh_commit(self.repo),
+                         human_valid=False)
+        write_ledger(self.repo, target=GITHUB_TARGET,
+                     prs={"2026-10-20-draft-a": pr_entry(state="open")})
+        payload = self.collect()
+        row = self.draft(payload)
         self.assertEqual(row["state"], "need_rerun")
         self.assertEqual(row["next"]["kind"], "groom")
+        self.assertEqual(payload["counts"]["needRerun"], 1)
+        self.assertEqual(payload["counts"]["prOpen"], 0)
+        self.assertIn("--decision-prompt", payload["prompts"]["groomDetail"])
+        self.assertTrue(row["stale"])
+        self.assertIn("人的批准", " ".join(row["staleReasons"]))
         self.assertIsNotNone(row["pr"])
+
+    def test_approval_plus_kb_advance_still_needs_reconfirmation(self):
+        # 知识过期与批准失效同时发生：两条都要重跑 groom（含重新确认批准），仍判 need_rerun。
+        write_draft(self.repo)
+        old_commit = fresh_commit(self.repo)
+        write_assessment(self.repo, "2026-10-20-draft-a", old_commit, human_valid=False)
+        write_case(self.repo, "knowledge/inference/vllm-ascend/interrupt/CASE-B.yaml",
+                   "CASE-B", title="新 case")
+        git(self.repo, "update-ref", "refs/remotes/origin/main",
+            commit_all(self.repo, "add B"))
+        write_ledger(self.repo, target=GITHUB_TARGET,
+                     prs={"2026-10-20-draft-a": pr_entry(state="open")})
+        payload = self.collect()
+        row = self.draft(payload)
+        self.assertEqual(row["state"], "need_rerun")
+        reasons = " ".join(row["staleReasons"])
+        self.assertIn("知识库", reasons)
+        self.assertIn("人的批准", reasons)
+        self.assertIsNotNone(row["pr"])
+
+    def test_pr_states_survive_stale(self):
+        # 台账里的 PR 状态决定阶段：open/unknown → 待合入，merged → 收尾，closed → 恢复草稿。
+        # 评估过期只做行内提示，不改阶段。
+        for pr_state, expected in (("open", "pr_open"), ("unknown", "pr_open"),
+                                   ("merged", "pr_merged"), ("closed", "pr_closed")):
+            with self.subTest(pr_state=pr_state):
+                self.setUp()
+                write_draft(self.repo)
+                old_commit = fresh_commit(self.repo)
+                write_assessment(self.repo, "2026-10-20-draft-a", old_commit)
+                write_case(self.repo, "knowledge/inference/vllm-ascend/interrupt/CASE-B.yaml",
+                           "CASE-B", title="新 case")
+                git(self.repo, "update-ref", "refs/remotes/origin/main",
+                    commit_all(self.repo, "add B"))
+                write_ledger(self.repo, target=GITHUB_TARGET,
+                             prs={"2026-10-20-draft-a": pr_entry(state=pr_state)})
+                row = self.draft(self.collect())
+                self.assertEqual(row["state"], expected)
+                self.assertTrue(row["stale"])
+                self.assertIn("知识库", " ".join(row["staleReasons"]))
