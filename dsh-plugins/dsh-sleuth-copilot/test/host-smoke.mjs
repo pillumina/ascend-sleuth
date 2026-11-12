@@ -311,6 +311,7 @@ function makeKbShell() {
   const calls = []
   const specs = []
   let payload = kbPayload({})
+  let showPayload = kbPayload({})
   let forcedPayload = null
   let rawResult = null
   return {
@@ -318,6 +319,10 @@ function makeKbShell() {
     specs,
     setPayload(next) {
       payload = next
+    },
+    // 本机 HEAD 变了之后的重算只跑 `--show`：单独一份夹具，模拟「本地已跟上、落后归零」。
+    setShowPayload(next) {
+      showPayload = next
     },
     setForcePayload(next) {
       forcedPayload = next
@@ -334,7 +339,9 @@ function makeKbShell() {
       specs.push(spec)
       if (!command.includes('kb_sync.py')) return { result: () => runCommand(spec) }
       if (rawResult !== null) return { result: () => Promise.resolve(rawResult) }
-      const body = forcedPayload !== null && /(^|\s)--force(\s|$)/.test(command) ? forcedPayload : payload
+      const body = forcedPayload !== null && /(^|\s)--force(\s|$)/.test(command)
+        ? forcedPayload
+        : (/--show/.test(command) ? showPayload : payload)
       return {
         result: () => Promise.resolve({
           exitCode: 0, timedOut: false, aborted: false,
@@ -1743,12 +1750,13 @@ function newKbHarness(payload, timers) {
   // ③ 换 rev 再出现。
   const newRev = newKbHarness(kbPayload({
     remote_rev: 'abc1234', behind: 2,
-    surface: { knowledge: 0, routing: 0, reference: 0, methodology: 0, panel: 0, other: 2 },
+    surface: { knowledge: 1, routing: 0, reference: 0, methodology: 0, panel: 0, other: 0 },
   }), false)
   const newRevValue = (await kbRpc(newRev.harness, 'copilot-kb-recheck', {}, 'kb-recheck-new')).envelope.result.value
   expect('知识库：换 rev 再出现',
     newRevValue && newRevValue.notice && newRevValue.notice.rev === 'abc1234'
-    && newRevValue.notice.behind === 2 && newRevValue.notice.panel === 0 && newRevValue.notice.knowledge === 0,
+    && newRevValue.notice.behind === 2 && newRevValue.notice.panel === 0 && newRevValue.notice.knowledge === 1
+    && newRevValue.notice.kind === 'knowledge',
     JSON.stringify(newRevValue && newRevValue.notice))
 
   // ④ behind 0：不提示，状态文件记 0。
@@ -2151,6 +2159,69 @@ function newKbHarness(payload, timers) {
     noScriptValue && noScriptValue.notice === null && noScriptValue.reason === 'unavailable'
     && noScript.shell.calls.every((command) => !command.includes('kb_sync.py')),
     JSON.stringify(noScriptValue))
+
+  // ⑫ 本机 HEAD 变了（终端 pull / 面板「立即同步」/ 别的会话同步过）：旧快照失效，
+  // 用 `--show`（只读本地、不联网）重算；落后归零就撤提示，不起 fetch。
+  const headFile = join(KB_REPO, '.git', 'HEAD')
+  const headRef = join(KB_REPO, '.git', 'refs', 'heads', 'main')
+  mkdirSync(dirname(headRef), { recursive: true })
+  writeFileSync(headFile, 'ref: refs/heads/main\n', 'utf8')
+  writeFileSync(headRef, 'aaaa1111\n', 'utf8')
+  const movedShell = makeKbShell()
+  movedShell.setPayload(kbPayload({ remote_rev: 'cafe001', behind: 3 }))
+  const movedTimers = makeFakeTimers()
+  const moved = makeHarness({ shell: movedShell, timer: movedTimers })
+  kbHarnesses.push(moved)
+  mod.apply(moved.ctx)
+  await movedTimers.fireTimer()
+  const movedState = (await kbRpc(moved, 'copilot-state', {
+    sessionId: 'kb-moved', cwd: SANDBOX,
+  }, 'kb-state-moved-1')).envelope.result.value
+  expect('知识库：HEAD 没变时不做本地重算',
+    movedState && movedState.kbNotice && movedState.kbNotice.behind === 3
+    && kbSyncCalls(movedShell) === 1,
+    JSON.stringify({ notice: movedState && movedState.kbNotice, calls: movedShell.calls }))
+  writeFileSync(headRef, 'bbbb2222\n', 'utf8')
+  movedShell.setShowPayload(kbPayload({
+    behind: 0, local_rev: 'bbbb2222', remote_rev: 'bbbb2222',
+    surface: { knowledge: 0, routing: 0, reference: 0, methodology: 0, panel: 0, other: 0 },
+  }))
+  const movedCleared = (await kbRpc(moved, 'copilot-state', {
+    sessionId: 'kb-moved', cwd: SANDBOX,
+  }, 'kb-state-moved-2')).envelope.result.value
+  const movedCommands = movedShell.calls.filter((command) => command.includes('kb_sync.py'))
+  expect('知识库：本机 HEAD 变了用 --show 重算、不 fetch',
+    movedCommands.length === 2 && /(^|\s)--show(\s|$)/.test(movedCommands[1])
+    && !/--check|--sync|--merge/.test(movedCommands[1]),
+    JSON.stringify(movedCommands))
+  expect('知识库：重算后落后归零即撤提示',
+    movedCleared && movedCleared.kbNotice === null,
+    JSON.stringify(movedCleared && movedCleared.kbNotice))
+  expect('知识库：重算结果落回状态文件',
+    readKbState() && readKbState().behind === 0 && readKbState().rev === 'bbbb2222',
+    JSON.stringify(readKbState()))
+  // 清掉 HEAD 夹具：后面的用例照旧按「读不到 HEAD」跳过本地重算。
+  rmSync(join(KB_REPO, '.git', 'refs'), { recursive: true, force: true })
+  rmSync(headFile, { force: true })
+
+  // ⑬ 文案按改动面分：只有面板代码说「面板代码落后」；只有 docs/scripts 等 other 面不提示。
+  const panelOnly = newKbHarness(kbPayload({
+    remote_rev: 'feed456', behind: 1,
+    surface: { knowledge: 0, routing: 0, reference: 0, methodology: 0, panel: 2, other: 0 },
+  }), false)
+  const panelOnlyValue = (await kbRpc(panelOnly.harness, 'copilot-kb-recheck', {}, 'kb-recheck-panel-only')).envelope.result.value
+  expect('知识库：只有面板代码时 kind=panel、不按知识库说',
+    panelOnlyValue && panelOnlyValue.notice && panelOnlyValue.notice.kind === 'panel'
+    && panelOnlyValue.notice.behind === 1 && panelOnlyValue.notice.knowledge === 0
+    && panelOnlyValue.notice.panel === 0,
+    JSON.stringify(panelOnlyValue && panelOnlyValue.notice))
+  const docsOnly = newKbHarness(kbPayload({
+    remote_rev: 'feed789', behind: 2,
+    surface: { knowledge: 0, routing: 0, reference: 0, methodology: 0, panel: 0, other: 3 },
+  }), false)
+  const docsOnlyValue = (await kbRpc(docsOnly.harness, 'copilot-kb-recheck', {}, 'kb-recheck-docs-only')).envelope.result.value
+  expect('知识库：只有 docs 等 other 面时不提示',
+    docsOnlyValue && docsOnlyValue.notice === null, JSON.stringify(docsOnlyValue && docsOnlyValue.notice))
 }
 
 // ── 信封与 HTTP 边界 ────────────────────────────────────────────────────────

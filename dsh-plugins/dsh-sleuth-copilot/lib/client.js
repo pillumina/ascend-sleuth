@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.24.1'
+    const PLUGIN_VERSION = '0.25.0'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。
@@ -662,6 +662,8 @@ window.__ModuleLoader__.load({
       'none': '未记录',
       // 知识库落后提醒：host 半定时检测后由 copilot-state 带下来。
       'kb.behind': '知识库落后 {n} 个提交',
+      'kb.panelBehind': '面板代码落后 {n} 个提交，同步后重启 DSH 才能加载新面板',
+      'kb.checked': '（{time} 核对）',
       'kb.panel': '这批改动含面板代码：同步后重启 DSH 才能加载新面板。',
       'kb.go': '去同步',
       'kb.later': '稍后',
@@ -670,6 +672,7 @@ window.__ModuleLoader__.load({
       'kb.laterUnavailable': '稍后没记上：状态条连不上后台，稍后再试。',
       'kb.missing': '没找到 Ascend Sleuth 整页；确认面板包已安装，或稍后再试。',
       'kb.collapsed': '知识库有更新',
+      'kb.panelCollapsed': '面板代码有更新',
       // 受限档位 fetch 被拒、退回只读探测：远端有新提交、落后数未知。
       'kb.degraded': '远端有新提交（落后数未知）',
       // 连败上屏：连续失败 3 次或权限拒绝时才出现，成功检查后消失。
@@ -1239,6 +1242,8 @@ window.__ModuleLoader__.load({
       'none': 'not recorded',
       // Knowledge base behind notice: attached by the host half after a check.
       'kb.behind': 'Knowledge base is {n} commit(s) behind',
+      'kb.panelBehind': 'Panel code is {n} commit(s) behind: restart DSH after syncing to load the new panel',
+      'kb.checked': ' (checked {time})',
       'kb.panel': 'These changes include panel code: restart DSH after syncing to load the new panel.',
       'kb.go': 'Sync',
       'kb.later': 'Later',
@@ -1247,6 +1252,7 @@ window.__ModuleLoader__.load({
       'kb.laterUnavailable': 'Could not record the later reminder: the status bar cannot reach the host. Try again later.',
       'kb.missing': 'Ascend Sleuth page not found. Check that the panel package is installed, or try again later.',
       'kb.collapsed': 'Knowledge base has updates',
+      'kb.panelCollapsed': 'Panel code has updates',
       'kb.degraded': 'The remote has new commits (behind count unknown)',
       'kb.error': 'Background check failed: {time} {reason}',
       'kb.errorDenied': 'permission denied',
@@ -2343,6 +2349,19 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       if (Number.isNaN(date.getTime())) return String(iso)
       const pad = (n) => String(n).padStart(2, '0')
       return pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes())
+    }
+
+    // 核对时刻：当天只给 HH:MM，隔天带日期——提示行放不下完整时间。
+    function shortClock(iso) {
+      if (!iso) return ''
+      const date = new Date(iso)
+      if (Number.isNaN(date.getTime())) return String(iso)
+      const pad = (n) => String(n).padStart(2, '0')
+      const now = new Date()
+      const sameDay = date.getFullYear() === now.getFullYear()
+        && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()
+      const clock = pad(date.getHours()) + ':' + pad(date.getMinutes())
+      return sameDay ? clock : pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' + clock
     }
 
     function stepsText(extra) {
@@ -4170,6 +4189,12 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const kbDegraded = !!kbNotice && kbNotice.behind === null
         const kbBehind = kbNotice ? Math.max(0, Number(kbNotice.behind) || 0) : 0
         const kbPanel = kbNotice ? Math.max(0, Number(kbNotice.panel) || 0) : 0
+        // 只有面板代码的提交说「面板代码落后」；其余（含读不到改动面的旧状态）说知识库。
+        const kbKind = kbNotice && kbNotice.kind === 'panel' ? 'panel' : 'knowledge'
+        const kbTagKey = kbKind === 'panel' ? 'kb.panelCollapsed' : 'kb.collapsed'
+        const kbWhen = kbNotice && !kbDegraded && kbNotice.checkedAt
+          ? tr('kb.checked', { time: shortClock(String(kbNotice.checkedAt)) })
+          : ''
         // 连败上屏：连续失败 3 次或权限拒绝时 host 才给 kbError；成功检查后随刷新消失。
         const kbError = data && data.ok !== false && data.kbError && typeof data.kbError === 'object'
           ? data.kbError
@@ -4407,7 +4432,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             h('span', { className: 'scp-kb-notice-dot', 'aria-hidden': 'true' }),
             h('span', { className: 'scp-kb-notice-main' },
               h('span', { className: 'scp-kb-notice-text' },
-                kbDegraded ? tr('kb.degraded') : tr('kb.behind', { n: kbBehind })),
+                kbDegraded ? tr('kb.degraded')
+                  : tr(kbKind === 'panel' ? 'kb.panelBehind' : 'kb.behind', { n: kbBehind })
+                    + (kbWhen ? ' ' + kbWhen : '')),
               kbPanel > 0 ? h('span', { className: 'scp-kb-notice-note' }, tr('kb.panel')) : null),
             h('span', { className: 'scp-spacer' }),
             h('button', {
@@ -4496,7 +4523,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         if (!primary) {
           if (collapsed) {
             return h('section', Object.assign({}, rootProps, { className: 'scp-root', 'data-mode': 'empty', 'data-tone': 'idle' }),
-              renderHandle(tr('empty.collapsed'), kbNotice ? tr('kb.collapsed') : null, false))
+              renderHandle(tr('empty.collapsed'), kbNotice ? tr(kbTagKey) : null, false))
           }
           return h('section', Object.assign({}, rootProps, { ref: rootRef, className: 'scp-root', 'data-mode': 'empty', 'data-tone': 'idle', onKeyDown: onRootKeyDown }),
             h('div', { className: 'scp-surface' },
@@ -4683,7 +4710,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           }), renderHandle(
             caseTitle(primary),
             (flashStep || stepsShort(extra)) + (s.stale ? ' · ' + tr('chip.stale') : '')
-              + (kbNotice ? ' · ' + tr('kb.collapsed') : ''),
+              + (kbNotice ? ' · ' + tr(kbTagKey) : ''),
             isPending(primary)))
         }
 

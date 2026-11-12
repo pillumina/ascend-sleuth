@@ -634,12 +634,30 @@ return {
         banner = { kind: 'muted', text: '读不到落后的提交数（git rev-list 没有给出数字）。',
           hint: '稍后再点「立即同步」重试。' }
       } else if (typeof data.behind === 'number' && data.behind > 0) {
-        // 改动面的计数来自 kb_sync 的 --show：本次合并会带进来的目录。面板代码在 dsh-plugins/ 下，
-        // 它更新时旧面板要重启才换，所以在合并前就把这一步说清楚。
-        const panelIncoming = !!(data.surface && Number(data.surface.panel) > 0)
+        // 改动面的计数来自 kb_sync 的 --show：只列这次真会带进来的目录，不写死一份目录名。
+        // 面板代码在 dsh-plugins/ 下，它更新时旧面板要重启才换，所以在合并前就把这一步说清楚。
+        const KB_SURFACE_DIRS = [
+          ['knowledge', 'knowledge/'], ['routing', 'triage-tree.d/'], ['reference', 'references/'],
+          ['methodology', 'skills/'], ['panel', 'dsh-plugins/'], ['other', '其他文件'],
+        ]
+        const surface = data.surface && typeof data.surface === 'object' ? data.surface : null
+        const incoming = surface
+          ? KB_SURFACE_DIRS
+            .filter((item) => Number(surface[item[0]]) > 0)
+            .map((item) => item[1] + ' ' + Number(surface[item[0]]))
+          : []
+        const knowledgeish = surface
+          ? ['knowledge', 'routing', 'reference', 'methodology']
+            .some((key) => Number(surface[key]) > 0)
+          : true
+        const panelIncoming = !!(surface && Number(surface.panel) > 0)
         banner = {
           kind: 'warn',
-          text: '落后 ' + data.behind + ' 个提交。本次合并会把 knowledge/、references/ 与 skills/ 一起更新；知识立即生效，流程文件下次会话生效。'
+          text: '落后 ' + data.behind + ' 个提交。'
+            + (incoming.length
+              ? '本次合并会带进：' + incoming.join('、') + '。'
+              : '本次合并会把 knowledge/、references/ 与 skills/ 一起更新。')
+            + (knowledgeish ? '知识立即生效，流程文件下次会话生效。' : '')
             + (panelIncoming ? '面板代码也会更新：重启 DSH 后生效；从插件页装的要先重装。' : ''),
         }
       } else {
