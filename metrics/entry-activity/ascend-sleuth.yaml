@@ -148,6 +148,7 @@ cold_never_looked_up:
 - hccl-reliability-env
 - hccl-safety-env
 - hccn-tool-network-diagnosis
+- hccn-tool-qos-pfc-tc-dscp
 - hcomm-a5-code-map
 - hdmi-fault-patterns
 - hif8-and-mxfp8-low-precision-training
