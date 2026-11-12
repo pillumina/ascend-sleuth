@@ -2095,6 +2095,105 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 }
 
 {
+  // 已提 PR 的行评估过期：阶段仍跟平台状态（已提 PR · 合入未确认），过期只做行内提示；
+  // 详情给过期原因与「合入前复核」的说明，这一行不显示「需重跑」；已合入的行不给过期提示。
+  const staleReason = '目标 4823d40 落后于评估基准 8f1d2c 的 1 个知识文件'
+  const staleDraft = Object.assign({}, SEDIMENT.drafts[2], {
+    state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    stale: true, staleReasons: [staleReason],
+    pr: {
+      number: 433, url: 'https://github.com/pillumina/ascend-sleuth/pull/433',
+      platform: 'github', state: 'open', source: 'platform', checkedAt: '',
+    },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const staleQueue = Object.assign({}, SEDIMENT, {
+    drafts: [staleDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 1, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+    history: [],
+  })
+  const t = await mount('recent', { sediment: staleQueue, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = await openSedimentView(t)
+  const staleRow = rowText(view, 433)
+  expect('PR 行过期：阶段仍是已提 PR', staleRow.includes('已提 PR · 合入未确认'), staleRow)
+  expect('PR 行过期：行内标评估过期', staleRow.includes('评估过期'), staleRow)
+  expect('PR 行过期：行内不显示需重跑', !staleRow.includes('需重跑'), staleRow)
+  const staleChip = byClass(view, 'scp-chip').find((node) => nodeText(node) === '评估过期')
+  expect('PR 行过期：行内 chip 用 warn 语气并带过期原因',
+    !!staleChip && staleChip.props['data-tone'] === 'warn' && String(staleChip.props.title) === staleReason,
+    staleChip ? JSON.stringify({ tone: staleChip.props['data-tone'], title: staleChip.props.title }) : 'missing')
+  click(byClass(view, 'scp-sed-row')[0])
+  view = await t.settle()
+  const staleCallout = byClass(view, 'scp-callout').find((node) => nodeText(node).includes(staleReason))
+  const staleLabel = staleCallout && staleCallout.children ? staleCallout.children[0] : null
+  expect('PR 详情过期：标签写评估过期', !!staleLabel && nodeText(staleLabel) === '评估过期',
+    staleLabel ? nodeText(staleLabel) : 'missing')
+  expect('PR 详情过期：写出过期原因', !!staleCallout && nodeText(staleCallout).includes(staleReason),
+    staleCallout ? nodeText(staleCallout) : 'missing')
+  expect('PR 详情过期：说明合入前复核先重跑 groom 再更新 PR',
+    !!staleCallout && nodeText(staleCallout).includes('合入前复核报评估过期时，先重跑 groom 再更新 PR'),
+    staleCallout ? nodeText(staleCallout) : 'missing')
+  expect('PR 详情过期：抬头阶段仍是已提 PR', byClass(view, 'scp-identity').length === 1
+    && nodeText(byClass(view, 'scp-identity')[0]).includes('已提 PR · 合入未确认'),
+  byClass(view, 'scp-identity')[0] ? nodeText(byClass(view, 'scp-identity')[0]) : 'missing')
+}
+
+{
+  // 已合入的行评估过期：下一步是收尾，过期没有对应动作，行内不给「评估过期」提示。
+  const mergedDraft = Object.assign({}, SEDIMENT.drafts[2], {
+    state: 'pr_merged', stage: '已合入 · 待收尾', stageTone: 'ok',
+    stale: true, staleReasons: ['知识库在评估后前进了 1 个文件'],
+    pr: {
+      number: 434, url: 'https://github.com/pillumina/ascend-sleuth/pull/434',
+      platform: 'github', state: 'merged', source: 'platform', checkedAt: '',
+    },
+    next: { kind: 'close', label: '合入后收尾', prompt: '合入后收尾的指令' },
+  })
+  const mergedQueue = Object.assign({}, SEDIMENT, {
+    drafts: [mergedDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 0, prMerged: 1, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'close', label: '合入后收尾', prompt: '合入后收尾的指令' },
+    history: [],
+  })
+  const mergedMount = await mount('recent', { sediment: mergedQueue, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  const mergedView = await openSedimentView(mergedMount)
+  const mergedRow = rowText(mergedView, 434)
+  expect('已合入行过期：阶段是已合入', mergedRow.includes('已合入 · 待收尾'), mergedRow)
+  expect('已合入行过期：行内不给评估过期提示', !mergedRow.includes('评估过期'), mergedRow)
+}
+
+{
+  // 需要重跑的行（这里只有批准失效）：阶段已是「需重跑」，行内不再加「评估过期」；
+  // 详情 callout 标签沿用「已评估」，原因文字说明是批准没绑定，不写成评估过期。
+  const rerunReason = '人的批准没有绑定到当前评估/内容，需要重新确认'
+  const rerunDraft = Object.assign({}, SEDIMENT.drafts[2], {
+    state: 'need_rerun', stage: '需重跑', stageTone: 'bad',
+    stale: true, staleReasons: [rerunReason],
+    pr: null,
+    next: { kind: 'groom', label: '继续 groom', prompt: '继续 groom 的批次指令' },
+  })
+  const rerunQueue = Object.assign({}, SEDIMENT, {
+    drafts: [rerunDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 1, decided: 0, prOpen: 0, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'groom', label: '继续 groom', prompt: '继续 groom 的批次指令' },
+    history: [],
+  })
+  const rerunMount = await mount('recent', { sediment: rerunQueue, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let rerunView = await openSedimentView(rerunMount)
+  const rerunRow = nodeText(byClass(rerunView, 'scp-sed-row')[0])
+  expect('需重跑行：阶段是需重跑', rerunRow.includes('需重跑'), rerunRow)
+  expect('需重跑行：行内不加评估过期提示', !rerunRow.includes('评估过期'), rerunRow)
+  click(byClass(rerunView, 'scp-sed-row')[0])
+  rerunView = await rerunMount.settle()
+  const rerunCallout = byClass(rerunView, 'scp-callout').find((node) => nodeText(node).includes(rerunReason))
+  const rerunLabel = rerunCallout && rerunCallout.children ? rerunCallout.children[0] : null
+  expect('需重跑详情：标签不用评估过期', !!rerunLabel && nodeText(rerunLabel) === '已评估',
+    rerunLabel ? nodeText(rerunLabel) : 'missing')
+  expect('需重跑详情：原因照实写批准失效', !!rerunCallout && nodeText(rerunCallout).includes('人的批准'), rerunCallout ? nodeText(rerunCallout) : 'missing')
+}
+
+{
   // trace 没记 harness_session 时，来源诊断仍显示单号，但不做成可点链接：
   // 单号不是会话号，拿去调 sessions.open 会报 unknown session。
   const noHarnessDraft = Object.assign({}, SEDIMENT.drafts[1], {

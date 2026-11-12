@@ -409,8 +409,14 @@ def _pr_state(entry: dict) -> str:
 def _classify(row: dict, pr_entry, done: bool) -> str:
     """状态优先级（契约 §2）：orphan → 评估/决定分支 → PR 覆盖 → done。
 
-    PR 是 open/unknown 时，过期或批准失效压过「待合入」：评估已经不能用了，
-    先去重跑 groom，PR 记录仍在详情里。
+    PR 是外部事项，有台账记录就按它定阶段：merged → pr_merged、closed → pr_closed、
+    其余（open / unknown）→ pr_open。评估过期（stale）不改 PR 阶段，只留在行的
+    stale / staleReasons 里做行内提示——PR 已经开着时重跑 groom 改不了那个 PR，
+    队列先把事项跟到合入或关闭，合入前复核（`groom_recheck.py`）自己会判过期。
+
+    批准失效（批准没绑定当前评估/内容）是例外：仍判 need_rerun。那是授权不成立，
+    要人重新确认批准（groom 指令带 --decision-prompt），与 PR 在不在无关；与知识过期
+    同时发生时也一样——两条都得重跑 groom，PR 记录照旧留在详情里。
     """
     if row.get("orphan"):
         return "orphan"
@@ -437,7 +443,8 @@ def _classify(row: dict, pr_entry, done: bool) -> str:
             state = "pr_merged"
         elif pr_state == "closed":
             state = "pr_closed"
-        elif state == "need_rerun":
+        elif state == "need_rerun" and row.get("human_decision") and not row.get(
+                "human_decision_valid"):
             state = "need_rerun"
         else:
             state = "pr_open"
