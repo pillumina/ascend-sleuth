@@ -1314,7 +1314,7 @@ window.__ModuleLoader__.load({
    新控件的字号取八档：--scp-fs-cap 10.5 / meta 11 / label 11.5 / sm 12 /
    body 12.5 / row 13 / title 15 / hero 16.5；字重取四档 400 / 500 / 600 / 650。
    间距集中在 4 / 8 / 12 / 16 / 20 / 24；圆角按控件、卡片、窗口分三档。
-   状态条共用的 .scp-menu-note / .scp-case 仍是固定值；间距与圆角沿用既有档位，未逐项 token 化。 */
+   状态条共用的 .scp-case 仍是固定值；.scp-menu-note 与其余控件一样从 token 取值；间距档未重新洗牌。 */
 .scp-pal{position:relative;display:flex;flex-direction:column;width:min(960px,94vw);max-height:78vh;overflow:hidden;border:1px solid var(--scp-border-strong);border-radius:16px;background:var(--scp-surface);color:var(--scp-text);box-shadow:var(--scp-shadow);outline:none;animation:scp-pop 190ms cubic-bezier(.2,.9,.3,1);
   --scp-ctl-h:32px;--scp-ctl-h-sm:28px;--scp-ctl-h-input:34px;--scp-ctl-r:8px;--scp-side-pad-x:24px;}
 .scp-pal-top{display:flex;align-items:center;gap:var(--scp-sp-3);padding:var(--scp-sp-4) var(--scp-sp-5);border-bottom:1px solid var(--scp-border);}
@@ -1465,8 +1465,6 @@ body[data-ds-dark-theme] .scp-view-tab[data-on="true"],[data-theme="dark"] .scp-
 .scp-version{font-size:var(--scp-fs-cap);color:var(--scp-faint);font-variant-numeric:tabular-nums;}
 .scp-pal-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--scp-sp-2);flex:1 1 auto;min-height:200px;padding:var(--scp-sp-6);color:var(--scp-muted);font-size:var(--scp-fs-body);line-height:var(--scp-lh-prose);text-align:center;}
 .scp-menu-note{margin-left:auto;max-width:52%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--scp-fs-cap);line-height:1.6;color:var(--scp-warn);}
-.scp-toast:empty{display:none;}
-.scp-hint:empty{display:none;}
 .scp-sr-only{position:absolute!important;width:1px!important;height:1px!important;margin:-1px!important;padding:0!important;border:0!important;overflow:hidden!important;clip-path:inset(50%)!important;white-space:nowrap!important;}
 .scp-toast{position:absolute;left:50%;bottom:52px;transform:translateX(-50%);max-width:min(80%,520px);padding:7px 14px;border-radius:var(--scp-r-pill,999px);background:var(--scp-surface);border:1px solid var(--scp-border-strong);box-shadow:var(--scp-shadow);font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);color:var(--scp-text);white-space:normal;text-align:center;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;animation:scp-toast 170ms ease-out;}
 @keyframes scp-toast{from{opacity:0;transform:translate(-50%,6px)}to{opacity:1;transform:translate(-50%,0)}}
@@ -4253,7 +4251,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               collapsed ? null : h('div', { className: 'scp-foot' },
                 h('span', { className: 'scp-empty-note' }, tr('empty.body')))),
             // 这个分支也要挂 hint：没有诊断单时点「去同步 / 稍后」的结果得看得见。
-            h('div', { className: 'scp-hint', role: 'status' }, hint || ''))
+            hint ? h('div', { className: 'scp-hint' }, hint) : null)
         }
 
         const bound = !!data.bound && primary.sessionId === data.bound.sessionId
@@ -4481,7 +4479,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 key: chip.key, className: 'scp-chip', 'data-tone': chip.tone,
               }, chip.text))) : null),
             sedimentRow),
-          h('div', { className: 'scp-hint', role: 'status' }, hint || ''))
+          hint ? h('div', { className: 'scp-hint' }, hint) : null)
       }
     }
 
@@ -7519,7 +7517,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   })
                   : h('div', { className: 'scp-cmd-empty' }, tr('cmd.empty'))),
               h('div', { className: 'scp-pal-foot' }, h('span', {}, tr('cmd.hint'))))) : null,
-          h('span', { className: 'scp-toast', role: 'status', title: toast || undefined }, toast || '')))
+          toast ? h('span', { className: 'scp-toast', title: toast }, toast) : null))
     }
 
     // ── 打开其它会话（轨迹写了 harness_session 时可用）────────────────────
