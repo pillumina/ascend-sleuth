@@ -183,7 +183,7 @@ stderr（面板包冒烟会打 `RPC 路由已注册`），以退出码为准；�
    并在 `dirname($DSH_PROFILE_DIR)/.generations/live/` 下放一份包快照；没有这两个东西的发行版，
    装完就是前两处记录。按机器上实际有的那套读，别按另一套找。
 3. **验证**：先跑 `node scripts/panel_rpc_probe.js`（有 token 打 RPC，没有就只验 host 半：0 = RPC 通，
-   3 = host 半在、端点没验，2 = 拿不到地址或路由没注册）；
+   3 = 只证到 host 半、端点与取数没验，2 = 拿不到地址或路由没注册／带 token 时未授权，1 = 其它失败）；
    再让用户刷新页面，浏览器代码在页面启动时装载。tab 在且版本串等于包版本，浏览器半才算换到；
    host 半有没有加载看工具与 RPC。状态条包另外看三处席位：`conversation.input.dock` 的
    `sleuth-copilot`、`conversation.input.right` 的 `sleuth-copilot-toolbar`、`shell.overlay` 的
@@ -284,7 +284,8 @@ node scripts/panel_rpc_probe.js
 - `POST <base>/ascend-sleuth-panels/__probe__` 回 401：鉴权门在，请求只是没带会话 cookie。
 
 退出码：0 = RPC 通；3 = 只证到 host 半（路由在、鉴权门在），端点与取数没验；2 = 拿不到地址，
-或路由没注册（host 半没加载），或带 token 时未授权。只看路由那一层时加 `--host-only`。
+或路由没注册（host 半没加载），或带 token 时未授权；1 = 其它失败（连不上、信封不合法、面板侧降级）。
+只看路由那一层时加 `--host-only`。
 
 要证明「端点真能取数」「加载的是这一版」，才用下面的临时实例。
 
@@ -557,8 +558,8 @@ DSH Desktop（官方与社区发行版）主要用路由三/四/五；这一节�
      替换已装包时通常是这个。
    - `failed` → 读诊断；`webServer` 一类的报错说明路由没注册成功。
 
-4. **验证**：先跑 `node scripts/panel_rpc_probe.js`（0 = RPC 通，3 = 只证到 host 半，
-   2 = 拿不到地址，或路由没在服务／未授权）；
+4. **验证**：先跑 `node scripts/panel_rpc_probe.js`（0 = RPC 通，3 = 只证到 host 半、端点与取数没验，
+   2 = 拿不到地址或路由没注册／带 token 时未授权，1 = 其它失败）；
    再用 `cordis_inspect_query`（client, `Slots`, `listSubTree`, root 下三处）看注册是否在占位列表里：
    `conversation.view` 的 `ascend-diagnose`、`main` 的 key `ascend-sleuth-console`、`sidebar.panellist` 的同一个 id。
    插槽占位与 RPC 都通了也不等于看着对，最后请用户点开一页确认渲染。诊断画布装了就再看 `main` 的

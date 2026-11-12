@@ -59,20 +59,23 @@ async function runProbe(args, io) {
   // 没有 token 时也要能判 host 半：地址不必从日志里取，会话里的 DSH_WEB_URL 就是。
   const explicit = args.url === null ? null : args.url.replace(/\/$/, '')
   const base = target !== null ? target.base : (explicit !== null ? explicit : sessionBase())
+  // 来源要跟着地址一起报：同一句话里既可能是 `--url` 也可能是 DSH_WEB_URL，指成别的实例的代价
+  // 比多带一个标签大（这套脚本取址时一直在防的就是拿别的实例的地址去装包）。
+  const source = target !== null ? target.source : (explicit !== null ? '命令行 --url' : 'DSH_WEB_URL')
   if (base === null) {
     say('探针：拿不到 DSH 的地址与 token\n')
     for (const line of noTargetLines(process.env, args.log)) say('  ' + line + '\n')
     say('  可显式传 --url <base> --token <token>，或 --log <harness.log 路径>\n')
     return 2
   }
-  return runHostHalf(base, target, say, warn)
+  return runHostHalf(base, source, say, warn)
 }
 
 // 不带 token 的一层：只判 host 半加载没加载。它回答不了「端点能不能取数」与「是不是这一版」，
 // 所以单独给退出码 3，不与 0（RPC 通了）混在一起。
-async function runHostHalf(base, target, say, warn) {
+async function runHostHalf(base, source, say, warn) {
   say('探针：只验 host 半（端点与取数不验）\n')
-  say('  目标 ' + base + '（地址取自 ' + (target === null ? 'DSH_WEB_URL' : target.source) + '）\n')
+  say('  目标 ' + base + '（地址取自 ' + source + '）\n')
 
   let probe
   try {
@@ -186,7 +189,7 @@ async function runRpc(args, target, say, warn) {
   return 0
 }
 
-// 自测：起两个最小假服务器（一个假装 prefix 路由在，一个什么都不认），把八条判定各走一遍
+// 自测：起两个最小假服务器（一个假装 prefix 路由在，一个什么都不认），把九条判定各走一遍
 // （不需要 DSH，所以 CI 里也能跑）
 function startFakeServer() {
   const server = http.createServer((req, res) => {
@@ -284,6 +287,8 @@ async function selftest() {
     { name: '路由没在服务', url: base + '/not-our-prefix', want: 2 },
     { name: '只验 host 半：路由在', url: base, hostOnly: true, want: 3 },
     { name: '只验 host 半：路由没注册', url: bareBase, hostOnly: true, want: 2 },
+    // 显式 --url 却不带 token：地址必须取命令行那一个，不能悄悄换成本会话实例。
+    { name: '只验 host 半：--url 不带 token', url: base, token: null, log: 'dsh-probe-selftest-no-such.log', want: 3 },
   ]
   let bad = 0
   try {
@@ -291,7 +296,8 @@ async function selftest() {
       const args = Object.assign(parseArgs([]), {
         endpoint: item.endpoint === undefined ? DEFAULT_ENDPOINT : item.endpoint,
         url: item.url === undefined ? base : item.url,
-        token: 'selftest-token',
+        token: item.token === undefined ? 'selftest-token' : item.token,
+        log: item.log === undefined ? null : item.log,
         payload: '{"sessionId":"selftest"}',
         hostOnly: item.hostOnly === true,
       })
@@ -322,7 +328,7 @@ async function selftest() {
     process.stderr.write('panel-rpc-probe 自测未通过：' + bad + ' 例\n')
     return 1
   }
-  process.stdout.write('panel-rpc-probe selftest ok（8 例：正常 / 信封 / 报错 / 降级 / 路由不在 / host 半在 / host 半不在 / 无 token 退路）\n')
+  process.stdout.write('panel-rpc-probe selftest ok（9 例：正常 / 信封 / 报错 / 降级 / 路由不在 / host 半在 / host 半不在 / 无 token 退路 / --url 无 token）\n')
   return 0
 }
 
