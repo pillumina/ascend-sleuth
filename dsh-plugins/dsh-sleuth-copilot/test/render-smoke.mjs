@@ -375,6 +375,23 @@ function cssRule(selector) {
   return end < 0 ? '' : css.slice(start + selector.length + 1, end)
 }
 
+// 同一选择器可能有多段声明（后一段覆盖前一段）：排版契约要能看全部，不能只看第一处。
+function cssRules(selector) {
+  const tag = styleTags[styleTags.length - 1]
+  const css = tag && typeof tag.textContent === 'string' ? tag.textContent : ''
+  const out = []
+  let from = 0
+  for (;;) {
+    const start = css.indexOf(selector + '{', from)
+    if (start < 0) break
+    const end = css.indexOf('}', start)
+    if (end < 0) break
+    out.push(css.slice(start + selector.length + 1, end))
+    from = end + 1
+  }
+  return out
+}
+
 function byClass(view, className) {
   return view.nodes.filter((node) => typeof node.props.className === 'string' && node.props.className.split(/\s+/).includes(className))
 }
@@ -2322,6 +2339,8 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   view = await t.settle()
   expect('沉淀队列：批次条出现', byClass(view, 'scp-batch').length === 1)
   expect('沉淀队列：3 行草稿', byClass(view, 'scp-sed-row').length === 3, String(byClass(view, 'scp-sed-row').length))
+  expect('沉淀队列：行包装带沉淀标记', byClass(view, 'scp-row-wrap--sed').length === 3,
+    String(byClass(view, 'scp-row-wrap--sed').length))
   expect('沉淀队列：显示目标', view.text.includes('origin · main · GitCode'))
   expect('沉淀队列：按下一步分组', view.text.includes('待继续 groom') && view.text.includes('待提 PR'))
   expect('沉淀队列：显示年龄', view.text.includes('16 天'))
@@ -4412,6 +4431,28 @@ function clickWith(node, extra) {
   expect('选择态：样式默认藏复选框', cssRule('.scp-row-check').includes('opacity:0'), cssRule('.scp-row-check'))
   expect('选择态：进入后露出复选框', cssRule('.scp-pal-list[data-selecting="true"] .scp-row-check').includes('opacity:1'),
     cssRule('.scp-pal-list[data-selecting="true"] .scp-row-check'))
+  // 行首不再给复选框留槽位：它绝对定位覆在状态点上，默认不占宽（否则首屏每行左侧都空一截）。
+  expect('排版：行前复选框不占行宽',
+    cssRule('.scp-row-wrap>.scp-row-check').includes('position:absolute')
+      && cssRule('.scp-row-wrap').includes('position:relative'),
+    cssRule('.scp-row-wrap') + ' || ' + cssRule('.scp-row-wrap>.scp-row-check'))
+  // 沉淀行的状态点贴行首（不是垂直居中），复选框要跟着它对齐，不能落在行中间。
+  expect('排版：沉淀行复选框贴行首状态点',
+    cssRule('.scp-row-wrap--sed>.scp-row-check').includes('top:8px')
+      && !cssRule('.scp-row-wrap--sed>.scp-row-check').includes('translateY'),
+    cssRule('.scp-row-wrap--sed>.scp-row-check'))
+  // 批次条左右两组同行：一行放得下就并排，放不下才整组换到下一行。
+  // 后一条 .scp-batch 规则会把 display 覆盖回去，必须看全部规则；只看第一条会在改回 block 时误绿。
+  const batchRules = cssRules('.scp-batch')
+  expect('排版：批次条一组一行放不下才换行',
+    batchRules.some((rule) => rule.includes('flex-wrap:wrap'))
+      && batchRules.some((rule) => rule.includes('position:relative') && rule.includes('display:flex'))
+      && cssRule('.scp-batch-line + .scp-batch-line').includes('margin-left:auto'),
+    batchRules.join(' || ') + ' || ' + cssRule('.scp-batch-line + .scp-batch-line'))
+  // 沉淀行标题列与诊断行对齐靠左内边距 14px；改回 10px 时复选框会压住标题首字。
+  expect('排版：沉淀行标题列与诊断行对齐',
+    cssRule('.scp-sed-row').includes('padding:10px 10px 10px 14px'),
+    cssRule('.scp-sed-row'))
   click(findButton(view, '选择'))
   view = await t.settle()
   expect('选择态：进入后列表标 selecting', byClass(view, 'scp-pal-list')[0].props['data-selecting'] === 'true')

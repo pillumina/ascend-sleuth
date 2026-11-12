@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.24.0'
+    const PLUGIN_VERSION = '0.24.1'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。
@@ -1646,7 +1646,7 @@ body[data-ds-dark-theme] .scp-view-tab[data-on="true"],[data-theme="dark"] .scp-
 @media (max-width: 520px){.scp-pal-backdrop{padding:4vh 10px 10px;}.scp-pal{max-height:88vh;}.scp-picker{width:min(330px,calc(100vw - 32px));}}
 `,
       `/* ── 沉淀队列（v1）──────────────────────────────────────────────── */
-.scp-batch{display:flex;align-items:center;gap:var(--scp-sp-2);padding:10px var(--scp-sp-5);border-bottom:1px solid var(--scp-border);background:var(--scp-surface);flex:none;min-width:0;}
+.scp-batch{display:flex;align-items:center;gap:var(--scp-sp-2);flex-wrap:wrap;padding:10px var(--scp-sp-5);border-bottom:1px solid var(--scp-border);background:var(--scp-surface);flex:none;min-width:0;}
 .scp-batch-strong{font-size:var(--scp-fs-body);font-weight:var(--scp-fw-semi);line-height:var(--scp-lh-base);white-space:nowrap;}
 .scp-batch-chip{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:5px;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);line-height:1;white-space:nowrap;}
 .scp-batch-chip[data-tone="warn"]{background:var(--scp-warn-soft);color:color-mix(in srgb,var(--scp-warn) 66%,var(--scp-text));}
@@ -1662,7 +1662,7 @@ body[data-ds-dark-theme] .scp-view-tab[data-on="true"],[data-theme="dark"] .scp-
 .scp-sed-side>.scp-sed-hint{margin-top:6px;}
 .scp-sed-side>.scp-list-block>.scp-section-label{margin:0 0 var(--scp-sp-2);}
 .scp-sed-group{display:flex;align-items:center;justify-content:space-between;padding:var(--scp-sp-3) 8px 6px;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);letter-spacing:.02em;color:var(--scp-muted);}
-.scp-sed-row{position:relative;display:flex;gap:10px;width:100%;padding:10px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 120ms ease;}
+.scp-sed-row{position:relative;display:flex;gap:10px;width:100%;padding:10px 10px 10px 14px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 120ms ease;}
 .scp-sed-row:hover{background:var(--scp-surface-2);}
 .scp-sed-row[data-on="true"]{background:var(--scp-accent-soft);}
 .scp-sed-row::before{content:"";position:absolute;left:4px;top:50%;width:2px;height:18px;margin-top:-9px;border-radius:1px;background:transparent;pointer-events:none;}
@@ -1761,9 +1761,13 @@ body[data-ds-dark-theme] .scp-pal .scp-cmd-backdrop,[data-theme="dark"] .scp-pal
 .scp-kb-error .scp-btn:hover{background:var(--scp-bad-soft);}
 @container (max-width: 720px){.scp-kb-notice,.scp-kb-error{flex-wrap:wrap;}.scp-kb-notice-note{display:none;}}
 body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,[data-theme="dark"] .scp-actions,[data-theme="dark"] .scp-sed-actions{box-shadow:0 -8px 16px -12px rgba(0,0,0,.55);}
-.scp-row-wrap{display:flex;align-items:center;gap:2px;min-width:0;}
+.scp-row-wrap{position:relative;display:flex;align-items:center;gap:2px;min-width:0;}
 .scp-row-wrap>.scp-pal-row,.scp-row-wrap>.scp-sed-row{flex:1 1 auto;min-width:0;}
 .scp-row-check{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-left:3px;padding:0;border:0;border-radius:6px;background:transparent;cursor:pointer;opacity:0;pointer-events:none;transition:opacity 120ms ease;}
+/* 行前复选框覆在状态点的位置上：默认不占宽，悬停 / 选择态 / 已勾选时盖住状态点，行首不再留 24px 空槽。 */
+.scp-row-wrap>.scp-row-check{position:absolute;left:6px;top:50%;transform:translateY(-50%);z-index:2;margin-left:0;}
+/* 沉淀行的状态点贴行首（10px 内边距 + 7px 上边距 + 6px 圆点，中心在 20px），复选框跟着它对齐。 */
+.scp-row-wrap--sed>.scp-row-check{top:8px;transform:none;}
 .scp-row-wrap:hover .scp-row-check,.scp-row-wrap:focus-within .scp-row-check{opacity:1;pointer-events:auto;}
 .scp-pal-list[data-selecting="true"] .scp-row-check{opacity:1;pointer-events:auto;}
 .scp-row-check[aria-checked="true"]{opacity:1;pointer-events:auto;}
@@ -1778,9 +1782,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 .scp-row-check[data-mixed="true"] .scp-row-check-box::after{content:"";width:7px;height:2px;border-radius:1px;background:var(--scp-accent);}
 .scp-pal-row[data-sel="true"],.scp-sed-row[data-sel="true"]{background:var(--scp-surface-2);}
 .scp-pal-row[data-on="true"][data-sel="true"],.scp-sed-row[data-on="true"][data-sel="true"]{background:var(--scp-accent-soft);}
-.scp-batch{position:relative;display:block;}
-.scp-batch-line{display:flex;align-items:center;gap:var(--scp-sp-2);min-width:0;flex-wrap:wrap;}
-.scp-batch-line + .scp-batch-line{margin-top:4px;}
+.scp-batch{position:relative;display:flex;}
+.scp-batch-line{display:flex;align-items:center;gap:var(--scp-sp-2);min-width:0;max-width:100%;flex-wrap:wrap;}
+/* 动作组靠右；一行放得下时与左侧读数同一行，放不下才整组换到下一行。 */
+.scp-batch-line + .scp-batch-line{margin-left:auto;}
 .scp-batch-note{font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
 .scp-batch-menu{position:absolute;right:var(--scp-sp-5);top:calc(100% - 2px);z-index:8;width:min(300px,calc(100% - 32px));padding:5px;border:1px solid var(--scp-border-strong);border-radius:12px;background:var(--scp-surface);box-shadow:var(--scp-shadow);}
 .scp-batch-item{display:flex;align-items:center;gap:8px;width:100%;padding:7px 9px;border:0;border-radius:8px;background:transparent;color:var(--scp-text);font:inherit;font-size:var(--scp-fs-body);text-align:left;cursor:pointer;}
@@ -7489,7 +7494,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                         draft.source && draft.source.sessionId
                           ? h('span', {}, draft.source.sessionId)
                           : null)))
-                  return h('div', { key: draft.key, className: 'scp-row-wrap' },
+                  return h('div', { key: draft.key, className: 'scp-row-wrap scp-row-wrap--sed' },
                     h('button', {
                       key: 'check',
                       type: 'button',
