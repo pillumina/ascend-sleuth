@@ -3221,6 +3221,50 @@ function rowText(view, prNumber) {
   expect('最近完成：显示 PR 链接', view.text.includes('#429'), view.text.slice(-300))
   const link = findNode(view, (node) => node.type === 'a' && node.props && node.props.href === 'https://github.com/pillumina/ascend-sleuth/pull/429')
   expect('最近完成：链接指向 PR', !!link)
+  // 左列宽 300–400px：标题、状态、PR 链接、时间挤一行时，链接（如 #429）与时间（日期与时刻）会在中间断行。
+  // 契约是两行——标题 + 时间、状态 + PR 链接——且链接与时间都不换行。按行断言爸爸子包含：把时间挪进次行、
+  // 或给 fixture 加历史行都要能判对；PR 链接可选（没有 PR 的历史行只有状态），只要求每行至多一条。
+  const classNamesOf = (node) => (node && node.props && typeof node.props.className === 'string'
+    ? node.props.className.split(/\s+/).filter(Boolean) : [])
+  const subtreeClassNames = (node) => {
+    const out = []
+    const walk = (one) => {
+      if (!one) return
+      out.push(classNamesOf(one))
+      for (const child of one.children || []) walk(child)
+    }
+    walk(node)
+    return out
+  }
+  const historyBlock = byClass(view, 'scp-sed-history')[0]
+  const historyRows = ((historyBlock && historyBlock.children) || [])
+    .filter((node) => classNamesOf(node).includes('scp-sed-history-row'))
+  const historyShapes = historyRows.map((row) => {
+    const direct = (row.children || []).filter((node) => node && node.props)
+    const line = direct.find((node) => classNamesOf(node).includes('scp-sed-history-line'))
+    const meta = direct.find((node) => classNamesOf(node).includes('scp-sed-meta'))
+    const inLine = subtreeClassNames(line)
+    const inMeta = subtreeClassNames(meta)
+    const has = (list, name) => list.some((names) => names.includes(name))
+    return {
+      line: !!line,
+      meta: !!meta,
+      titleInLine: has(inLine, 'scp-sed-history-title'),
+      timeInLine: has(inLine, 'scp-sed-history-time'),
+      metaInLine: has(inLine, 'scp-sed-meta'),
+      prInMeta: inMeta.filter((names) => names.includes('scp-sed-history-pr')).length,
+    }
+  })
+  expect('最近完成：每行首行标题与时间、次行状态与链接',
+    historyShapes.length > 0 && historyShapes.every((shape) => shape.line && shape.meta
+      && shape.titleInLine && shape.timeInLine && !shape.metaInLine && shape.prInMeta <= 1),
+    JSON.stringify(historyShapes))
+  expect('最近完成：链接与时间不换行',
+    cssRule('.scp-sed-history-pr').includes('white-space:nowrap')
+      && cssRule('.scp-sed-history-time').includes('flex:none'),
+    cssRule('.scp-sed-history-pr') + ' || ' + cssRule('.scp-sed-history-time'))
+  expect('最近完成：行是两行布局', cssRule('.scp-sed-history-row').includes('flex-direction:column'),
+    cssRule('.scp-sed-history-row'))
 }
 
 {

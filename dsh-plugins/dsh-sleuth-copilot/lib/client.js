@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.25.0'
+    const PLUGIN_VERSION = '0.25.1'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。
@@ -1734,9 +1734,15 @@ body[data-ds-dark-theme] .scp-pal .scp-cmd-backdrop,[data-theme="dark"] .scp-pal
 .scp-sed-link:hover{text-decoration:underline;}
 .scp-sed-actions{position:sticky;bottom:0;display:flex;align-items:center;gap:var(--scp-sp-2);flex-wrap:wrap;margin:var(--scp-sp-5) calc(-1 * var(--scp-side-pad-x)) 0;padding:var(--scp-sp-3) var(--scp-side-pad-x) var(--scp-sp-4);border-top:1px solid var(--scp-border);background:var(--scp-surface-2);box-shadow:0 -8px 16px -12px color-mix(in srgb,var(--scp-text) 24%,transparent);}
 .scp-sed-hint{font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);color:var(--scp-muted);}
-.scp-sed-history{display:flex;flex-direction:column;gap:6px;width:100%;margin-top:10px;padding-top:var(--scp-sp-2);border-top:1px solid var(--scp-border);}
-.scp-sed-history-row{display:flex;align-items:center;gap:var(--scp-sp-2);font-size:var(--scp-fs-label);color:var(--scp-muted);min-width:0;}
-.scp-sed-history-title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--scp-text);}
+/* 最近完成落在宽 300–400px 的左列里：标题、状态、PR 链接、时间挤一行时，链接与时间会在中间断行
+   （#482 被拆成两行、时间拆成日期与时刻）。改成两行：标题 + 时间；状态 + PR 链接。 */
+.scp-sed-history{display:flex;flex-direction:column;gap:2px;width:100%;margin-top:10px;padding-top:var(--scp-sp-2);border-top:1px solid var(--scp-border);}
+.scp-sed-history-row{display:flex;flex-direction:column;align-items:stretch;gap:2px;padding:4px 0;font-size:var(--scp-fs-label);color:var(--scp-muted);min-width:0;text-align:left;}
+.scp-sed-history-row+.scp-sed-history-row{border-top:1px solid color-mix(in srgb,var(--scp-border) 60%,transparent);}
+.scp-sed-history-line{display:flex;align-items:baseline;gap:var(--scp-sp-2);min-width:0;}
+.scp-sed-history-title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--scp-fs-sm);font-weight:var(--scp-fw-medium);line-height:var(--scp-lh-base);color:var(--scp-text);}
+.scp-sed-history-time{flex:none;font-size:var(--scp-fs-meta);font-variant-numeric:tabular-nums;color:var(--scp-muted);}
+.scp-sed-history-pr{flex:none;white-space:nowrap;}
 .scp-dock-sed{display:flex;align-items:center;gap:7px;min-width:0;margin-top:1px;padding:5px 2px 0;border-top:1px solid var(--scp-border);font-size:var(--scp-fs-meta);}
 .scp-dock-sed-dot{width:6px;height:6px;border-radius:50%;background:var(--scp-warn);flex:none;}
 .scp-dock-sed-dot[data-tone="ok"]{background:var(--scp-ok);}
@@ -7420,15 +7426,17 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               ? h('div', { className: 'scp-sed-history' },
                 h('div', { className: 'scp-section-label' }, tr('sediment.history')),
                 sedHistory.map((item) => h('div', { key: item.key, className: 'scp-sed-history-row' },
-                  h('span', { className: 'scp-sed-history-title' }, item.title || item.key),
-                  h('span', { className: 'scp-chip' }, item.state === 'knowledge' ? tr('sediment.stepper.promoted') : tr('sediment.history.archived')),
-                  item.pr && item.pr.url && /^https?:\/\//i.test(String(item.pr.url))
-                    ? h('a', {
-                      className: 'scp-link', href: String(item.pr.url), target: '_blank',
-                      rel: 'noopener noreferrer', title: String(item.pr.url),
-                    }, (item.pr.number ? '#' + item.pr.number : tr('sediment.detail.pr')) + ' ↗')
-                    : null,
-                  item.at ? h('span', { className: 'scp-sed-hint' }, formatTime(item.at) || item.at) : null)))
+                  h('span', { className: 'scp-sed-history-line' },
+                    h('span', { className: 'scp-sed-history-title', title: item.title || item.key }, item.title || item.key),
+                    item.at ? h('span', { className: 'scp-sed-history-time' }, formatTime(item.at) || item.at) : null),
+                  h('span', { className: 'scp-sed-meta' },
+                    h('span', { className: 'scp-chip' }, item.state === 'knowledge' ? tr('sediment.stepper.promoted') : tr('sediment.history.archived')),
+                    item.pr && item.pr.url && /^https?:\/\//i.test(String(item.pr.url))
+                      ? h('a', {
+                        className: 'scp-link scp-sed-history-pr', href: String(item.pr.url), target: '_blank',
+                        rel: 'noopener noreferrer', title: String(item.pr.url),
+                      }, (item.pr.number ? '#' + item.pr.number : tr('sediment.detail.pr')) + ' ↗')
+                      : null))))
               : null)
           : visibleRows.length === 0
             ? h('div', { className: 'scp-pal-empty' }, tr('sediment.emptyFiltered'))
