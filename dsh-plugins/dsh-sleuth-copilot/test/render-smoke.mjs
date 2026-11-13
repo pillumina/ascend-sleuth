@@ -1372,7 +1372,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('快捷键：macOS 工具条提示 ⌘⇧D', String(toolbar.props.title).includes('⌘⇧D 打开工作台'), toolbar.props.title)
   click(toolbar)
   const view = await t.settle()
-  expect('快捷键：macOS 底部提示 ⌘K', view.text.includes('⌘K'), view.text.slice(-160))
+  expect('快捷键：macOS 底部提示 ⌘⇧K', view.text.includes('⌘⇧K'), view.text.slice(-160))
 }
 
 {
@@ -1383,7 +1383,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('快捷键：Windows 工具条提示 Ctrl+Shift+D', String(toolbar.props.title).includes('Ctrl+Shift+D 打开工作台'), toolbar.props.title)
   click(toolbar)
   const view = await t.settle()
-  expect('快捷键：Windows 底部提示 Ctrl+K', view.text.includes('Ctrl+K') && !view.text.includes('⌘K'), view.text.slice(-160))
+  expect('快捷键：Windows 底部提示 Ctrl+Shift+K', view.text.includes('Ctrl+Shift+K') && !view.text.includes('⌘K'), view.text.slice(-160))
   globalThis.navigator.platform = 'MacIntel'
   globalThis.navigator.userAgent = 'Mozilla/5.0 (Macintosh)'
 }
@@ -1801,9 +1801,9 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const t = await mount('closed')
   click(findToolbar(t.view()))
   await t.settle()
-  pressKey('k', { metaKey: true })
+  pressKey('k', { metaKey: true, shiftKey: true })
   const cmdView = await t.settle()
-  expect('命令面板：⌘K 打开', byClass(cmdView, 'scp-cmd').length === 1)
+  expect('命令面板：⌘⇧K 打开', byClass(cmdView, 'scp-cmd').length === 1)
   expect('命令面板：说明作用于哪一单',
     byClass(cmdView, 'scp-cmd-where').length === 1
       && nodeText(byClass(cmdView, 'scp-cmd-where')[0]).includes('作用于'),
@@ -1819,7 +1819,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const t = await mount('closed')
   click(findToolbar(t.view()))
   await t.settle()
-  pressKey('k', { metaKey: true })
+  pressKey('k', { metaKey: true, shiftKey: true })
   await t.settle()
   pressKey('Escape')
   await t.settle()
@@ -1829,6 +1829,19 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(findToolbar(closedView))
   const reopened = await t.settle()
   expect('命令面板：普通重开不残留', byClass(reopened, 'scp-cmd').length === 0, String(byClass(reopened, 'scp-cmd').length))
+}
+
+{
+  // 主键不带 Shift 的组合归宿主（DSH 把它绑给「搜索会话」）：本包不能把它当成自己的一条，
+  // 否则真实页面里宿主先 preventDefault，本包的处理器会让路，读者看到的是「按了没反应」。
+  const t = await mount('closed')
+  click(findToolbar(t.view()))
+  const idle = await t.settle()
+  pressKey('k', { metaKey: true })
+  const after = await t.settle()
+  expect('命令面板：⌘K 不打开（归宿主的搜索会话）',
+    byClass(idle, 'scp-pal').length === 1 && byClass(after, 'scp-cmd').length === 0,
+    String(byClass(after, 'scp-cmd').length))
 }
 
 {
@@ -4638,16 +4651,16 @@ function clickWith(node, extra) {
 }
 
 {
-  // 指令弹层盖在命令面板之上：这时按 ⌘K 不能再把命令面板开到遮罩下面。
+  // 指令弹层盖在命令面板之上：这时按 ⌘⇧K 不能再把命令面板开到遮罩下面。
   const t = await mount('multi')
   click(findToolbar(t.view()))
   let view = await t.settle()
   click(findButton(view, '沉淀当前筛选 1 单'))
   view = await t.settle()
   expect('弹层：先打开指令预览', byClass(view, 'scp-modal').length === 1)
-  pressKey('k', { metaKey: true })
+  pressKey('k', { metaKey: true, shiftKey: true })
   view = await t.settle()
-  expect('弹层：⌘K 不打开命令面板', byClass(view, 'scp-cmd').length === 0 && byClass(view, 'scp-modal').length === 1,
+  expect('弹层：⌘⇧K 不打开命令面板', byClass(view, 'scp-cmd').length === 0 && byClass(view, 'scp-modal').length === 1,
     String(byClass(view, 'scp-cmd').length))
 }
 
