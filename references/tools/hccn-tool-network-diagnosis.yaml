@@ -32,6 +32,7 @@ related_references:
 - hccl-error-codes
 - npu-smi-950-device-ops
 - shmem-usage-limits-and-troubleshooting
+- hccn-tool-qos-pfc-tc-dscp
 status: active
 last_verified: 2026-09-15
 content:
