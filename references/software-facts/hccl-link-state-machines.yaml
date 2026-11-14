@@ -1,0 +1,41 @@
+id: hccl-link-state-machines
+type: software-fact
+title: HCCL 建链的四台状态机（socket / QP 四态 / Channel 三态 / UB jetty）与 A2/A3 legacy 建链流程
+summary: 通道卡在 CONNECTING 或 qp_status 一直是 0 时看这条：先确认卡在哪台状态机，再看该阶段交换的参数与失败日志。
+
+sources:
+- type: engineer-input
+  engineer: stfdtj（GitHub 账号：HCCL 建链机制笔记整理者）
+  document: "hccl-learning 笔记 07 状态机与交换机、16 建链状态机（共 17 篇，内容基于 cann/hcomm master HEAD c7e149d 代码阅读，非官方文档；仓库为非公开仓库，出处以本篇名与篇号为准）"
+  input_session: session-1f5c4a0f-8d34-4c02-a19c-386206c9d8cc
+  confirmed_at: 2026-11-14
+  verification: auto-extracted
+applies_to:
+  platforms:
+  - A2-910B
+  - A3-910C
+  - A5-950
+  frameworks:
+  - hccl
+  categories:
+  - interrupt
+related_references:
+- ascend-hccl-comm-fault-triage
+- hccl-comm-init-and-link-faults
+- hccl-domain-link-run-phases
+- hccl-transport-and-notify-dataplane
+- hccn-tool-network-diagnosis
+status: active
+last_verified: 2026-11-14
+content:
+  claim: >-
+    建链分两段：换参数（socket）和推状态（QP / Jetty），两边都推完 channel 才 READY。对使用者可见的是 Channel 三态：`HCOMM_CHANNEL_STATUS_CONNECTING`（建链中，需继续调用推进）、`HCOMM_CHANNEL_STATUS_READY`（可通信）、`HCOMM_CHANNEL_STATUS_FAILED_INTERNAL`（失败，≥ 该值均视为失败）。`HcommChannelCreate` 只创建对象、不建链，必须循环调 `HcommChannelGetStatus`，每调一次推进一步，直到 READY 或失败。
+    RoCE 的 QP（Queue Pair，收发队列对）四态是 IB / RoCE 标准而不是 HCCL 自造：RESET（刚创建，什么都不能发）→ INIT（设了本地端口号、pkey 索引、访问权限、owner，只能收）→ RTR（Ready To Receive，已知道对端 QPN / PSN、路径 MTU、重传次数与超时、TC / SL、GID，能收不能发）→ RTS（Ready To Send，发送侧参数配好，能真正发数据）；另有 SQD / SQE（发送队列 drain / 出错）与 ERR（需重建）。记法是：INIT 只配好本地参数，RTR 拿到对端参数后能收，RTS 才能发。RTR / RTS 的参数两边必须一致，尤其 PSN 与 MTU——不一致的典型现象是能发、对端收不到、一直重传，看起来像链路坏，实际是建链参数错。
+    A2/A3 走 legacy transport：`TransportIbverbs::InitQpConnect` 依次做交换能力（qp 数、特性）→ `HrtRaQpCreate` 建 QP（每个 RESET）→ 注册 notify 内存 → 构造交换数据 → socket 发收 QPN / PSN / GID / notify 地址 → 解析对端数据 → `ConnectQp`（把 socket fd 交给 HCCP 的 `HrtRaQpConnectAsync(qp, socketFd)`，再轮询 `hrtGetRaQpStatus` 直到返回 1 或超时）。多 QP 时多一步：用第二个 socket 做「双方都 ready」的同步（`ConnectMultiQp`）。
+    socket 层的 `RsConnState` 与 QP 层是两件事：`CONNECTED` 只说明 TCP 通了，还要走 `TAG_SYNC`（客户端已发 tag / 服务端已收到）、`VALID_SYNC`（tag 校验通过）到 `TX_TO_HCCL`（通过 `RaGetSockets` 交还上层），这条 socket 才算交给上层用——这就是日志里 `connect ok.` 之后还有 `agentId[...]` 交换的原因。
+  evidence: >-
+    16 篇一句话「建链分两段——换参数（socket）和推状态（QP / Jetty）。两边都推完，channel 才 READY」，并注明「A2/A3 走 legacy transport（QP 状态机 + hrtGetRaQpStatus 轮询），A5 走 V2 channel」。RoCE / UB 对照表原文：「RoCE 连接对象 QP（Queue Pair，RC），状态机 RESET → INIT → RTR → RTS，交换的信息 qpn / psn / gid_idx / gid」；「UB 连接对象 Jetty（+ TP 通道），状态机 INIT → TP_INFO_GETTING → JETTY_CREATING → JETTY_CREATED → JETTY_IMPORTING → (WAITING) → READY，交换的信息 tokenValue / qpKey / eid / tpHandle / psn」。QP 四态表逐行给出各态「能做什么 / 这一步设置了什么」，并写「RTR/RTS 的参数两边必须一致（尤其 PSN、MTU）。不一致的典型现象：能发、对端收不到、一直重传，看起来像链路坏，其实是建链参数错」。A2/A3 流程原文列出 `TransportIbverbs::InitQpConnect` 的七步（ExchangeCapabilityHybrid / CreateQp / CreateNotifyValueBuffer / ConstructExchangeForSend / socket Send·Recv / ParseReceivedExchangeData / ConnectQp→HrtRaQpConnectAsync + 轮询 hrtGetRaQpStatus）与「多 QP 时多一步：用第二个 socket 做『双方都 ready』的同步（ConnectMultiQp）」。07 篇原文给出 `RsConnState` 各态含义，并写「CONNECTED 只说明『TCP 通了』，还没完成 tag 校验；要走到 TX_TO_HCCL，这条 socket 才真正交给上层用」，Channel 三态原文「HcommChannelCreate 只创建对象，不建链；必须循环调 HcommChannelGetStatus，每调一次推进一步，直到 READY 或失败」。
+  details: >-
+    A2/A3 的建链日志锚点（16 篇）：正常时 `linkexp initialization success,Time:...us` → `In link ibv, waiting for qp status ready...` → `In link ibv, 1 of 1 QP get status success.` → `In link ibv, qp status has ready`；多 QP 时是 `2 of 4 QP` 这类进度。失败时看三条：`[Connect][Qp]get qp status timeout_=[120000 ms], qp_status=[0]`（对端没把状态推到 RTS，或 PSN / MTU / GID 不匹配）、`[TransportIbverbs][InitQpConnect] failed to send exchangeData exchangeDataTotalSize[..]`（参数交换没走完，先查 socket 层）、`[TransportIbverbs] multi Qp Connected checking failed! 3 of 4 QP`（两端 QP 数或顺序不一致）。grep 配方：`grep -E 'linkexp initialization|waiting for qp status|get qp status timeout' hccl.log`。
+    失败点归纳：换参数阶段卡在 CONNECTING → 查对端是否起来、端口、白名单、`HCCL_CONNECT_TIMEOUT`，典型码 EI0006；QP 推状态阶段 `qp_status` 一直是 0 → 查对端是否到 RTS、PSN / MTU / GID 是否一致，典型码 EI0009；参数不一致 → 能建但丢包 / 重传 / 性能差，表现为 CQE 错误；端口阶段 bind 失败 → 端口被占、`HCCL_IF_BASE_PORT`，典型码 EI0019 / EI0020；多 QP 同步失败 → 两端 QP 数与顺序不一致，典型码 EI0009。判断顺序是先看有没有「建到 READY / RTS」的日志，再看卡在哪个状态，最后看参数交换有没有失败。
+    A5 对照（只作关键字区分，不展开）：RoCE 仍走 QP，日志前缀变成 `[HostRdmaConnection::CreateCqAndQp]`（含 `Set qp qos success by config, TC[120] SL[2]`）与 `RaQpConnectAsync failed`；UB 走 jetty 导入，日志前缀 `[DevUbConnection]`，`JETTY_IMPORT_WAITING timeout[8s], remote jetty not published` 表示对端还没把共享 jetty 发布出来（对端建链更慢或已失败）。UB 内部状态枚举 `UbConnStatus`、HCCP 底层 `RS_JETTY_STATE`、连接层 `RmaConnStatus`（INIT / READY / SUSPENDED / CLOSE / CONN_INVALID / EXCHANGEABLE）、URMA 的 RESET / READY / SUSPENDED / ERROR 是四个不同层的状态，别互相套（16 篇 5.3 节的小标题写成「三种」，表里列了四行）。

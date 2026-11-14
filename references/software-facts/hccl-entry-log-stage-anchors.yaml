@@ -1,0 +1,46 @@
+id: hccl-entry-log-stage-anchors
+type: software-fact
+title: HCCL 建域建链的日志进度锚点（八步速查、Entry-Hccl* 清单、日志不出现的三类原因，含 A2/A3 与 A5 两代关键字）
+summary: 只有超时没有 ERROR、需要判断卡在哪个 API 时看这条：两代（legacy / V2）的八步锚点与 Entry 清单，选错代际会 grep 不到。
+
+sources:
+- type: engineer-input
+  engineer: stfdtj（GitHub 账号：HCCL 建链机制笔记整理者）
+  document: "hccl-learning 笔记 06 日志定位与排查、11 Entry 日志拆解、12 A5 与 A2/A3 的建域差异（共 17 篇，内容基于 cann/hcomm master HEAD c7e149d 代码阅读，非官方文档；仓库为非公开仓库，出处以本篇名与篇号为准）"
+  input_session: session-1f5c4a0f-8d34-4c02-a19c-386206c9d8cc
+  confirmed_at: 2026-11-14
+  verification: auto-extracted
+applies_to:
+  platforms:
+  - A2-910B
+  - A3-910C
+  - A5-950
+  frameworks:
+  - hccl
+  categories:
+  - interrupt
+related_references:
+- ascend-hccl-comm-fault-triage
+- hccl-comm-init-and-link-faults
+- hccl-log-key-info-fields
+- ascend-log-levels
+- ascend-log-locations
+- hccl-bootstrap-rank-table-and-rootinfo
+- hccl-domain-link-run-phases
+status: active
+last_verified: 2026-11-14
+content:
+  claim: >-
+    建域建链的日志按固定顺序出现，断在哪一行就是卡在哪一步——前提是先选对代际：V2（A5）的类名是 `[RankInfoDetect*]`，legacy（A2/A3）是 `TopoInfoDetect` / `TopoInfoExchangeServer` 一侧，拿另一代的类名去 grep 会全空。
+    V2 的八个锚点：① root 起控制面 `Entry-HcclGetRootInfo` → `[RankInfoDetect::GetRootHandle] rootInfo: ip[...] port[...] identifier[...]` → `HcclGetRootInfoV2 success`；② 各 rank 拨号 `[RankInfoDetectService::RecvRemoteAgentId] agentId[...]`、`socket[...] connect ok.`；③ 本卡自述 `[RankInfoDetectClient::GetLocalDevInfoJson] find localDevInfoJson.`；④ 汇总与广播 `all agentId get connection socket success.` → `broadcast topoinfo success, rankNum[8]`；⑤ 探测收尾 `[RankInfoDetect::WaitComplete] topoExchangeServer port[...] completed.`；⑥ 建图 `[RankGraphBuilder] Build VirtualTopo success!`；⑦ 建链 `prebuilt worldTeam for protocol[...] netLayer[...]`、`[HostRdmaConnection::CreateCqAndQp]`；⑧ 域就绪 `[CommInitRootInfo] Init success, rankNum[...], rank[...]`。
+    A2/A3 的等价锚点：入口 `Entry-HcclCommInitRootInfo` 与 `rootInfo: ip[...] port[...]`；拓扑来源 `SetupGroupMember`、`TopoExchangeAgent: client connect with server`；收人阶段 `topo exchange server get socket timeout`、`GetClusterTopoInfo`；广播 `BroadcastRankTable`、`group_leader_list`；建链在算子期才见 transport 日志；完成是 `[InitCommRootInfo]Init success`。
+    Entry 日志的约定是每个对外 API 入口打一行 `Entry-<ApiName>`，用 `HCCL_RUN_INFO`（`HCCL_LOG_RUN_INFO = 0xff`，模块号带 RUN 标记时 `HcclCheckLogLevel` 直接返回 true，不受级别过滤，落 run 目录），所以它比 INFO 级细节更可靠。它的用途是反推调用序列，以及在没有 ERROR、只有超时时判断「最后进的是哪个门」。
+  evidence: >-
+    06 篇第二节给出八步速查表（阶段 / 关键日志 / 看到说明）与一条串起来的命令 `grep -nE 'Entry-HcclGetRootInfo|rootInfo: ip|GetConnections|GetRankTable|BroadcastRankTable|WaitComplete|Build VirtualTopo|prebuilt worldTeam|CreateCqAndQp|Init success' hccl.log`，并写「按上表顺序出现 = 一步没落下；断在哪一行，就是卡在哪一步」；06 篇第六节（速查卡）注明「文案可能随版本微调，定位时按关键字匹配，不要匹配整行」。06 篇第七节给出级别事实：「`HCCL_RUN_INFO` 是否受级别过滤：否（`HCCL_LOG_RUN_INFO = 0xff`，模块号带 RUN 标记时 `HcclCheckLogLevel` 直接返回 true），去向 run 目录」「`HCCL_INFO` 受级别过滤：`logType >= 全局级别` 才打印，去向 debug 目录」「`HCCL_ERROR` 级别不高于 ERROR 就会打，去向 error 目录」，推论是「`Entry-HcclGetRootInfo`、`HcclGetRootInfoV2 success`、`Entry-HcclCommInitRootInfo`、`Communicator Key Info` 这类 RUN 锚点更可靠」。11 篇开头写「常见误写：Entry-HcclInitRootInfo（少一个 Comm）。仓里实际的字符串是 `Entry-HcclCommInitRootInfo`，grep 时少一个词就什么都搜不到」。12 篇第七节给 A2/A3 的关键字行：「入口 `Entry-HcclCommInitRootInfo`、`rootInfo: ip[..] port[..]`」「拓扑来源 `SetupGroupMember`、`TopoExchangeAgent: client connect with server`」「root 收人 `topo exchange server get socket timeout`、`GetClusterTopoInfo`」「广播 `BroadcastRankTable`、`group_leader_list`」「完成 `Init success`」；12 篇 11.6 节给的 A2/A3 完成行是 `[InitCommRootInfo]Init success, rankNum[8], rank[1], rootInfo identifier[...]`。
+  details: >-
+    读 Entry 前先纠三个易错点：真实字符串是 `Entry-HcclCommInitRootInfo`（带 Comm）；一个 API 可能打两行 Entry（入口一行、带 rootInfo 详情的交互信息一行）；`HcclCommInitClusterInfo` 的普通版没有 Entry，只有 `[HCCL_TRACE]...success`，只有 Config 变体 `HcclCommInitClusterInfoConfig` 有 Entry。
+    A5（V2）的建链相关 Entry：`Entry-HcclGetRootInfo V950`、`Entry-HcclCommInitRootInfo V950, rankId[%u], rankNum[%u].`、带 rootInfo 展开的第二行、`HcclCommInitRootInfoV2 success, take time [...]us, rankNum[...], rank[...], identifier[...]`、`Entry-HcclCommInitRootInfoConfig V950`、`Entry-HcclCommInitAll V950`、`Entry-HcclCommInitClusterInfoConfig V950`、`Entry-HcomInitByFile V950` / `Entry-HcomInitByString V950`（rank table 路径）、`Entry-HcclCreateSubCommConfig V950`（建子域，不重新探测）、`Entry-HcclCommDestroy V950`、`Entry-HcclCommResume V950`（快恢重建链）。
+    A2/A3（legacy）的入口名：`Entry-HcclGetRootInfo:rootInfo[%p], deviceLogicId[%d]`、`Entry-HcclGetRootInfoScalable`、`Entry-HcclCommInitRootInfoInner:ranks[%u], rank[%u], rootinfo: ...`、`Entry-HcclCommInitRootInfoConfigInner`、`Entry-HcclCommInitRootInfoScalableInner`、`Entry-HcclCollCommInitAll`、`Entry-HcomInitByMasterInfo`、`Entry-HcomInitByFile` / `Entry-HcomInitByString`。两篇笔记对「A2/A3 的建域入口叫什么」说法不一致：11 篇第六节给的是 `Entry-HcclCommInitRootInfoInner`（内部实现名），12 篇第七节给的是 `Entry-HcclCommInitRootInfo`；两者在同一次启动里可能都出现，grep 时两个都带上。`Entry-HcclGetRootInfo` 只有 root 会打，其他 rank 直接从 Init 那行开始。
+    段位判断表：只看到 `Entry-HcclGetRootInfo` 没有 success → 卡在选网卡、抢端口、建 socket，查 EI0001（网卡）、EI0020（端口）、`get hostIp fail`；`Entry-HcclCommInitRootInfo` 之后看收人与广播；`rootinfo: host ip[...]` 那行的 ip 不对 → rootInfo 分发错了，查 `MASTER_ADDR` 或带外分发；探测日志有、`Build VirtualTopo` 没有 → 卡在建图，查 topo_file_path 与机型是否匹配；`Build VirtualTopo` 有、`prebuilt worldTeam` 没有 → 卡在通道建链，查协议 / 层级的链路与 QP 资源（A2/A3 没有 worldTeam 预制，改看 transport 日志是否出现）；有 Init success → 域已建立，可以下发算子。
+    日志不出现不等于没执行，三类原因：级别与去向（默认只落 `~/ascend/log/...` 不打屏，要屏幕输出得开 `ASCEND_SLOG_PRINT_TO_STDOUT=1`；多进程同机按 pid 分文件，容易 tail 错进程）；路径没走到（用 rank table 文件初始化时没有 `[RankInfoDetect*]`，走 buildFromString 那条路；`rankSize == 1` 跳过本卡自述；复用已有通信域或建子通信域不重新探测；框架延迟初始化且还没发首个集合通信时 HCCL 还没被调用；单卡训练或 backend 不是 hccl）；版本与产品差异（legacy 路径用 `TopoInfoDetect` / `TopoInfoExchangeServer`，前缀不是 `[RankInfoDetect]`）。三步确认法：开 `ASCEND_GLOBAL_LOG_LEVEL=1` 与 `ASCEND_SLOG_PRINT_TO_STDOUT=1`，grep `Entry-HcclGetRootInfo|Entry-HcclCommInitRootInfo|Entry-HcclCommInitAll|Communicator Key Info`——锚点在、细节不在是级别问题；锚点也不在是没走这条路、没执行到那一步、或看错进程与文件；两者都在但时序怪就回去对八步表。
+    三个常见误读：Entry 出现不等于成功（成败看 success 行或后续日志）；只有一个 Entry 说明没执行完，但要区分卡住（什么都没有）与很快失败（有 ERROR）；多进程日志里 Entry 交错是各进程各写自己的文件，按 pid 找，别在一个文件里对时间轴。笔记在代码位置上一律锚「文件 + 关键字」，本词条不写行号——行号随 `cann/hcomm` 版本漂移。以上文案随版本可能微调，定位时按关键字匹配，不要匹配整行。

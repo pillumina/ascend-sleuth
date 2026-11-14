@@ -1,0 +1,43 @@
+id: hccl-domain-link-run-phases
+type: software-fact
+title: HCCL 建域 / 建链 / 运行三层划分：各层产物、参与范围、典型失败码与日志关键字
+summary: 判断一个 HCCL 启动或首个算子现象属于建域、建链还是运行：三层产物与失败码各不相同，先定层再查。
+
+sources:
+- type: engineer-input
+  engineer: stfdtj（GitHub 账号：HCCL 建链机制笔记整理者）
+  document: "hccl-learning 笔记 00 全景图、01 建域建链运行三层、04 从 Init 到可训练、13 从算完到发出去（共 17 篇，内容基于 cann/hcomm master HEAD c7e149d 代码阅读，非官方文档；仓库为非公开仓库，出处以本篇名与篇号为准）"
+  input_session: session-1f5c4a0f-8d34-4c02-a19c-386206c9d8cc
+  confirmed_at: 2026-11-14
+  verification: auto-extracted
+applies_to:
+  platforms:
+  - A2-910B
+  - A3-910C
+  - A5-950
+  frameworks:
+  - hccl
+  categories:
+  - interrupt
+  - performance
+related_references:
+- ascend-hccl-comm-fault-triage
+- hccl-comm-init-and-link-faults
+- hccl-op-exec-and-cluster-event-faults
+- hccl-log-key-info-fields
+- hccl-cluster-heartbeat-and-link-probe
+- hccl-link-state-machines
+- hccl-rankgraph-and-netlayer-model
+status: active
+last_verified: 2026-11-14
+content:
+  claim: >-
+    一次 HcclCommInit 里通常连续发生三件事，按「产物」而不是按「时间」分界。建域（bootstrap + 建图）产出通信域句柄、rank table、RankGraph，回答「谁在群里、rank 几号、谁能到谁走哪层」，走控制面 TCP，典型失败是收人阶段卡住（V2 的 `GetConnections` 无进展；A2/A3 现场串是 `topo exchange server get socket timeout` / `GetClusterTopoInfo`）与 EI0014 / EI0015 / EI0016 / EI0017。建链（connection setup）产出 channel 句柄（内含 QP 或 Jetty、N 个 notify（设备内存上的标志位）、rkey），按「对端 + 协议」逐对建，控制面 socket 只用来换参数、数据走硬件通道，典型失败是通道一直 CONNECTING 与 EI0006 / EI0009 / EI0019 / EI0020。运行期只下发任务（SQE / WQE + DMA + CQE / notify），失败表现为算子超时与 CQE 错误。
+    建链时机按平台分：A2/A3 的 Init 只建图（simpleMode，即只托管 RankGraph 与本端 Rank，不预制 team），channel 与 transport 在首个算子执行期按需懒建；A5 的 fullMode 在 Init 内就按层 × 协议预制 worldTeam，并做对称内存与 KFC 命令通道。所以 `HcclCommInitRootInfo` 返回成功只代表「域建好了」，不代表「所有通道就绪」。
+    现象归属的判断口诀：看到 rank / rank table / 层 / RankGraph / root 属建域；QP / Jetty / channel / notify / rkey / RTS 属数据面建链；`HeartBeat_<a>_to_<b>` 与 `netInstId/localId` 属心跳建链（DFX，即 Design for X 可维测性设计，是另一套东西）；SQE / WQE / CQE / transportType 属运行。
+  evidence: >-
+    01 篇三层对照表给出三层各自的「解决什么 / 主要动作 / 产物 / 用什么网络 / 参与范围 / 典型失败 / 日志关键字」，并注明「三者常在同一次 HcclCommInit* 里连续发生，所以特别容易混」。01 篇时间线写明「A5：Init 里先建 team（成员 + 同步内存）；channel 多数在首个算子」「A2/A3：Init 只建图，channel/transport 在首个算子懒建」。04 篇五个里程碑 M1 名片产出（名片即笔记对 rootInfo 结构的叫法） / M2 全量表到手 / M3 RankGraph 建好 / M4 通信域 READY / M5 某条通道 READY，并强调 M1–M5 是笔记自用编号、非官方术语；同篇给出「Init success 只代表域建好了，不代表所有通道已就绪」。13 篇列运行期手里有什么：「HcclComm handle、每个对端的 ChannelHandle、HCCL Buffer（默认 200 MB 锁页显存）、对称内存窗口 / 已注册内存、notify 序号（0..N-1）」，没有对端 IP 列表、没有 socket、没有应用层收发动作。12 篇对照表写明「A2/A3 simpleMode：只托管 RankGraph/MyRank」「A5 fullMode：worldTeam 预制 + 对称内存 + KFC 通道 + 异常回调」。
+  details: >-
+    首个算子慢的五个原因（01 篇第五节）：通道懒建；QP 或 Jetty 握手有往返；HCCL buffer 注册成 MR 并交换 rkey（远端内存注册键）；A5 预制 team 要做一次 barrier；首次按拓扑选算法算切片。判别方法是看首个算子耗时是否远大于后续、以及首个算子前是否出现 `CreateCqAndQp` / `prebuilt worldTeam` / `channel` 日志；缓解手段是 warm-up 一次小算子，或复用同一通信域。运行期不再握手也不再遍历 rank 表：连接是建链期的事，对端 IP 运行期不需要知道，发给谁由算法决定（ring 只找左右 2 个邻居，mesh 找组内 N-1 个，AlltoAll 才人人对人人）。
+    心跳建链与数据面建链是两套完全不同的东西。心跳由 HCOMM 的 coll_communicator_mgr/dfx/cluster_monitor 实现（不是独立进程），每个 netLayer 一个双环、每 rank 连左右 2 个邻居，底层是 TCP socket，标识是「UID = netInstId/localId」（如 sp_0_srv_0_idx_0/3），在 V2 通信域首次 `HcclChannelAcquire`（engine 不为 CPU）时注册并启动后台 MonitorThread，rankSize == 1 直接跳过，丢失阈值 `HCCL_LOST_THRESHOLD` 默认 30 秒，可用 `HCCL_DFS_CONFIG=cluster_heartbeat:off` 关掉。心跳坏了不代表数据立刻停，但通常意味着节点或链路已出问题、随后算子超时报错；判读细节见 hccl-cluster-heartbeat-and-link-probe。CQE 是 Completion Queue Entry（完成队列条目），硬件完成一个任务后写进 CQ，status=0 成功、非 0 是硬件错误码；它由 AICPU 或 CCU 上报、TaskExceptionHost 用 RankGraph 把 remoteUserRank 换成 localId + netInstanceId、最后由 ClusterMonitor 打日志并广播，A2/A3 业务侧通常转成 EI0013 或 EI0012，A5 还会有 EI0018 这条来源。
+    三条硬标准判断「能开始训练」（04 篇）：每个 rank 都打出 Init success（root 统一收表，缺一个就 EI0015）；首个 AllReduce 返回成功且无 EI0012（SDMA 数据面异常）/ EI0015（超时）/ EI0016（不一致）；第二个 step 耗时明显回落（首个 step 的额外开销来自建链、预热、图捕获，不是域没建好）。建链卡住时可用 `HcclCommDestroy` 打断——支持通信域处于建链卡住状态时跨线程销毁。

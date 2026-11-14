@@ -1,0 +1,42 @@
+id: hccl-transport-and-notify-dataplane
+type: software-fact
+title: HCCL 数据面传输选择与 notify 同步：三类网口、HCCS / SDMA / RoCE / UB、transportType 取值
+summary: 判断一条通信走的是 HCCS、SDMA、RoCE 还是 UB，以及为什么跨机比机内慢、同步为什么不用 TCP 时看这条。
+
+sources:
+- type: engineer-input
+  engineer: stfdtj（GitHub 账号：HCCL 建链机制笔记整理者）
+  document: "hccl-learning 笔记 05 TCP 之后用什么通信、08 机器长什么样、13 从算完到发出去（共 17 篇，内容基于 cann/hcomm master HEAD c7e149d 代码阅读，非官方文档；仓库为非公开仓库，出处以本篇名与篇号为准）"
+  input_session: session-1f5c4a0f-8d34-4c02-a19c-386206c9d8cc
+  confirmed_at: 2026-11-14
+  verification: auto-extracted
+applies_to:
+  platforms:
+  - A2-910B
+  - A3-910C
+  - A5-950
+  frameworks:
+  - hccl
+  categories:
+  - performance
+  - interrupt
+related_references:
+- hccl-domain-link-run-phases
+- hccl-link-state-machines
+- hccl-rankgraph-and-netlayer-model
+- hccl-op-exec-and-cluster-event-faults
+- hccl-log-key-info-fields
+status: active
+last_verified: 2026-11-14
+content:
+  claim: >-
+    TCP 只负责「认识」，不负责「搬运」。建链分三段：阶段 A 控制面（root 起监听、rootInfo 结构经启动器带外分发、各 rank 连 root 上传自述、root 回灌全表、close），阶段 B 交换设备侧参数（仍是 socket，换成设备侧：两端交换 QP 号 / PSN / GID / MR key，或 Jetty / EID / TP，再由 `RaQpConnectAsync` 推到 ready），阶段 C 数据面（硬件通道）。阶段 B 的 socket 也不是数据通道，数据一个字节都不从 socket 走。
+    传输按层选：同机 Layer0 是 HCCS + SDMA，内存语义，像 memcpy 一样直接写对端显存，不过网卡、不过交换机、对端不参与；跨机 Layer1+ 是 RoCE v2（RC QP），网络语义，RDMA Write / Read，内核旁路、零拷贝，经 RNIC 与交换机；UB 超节点（A5）走 UB_CTP / UB_MEM / UB_RTP / UBoE；同机不同 DIE 走 HCCS_ONLY。层与传输的对应是「Server 内 Layer0 为 HCCS 直连，Server 间 Layer1 为 RoCE 经交换机」。
+    三类「口」别混：Host NIC 给 CPU 上的进程用 TCP（可加 TLS），承担 bootstrap IP、rootinfo 探测、QP / Jetty 参数交换；Device NIC / RNIC 给 NPU 侧用 RoCE v2 / UB，承载 QP / Jetty 真正搬数据；HCCS 是 NPU ↔ NPU 的机内私有互联，内存语义由 SDMA 直接搬。后两者不是一回事——Device NIC 是网口，HCCS 是卡间直连，机内通信不经过任何网卡。
+    同步不靠 TCP：channel 里带 N 个 Notify（设备内存上的标志位，CCU 场景是 Variable / Event 寄存器），一端写完数据后向对端 Notify 写一笔，另一端轮询或等中断，数据与同步走同一条硬件链路。所以同步开销是「一次小写 + 一次等待」，不是一次 TCP 往返。
+  evidence: >-
+    05 篇一句话「TCP 只负责『认识』，不负责『搬运』。数据走 HCCS/SDMA（机内）或 RoCE/UB（跨机）」，并写「易错点：阶段 B 的 socket 也不是数据通道，它只用来交换 QP/Jetty 参数。数据一个字节都不从 socket 走」。传输对照表原文四行：同机（Layer0）HCCS + SDMA 内存语义；跨机（Layer1+）RoCE v2（RC QP）网络语义；UB 超节点 UB_CTP / UB_MEM / UB_RTP / UBoE；同机不同 DIE HCCS_ONLY。代码分类给出 `enum DfxTransportType : uint8_t { DFX_TRANSPORT_TYPE_SDMA = 0, DFX_TRANSPORT_TYPE_RDMA = 1, DFX_TRANSPORT_TYPE_LOCAL = 2, DFX_TRANSPORT_TYPE_UB = 3, DFX_TRANSPORT_TYPE_ROCE = 4 }`（src/base_comm/inc/dfx/res_pub.h）与协议枚举「HCCS(0) / ROCE(1) / PCIE(2) / SIO(3) / UB_CTP(4) / UBC_TP(5) / UB_MEM(6) / UBOE(7) / HCCS_ONLY(8) / UB_RTP(9)」（include/hcomm_res_defs.h）。08 篇三类口原文「Host NIC 控制面：bootstrap IP、rootinfo 探测、QP/Jetty 参数交换」「Device NIC / RNIC 数据面：承载 QP / Jetty，真正搬数据」「HCCS Layer0：内存语义，SDMA 直接搬」，并写「注意后两者不是一回事：Device NIC 是『网口』，HCCS 是『卡间直连』。机内通信不需要经过任何网卡」。05 篇第五节原文「不靠 TCP。Channel 里带 N 个 Notify（设备内存上的标志位）：一端写完数据后向对端 Notify 写一笔，另一端轮询/等中断」。
+  details: >-
+    为什么不用 TCP 一直跑（05 篇）：需要 CPU 参与收发、内核协议栈拷贝，带宽与时延都不够；RDMA 内核旁路 + 零拷贝，一次写直达对端内存；HCCS 是专用互联，根本不跑 IP / TCP。分工是 TCP 干「点名、报到、发表格」这类低频控制活，SDMA / RDMA / UB 干「每秒几百 GB」的数据活。跨机慢的常见原因不是「交换机差」，而是收敛比 + 拥塞控制 + 路径不均（07 篇）。
+    运行期一侧的事实（13 篇）：一次 AllReduce 的顺序是参数校验与选算法 → 查资源 Context（tag 复用，首次才建 Thread / Notify / Channel）→ 把 sendbuf 拷进 HCCL Buffer（`HcommLocalCopyOnThread`，默认 200 MB 锁页显存）→ 下发 AICPU Kernel → 按算法编排任务（写 / 读 + notify）→ 批量下发 descriptor（SQE 是投给 TS 或 AICPU 队列的任务描述符，WQE 是投给 QP 的工作请求，两者别混）→ 硬件搬运 → 完成队列条目（CQE）或 notify 回报 → 结果从 buffer 拷回 recvbuf。先拷进 buffer 是因为通信异步、业务可能马上复用 sendbuf，而 buffer 是固定地址的锁页显存，硬件才能按地址搬。发给谁由算法决定：Ring 只找左右 2 个邻居（8 卡 AllReduce 是 7 步 reduce-scatter + 7 步 all-gather = 14 步）、Mesh / Fullmesh 找组内 N-1 个、HD（二分）找 log N 个、分层找机内 N-1 个 + 每机 1 个代表、AlltoAll 找所有 N-1 个。对端没有「接收线程」，数据由 SDMA / NIC 直接写进它的显存，它只在 notify 上等。
+    怎么从日志确认走的哪种传输：DFX 打点里出现 `transportType=0` 是 SDMA、`=1` 是 RDMA、`=3` 是 UB；建链阶段看 `[HostRdmaConnection::CreateCqAndQp]` 与 `Set qp qos success by config, TC[120] SL[2]`（A5 RoCE 路径），A2/A3 看 `linkexp initialization` 与 QP 状态日志。想确认通道建好没看 `HcclChannelAcquire` 返回与 `CreateCqAndQp`；想确认算子有没有发下去看 `Entry-HcclAllReduce` 与 kernel launch 日志。以上文案随版本可能微调，按关键字匹配，不要匹配整行。
