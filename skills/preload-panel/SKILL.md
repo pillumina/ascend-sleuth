@@ -48,6 +48,13 @@ node scripts/panel_status.js
 怎么登记（`dependencies` / `dsh.profile.bundles` / 快照安装（插件页或插件管理器把包复制到
 `.generations/live`）的 `pnpm.overrides` 与 `generationProjection`）、实际加载的版本与仓库版本差在哪。
 
+**先确认 `link:` 指向哪份代码**：它写的不是主检出（这个仓库的主克隆，多 worktree 共用）时，
+面板加载的是那份克隆的代码。主检出里改了面板不会跟着变；那份克隆被挪走时，启动会报
+`failed to import`。
+
+快检里 `结论：link 安装（路由三）` 那一行报的是 profile 登记，不是进程里已加载的模块。这一行指的不是
+主检出时，按「更新已装的面板」的换安装源处理，重启后按路由三的验证顺序确认。
+
 **profile 名与 DSH_HOME 都不要按默认值猜**：桌面版的 profile 名随发行版变（`desktop`、`web` 都见过），
 DSH_HOME 在桌面版是 `<userData>/harness`，独立命令行才在 `~/.dsh`。按默认值找会对着错目录报"未装"。
 
@@ -317,6 +324,27 @@ node scripts/verify_panel_desktop.js --profile <profile>
 **link 安装**（profile 的 `dependencies` 是指向仓库的 `link:<仓库路径>`）：不用重装，重启 DSH 即加载
 新代码。热加载路（附录路由一）没有这个提示，修改后要用 `panel_from_file` 重载。
 
+**换安装源（link 指向另一份克隆）**：按第 0 步判出的路走，两条路的命令与结果不一样。
+
+有 `plugin_manager` 时走这条：同名包再 `install_bundle` 会回 `already-installed`，要先卸再装；
+只卸不装，profile 里就没有这个包了，面板会消失。
+
+```
+plugin_manager remove_bundle(target: 'dsh-sleuth-panels')
+plugin_manager install_bundle(target: '<主检出绝对路径>/dsh-plugins/dsh-sleuth-panels')
+```
+
+`remove_bundle` 回 `stop-profile` 时，当前宿主不允许在线卸包，改用下面的命令行。
+
+命令行（桌面版主路）：`<dsh> plugin --profile <profile> add "<主检出绝对路径>/dsh-plugins/<包名>"`。
+它直接改 profile 依赖，不需要先 remove。
+
+两条路装完都跑第 0 步快检，确认 `dependencies` 的 `link:` 已指到主检出、`dsh.profile.bundles`
+仍有一项；再重启宿主，按路由三的验证顺序确认。返回的 `application` 不替代这一步：`applied` 只表示
+当前进程接受了这次换源，不证明加载的是新克隆的代码。
+
+四个包分开登记，指错路径的每个都要各做一次。
+
 **快照安装**（插件页或插件管理器复制进 profile 的快照）：重启不会换版本。要用同一路径重装一次，
 再重启。桌面版插件页装过的包会在 profile 的 `pnpm.overrides` 里留一条指向 `.generations/live` 的
 覆盖，实际加载的是那一份快照；这类包继续走插件页更新，路由三的 link 不会替换它。
@@ -471,7 +499,8 @@ node scripts/panel_install.js --spec "<仓库绝对路径>/dsh-plugins/dsh-sleut
   复用窗口与文案约定见 `dsh-plugins/README.md`。
 - 热加载的动态定义只存在于当前 DSH 进程，重启后需重新加载；其余四条路装在 profile 层，重启后仍在。
 - 路由三装的是 link 依赖，指向仓库里那份代码。仓库换位置或 worktree 被清掉，这条链接就断了，面板
-  随之加载失败（启动输出里是 `failed to import`，不是界面提示）；那时按原命令重装一次。
+  随之加载失败（启动输出里是 `failed to import`，不是界面提示）；那时按原命令重装一次，用
+  `plugin_manager` 时走「更新已装的面板」的换安装源（先卸再装）。
 - 改面板代码走仓库；首次装载与换快照版本时看本 skill，日常同步代码不用调它。两份产物由生成器
   保持一致。诊断画布的产物由 `node dsh-plugins/dsh-sleuth-canvas/build.mjs` 保持与 `client-src/` 一致。
 
