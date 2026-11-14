@@ -1,0 +1,78 @@
+# DeepSeek-V3.2 模型配置
+# 类型: MoE
+# 最后更新: 2026-02-27
+
+model:
+  name: DeepSeek-V3.2
+  type: MoE
+  description: "DeepSeek-V3.2 MoE 模型, 支持投机解码 (MTP)"
+  huggingface_path: deepseek-ai/DeepSeek-V3.2
+  architecture: DeepseekV3ForCausalLM
+
+deployment:
+  recommended_tp: 8
+  recommended_dp: 2
+  min_npu_count: 8
+  recommended_memory: "512 GB"
+  quantization_format: W8A8
+
+performance:
+  max_model_len: 8000
+  max_num_seqs: 8
+  max_num_batched_tokens: 4096
+  gpu_memory_utilization: 0.95
+
+environment_variables:
+  OMP_PROC_BIND: "false"
+  OMP_NUM_THREADS: "10"
+  HCCL_OP_EXPANSION_MODE: "AIV"
+  PYTORCH_NPU_ALLOC_CONF: "expandable_segments:True"
+  LD_PRELOAD: "/usr/lib/aarch64-linux-gnu/libjemalloc.so.2"
+  VLLM_USE_V1: "1"
+  HCCL_BUFFSIZE: "256"
+  ASCEND_AGGREGATE_ENABLE: "1"
+  ASCEND_TRANSPORT_PRINT: "1"
+  ACL_OP_INIT_MODE: "1"
+  ASCEND_A3_ENABLE: "1"
+  VLLM_NIXL_ABORT_REQUEST_TIMEOUT: "300000"
+  TASK_QUEUE_ENABLE: "1"
+  VLLM_ASCEND_ENABLE_MLAPO: "1"
+  VLLM_ASCEND_ENABLE_FLASHCOMM1: "1"
+
+vllm_parameters:
+  - "trust-remote-code"
+  - "quantization ascend"
+  - "async-scheduling"
+  - "no-enable-prefix-caching"
+  - "enable-expert-parallel"
+  - "tokenizer-mode deepseek_v32"
+  - "reasoning-parser deepseek_v3"
+
+speculative_decoding:
+  method: deepseek_mtp
+  num_speculative_tokens: 3
+
+compilation_config:
+  cudagraph_mode: FULL_DECODE_ONLY
+  cudagraph_capture_sizes: [1, 2, 4, 8, 16, 24, 32, 40, 48]
+
+launch_command: |
+  vllm serve /path/to/DeepSeek-V3.2-W8A8 \
+    --port 8003 \
+    --data-parallel-size 2 \
+    --tensor-parallel-size 8 \
+    --seed 1024 \
+    --served-model-name dsv3 \
+    --max-model-len 8000 \
+    --max-num-batched-tokens 4096 \
+    --max-num-seqs 8 \
+    --trust-remote-code \
+    --quantization ascend \
+    --async-scheduling \
+    --no-enable-prefix-caching \
+    --enable-expert-parallel \
+    --gpu-memory-utilization 0.95 \
+    --compilation-config '{"cudagraph_mode":"FULL_DECODE_ONLY", "cudagraph_capture_sizes":[1,2,4,8,16,24,32,40,48]}' \
+    --speculative-config '{"num_speculative_tokens": 3, "method":"deepseek_mtp"}' \
+    --tokenizer-mode deepseek_v32 \
+    --reasoning-parser deepseek_v3

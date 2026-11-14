@@ -1,0 +1,76 @@
+# Qwen3.5-122B 模型配置
+# 类型: MoE
+# 最后更新: 2026-02-27
+
+model:
+  name: Qwen3.5-122B
+  type: MoE
+  description: "Qwen3.5 122B MoE 模型, 支持投机解码 (MTP)"
+  huggingface_path: Qwen/Qwen3.5-122B
+  architecture: Qwen2_5MoeForCausalLM
+
+deployment:
+  recommended_tp: 4
+  recommended_dp: 1
+  min_npu_count: 4
+  recommended_memory: "128 GB"
+  quantization_format: W4A8C16
+
+performance:
+  max_model_len: 262144
+  max_num_seqs: 128
+  max_num_batched_tokens: 16384
+  gpu_memory_utilization: 0.9
+
+environment_variables:
+  ASCEND_RT_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15"
+  PYTORCH_NPU_ALLOC_CONF: "expandable_segments:True"
+  HCCL_OP_EXPANSION_MODE: "AIV"
+  HCCL_BUFFSIZE: "1024"
+  OMP_NUM_THREADS: "1"
+  LD_PRELOAD: "/usr/lib/aarch64-linux-gnu/libjemalloc.so.2"
+  TASK_QUEUE_ENABLE: "1"
+  VLLM_ASCEND_ENABLE_FUSED_MC2: "1"
+  VLLM_ASCEND_ENABLE_FLASHCOMM1: "1"
+
+vllm_parameters:
+  - "trust-remote-code"
+  - "quantization ascend"
+  - "async-scheduling"
+  - "no-enable-prefix-caching"
+  - "enable-expert-parallel"
+  - "allowed-local-media-path /"
+
+speculative_decoding:
+  method: qwen3_5_mtp
+  num_speculative_tokens: 3
+  enforce_eager: true
+
+compilation_config:
+  cudagraph_capture_sizes: [1, 4, 8, 12, 16, 24, 32, 48, 56, 64, 72, 84, 96, 108, 112, 128, 160, 172, 196, 200, 212, 232, 256, 272, 288, 312, 328, 344, 360, 384, 400, 416, 432, 448, 480, 512]
+  cudagraph_mode: FULL_DECODE_ONLY
+
+additional_config:
+  enable_cpu_binding: true
+  enable_shared_expert_dp: true
+
+launch_command: |
+  vllm serve /path/to/Qwen3.5-122B-A10B-w8a8 \
+    --served-model-name "qwen3.5" \
+    --host 0.0.0.0 \
+    --port 8010 \
+    --data-parallel-size 1 \
+    --tensor-parallel-size 4 \
+    --enable-expert-parallel \
+    --max-model-len 262144 \
+    --max-num-batched-tokens 16384 \
+    --max-num-seqs 128 \
+    --gpu-memory-utilization 0.9 \
+    --compilation-config '{"cudagraph_capture_sizes":[1,4,8,12,16,24,32,48,56,64,72,84,96,108,112,128,160,172,196,200,212,232,256,272,288,312,328,344,360,384,400,416,432,448,480,512], "cudagraph_mode":"FULL_DECODE_ONLY"}' \
+    --speculative_config '{"method": "qwen3_5_mtp", "num_speculative_tokens": 3, "enforce_eager": true}' \
+    --trust-remote-code \
+    --async-scheduling \
+    --allowed-local-media-path / \
+    --quantization ascend \
+    --mm-processor-cache-gb 0 \
+    --additional-config '{"enable_cpu_binding": true, "enable_shared_expert_dp": true}'
