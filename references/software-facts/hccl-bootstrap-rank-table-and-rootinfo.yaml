@@ -1,0 +1,43 @@
+id: hccl-bootstrap-rank-table-and-rootinfo
+type: software-fact
+title: HCCL 建域的两条入口（rank table 文件 / rootinfo 自发现）：root 三步、端口段、消息格式、校验错误码
+summary: 建域阶段卡住或报 EI0014/EI0015/EI0016 时，先分清走的是 rank table 文件还是 rootinfo 自发现；两条入口共用建图与建链。
+
+sources:
+- type: engineer-input
+  engineer: stfdtj（GitHub 账号：HCCL 建链机制笔记整理者）
+  document: "hccl-learning 笔记 02 rank table 的现状、03 rootinfo 自发现、12 A5 与 A2/A3 的建域差异（共 17 篇，内容基于 cann/hcomm master HEAD c7e149d 代码阅读，非官方文档；仓库为非公开仓库，出处以本篇名与篇号为准）"
+  input_session: session-1f5c4a0f-8d34-4c02-a19c-386206c9d8cc
+  confirmed_at: 2026-11-14
+  verification: auto-extracted
+applies_to:
+  platforms:
+  - A2-910B
+  - A3-910C
+  - A5-950
+  frameworks:
+  - hccl
+  categories:
+  - interrupt
+related_references:
+- ascend-hccl-comm-fault-triage
+- hccl-comm-init-and-link-faults
+- hccl-network-env
+- hccl-log-key-info-fields
+- hccl-entry-log-stage-anchors
+- hccl-domain-link-run-phases
+status: active
+last_verified: 2026-11-14
+content:
+  claim: >-
+    rank table 没有被取消，它从「用户必填的配置入口」降级为「一种可选输入 + 内部数据模型」。入口有两条：文件路径 `HcclCommInitClusterInfo(rankTableFile, rank, &comm)`（全产品仍支持，新能力不再往这条路上叠），和自发现 `HcclGetRootInfo` → `HcclCommInitRootInfo`（主流；A2/A3 大规模可换 `HcclCommInitRootInfoScalable` 多 root）。两条路产物是同一个结构、只打来源标记 `RankTableSource::RANKTABLE | ROOTINFO`，下游 `RankGraphBuilder::Build` 与 Channel 建链完全共用（A5 另有一层 worldTeam 预制；A2/A3 是 simpleMode，不预制 team），所以排查方法通用，只有 bootstrap 段不同。
+    rootinfo 不是满集群扫描，而是「每卡自述 + root 汇总 + 全员广播」：root 只调 `HcclGetRootInfo` 产出约 4KB 的 rootInfo 结构（`HcclRootInfo.internal[4108]`），由启动器带外分发给所有 rank；各 rank 反向连 root 报到、上报本卡自述；root 合并成全量表后回灌全员。谁调 `HcclGetRootInfo` 谁就是 root，没有选举、任期、心跳切换，master 也不主动广播。
+    root 侧固定三步，两代实现的类名不同、动作相同：V2（A5）是 `RankInfoDetectService::GetConnections`（等齐 nRanks，校验白名单、agentId 去重、rankSize 一致）→ `GetRankTable`（收表、合并、按 rankId 排序，step 必须匹配）→ `BroadcastRankTable`（epoll 1–4 线程并发回灌）；A2/A3 是 `TopoInfoDetect` / `TopoInfoExchangeServer` 一侧的收人与收表，广播同样打 `BroadcastRankTable`。
+    三个校验点对应三个错误码：等不齐或连接超时是 EI0015；step 不匹配、rankSize 不一致、version 不等于 2.0、rankCount 不符是 EI0016；rankId 不连续或重复、localId 冲突、各层地址数不齐是 EI0014。同一 identifier 重复初始化是 EI0003；TLS（含 Host DPU TLS）跨 rank 不一致会报错并列出各自 enable / disable / unknown 的 rank。
+  evidence: >-
+    02 篇结论「rank table 没有消失。它从『用户必填的配置入口』降级为『一种可选输入 + 内部数据模型』」，并给出 `enum class RankTableSource { RANKTABLE, ROOTINFO };`（src/coll_communicator_mgr/rank_graph/rank_table_info/rank_table_source.h）与「两个入口 buildFromString / buildFromRankTable 最终都调 RankGraphBuilder::Build」。03 篇一句话「不是『满集群扫描』，而是每卡自述 + root 汇总 + 全员广播。对外只分发约 4KB 的名片，而不是 O(N) 的表」（名片是笔记对 rootInfo 结构的叫法），并写明「不是选举：谁调 HcclGetRootInfo 谁就是 root；没有任期、心跳、故障切换」「master 不主动广播：它只产出名片，由启动器带外分发；TCP 是『别人来找我』」。03 篇 root 三步原文「GetConnections → 等齐 nRanks（白名单 / agentId 去重 / rankSize 一致）」「GetRankTable → 收表、合并、按 rankId 排序（step 必须匹配）」「BroadcastRankTable → epoll 1–4 线程并发回灌」；12 篇第七节给 A2/A3 的对应关键字「`SetupGroupMember`、`TopoExchangeAgent: client connect with server`」「`topo exchange server get socket timeout`、`GetClusterTopoInfo`」「`BroadcastRankTable`、`group_leader_list`」。校验表原文：等不齐 nRanks / 连接超时 EI0015、step 不匹配或 rankSize 不一致或 version 不等于 2.0 或 rankCount 不符 EI0016、rankId 不连续重复或 localId 冲突或各层地址数不齐 EI0014、同 identifier 重复初始化 EI0003。
+  details: >-
+    端口段与白名单 tag 按代际不同。V2（A5）root 控制面默认监听 60016–60031（未配 `HCCL_IF_BASE_PORT` 时在该区间抢占），白名单 tag 为 `rank_info_detect_default_tag_<identifier>_<port>`；A2/A3 的对应 tag 是 `topo_detect_default_tag_<identifier>_<port>`（12 篇 11.1 节）。V2（A5）还会在自述阶段预占数据面端口 60000–60015（或端口范围前半段）并登记到 ServerSocketMap，供后续 QP 建链复用，避免跨阶段抢端口；A2/A3 的对应事实是参数面 device 侧端口默认 16666，端口冲突时用 `HCCL_NPU_SOCKET_PORT_RANGE` 划范围。单卡多进程必须为每进程配不同端口，否则互相抢（EI0020）。
+    「每卡自述」的内容与表形态按代际不同。V2（A5）读本机 topo.json 解析出 `level_list`（每层的 netLayer、net_instance_id、net_type、rank_addr_list），rank table 是 v2 形态；无 UB（没有 net_layer=0）时插入 `pcie_fallback=true` 的假 level0 并填本卡 vnic IP，日志 `InsertPcieFallbackLevel0` / `insert pcie fallback level0` 通常是正常兜底。A2/A3 是 v1 形态（server_list → device_list，A3 多一个 super_pod_list），自述内容是 server IP、device IP、superPodId，不走 topo.json 那条。V2（A5）的自述顺序是：`rankSize == 1` 直接造单 rank 表、不起探测；优先读本机 `/etc/hccl_rootinfo.json`（存在即信任，解析失败直接报错、不静默回退）；否则向驱动要（`TopoAddrInfoGetSize` / `TopoAddrInfoGet(devPhyId)`）。
+    netLayer 大于等于 3 且配了 backup_addr 的地址会先 `HrtRaRdmaInit` 探活，主地址 linkdown 时按序换备地址（日志 `selectedNicRole[primary]` 只是选择结果，不代表主备切换发生过）。什么时候还必须手写 rank table：要精确控制 IP、端口、网口（单卡多进程每进程不同端口，rank table 路径下 `HCCL_NPU_SOCKET_PORT_RANGE` 不生效，要在表里配 device_port / host_port）；要钉死一个错误拓扑或错误地址做复现与注入；老框架、老版本路径或异构非标组网；排除驱动自动推导的意外。选型建议：多机训练用 torchrun / mpirun 启动走 rootinfo（框架负责 rendezvous）；单机单进程多卡用 `HcclCommInitAll` 或 rootinfo；单卡多进程用 rootinfo + 显式端口范围；要复现拓扑问题用 rank table 文件；超大规模（A2/A3）用 scalable 多 root。
+    A2/A3 与 A5 的日志前缀不同，按代际选关键字：A2/A3 是 `TopoInfoDetect` / `TopoInfoExchangeServer`，建域入口 `Entry-HcclCommInitRootInfo`（11 篇第六节另给内部实现名 `Entry-HcclCommInitRootInfoInner`，两个都 grep），不用 `[RankInfoDetect*]`；A5 是 `[RankInfoDetect*]` 与 `Entry-HcclCommInitRootInfo V950`。拿 V2 的类名去 grep A2/A3 集群会一无所获（06 篇第七节、11 篇第六节、12 篇第七节的对照表）。

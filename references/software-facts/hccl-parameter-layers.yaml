@@ -1,0 +1,43 @@
+id: hccl-parameter-layers
+type: software-fact
+title: HCCL 参数的四层（算子入参 / 通信域配置 / 环境变量 / 启动组网）、优先级与生效值确认方法
+summary: 要调 HCCL 参数时先定位它在哪一层、会不会被上层覆盖：四层划分、常见默认值，以及用 [HCCL_ENV] 日志确认实际生效值。
+
+sources:
+- type: engineer-input
+  engineer: stfdtj（GitHub 账号：HCCL 建链机制笔记整理者）
+  document: "hccl-learning 笔记 15 HCCL 参数地图、14 DFX 地图（共 17 篇，内容基于 cann/hcomm master HEAD c7e149d 代码阅读，非官方文档；仓库为非公开仓库，出处以本篇名与篇号为准）"
+  input_session: session-1f5c4a0f-8d34-4c02-a19c-386206c9d8cc
+  confirmed_at: 2026-11-14
+  verification: auto-extracted
+applies_to:
+  platforms:
+  - A2-910B
+  - A3-910C
+  - A5-950
+  frameworks:
+  - hccl
+  categories:
+  - interrupt
+  - performance
+related_references:
+- hccl-network-env
+- hccl-function-env
+- hccl-debug-env
+- hccl-performance-env
+- hccl-reliability-env
+- hccl-comm-init-and-link-faults
+- hccl-log-key-info-fields
+status: active
+last_verified: 2026-11-14
+content:
+  claim: >-
+    HCCL 参数分四层，调参前先确认自己在哪一层：① 算子入参（每次调用，只影响这一次——sendbuf / recvbuf / count / dataType / op / comm / stream，count 是元素个数不是字节数，AllReduce 允许 in-place）；② 通信域配置（建域时的 `HcclCommConfig`，只影响这个域——buffer 大小、确定性、通信域名、引擎、算法、重执行、超时、QoS、对称内存窗口、队列深度）；③ 环境变量（进程启动前设，影响整个进程——超时、网卡、RDMA 参数、日志）；④ 启动 / 组网参数（启动器或 rank table，影响这次建域——nRanks、rank、deviceId、rootInfo、rank table、nRoot）。
+    优先级的一般规律是 ① > ② > ③ > 默认，少数字段以官方文档为准（例如 `hcclAlgo > HCCL_ALGO > 自适应`）。调参前先看启动日志里的 `[HCCL_ENV]` 行确认当前生效值——`set by default to [...]` 表示用的默认、`set by environment to [...]` 表示被环境变量覆盖；通信域级配置在建域日志里打（buffer、引擎、域名、确定性等）；`HcclGetCommConfigCapability` / `HcclConfigGetInfo` 一类接口可查部分能力与配置。
+    几个常见默认值：`HCCL_BUFFSIZE` 与 `hcclBufferSize` 都是 200 MB（多域相乘很吃显存）；`HCCL_EXEC_TIMEOUT` 默认 1836 秒（27 × 68，按 68 秒对齐）；`HCCL_CONNECT_TIMEOUT` 默认 120 秒（建域 / 建链慢时调大）；`HCCL_RDMA_TC` 默认 132、`HCCL_RDMA_SL` 默认 4、`HCCL_RDMA_TIMEOUT` 默认 20（约 4.29 秒）、`HCCL_RDMA_RETRY_CNT` 默认 7。默认值与取值范围随版本和产品变化，以启动日志为准。
+  evidence: >-
+    15 篇一句话「HCCL 的参数分四层——算子入参（每次调用）、通信域配置（每个域）、环境变量（每个进程）、启动/组网参数（每次建域）。调参前先确认自己在哪一层」，四层总览表给出每层「谁设 / 生效范围 / 典型项」，并写「优先级（一般规律）：① > ② > ③ > 默认。少数字段以官方文档为准（如 hcclAlgo > HCCL_ALGO > 自适应）」。第七节原文「`[HCCL_ENV] HCCL_BUFFSIZE set by default to [200]M` ← 用的默认 / `[HCCL_ENV] HCCL_BUFFSIZE set by environment to [400]M` ← 被环境变量覆盖」，并写「拿不准时以启动日志 + 官方用户指南（cann/hccl 的 user_guide/hccl_env/）为准」。第二节给出算子入参的六个参数与常见坑（count 是元素个数、AllReduce 允许 in-place、部分 dtype 只支持部分 op）。第三节给出 `HcclCommConfig` 字段表（hcclBufferSize / hcclDeterministic 0-1-2 / hcclCommName ≤128 字符 / hcclOpExpansionMode 0-9 / hcclRdmaTrafficClass 0-255 默认 132 / hcclRdmaServiceLevel 0-7 默认 4 / hcclExecTimeOut / hcclAlgo / hcclRetryEnable 仅 A3 / hcclQos 0-7 / hcclSymWinMaxMemSizePerRank 默认 16 GB / hcclChannelSqDepth·ScqDepth / aclGraphZeroCopyEnable），并注「命名、确定性、引擎、重执行这几项都有『产品代际限制』，A2/A3/A5 支持面不同，改前先查产品矩阵」。
+  details: >-
+    按场景的配方（15 篇第六节，先动哪个）：启动卡在收人阶段（V2 是 `GetConnections` 无进展，A2/A3 是 `topo exchange server get socket timeout`）→ 调大 `HCCL_CONNECT_TIMEOUT`、查 `HCCL_SOCKET_IFNAME` 与白名单；首个算子超时 → 调大 `HCCL_CONNECT_TIMEOUT`，并 warm-up 一次小算子；显存不够（多域）→ 调小 `hcclBufferSize` / `HCCL_BUFFSIZE`，或减少域数；精度不可复现 → `hcclDeterministic=1`（要保序用 2）；跨机链路抖动 → 调大 `HCCL_RDMA_TIMEOUT` / `HCCL_RDMA_RETRY_CNT`，A3 可开 `hcclRetryEnable`；RoCE 拥塞或多租户 → `HCCL_RDMA_TC` / `HCCL_RDMA_SL`、`hcclQos`；小包时延高 → `hcclOpExpansionMode=3/4`（AIV）并确认算法；大包带宽低 → 查算法（ring / 分层）、`HCCL_BUFFSIZE`、链路；心跳或监控开销大 → `HCCL_DFS_CONFIG=cluster_heartbeat:off`。
+    DFX 开关同属第三层（14 篇第四节）：`ASCEND_GLOBAL_LOG_LEVEL`（1 为 INFO、生产一般 3 WARNING）、`ASCEND_SLOG_PRINT_TO_STDOUT`、`HCCL_ENTRY_LOG_ENABLE`（要看 `Entry-Hccl*` 就必须开）、`HCCL_DFS_CONFIG`（子开关如 cluster_heartbeat）、`HCCL_EXEC_TIMEOUT`、`HCCL_CONNECT_TIMEOUT`、`HCCL_DIAGNOSE_ENABLE`。这些开关都有开销，生产按需开；默认值以 `[HCCL_ENV]` 行为准。
+    一处版本间不一致，按现场日志判：14 篇把 `HCCL_CONNECT_TIMEOUT` 写成「默认 600s 量级」、`HCCL_EXEC_TIMEOUT` 写成「默认 1800s 量级」，15 篇写 120 秒与 1836 秒；两者都注明默认值随版本变，实际取值看启动日志的 `[HCCL_ENV]` 行。另外 nRoot（scalable 的 root 数）只对 A2/A3 有意义，A5 不支持 scalable。

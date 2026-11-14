@@ -1,0 +1,42 @@
+id: hccl-rankgraph-and-netlayer-model
+type: software-fact
+title: HCCL 的 RankGraph 与 netLayer 模型：图模型的四个用途、层 ≠ 域、实例数与多 root 的区别
+summary: 分不清「层 / 域 / 实例 / 多 root」时看这条：RankGraph 存什么、四个数各由谁决定、A2/A3 的算法分层与规模减压手段。
+
+sources:
+- type: engineer-input
+  engineer: stfdtj（GitHub 账号：HCCL 建链机制笔记整理者）
+  document: "hccl-learning 笔记 01 三层模型、07 状态机与交换机、12 A5 与 A2/A3 的建域差异（共 17 篇，内容基于 cann/hcomm master HEAD c7e149d 代码阅读，非官方文档；仓库为非公开仓库，出处以本篇名与篇号为准）"
+  input_session: session-1f5c4a0f-8d34-4c02-a19c-386206c9d8cc
+  confirmed_at: 2026-11-14
+  verification: auto-extracted
+applies_to:
+  platforms:
+  - A2-910B
+  - A3-910C
+  - A5-950
+  frameworks:
+  - hccl
+  categories:
+  - interrupt
+  - performance
+related_references:
+- hccl-domain-link-run-phases
+- hccl-bootstrap-rank-table-and-rootinfo
+- hccl-transport-and-notify-dataplane
+- hccl-comm-init-and-link-faults
+- hccl-cluster-heartbeat-and-link-probe
+- hcomm-a5-code-map
+status: active
+last_verified: 2026-11-14
+content:
+  claim: >-
+    RankGraph 是通信域内「谁和谁怎么连」的图模型，由 rank table 经 `RankGraphBuilder::Build` 生成：Node 是通信实体（一张卡 / 一个 rank）或 Fabric（交换机抽象），Endpoint 是 Node 的逻辑端口（协议 + 地址 + 位置），Edge / Link 是两端 Endpoint 之间的连接并带「可建链」的协议信息，netLayer 是网络层级（L0 机内 / L1 超节点 / L2 集群），TopoInstance 是每层内的拓扑实例（一台 server 的 8 卡、一个超节点）。它只用于建链时查路（`HcclRankGraphGetLinks`，填 `HcclChannelDesc`）、选算法（`HcclRankGraphGetLayers` / `GetRanksByLayer` / `GetTopoTypeByLayer`）、切子域（`CreateSubRankGraph`，不用重新 bootstrap）和 DFX 监控；它不是运行时路由表（数据面只认 channel handle）、不是 rank table（表是名单 + 地址，图是关系 + 层）、也不是动态的（建好只读，拓扑变了要重建域）。
+    层与域是两个维度，问「为什么慢 / 能不能通」看层，问「这次通话有哪些卡、rank 几号」看域。四个数互不联动：rank 数由启动参数 nRanks / rank table 决定；通信域（HcclComm）数由业务调用了几次 `HcclCommInit*` 决定；网络层数由机器形态（机内 / 超节点 / 集群）与 rank table 决定；层内实例数由物理分组决定。节点数从 64 涨到 1000 不会自动多出通信域，变的是层数、每层实例数和控制面要搬多少数据。
+    交换机的角色是「不参与建链，但决定路径」：HCCL 把它抽象成 Fabric 节点（`NodeType::FABRIC`），跨机 link 的类型是 `PEER2NET` 且按 `PEER2NET_LINK_HOP = 2` 算两跳；QP 握手只在两端网卡之间交换 QPN / PSN / GID / MTU，交换机只转发不解析、不参与状态迁移；跨机报文走哪条上行由 ECMP 哈希决定（RoCEv2 封在 UDP 里，UDP 源端口参与哈希，所以 HCCP 会调 udpSport 影响分布）。无损网络要求的 PFC / ECN 配错时，表现是建链慢、偶发超时、CQE 错误，而不是「连不上」。
+  evidence: >-
+    01 篇第三节给出 RankGraph 五个概念（Node / Endpoint / Edge·Link / netLayer / TopoInstance）与四个用途的接口名，并写明「来自 rank table → RankGraphBuilder；A5 的 RankGraphV2、A2/A3 的算法 plane 都从同一张表来」，以及「不是运行时路由表：数据面不查 RankGraph，直接用 channel handle + 地址」「不是 rank table」「不是动态的：建好就只读，拓扑变了要重建域」。12 篇第四节给出分配规则「横向按物理框切实例：L0 一台 server 一个实例（sp_0_srv_N_idx_0），L1 一个超节点一个实例（sp_N_idx_0），L2 整个集群一个（cluster）」「纵向一个 rank 一条 level_list」，并给出 8 / 64 / 512 / 8000 卡的 L0/L1/L2 实例数表与 128 卡样例约 4.7 KB/rank 的体积（笔记标注为数量级估算、未实测）。12 篇 5.1 原文「一次 HcclCommInit* = 一个通信域」「域的数量 = 你调了几次建域接口，和集群大小、层数、root 数都无关」。07 篇原文「HCCL 不把交换机当『设备』，而是抽象成一个 Fabric 节点」，列出 `NodeType::PEER` / `NodeType::FABRIC`、`LinkType::PEER2PEER` / `PEER2NET` / `PEER2BACKUP`、`PEER2NET_LINK_HOP = 2`、`TopoType::CLOS`（另有 MESH_1D / MESH_2D / A3_SERVER / A2_AX_SERVER），并写明「交换机不参与建链，但决定路径」「UDP 源端口会被用来参与 ECMP 哈希，所以 HCCP 会调整 udpSport」，日志里能看到 `modify succ, udpSport:%u`。
+  details: >-
+    A2/A3 的算法分层（12 篇 2.3）：A2 是 `COMM_LEVEL0` 机内 HCCS（8 卡 / 4 卡 mesh）+ `COMM_LEVEL1` 跨机 RoCE，`COMM_LEVEL2` 不存在；A3 是 L0 机内 HCCS、L1 超节点内跨 server（HCCS）、L2 跨超节点 RoCE。A3 超节点上限在代码里是 `MAX_RANK_SIZE_A3 = 768`（hccl_aiv.h），rank table v1 用 super_pod_list 表达超节点归属。三个「L」别混：`netLayer = 0/1/2/3` 是网络层级（机内 / 超节点内 / 集群 / host 备份）；`COMM_LEVEL0/1/2` 是 A2/A3 算法在哪个粒度做 reduce；`hcclRetryEnable = "L1:1,L2:0"` 是重执行开关的作用范围。
+    控制面的两个减压手段只对 A2/A3：分组 leader 在 `rankSize > 32768` 时自动启用（每 2048 个 rank 一组选 leader，组员先报 leader、leader 再报 root，root 只跟 N/2048 个 leader 换表），代码常量 `TOPO_MAX_GROUP_SIZE = 2048`、`TOPO_HIERARCHICAL_ENABLE_THRESHOLD = 32768`；多 root 需要用户显式调 `HcclCommInitRootInfoScalable`（把 nRanks 均分成 nRoot 组，每组一个 root，root 间 mesh 互发子表再各自向本组广播）。两者不能叠加（scalable 模式下 isScalable_ 会压掉分层分支），且都只改控制面怎么凑人，不改通信域个数。分组公式：`rpr = nRanks / nRoot`、`rmr = nRanks % nRoot`，前 rmr 组各多 1 人。8000 卡（1000 节点）触发不了分组 leader（8000 < 32768），它是给 32768 卡以上准备的。
+    通信域变多的四个来源（都不是 HCCL 自己拆的，而是业务按并行策略拆）：并行策略（TP / PP / DP / EP / CP / embedding 各建一个组，每卡 3–6 个）、同一进程多用途（推理的 prefill / decode 各一组）、多作业多实例（一机跑两个训练任务）、功能性子域（`HcclCreateSubCommConfig` 切子域、A5 CCU 的 `_negotiation` 内部域）。域多的代价：每域每卡一块 cclBuffer（默认 200 MB，`HCCL_BUFFSIZE`），4 个域 = 800 MB/卡；每域都要 bootstrap + 建 team / 通道，上千个组会把启动时间拉长（笔记未给读数）；notify / QP / Jetty 按域分配；任一域建链失败整个作业起不来。实践上用子域复用父域的 rank table 与链路，而不是对每个组都重新 `HcclCommInit`。
