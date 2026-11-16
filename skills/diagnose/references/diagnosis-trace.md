@@ -128,10 +128,13 @@ sediment_candidates:
     summary: 一句话说清可复用的结构事实（跨事故稳定，不绑定本次个案）
     evidence: 本轮哪条证据支撑它（trace 事件 / 文件 / issue）
     suggested_skill: to-reference   # to-postmortem | to-reference | knowledge-groom
-    status: proposed         # drafted（本轮已起草）| proposed（建议做，未做）
+    status: proposed         # drafted（本轮已起草）| proposed（建议做，未做）| produced（已产出）
+    ref_id: <ref-id>         # 仅 produced：产出词条的 id，由 to-reference 回写
 ```
 
 判"能不能当 reference"的口径：换个事故、换个客户还成立吗？只对本次个案成立的内容属于 case（走 to-postmortem）。
+
+`produced` 只用于 `kind: reference`：to-reference 产出词条后把对应候选从 `proposed`/`drafted` 改成 `produced` 并写 `ref_id`（写入口是 `scripts/trace_transition.py --field candidate`）。它回答"这单产出了哪些词条"，也让面板把"已产出"与"待复核"分开；case 候选的沉淀状态仍由 `sedimented` 那条轴记，不写 `produced`。
 
 ### `procedure_follow` 事件（方法缺口消费点）
 

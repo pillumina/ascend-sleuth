@@ -194,8 +194,12 @@ def derive(doc: dict, kb_case_ids: set[str], kb_cases: dict | None = None) -> di
     active_case = "" if doc.get("active_case") is None else str(doc.get("active_case"))
     fb = feedback_of(doc)
     sed = sed_state(doc)
-    candidates = doc.get("sediment_candidates") or []
-    case_candidates = [c for c in candidates if isinstance(c, dict) and str(c.get("kind") or "") == "case"]
+    candidates = [c for c in (doc.get("sediment_candidates") or []) if isinstance(c, dict)]
+    case_candidates = [c for c in candidates if str(c.get("kind") or "") == "case"]
+    ref_candidates = [c for c in candidates if str(c.get("kind") or "") == "reference"]
+    produced_refs = [c for c in ref_candidates if str(c.get("status") or "") == "produced"]
+    pending_refs = [c for c in ref_candidates if str(c.get("status") or "") != "produced"]
+    other_candidates = [c for c in candidates if str(c.get("kind") or "") not in ("case", "reference")]
     report = doc.get("report_file")
     summary = doc.get("summary")
     trace = doc.get("trace") or []
@@ -208,12 +212,15 @@ def derive(doc: dict, kb_case_ids: set[str], kb_cases: dict | None = None) -> di
     skeleton = steps == 0 and not (summary or report or candidates)
     submitted = sed == "submitted"
     need_sed = sed == "none" and not active_in_kb and bool(case_candidates)
-    need_review = sed == "none" and not active_in_kb and not case_candidates and bool(report or candidates)
+    # 「待复核」：有报告或候选，但没有 case 候选。先验候选全部标成 produced 时不再算待复核——
+    # 那批词条已经落盘，读者不用再读一遍报告决定要不要沉淀；报告里若另有事，由下一轮动作承接。
+    need_review = (sed == "none" and not active_in_kb and not case_candidates
+                   and bool(pending_refs or other_candidates or (report and not ref_candidates)))
     need_promote = submitted and not closed
     need_work = open_ and not skeleton and not need_sed and not need_review and not submitted
     need_confirm = status == "resolved" and fb["outcome"] == "pending"
 
-    # 价值序：`panel-client.js:915-935`。面板排序与侧栏共用，搬过来避免两套。
+    # 价值序：`panel-client.js:1006-1012` 的 valueRankOf。面板排序与侧栏共用，搬过来避免两套。
     if sed != "none":
         value_rank = 5
     elif kind == "case":
@@ -301,6 +308,10 @@ def derive(doc: dict, kb_case_ids: set[str], kb_cases: dict | None = None) -> di
         "closed": closed,
         "needSed": need_sed,
         "needReview": need_review,
+        "refCandidates": len(ref_candidates),
+        "producedRefCandidates": len(produced_refs),
+        "pendingRefCandidates": len(pending_refs),
+        "producedRefIds": [str(c.get("ref_id") or "") for c in produced_refs if c.get("ref_id")],
         "needPromote": need_promote,
         "needWork": need_work,
         "skeleton": skeleton,

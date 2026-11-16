@@ -87,6 +87,10 @@ const TRACE_FIXTURE = [
   'sediment_candidates:',
   '  - kind: case',
   '    summary: "夹具候选：vendor TopKV2 kernel 崩溃"',
+  '  - kind: reference',
+  '    summary: "夹具候选：已产出的先验词条"',
+  '    status: produced',
+  '    ref_id: test-ref',
   'trace:',
   '  - role: user',
   '    step: 1',
@@ -610,6 +614,8 @@ expect('读：带内容指纹', row && /^[0-9a-f]{64}$/.test(row.contentSha256))
 expect('读：带上游查询能力位', stateValue && stateValue.upstream && typeof stateValue.upstream.ready === 'boolean', JSON.stringify(stateValue && stateValue.upstream))
 expect('读：证据文件清单', row && Array.isArray(row.extra.evidenceList) && row.extra.evidenceList.length === 1 && row.extra.evidenceList[0].includes('crash.log'), JSON.stringify(row && row.extra))
 expect('读：沉淀候选清单', row && Array.isArray(row.extra.sedimentCandidateList) && row.extra.sedimentCandidateList[0].summary.includes('TopKV2'), JSON.stringify(row && row.extra))
+expect('读：候选带产出状态', row && Array.isArray(row.extra.sedimentCandidateList)
+  && row.extra.sedimentCandidateList.some(c => c.status === 'produced' && c.refId === 'test-ref'), JSON.stringify(row && row.extra.sedimentCandidateList))
 expect('读：缺失材料清单（含无空格写法与末项）', row && Array.isArray(row.extra.missingMaterials)
   && row.extra.missingMaterials.includes('驱动版本')
   && row.extra.missingMaterials.includes('npu-smi 输出')

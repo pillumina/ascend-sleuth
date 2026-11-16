@@ -12,6 +12,7 @@ import base64
 import hashlib
 import io
 import json
+import shutil
 import sys
 import contextlib
 import tempfile
@@ -48,12 +49,13 @@ def args(**kw):
                     handed_to=None, duplicate_of=None, note=None, summary=None, severity=None,
                     fix_emitted=None, stop_reason=None, by="user", source="panel",
                     expect_sha256=None, field=None, state=None, case_id=None, inbox_path=None,
+                    candidate_index=None, candidate_summary=None, ref_id=None,
                     dry_run=False, scheme_version=None)
     defaults.update(kw)
     return argparse.Namespace(**defaults)
 
 
-class WriterTest(unittest.TestCase):
+class _TraceCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = Path(self.tmp.name)
@@ -74,6 +76,7 @@ class WriterTest(unittest.TestCase):
     def load(self, sid="s1"):
         return yaml.safe_load((self.traces / (sid + ".yaml")).read_text(encoding="utf-8"))
 
+class WriterTest(_TraceCase):
     def test_close_escalated_writes_ending_event_and_stop_reason(self):
         self.make()
         tt.apply_transition(ROOT, self.traces, "s1", args(to="escalated", handed_to="张工"))
@@ -455,6 +458,108 @@ class WriterTest(unittest.TestCase):
         self.assertEqual(doc["sedimented"]["state"], "none")
         self.assertEqual(doc["sedimented"]["case_id"], "")
         self.assertEqual(doc["sedimented"]["inbox_path"], "")
+
+
+CANDS = (
+    "sediment_candidates:\n"
+    "  - kind: reference\n"
+    "    summary: \"先验候选甲\"\n"
+    "    evidence: \"日志与栈尾\"\n"
+    "    suggested_skill: to-reference\n"
+    "    status: proposed\n"
+    "  - kind: case\n"
+    "    summary: \"案例候选乙\"\n"
+    "    status: proposed\n"
+)
+
+
+class CandidateWriteTest(_TraceCase):
+    """`--field candidate`：只把一条 reference 候选改成 produced，别的轴不动。"""
+
+    def setUp(self):
+        super().setUp()
+        self.root = self.dir
+        shutil.copy2(ROOT / "trace-status.yaml", self.root / "trace-status.yaml")
+        refdir = self.root / "references" / "tools"
+        refdir.mkdir(parents=True)
+        (refdir / "test-ref.yaml").write_text(
+            "id: test-ref\ntype: tool\ntitle: T\nsummary: T\nsources: [{type: engineer-input}]\n"
+            "last_verified: 2026-01-01\nstatus: active\n", encoding="utf-8")
+
+    def apply(self, a):
+        return tt.apply_transition(self.root, self.traces, "s1", a)
+
+    def test_marks_one_reference_produced(self):
+        self.make(extra=CANDS)
+        self.apply(
+                            args(field="candidate", candidate_index=0,
+                                 ref_id="test-ref"))
+        doc = self.load()
+        self.assertEqual(doc["sediment_candidates"][0]["status"], "produced")
+        self.assertEqual(doc["sediment_candidates"][0]["ref_id"], "test-ref")
+        self.assertEqual(doc["sediment_candidates"][1]["status"], "proposed")
+        self.assertNotIn("ref_id", doc["sediment_candidates"][1])
+        self.assertEqual(doc["status"], "in_progress")
+        self.assertIn("note_block", doc, "块标量不能被这次写入吃掉")
+
+    def test_summary_selector(self):
+        self.make(extra=CANDS)
+        self.apply(
+                            args(field="candidate", candidate_summary="先验候选甲",
+                                 ref_id="test-ref"))
+        self.assertEqual(self.load()["sediment_candidates"][0]["status"], "produced")
+
+    def test_case_candidate_rejected(self):
+        self.make(extra=CANDS)
+        with self.assertRaises(tt.Fail) as ctx:
+            self.apply(
+                                args(field="candidate", candidate_index=1,
+                                     ref_id="test-ref"))
+        self.assertEqual(ctx.exception.code, "E_SCHEMA")
+
+    def test_bad_ref_id_rejected(self):
+        self.make(extra=CANDS)
+        with self.assertRaises(tt.Fail) as ctx:
+            self.apply(
+                                args(field="candidate", candidate_index=0, ref_id="Bad_ID"))
+        self.assertEqual(ctx.exception.code, "E_SCHEMA")
+
+    def test_unknown_ref_id_rejected(self):
+        self.make(extra=CANDS)
+        with self.assertRaises(tt.Fail) as ctx:
+            self.apply(
+                                args(field="candidate", candidate_index=0,
+                                     ref_id="no-such-ref-id-xyz"))
+        self.assertEqual(ctx.exception.code, "E_SCHEMA")
+
+    def test_already_produced_is_no_change(self):
+        self.make(extra=CANDS)
+        self.apply(
+                            args(field="candidate", candidate_index=0, ref_id="test-ref"))
+        with self.assertRaises(tt.Fail) as ctx:
+            self.apply(
+                                args(field="candidate", candidate_index=0,
+                                     ref_id="test-ref"))
+        self.assertEqual(ctx.exception.code, "E_NO_CHANGE")
+
+    def test_ambiguous_summary_rejected(self):
+        self.make(extra=CANDS.replace('"案例候选乙"', '"先验候选甲"'))
+        with self.assertRaises(tt.Fail) as ctx:
+            self.apply(
+                                args(field="candidate", candidate_summary="先验候选甲",
+                                     ref_id="test-ref"))
+        self.assertEqual(ctx.exception.code, "E_SCHEMA")
+
+    def test_dry_run_does_not_write(self):
+        self.make(extra=CANDS)
+        path = self.traces / "s1.yaml"
+        before = path.read_bytes()
+        result = self.apply(
+                                     args(field="candidate", candidate_index=0,
+                                          ref_id="test-ref", dry_run=True))
+        self.assertTrue(result["dryRun"])
+        self.assertEqual(result["candidate"]["candidateIndex"], 0)
+        self.assertEqual(path.read_bytes(), before)
 
 
 if __name__ == "__main__":

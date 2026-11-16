@@ -373,6 +373,8 @@ def _extra(doc: dict, traces: Path) -> dict:
         candidates.append({
             "kind": str(candidate.get("kind") or ""),
             "summary": _short(candidate.get("summary") or candidate.get("title") or candidate.get("id"), TEXT_LIMIT),
+            "status": str(candidate.get("status") or ""),
+            "refId": str(candidate.get("ref_id") or ""),
         })
     result = {
         "currentStep": _safe_int(doc.get("current_step")),

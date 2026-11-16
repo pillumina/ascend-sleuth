@@ -237,8 +237,11 @@ sediment_candidates:
     summary: 一句话说清可复用的结构事实（跨事故稳定，不绑定本次个案）
     evidence: 本轮的哪条证据支撑它（trace 事件 / 文件 / issue）
     suggested_skill: to-reference   # to-postmortem | to-reference | knowledge-groom
-    status: drafted          # drafted（本轮已起草）| proposed（建议做，未做）
+    status: drafted          # drafted（本轮已起草）| proposed（建议做，未做）| produced（已产出）
+    ref_id: <ref-id>         # 仅 produced：产出词条的 id，由 to-reference 回写
 ```
+
+报告第 8 节写落报告时的状态（drafted / proposed）；to-reference 产出后只回写 trace 里那条候选为 `produced`，报告不必追改这一格——两边以 trace 为准。
 
 判断"值不值得沉淀 reference"的口径：**换个事故、换个客户还成立吗**？只对本次个案成立的，不要写成 reference；那是 case 的活儿（走 to-postmortem）。
 

@@ -179,6 +179,7 @@ window.__ModuleLoader__.load({
       'label.severity': '严重级',
       'label.report': '人读报告',
       'label.hasReport': '有',
+      'label.produced': '已产出先验词条',
       'label.noReport': '无',
       'label.none': '未记录',
       'label.queue': '全库',
@@ -760,6 +761,7 @@ window.__ModuleLoader__.load({
       'label.severity': 'severity',
       'label.report': 'report',
       'label.hasReport': 'yes',
+      'label.produced': 'Produced',
       'label.noReport': 'no',
       'label.none': 'not recorded',
       'label.queue': 'workspace',
@@ -5733,6 +5735,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       }
 
       function candidateAction(target, candidate) {
+        if (candidate && String(candidate.status || '') === 'produced') return
         const summary = String((candidate && candidate.summary) || '')
         const evidence = String((candidate && candidate.evidence) || '')
         if (candidate && candidate.kind === 'reference') fillDraft(referenceDraft(target, summary, evidence))
@@ -6342,13 +6345,18 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 h('span', { className: 'scp-evidence-path', title: filePath }, filePath),
                 h('button', { type: 'button', className: 'scp-check-action', onClick: () => copyPathAndFlash(filePath, flash) }, tr('action.copyPath'))))
                 : h('div', { className: 'scp-mono' }, tr('evidence.none')),
-              candidateList.length ? candidateList.map((candidate, index) => h('div', { key: 'cand-' + index, className: 'scp-candidate' },
-                h('span', { className: 'scp-chip' }, candidate.kind || 'case'),
-                h('span', { className: 'scp-candidate-text', title: candidate.summary }, candidate.summary || tr('none')),
-                h('button', {
-                  type: 'button', className: 'scp-check-action',
-                  onClick: () => candidateAction(row, candidate),
-                }, tr('action.sedimentGeneric'))))
+              candidateList.length ? candidateList.map((candidate, index) => {
+                const produced = String(candidate.status || '') === 'produced'
+                return h('div', { key: 'cand-' + index, className: 'scp-candidate' },
+                  h('span', { className: 'scp-chip' }, candidate.kind || 'case'),
+                  h('span', { className: 'scp-candidate-text', title: candidate.summary }, candidate.summary || tr('none')),
+                  produced
+                    ? h('span', { className: 'scp-check-state' }, tr('label.produced') + (candidate.refId ? ' · ' + candidate.refId : ''))
+                    : h('button', {
+                      type: 'button', className: 'scp-check-action',
+                      onClick: () => candidateAction(row, candidate),
+                    }, tr('action.sedimentGeneric')))
+              })
                 : h('div', { className: 'scp-mono' }, tr('candidates.none')),
               h('div', { className: 'scp-upstream-row' },
                 h('button', {

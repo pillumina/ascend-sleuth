@@ -7,7 +7,8 @@
 transition 事件；面板、skill、终端都调它。
 
 **它不做什么**：不判断「该不该收尾」（那是人的动作）；不改 `trace[]` 事件流；不改
-`feedback` 之外的任何轴（`--field outcome` 排 PR2）。
+`feedback` 之外的任何轴（`--field outcome` 排 PR2）。`--field candidate` 只改
+`sediment_candidates` 里一条 reference 候选的 status/ref_id，不改 case 候选。
 
 用法：
 
@@ -17,6 +18,7 @@ transition 事件；面板、skill、终端都调它。
   python3 scripts/trace_transition.py <sid> --reopen
   python3 scripts/trace_transition.py <sid> --field sedimented --state submitted --inbox-path …
   python3 scripts/trace_transition.py <sid> --field content --content-file /tmp/content.json --by agent --json
+  python3 scripts/trace_transition.py <sid> --field candidate --candidate-summary "<摘要>" --ref-id <ref-id> --by agent --source agent
   python3 scripts/trace_transition.py <sid> --to archived --kind withdrawn --expect-sha256 <hex> --json
   python3 scripts/trace_transition.py <sid> --json --payload-base64 <b64>
   （`--payload-base64` 是给「复制到任意终端」用的：base64 是纯 ASCII 单行，bash / zsh /
@@ -36,6 +38,7 @@ import argparse
 import base64
 import json
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -49,11 +52,12 @@ from _stdio import write_text_lf  # noqa: E402
 from _trace_state import (  # noqa: E402
     SCHEME, actions_for, case_kind, derive, is_terminal, load_vocab, status_meta,
 )
+from verify_references import is_entry_file  # noqa: E402
 from _yaml import load_text  # noqa: E402
 from exec_log_path import log_lock, resolve_traces  # noqa: E402
 
 TOUCHED = {"status", "ending", "resolved_at", "updated_at", "stop_reason", "transitions",
-           "sedimented", "summary", "severity", "fix_emitted",
+           "sedimented", "sediment_candidates", "summary", "severity", "fix_emitted",
            # 三段时间线 + 修订记录（--field content）：写入口允许改，verify_untouched
            # 不能把它们判成越权改动。
            "incident_env", "incident_timeline", "failure_process", "upstream_timeline",
@@ -299,6 +303,114 @@ def apply_review(doc: dict, text: str, args, vocab: dict) -> tuple[str, dict]:
     return new_text, doc
 
 
+REF_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+
+def _norm_text(value) -> str:
+    return " ".join(str(value or "").split())
+
+
+def _reference_ids(root: Path) -> tuple[set[str], bool]:
+    """references/ 里的词条 id；目录不存在（只装 skill 的部署）时返回空集。
+
+    第二个返回值表示「有文件解析不了」：此时不拦写入——坏文件该由 verify_references 报，
+    不能把「解析失败」误报成「id 不存在」。
+    """
+    refs = root / "references"
+    if not refs.is_dir():
+        return set(), False
+    ids, broken = set(), False
+    for path in refs.rglob("*.yaml"):
+        if not is_entry_file(path):
+            continue
+        try:
+            d = load_text(path.read_text(encoding="utf-8")) or {}
+        except Exception:
+            broken = True
+            continue
+        if isinstance(d, dict) and d.get("id"):
+            ids.add(str(d["id"]))
+    return ids, broken
+
+
+def apply_candidate(doc: dict, text: str, args, root: Path) -> tuple[str, dict, dict]:
+    """把一条 reference 候选标成「已产出」并记下词条 id。
+
+    为什么由写入口做：这是 trace 里唯一一处「诊断产出了先验词条」的落点。没有它，
+    只产出词条、没命中 case 的单在 trace 里只能写 `sedimented: none`，面板会一直把它
+    算成「待复核」。只接受 `kind: reference`，只从 proposed/drafted 改成 produced，
+    不改 case 候选的沉淀状态（那条轴由 to-postmortem/groom 回写）。
+    """
+    candidates = doc.get("sediment_candidates")
+    if not isinstance(candidates, list) or not candidates:
+        raise Fail("E_SCHEMA", "这单没有 sediment_candidates，没有可回写的候选")
+    ref_id = str(getattr(args, "ref_id", None) or "").strip()
+    if not ref_id:
+        raise Fail("E_SCHEMA", "需要一个 --ref-id（产出词条的 id）", requirements=["ref_id"])
+    if not REF_ID_RE.match(ref_id):
+        raise Fail("E_SCHEMA", f"--ref-id '{ref_id}' 不是词条 id 形态（小写字母/数字/连字符）",
+                   requirements=["ref_id"])
+    known, broken = _reference_ids(root)
+    if known and not broken and ref_id not in known:
+        raise Fail("E_SCHEMA", f"references/ 里没有 id 为 {ref_id} 的词条；先产出词条再回写，或确认 id 没写错",
+                   requirements=["ref_id"])
+
+    idx = getattr(args, "candidate_index", None)
+    summary = _norm_text(getattr(args, "candidate_summary", None))
+    if idx is None and not summary:
+        raise Fail("E_SCHEMA", "需要一个 --candidate-index 或 --candidate-summary",
+                   requirements=["candidate_index", "candidate_summary"])
+    if idx is not None:
+        try:
+            idx = int(idx)
+        except (TypeError, ValueError):
+            raise Fail("E_SCHEMA", "--candidate-index 必须是整数", requirements=["candidate_index"])
+        if idx < 0 or idx >= len(candidates):
+            raise Fail("E_SCHEMA", f"--candidate-index {idx} 越界（共 {len(candidates)} 条）",
+                       requirements=["candidate_index"])
+        matches = [idx]
+    else:
+        matches = [i for i, c in enumerate(candidates)
+                   if isinstance(c, dict) and _norm_text(c.get("summary")) == summary]
+        if not matches:
+            # 摘要被命令行截断/改写时给一次包含匹配；仍要求唯一，避免标错候选。
+            matches = [i for i, c in enumerate(candidates)
+                       if isinstance(c, dict) and summary and summary in _norm_text(c.get("summary"))]
+        if not matches:
+            raise Fail("E_SCHEMA", "找不到摘要匹配的候选；用 --candidate-index 指定",
+                       candidates=[{"index": i, "kind": (c or {}).get("kind"),
+                                    "summary": (c or {}).get("summary")}
+                                   for i, c in enumerate(candidates) if isinstance(c, dict)])
+        if len(matches) > 1:
+            raise Fail("E_SCHEMA", "摘要匹配到多条候选；用 --candidate-index 消歧",
+                       candidates=[{"index": i, "summary": candidates[i].get("summary")} for i in matches])
+
+    i = matches[0]
+    cand = candidates[i]
+    if not isinstance(cand, dict):
+        raise Fail("E_SCHEMA", f"sediment_candidates[{i}] 不是映射")
+    kind = str(cand.get("kind") or "")
+    if kind != "reference":
+        raise Fail("E_SCHEMA", f"sediment_candidates[{i}] 是 {kind or '未标 kind'} 候选，只能标记 reference 候选")
+    status = str(cand.get("status") or "proposed")
+    if status == "produced":
+        if str(cand.get("ref_id") or "") == ref_id:
+            raise Fail("E_NO_CHANGE", "这条候选已经标记为产出", ref_id=ref_id)
+        raise Fail("E_SCHEMA", "这条候选已标记为产出，但 ref_id 不同",
+                   current=str(cand.get("ref_id") or ""))
+    if status not in ("proposed", "drafted"):
+        raise Fail("E_SCHEMA", f"候选状态 '{status}' 不能改成 produced（只接受 proposed / drafted）")
+
+    updated = dict(cand)
+    updated["status"] = "produced"
+    updated["ref_id"] = ref_id
+    rows = list(candidates)
+    rows[i] = updated
+    new_text = put_block(text, "sediment_candidates", list_block("sediment_candidates", rows))
+    new_text = put_block(new_text, "updated_at", scalar_block("updated_at", now_iso()))
+    return new_text, doc, {"candidateIndex": i, "refId": ref_id, "summary": str(cand.get("summary") or "")}
+
+
 def sedimented_block(doc: dict, state: str, case_id: str, inbox_path: str) -> str:
     current = doc.get("sedimented") if isinstance(doc.get("sedimented"), dict) else {}
     merged = dict(current)
@@ -495,6 +607,7 @@ def _apply_locked(root: Path, traces: Path, sid: str, args) -> dict:
     if args.to and args.to not in {x["value"] for x in vocab["statuses"]}:
         raise Fail("E_SCHEMA", "目标状态不在词表里", requirements=[x["value"] for x in vocab["statuses"]])
     content_info = None
+    candidate_info = None
     if args.field == "review":
         new_text, before = apply_review(doc, text, args, vocab)
     elif args.field == "report":
@@ -502,6 +615,8 @@ def _apply_locked(root: Path, traces: Path, sid: str, args) -> dict:
     elif args.field == "content":
         new_text, content_info = apply_content(doc, text, args)
         before = doc
+    elif args.field == "candidate":
+        new_text, before, candidate_info = apply_candidate(doc, text, args, root)
     elif args.field == "sedimented":
         if not args.state:
             raise Fail("E_SCHEMA", "需要一个 --state", requirements=["sedimented.state"])
@@ -634,6 +749,9 @@ def _apply_locked(root: Path, traces: Path, sid: str, args) -> dict:
             # content 的改动由深比较得出（不是「命令行给了哪些参数」），dry-run 也照实报。
             return {"ok": True, "dryRun": True, "changed": content_info["changed"],
                     "revision": content_info["revision"]}
+        if candidate_info is not None:
+            return {"ok": True, "dryRun": True, "changed": ["sediment_candidates", "updated_at"],
+                    "candidate": candidate_info}
         changed = [k for k in ("status", "ending", "sedimented", "resolved_at", "stop_reason",
                                "summary", "severity", "fix_emitted") if getattr(args, k, None) is not None]
         return {"ok": True, "dryRun": True, "changed": changed}
@@ -671,6 +789,9 @@ def _apply_locked(root: Path, traces: Path, sid: str, args) -> dict:
         # 不混进语义改动里）；revision 是本条自动生成的修订记录。
         result["changed"] = content_info["changed"]
         result["revision"] = content_info["revision"]
+    if candidate_info is not None:
+        result["changed"] = ["sediment_candidates", "updated_at"]
+        result["candidate"] = candidate_info
     return result
 
 
@@ -754,7 +875,7 @@ def main(argv=None) -> int:
     ap.add_argument("--correct-ending", action="store_true")
     ap.add_argument("--backfill-ending", action="store_true")
     ap.add_argument("--field", default=None,
-                    choices=["sedimented", "outcome", "report", "review", "content"])
+                    choices=["sedimented", "outcome", "report", "review", "content", "candidate"])
     ap.add_argument("--content-file", default=None,
                     help="--field content 的输入文件：JSON，含 set / kind / reason / evidence；"
                          "内容不落命令行，省得中文与引号过 shell")
@@ -766,6 +887,12 @@ def main(argv=None) -> int:
     ap.add_argument("--state", default=None)
     ap.add_argument("--case-id", default=None)
     ap.add_argument("--inbox-path", default=None)
+    ap.add_argument("--candidate-index", type=int, default=None,
+                    help="--field candidate：候选在 sediment_candidates 里的下标（0 起）")
+    ap.add_argument("--candidate-summary", default=None,
+                    help="--field candidate：候选摘要（与 trace 里逐字一致；唯一匹配才写）")
+    ap.add_argument("--ref-id", default=None,
+                    help="--field candidate：产出词条的 id（写进候选的 ref_id）")
     ap.add_argument("--by", default="cli", choices=["user", "agent", "cli"])
     ap.add_argument("--source", default="cli", choices=["panel", "cli", "agent", "import"])
     ap.add_argument("--expect-sha256", default=None)
@@ -821,7 +948,9 @@ def main(argv=None) -> int:
                     "expect_sha256": "expect_sha256",
                     "report_source": "report_source", "report_result": "report_result",
                     "report_note": "report_note", "verdict": "verdict",
-                    "review_note": "review_note", "content_file": "content_file"}.get(key)
+                    "review_note": "review_note", "content_file": "content_file",
+                    "candidate_index": "candidate_index", "candidate_summary": "candidate_summary",
+                    "ref_id": "ref_id"}.get(key)
             if attr and getattr(args, attr, None) in (None, ""):
                 setattr(args, attr, value)
         if payload.get("reopen"):
@@ -836,6 +965,9 @@ def main(argv=None) -> int:
         result = apply_transition(root, traces, args.session_id, args)
         if args.json:
             print(json.dumps(result, ensure_ascii=False))
+        elif args.field == "candidate":
+            c = result.get("candidate") or {}
+            print(f"已回写：候选 #{c.get('candidateIndex')} → produced（{c.get('refId')}）")
         else:
             print(f"已记录：{result.get('from')} → {result.get('to')}（{args.session_id}）")
         return 0
