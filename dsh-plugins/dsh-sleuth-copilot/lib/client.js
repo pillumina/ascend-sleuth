@@ -1284,10 +1284,13 @@ window.__ModuleLoader__.load({
       }
     }
 
+    // 工作台两条快捷键都带 Shift：DSH 自己把 Primary+K 绑给了「搜索会话」，宿主的分发器
+    // 先 preventDefault，本包的 keydown 会被 defaultPrevented 守卫挡掉，主键不加 Shift
+    // 等于点了没反应。要改这两条，先核对 DSH 已注册的组合，别只改这里。
     function shortcutKeys(name) {
       const mac = isMacPlatform()
       if (name === 'open') return mac ? '⌘⇧D' : 'Ctrl+Shift+D'
-      return mac ? '⌘K' : 'Ctrl+K'
+      return mac ? '⌘⇧K' : 'Ctrl+Shift+K'
     }
 
     function shortcutOpenLabel() {
@@ -4019,7 +4022,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           return undefined
         }, [s.data, s.sessionId])
 
-        // ⌘⇧D / Ctrl+Shift+D 打开诊断工作台；⌘K / Ctrl+K 打开工作台并进入命令面板。
+        // ⌘⇧D / Ctrl+Shift+D 打开诊断工作台；⌘⇧K / Ctrl+Shift+K 打开工作台并进入命令面板。
+        // 命令面板那条为什么不带主键的 ⌘K：DSH 把 Primary+K 注册成「搜索会话」，宿主的分发器
+        // 先跑并 preventDefault，下面的 defaultPrevented 守卫据此让路——留着主键等于点了没反应。
         React.useEffect(() => {
           const onKey = (event) => {
             // 宿主已经处理过的组合不再抢；状态条不该覆盖别的应用级快捷键。
@@ -4027,8 +4032,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             const key = String(event.key || '').toLowerCase()
             const mod = event.metaKey || event.ctrlKey
             if (!mod) return
-            if (key === 'k') {
-              // 工作台开着时 ⌘K 归工作台自己（切进命令面板），这里不重复处理。
+            if (key === 'k' && event.shiftKey) {
+              // 工作台开着时这组键归工作台自己（切进命令面板），这里不重复处理。
               if (store.paletteOpen) return
               event.preventDefault()
               setMenuOpen(false)
@@ -5339,7 +5344,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               }
             }
           }
-          if ((event.metaKey || event.ctrlKey) && String(event.key || '').toLowerCase() === 'k') {
+          if ((event.metaKey || event.ctrlKey) && event.shiftKey && String(event.key || '').toLowerCase() === 'k') {
             event.preventDefault()
             if (view === 'sediment') return
             // 指令 / 推送目标 / 手动改状态的弹层盖在命令面板之上：这时开面板只会开在遮罩下面。
