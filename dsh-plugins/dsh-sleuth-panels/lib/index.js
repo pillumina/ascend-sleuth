@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:8eadc49427f5)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:088d9c09d14a)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:27f2d4423c8d)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -105,7 +105,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:8eadc49427f5) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:088d9c09d14a) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -625,7 +625,7 @@ return {
     // 缓存是派生物：读不到/损坏/版本不一致就整份重建，删掉也不影响正确性。
     // 存量不需要迁移——第一次刷新全量解析一遍并写缓存，之后都是增量。
     const INDEX_CACHE_FILE = '.panel-index.json'
-    const INDEX_SCHEMA = 6   // v6: 列表带 harnessSession（侧栏行按它匹配）；v5: feedbackPendingSince；v4: 成本带 scope；v3: severity 与 fixEmitted
+    const INDEX_SCHEMA = 7   // v7: 列表带先验候选产出数（referenceCandidates / producedReferenceCandidates）；v6: harnessSession；v5: feedbackPendingSince；v4: 成本带 scope；v3: severity 与 fixEmitted
     // 改 `buildCoreItem` 的字段必须同步这份清单：形状不符的缓存条目会被丢弃并重解析，
     // 避免"旧缓存把新字段喂成 undefined"在列表上静默少一列。
     const INDEX_CORE_FIELDS = ['sessionId', 'file', 'status', 'framework', 'platform', 'category', 'activeCase',
@@ -633,6 +633,7 @@ return {
       'feedbackPendingSince', 'harnessSession',
       'waitingFor', 'userSteps', 'agentSteps', 'lastAction', 'lastRole', 'lastOutput', 'createdAt', 'updatedAt',
       'recordedReport', 'activeCaseKind', 'sedimented', 'sedimentCandidates', 'caseCandidates',
+      'referenceCandidates', 'producedReferenceCandidates',
       'severity', 'fixEmitted', 'parseAnomaly']
     function coreShapeOk(item) {
       if (!item || typeof item !== 'object') return false
@@ -798,6 +799,14 @@ return {
             : null),
         caseCandidates: Array.isArray(doc.sediment_candidates)
           ? doc.sediment_candidates.filter(c => c && String(c.kind || '') === 'case').length
+          : 0,
+        // 先验候选与其中已产出的条数：面板据此把「这单产出了词条」与「手里只有材料待复核」分开。
+        referenceCandidates: Array.isArray(doc.sediment_candidates)
+          ? doc.sediment_candidates.filter(c => c && String(c.kind || '') === 'reference').length
+          : 0,
+        producedReferenceCandidates: Array.isArray(doc.sediment_candidates)
+          ? doc.sediment_candidates.filter(c => c && String(c.kind || '') === 'reference'
+              && String(c.status || '') === 'produced').length
           : 0,
         parseAnomaly: anomalyOf(stats),
       }
@@ -1770,6 +1779,7 @@ return {
             summary: c && c.summary ? String(c.summary) : '',
             suggestedSkill: c && (c.suggested_skill || c.suggestedSkill) ? String(c.suggested_skill || c.suggestedSkill) : '',
             status: c && c.status ? String(c.status) : '',
+            refId: c && c.ref_id ? String(c.ref_id) : '',
           })).filter(c => c.kind || c.summary),
           parseAnomaly: anomalyOf(stats),
         }

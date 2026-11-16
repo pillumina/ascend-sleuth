@@ -1,0 +1,92 @@
+# ============================================================
+# EV 卡 EV-2026-189 —— 先验候选产出后回写 produced：面板与沉淀清点不再把它算「待复核」
+# 校验：python3 scripts/verify_proposals.py --check
+# 脱敏：只含仓库内路径、命令与聚合读数
+# ============================================================
+
+id: EV-2026-189
+layer: L2
+target_component: skills/to-reference/SKILL.md
+title: "先验候选产出后回写 produced + ref_id，面板与沉淀清点不再把它算待复核"
+status: validated
+authorization: review
+dimension: observability
+supersedes: []
+superseded_by: null
+created_at: 2026-11-16
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      owner 转来一份「先验词条的产出处记录」方案稿，要求确认并修正。复核结果：词条不缺来历
+      （sources[] 必填且强校验），缺的是「产出事件」的落点；真代价在面板——只产出先验词条、
+      没命中 case 的诊断只能写 sedimented: none，`_trace_state.py` 的 need_review 永久为真，
+      这单会一直挂在「待复核」；`sediment_batch.py` 也会把它一直列进「可沉淀」。
+      方案稿的 origin 块不建议做：origin.ref 在产出时还不知道，靠合入后回填会长期为空，git 本来就能查。
+    trajectory:
+      - "owner 转来的方案稿（先验词条的产出处记录：origin 块与使用记录的产出侧字段）"
+      - "scripts/_trace_state.py:210-211（need_review 只认报告/候选，不认候选已产出）"
+      - "scripts/entry_activity.py:77-92（ref 行只有消费侧）"
+      - "references/README.md:27-38（词条 schema 无产出处；sources 承载来源）"
+  - signal: observability_gap
+    evidence: >-
+      本机现算：references 268 条、带 sources[].input_session 13 条、带顶层 origin 0 条；
+      面板与 sediment_batch 都没有「这单产出了哪些词条」的读数。产出事件已有三处记录
+      （trace 的 sediment_candidates、exec-log 的 products、git 的加文件提交），缺的是
+      「候选已产出」这一个终态和两个读端。
+    trajectory:
+      - "python3 scripts/verify_references.py --check（268 个词条）"
+      - "python3 scripts/sediment_batch.py --json（可沉淀组里含已产出先验候选的单）"
+hypothesis: >-
+  给 `sediment_candidates` 增加 `produced` 终态（带 ref_id），由 to-reference 在产出后经
+  `trace_transition.py --field candidate` 回写；`_trace_state.derive` 与面板在「先验候选全部
+  produced 且无其他候选」时不再判待复核，`sediment_batch.py` 不再把它列进可沉淀批量；
+  词条 schema 不动，产出处由 `scripts/ref_origin.py` 从 git 查。
+predicted_effect:
+  metric: 只产出先验词条的单在「待复核」与「可沉淀」里的残留数
+  from: "产出后仍为待复核 / 仍进可沉淀批量（无终态可写）"
+  to: "候选标 produced 后两项都不再出现；面板另给「已产出先验词条 N 条」"
+  measure:
+    command: "python3 -m unittest tests.test_trace_state.DeriveTest.test_produced_reference_candidates_clear_review tests.test_sediment_batch.CollectTest.test_all_reference_candidates_produced_is_not_actionable tests.test_trace_transition.CandidateWriteTest.test_marks_one_reference_produced"
+    expect_exit: 0
+    expect_stdout: "OK"
+validation:
+  method: metrics_compare
+  baseline: "改前：need_review 只认 report/candidates；sediment_batch 只认 sedimented.state"
+  success_criteria: "回归全绿；真实 trace 上候选标 produced 后 trace_state 的 needReview=false、sediment_batch 的 actionable=false（同组还有未沉淀的 session 时仍为 true）"
+  rollback: "逐文件 git revert；trace 侧的 produced 是追加字段，旧读端忽略即可（原则七）"
+gate:
+  condition: "只产出先验词条、没命中 case 的诊断在面板上永久待复核（已发生）"
+risk: medium
+principle_refs: [1, 5, 7, 8]
+actual_cost:
+  tokens: 16000
+  source: estimate
+decisions:
+  - type: proposal
+    who: agent
+    when: 2026-11-16
+    conclusion: >-
+      复核方案稿后不采纳 origin 块：origin.ref 在产出时未知，靠合入后回填会长期为空；
+      词条来历已由 sources[] 承担，跨机可核。改为在 trace 侧补一个 produced 终态，
+      解决面板与沉淀清点的误判；词条产出处另加只读脚本从 git 派生。
+  - type: action
+    who: agent
+    when: 2026-11-16
+    conclusion: >-
+      改 scripts/trace_transition.py（--field candidate，含 ref_id 存在性校验）、
+      scripts/_trace_state.py（needReview 与产出计数）、scripts/sediment_batch.py（按单判可沉淀）、
+      诊断面板两半（待复核判定与「已产出先验词条」标记）、copilot 候选读端（不再给已产出候选生成指令）、
+      skills/to-reference 与 diagnosis-trace / report-template 文档；新增 scripts/ref_origin.py
+      （浅克隆与未提交行如实报查不到）与 tests/test_ref_origin.py。分支 kb/reference-produced-provenance。
+  - type: eval
+    who: agent
+    when: 2026-11-16
+    conclusion: >-
+      回归：test_trace_transition 39 条、test_trace_state 31 条、test_sediment_batch 19 条、
+      test_ref_origin 7 条全通过；panel_render_check 与面板包产物一致性检查通过。
+  - type: decision
+    who: agent
+    when: 2026-11-16
+    conclusion: >-
+      采纳 trace 侧 produced 终态与两个读端；不采纳词条 origin 块。判据：三条回归通过，
+      产出处可由 git 稳定复现（原则一、五、七、八）。

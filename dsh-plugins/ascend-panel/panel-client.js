@@ -935,6 +935,14 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     function needReviewOf(s) {
       if (sedStateOf(s) !== 'none' || !s || s.activeCaseInKb) return false
       if (hasCaseCandidateOf(s)) return false
+      // 先验候选全部由 to-reference 产出后，这单不再是「待复核」：材料已经落成词条。
+      // 只有先验候选、且都 produced 时才算完；还有 triage 候选（别的 kind）时仍要读一眼。
+      const refs = Number(s.referenceCandidates || 0)
+      const produced = Number(s.producedReferenceCandidates || 0)
+      if (refs > 0 && produced >= refs) {
+        const others = Math.max(0, Number(s.sedimentCandidates || 0) - refs)
+        if (others === 0) return false
+      }
       return !!(s.reportFile || s.sedimentCandidates)
     }
     // 未收尾：诊断还挂着，且既没有可沉淀结论、也没有待复核材料、也不是空壳、草稿也还没交。
@@ -1580,10 +1588,15 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       // key 用候选在 cands 里的**原下标**，避免过滤后错位。
       const candRow = (c, ci, withAction) => {
         const key = 'cand:' + ci
+        const done = String(c.status || '') === 'produced'
         return React.createElement('div', { key: key, style: { display: 'flex', alignItems: 'center', gap: 6, marginLeft: 60, marginTop: 5, minWidth: 0 } },
           React.createElement('span', { style: tinyBadge(c.kind === 'reference' ? 'var(--d-purple)' : 'var(--d-green)') }, c.kind || '?'),
           React.createElement('span', { title: c.summary || '', style: { flex: 1, minWidth: 0, color: T.text, fontSize: 'var(--t-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, c.summary || '(无摘要)'),
-          withAction ? React.createElement('button', {
+          done ? React.createElement('span', {
+            title: '已由 to-reference 产出，词条 id 在 trace 的 ref_id 里',
+            style: tinyBadge('var(--d-purple)'),
+          }, '已产出' + (c.refId ? ' · ' + c.refId : '')) : null,
+          (!done && withAction) ? React.createElement('button', {
             type: 'button',
             onClick: () => { setSedCmd(sedCmd === key ? null : key); setCopied(null) },
             style: btnGhost,
@@ -1601,7 +1614,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         }
         const m = /^cand:(\d+)$/.exec(String(sedCmd || ''))
         const c = m ? cands[Number(m[1])] : null
-        if (!c) return null
+        if (!c || String(c.status || '') === 'produced') return null
         return '用 /skill:to-reference 沉淀一条 reference：' + (c.summary || '(候选摘要见 trace)')
           + '（来源：traces/' + s.file + '，本单定位过程见该 trace）'
       })()
@@ -2881,6 +2894,11 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                 + '在「待复核」筛选里，读一眼报告——定了就补一条 case 候选，没定就继续查或标收尾/转上游',
               style: tinyBadge('var(--d-amber)'),
             }, '待复核') : null,
+            (Number(s.producedReferenceCandidates) || 0) > 0 ? React.createElement('span', {
+              title: '本单已有 ' + Number(s.producedReferenceCandidates) + ' 条先验候选由 to-reference 产出'
+                + '（trace.sediment_candidates 的 status: produced）；全部产出后不再算「待复核」，明细见展开后的沉淀区',
+              style: tinyBadge('var(--d-purple)'),
+            }, '已产出先验词条 ' + Number(s.producedReferenceCandidates) + ' 条') : null,
             // 严重级：只有非 benign 才出徽标——benign 是常态，人人挂一个等于没有信号。
             // data-loss-risk 的语义是"先停"，不是"打补丁"，所以文案直接写动作。
             (s.severity === 'data-loss-risk')

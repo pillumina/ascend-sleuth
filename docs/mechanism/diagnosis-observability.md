@@ -108,7 +108,8 @@ flowchart LR
 | `outcome` | 最终状态、是否给出 fix | 反馈捕获的分母、误诊率的分母 | 顶层 `status`、`resolved_at` | 现成 |
 | `feedback` | 现场回报：案例 id、结果、确认日期 | 反馈捕获、误诊率 | 顶层 `feedback`（`skills/diagnose/references/diagnosis-trace.md` 的反馈闭环词表） | 现成 |
 | `outcome.fix_emitted` | 是否给出了 fix | 沉淀漏斗的一格 | 顶层 `outcome.fix_emitted`，字段说明在 `diagnosis_state.yaml.example`；现有轨迹里不一定写，缺了就按「本次没记」显示 | 现成 |
-| `sedimented` | 沉淀状态与案例 id | 面板的沉淀漏斗（诊断数 → 沉淀数 → 转正数） | 顶层 `sedimented` | 现成 |
+| `sedimented` | 沉淀状态与案例 id（只记 case 落点） | 面板的沉淀漏斗（诊断数 → 沉淀数 → 转正数） | 顶层 `sedimented` | 现成 |
+| `sediment_candidates` | 结构化沉淀候选（case / reference / triage）与进度 | 「这单能沉淀什么」与「产出了哪些先验词条」 | 顶层 `sediment_candidates`；reference 候选由 to-reference 回写 `status: produced` + `ref_id` | 已落地 |
 | `cost.tokens` | 未缓存输入、缓存读、缓存写、输出——**本会话累计** | 会话成本中位数与 P90、按动作占比 | 会话日志按 `(turn, step)` 去重、定稿优先 | 已落地 |
 | `cost.window` | 诊断窗口内的调用次数、耗时、四类 token，加窗口外的调用数与超过 10 分钟的长调用（`from` / `to` / `bound_to` / `truncated` / `ms_complete` / `pending` / `outside_calls` / `outside_ms` / `long_calls` / `long_ms` / `long_threshold_ms`） | 单次诊断成本（跨会话比较哪类问题贵） | 轨迹的 `created_at` 与 `ended_at`（退到 `updated_at` 时标 `truncated`）切窗口，会话日志的调用与用量按窗口过滤；缺起止时间时整段为空，不拿会话累计顶替 | 已落地 |
 | `cost.step_cost` | 每个诊断步的调用次数、耗时、token、按工具拆开的分项，按步切窗口（收尾段没有 `ended_at` 时标 `window_truncated`） | 维护者裁最贵的步骤（合并、跳过、换更便宜的做法） | 轨迹事件的 `ts` 切窗口，窗口内的调用与用量归那一步；没有 `ts` 时整段为空 | 已落地 |
@@ -126,7 +127,8 @@ flowchart LR
 | `touched.references` | 列表 | 先验词条 id | 来自 `reference_lookup` |
 | `outcome.status` | 枚举 | `in_progress`、`resolved`、`escalated`、`archived`、`unknown` | 词表在 `trace-status.yaml` 的 `status` 段。`resolved` 表示**诊断已收尾（根因定位明确、fix 或下一步已给出）**，不表示 fix 在用户环境生效——后者只在 `feedback.outcome` 里。`abandoned` 不在这里，它是顶层 `stop_reason` 的取值 |
 | `feedback.outcome` | 枚举 | `pending`、`resolved`、`not_resolved`、`partial` | 现场回报结果，`pending` 表示还没回报。`feedback` 与 `outcome` 同为顶层字段，不是 `outcome` 的子键 |
-| `sedimented.state` | 枚举 | `none`、`submitted`、`knowledge`、`archived` | 未沉淀、草稿待审、已进知识库、转历史资料兜底检索（Tier 3） |
+| `sedimented.state` | 枚举 | `none`、`submitted`、`knowledge`、`archived` | 未沉淀、草稿待审、已进知识库、转历史资料兜底检索（Tier 3）。只记 case 的落点，先验词条的产出记在下一行 |
+| `sediment_candidates[].status` | 枚举 | `proposed`、`drafted`、`produced` | 候选进度；`produced` 只用于 `kind: reference`，必须带 `ref_id`，表示词条已产出 |
 | `tool_calls[].tool` | 字符串 | 工具名，如 `Grep`、`Read`、`Bash` | harness 侧的工具标识 |
 | `tool_calls[].ms` | 整数 | 毫秒 | 单次调用耗时 |
 | `tool_calls[].ok` | 布尔 | `true` / `false` | 失败或超时记 `false`，原因写 `error` |
