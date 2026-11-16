@@ -741,7 +741,10 @@ function makeState(mode) {
         platform: 'A3-910C', category: 'interrupt', framework: 'vllm-ascend',
         excludedCases: [], evidenceFiles: 0, evidenceList: [], evidenceMissing: '',
         hasReport: true, reportFile: 'traces/' + ID + '.report.md',
-        sedimentCandidateList: [{ kind: 'triage', summary: 'triage 路由词候选' }],
+        sedimentCandidateList: [
+          { kind: 'triage', summary: 'triage 路由词候选' },
+          { kind: 'reference', summary: '已产出的先验候选', status: 'produced', refId: 'test-ref' },
+        ],
       },
     })
     return {
@@ -1507,6 +1510,10 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(findToolbar(t.view()))
   const view = await t.settle()
   expect('候选：triage 种类可见', view.text.includes('triage'))
+  expect('候选：已产出的先验候选显示产出状态', view.text.includes('已产出先验词条 · test-ref'), view.text.slice(0, 400))
+  expect('候选：已产出的先验候选不再给生成指令',
+    view.nodes.filter(n => n.type === 'button' && nodeText(n) === '生成沉淀指令').length === 1,
+    '生成沉淀指令按钮=' + view.nodes.filter(n => n.type === 'button' && nodeText(n) === '生成沉淀指令').length)
   click(findButton(view, '生成沉淀指令'))
   await t.settle()
   expect('候选：triage 生成补路由词指令', t.lastDraft().includes('triage-tree.d') && t.lastDraft().includes('build_triage_tree.py'), t.lastDraft())

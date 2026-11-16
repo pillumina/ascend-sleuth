@@ -4124,6 +4124,12 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       }
       const withReport = Object.assign({}, b, { sessionId: 's-rep', file: 's-rep.yaml', reportFile: 's-rep.report.md', sedimented: { state: 'none' } })
       const withCands = Object.assign({}, b, { sessionId: 's-cand', file: 's-cand.yaml', sedimentCandidates: 2, sedimented: { state: 'none' } })
+      // 先验候选全部 produced：列表不应再挂「待复核」，另挂「已产出先验词条」。
+      const withProduced = Object.assign({}, b, {
+        sessionId: 's-produced', file: 's-produced.yaml', reportFile: 's-produced.report.md',
+        sedimentCandidates: 1, referenceCandidates: 1, producedReferenceCandidates: 1,
+        sedimented: { state: 'none' },
+      })
       const bare = Object.assign({}, b, { sessionId: 's-bare', file: 's-bare.yaml', sedimented: { state: 'none' } })
       const host2 = (m) => m === 'ascend-traces-list'
         ? { ok: true, sessions: [withReport, withCands, bare] }
@@ -4137,6 +4143,24 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       expect('只有 reference / triage 候选也算有材料：两单各挂一个「待复核」徽标',
         (t2.match(/待复核/g) || []).length >= 2, '徽标=' + (t2.match(/待复核/g) || []).length)
       expect('既无报告也无候选、状态还挂着的单归「未收尾」', /未收尾 1/.test(t2), t2.slice(0, 300))
+      const host3 = (m) => m === 'ascend-traces-list'
+        ? { ok: true, sessions: [withReport, withCands, withProduced, bare] }
+        : { ok: true, steps: [], summary: null }
+      const t3 = (await renderAsync(ascSrc, { sessionId: 'sess-1' }, host3)).text
+      // title 里也会出现「待复核」（徽标说明写着「全部产出后不再算」），比较时先剥掉 title，
+      // 只看界面上真正可点的文字。
+      const bareText = x => String(x || '').replace(/«title:[^»]*»/g, '')
+      expect('先验候选全部产出的单不再挂「待复核」',
+        (bareText(t3).match(/待复核/g) || []).length === (bareText(t2).match(/待复核/g) || []).length,
+        '待复核=' + (bareText(t3).match(/待复核/g) || []).length
+        + '，对照=' + (bareText(t2).match(/待复核/g) || []).length)
+      expect('已产出的先验候选在列表挂「已产出先验词条」',
+        /已产出先验词条 1 条/.test(t3), t3.slice(0, 400))
+      // 详情里的候选行：produced 的候选不再出「沉淀此条」，改显示已产出与 ref_id。
+      expect('已产出的先验候选在详情里不再渲染「沉淀此条」',
+        /const done = String\(c\.status \|\| ''\) === 'produced'/.test(ascSrc)
+        && /\(!done && withAction\)/.test(ascSrc)
+        && /'已产出' \+ \(c\.refId/.test(ascSrc))
     }
     {
       expect('host 的会话列表带沉淀状态（列表才能筛待沉淀 / 待升格）',
