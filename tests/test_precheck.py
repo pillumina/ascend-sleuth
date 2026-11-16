@@ -6,6 +6,7 @@
 上限模拟。
 """
 
+import os
 import subprocess
 import sys
 import tempfile
@@ -180,6 +181,18 @@ class CliTest(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("mode: light", r.stdout)
         self.assertIn("tier: docs", r.stdout)
+        self.assertIn("max_report_chars: 3000", r.stdout)
+
+    def test_policy_outputs_utf8_when_locale_is_cp1252(self):
+        """Windows 的 stdout 接管道时走本地编码；脚本入口要自己钉 UTF-8。"""
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "cp1252"
+        r = subprocess.run(
+            [sys.executable, str(ROOT / "scripts" / "precheck.py"),
+             "policy", "--paths", "docs/README.md"],
+            capture_output=True, text=True, encoding="utf-8", cwd=ROOT, env=env,
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("max_report_chars: 3000", r.stdout)
 
     def test_policy_script(self):
