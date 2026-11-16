@@ -90,16 +90,21 @@ class AuditTest(unittest.TestCase):
     def test_counts_and_cap(self):
         a = "x" * 8000 + "\nMERGE_READY: no\nMERGE_READY: yes\n2 条重要级\n5 条建议级\n"
         b = "y" * 1000 + "\nMERGE_READY: no\n一条重要级\n"
-        (self.dir / "a.md").write_text(a, encoding="utf-8")
-        (self.dir / "b.md").write_text(b, encoding="utf-8")
+        a_path = self.dir / "a.md"
+        b_path = self.dir / "b.md"
+        a_path.write_text(a, encoding="utf-8")
+        b_path.write_text(b, encoding="utf-8")
         (self.dir / "c-pr-body.md").write_text("z" * 9999 + "\nMERGE_READY", encoding="utf-8")
 
+        # 按磁盘上的实际字符数算：Windows 会把 \n 写成 \r\n，用内存里的 len(a) 会差换行数。
+        chars_a = len(a_path.read_text(encoding="utf-8"))
+        chars_b = len(b_path.read_text(encoding="utf-8"))
         r = PC.audit_reports(self.dir, cap=6000)
         self.assertEqual(r["files"], 2)
-        self.assertEqual(r["chars"], len(a) + len(b))
+        self.assertEqual(r["chars"], chars_a + chars_b)
         self.assertEqual(r["max_important"], 2)
         self.assertEqual(r["multi"], 1)
-        self.assertEqual(r["capped"], min(len(a), 6000) + min(len(b), 6000))
+        self.assertEqual(r["capped"], min(chars_a, 6000) + min(chars_b, 6000))
         self.assertGreater(r["saving"], 0)
 
     def test_empty_dir(self):
