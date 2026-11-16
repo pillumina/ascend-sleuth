@@ -115,7 +115,7 @@ python3 -c "import re,pathlib;pat=re.compile(r'[\u4e00-\u9fff]\(');[print(f'{p}:
 | 设计 / 方案文档 | `proposals/*.md`（顶层方案文档，进 git） | 评审要与接手人，多数没参与讨论 | 方案要让没参加讨论的人能决定**做不做**，写四件事：要解决什么问题；选哪条路、这条路放弃什么、可能坏在哪；做到什么算完成；不做会怎样。讨论过程与逐条论证留在会话，不搬进文档 | 无 |
 | PR body / 评审摘要 | `.github/PULL_REQUEST_TEMPLATE/`（五类模板）、`scripts/render_review_summary.py` | 评审人 | 结构按模板的 `##` 区块；首节写背景与动机（触发 / 不做的代价 / 做完的变化），不写实现；Agent 预核意见只写模板该区块列的几项（结论、核对的版本、按严重度排的问题、覆盖清单、反例与可复跑命令、三项判定、报告指针；四类模板另加一条随变更对象定的判定项），命令输出与逐条证据留预核报告；正文用工程师口吻（短句、动词开头、给具体读数，不写过程叙述与自我评价），证据节只列要核的 3 到 5 条（见 [git-workflow.md](../guide/git-workflow.md) 的「独立预核」一节）；代号写中文含义（`docs/glossary.yaml` 的 `scope` 规则） | `pr-template`、`render_review_summary.py --scan` |
 | 指标注记 | `metrics/timeline.d/*.yaml`、exec-log | 看面板趋势 | 读数带分母；趋势不可读时明说不可读，不画等高柱充数 | `verify_metrics.py`、`build_timeline.py --check` |
-| skill 与 docs 正文 | `skills/**`、`docs/**`、`README.md`、`CLAUDE.md`、`CONTEXT.md` | agent 载入 + 人读 | skill 正文的行为规则要内联（自包含）；不能出现 ADR 号、日期、卡号这类外部锚点；仓库根的人读文档与 `docs/` 正文同样适用 §1 的共用条目与 §2 的原值例外；动笔前读 §1、提交前对照 §1 自查，这两步与五类高频项写在 `CLAUDE.md` 的「人读文本的行文规范」条 | `skill-self-contained`、`docs-index`、`render_review_summary.py --scan`（代号未登记与越界）；§1 的其余条目由**独立预核**对照（三档强度见 [git-workflow.md](../guide/git-workflow.md) 的「评审把手」） |
+| skill 与 docs 正文 | `skills/**`、`docs/**`、`README.md`、`CLAUDE.md`、`CONTEXT.md` | agent 载入 + 人读 | skill 正文的行为规则要内联（自包含）；不能出现 ADR 号、日期、卡号这类外部锚点；仓库根的人读文档与 `docs/` 正文同样适用 §1 的共用条目与 §2 的原值例外；动笔前读 §1、提交前对照 §1 自查，这两步与五类高频项写在 `CLAUDE.md` 的「人读文本的行文规范」条 | `skill-self-contained`、`docs-index`、`render_review_summary.py --scan`（代号未登记与越界）；§1 的其余条目由**独立预核**对照（触发条件与三档上限见 [git-workflow.md](../guide/git-workflow.md) 的「独立预核」一节） |
 
 ### 写点在哪（改这些文件时才会读到本规范）
 
