@@ -277,6 +277,18 @@ class IngestTest(unittest.TestCase):
         self.assertTrue((sample_base / "samples" / "GH-O-R-1.yaml").exists())
         self.assertFalse((state_root / ".s2-replay").exists())
 
+    def test_evaluation_state_namespace_is_separate_from_case_ingest(self):
+        stats = issues.ingest_issues(
+            self.root, "o/r", store=self.store, state_path=self.state,
+            state_key="github/o/r/evaluation",
+            fetch_metadata_fn=lambda repo, labels, since: [item(1)],
+            fetch_body_fn=lambda repo, issue: body(),
+        )
+        self.assertEqual(stats["state_key"], "github/o/r/evaluation")
+        state = json.loads(self.state.read_text(encoding="utf-8"))
+        self.assertIn("github/o/r/evaluation", state["sources"])
+        self.assertNotIn("github/o/r", state["sources"])
+
     def test_metadata_failure_is_adapter_error(self):
         def failing(repo, labels, since):
             raise FileNotFoundError("gh")

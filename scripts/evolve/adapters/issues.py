@@ -245,6 +245,7 @@ def ingest_issues(
     fetch_metadata_fn=None,
     fetch_body_fn=None,
     source: Any = None,
+    state_key: Optional[str] = None,
 ) -> Dict[str, Any]:
     """拉元数据 → 硬过滤 → 按需取 body → 建候选。
 
@@ -266,11 +267,14 @@ def ingest_issues(
     source_id = getattr(source, "source_id", None)
     if not source_id:
         raise AdapterError("issue source must provide a non-empty source_id")
+    # 评测样本与 case 沉淀共用同一个 issue 源，但 processed 必须分开：
+    # 一条 issue 进了 case 不等于它已经作为评测样本被审过；共用一个键会让两条管线互相吃掉。
+    state_key = state_key or source_id
     state_file = Path(state_path) if state_path is not None else root_path / "ingest-state.json"
     if not state_file.is_absolute():
         state_file = root_path / state_file
     state = _load_state(state_file)
-    source_state = state.setdefault("sources", {}).setdefault(source_id, {})
+    source_state = state.setdefault("sources", {}).setdefault(state_key, {})
     processed = _processed_numbers(source_state.get("processed"))
 
     try:
@@ -293,6 +297,7 @@ def ingest_issues(
         "repo": repo,
         "source": source_id,
         "source_id": source_id,
+        "state_key": state_key,
         "state_path": str(state_file),
         "total": len(items),
         "filtered": len(candidates),

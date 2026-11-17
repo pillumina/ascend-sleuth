@@ -84,7 +84,7 @@ python3 scripts/evolve.py sample ingest-issues --repo vllm-project/vllm-ascend \
 - 源通过 `IssueSource` Protocol 接入：`github` 与 `local` 是当前两个实现，GitCode 等新增源只实现 `list_issues`/`fetch_issue` 并登记 registry；state 以 `source_id` 分区，不复制过滤/去重/入库管线。
 - 候选统一是 `diagnosis/field/evaluation`，`expected` 留空；`source` 为 `github/<repo>#<n>`，重复来源跳过。
 - `--dry-run` 只打印候选，不写样本库、不更新 state。正式运行成功后把实际创建的编号原子追加到 state 的 `processed`；失败不标，重复运行不会重复导入。
-- 默认 state 跟随当前检出，样本库/`run`/`brief` 仍锚主检出；显式 `--root` 才把两者都落到本地运行件。这样 worktree 里产出的 state 能随分支提交，候选不会在 worktree 清理时丢。
+- 评测样本的 `processed` 写在 state 的 `<source_id>/evaluation` 命名空间，和 case 沉淀的 `<source_id>` 分开；同一条 issue 可同时用于 case 和评测，不互相吃掉。默认 state 跟随当前检出，样本库/`run`/`brief` 仍锚主检出；显式 `--root` 才把两者都落到本地运行件。这样 worktree 里产出的 state 能随分支提交，候选不会在 worktree 清理时丢。
 - 维护者用 `sample set-answer --id ... --expected '<json>'` 补答案，再走 `sample check`、`sample review`。ingest 不自动把候选转 active；非诊断或无答案的候选留给 review 拒收。
 ```mermaid
 flowchart TD

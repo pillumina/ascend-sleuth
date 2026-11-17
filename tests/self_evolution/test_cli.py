@@ -341,7 +341,7 @@ class IngestCliTest(unittest.TestCase):
             sample = Path(td) / ".s2-replay" / "evolve" / "samples" / "LOCAL-O-R-9.yaml"
             self.assertTrue(sample.exists())
             state = json.loads((Path(td) / "ingest-state.json").read_text(encoding="utf-8"))
-            self.assertIn("local/o/r", state["sources"])
+            self.assertIn("local/o/r/evaluation", state["sources"])
 
     def test_unknown_source_exits_2(self):
         with tempfile.TemporaryDirectory() as td:

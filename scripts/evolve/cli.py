@@ -198,6 +198,7 @@ def cmd_sample_ingest_issues(args: argparse.Namespace) -> int:
             store=SampleStore(base=base),
             dry_run=args.dry_run,
             source=source,
+            state_key=f"{source.source_id}/evaluation",
         )
     except AdapterError as exc:
         print(f"error: {exc}", file=sys.stderr)
