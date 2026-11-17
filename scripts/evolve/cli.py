@@ -31,7 +31,7 @@ from .adapters import AdapterError
 from .adapters.arena import counts_from_files
 from .adapters.metrics import load_metrics
 from .algorithms.registry import algorithm_ids, get_algorithm
-from .targets.registry import get_target, resolve_optimizer, target_ids
+from .targets.registry import get_target, resolve_evaluator, resolve_optimizer, target_ids
 from .adapters.replay import collect as replay_collect
 from .adapters.replay import prepare as replay_prepare
 from .adapters.issues import ingest_issues
@@ -609,6 +609,13 @@ def cmd_experiment_propose(args: argparse.Namespace) -> int:
     print(f"component: {patch.target_component}")
     print(f"algorithm: {patch.algorithm}")
     print(f"summary: {patch.summary}")
+    eval_ready = resolve_evaluator(patch.target_kind)[1].implemented
+    print(f"eval_ready: {eval_ready}")
+    if not eval_ready:
+        print(
+            "warning: target evaluator is not implemented; Patch recorded but not gate-ready",
+            file=sys.stderr,
+        )
     print(f"recorded: {ExperimentStore.for_base(_evolve_base(args)).path}")
     return 0
 
@@ -640,6 +647,8 @@ def cmd_experiment_resolve(args: argparse.Namespace) -> int:
     print(f"version: {getattr(optimizer, 'version', '')}")
     print(f"scope: {getattr(optimizer, 'scope', '')}")
     print(f"eval_profile: {spec.eval_profile}")
+    print(f"eval_profile_id: {spec.eval_profile_id}")
+    print(f"eval_ready: {resolve_evaluator(spec.id)[1].implemented}")
     print(f"authority: {spec.authority}")
     return 0
 

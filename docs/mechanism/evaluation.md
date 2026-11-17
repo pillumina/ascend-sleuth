@@ -238,12 +238,14 @@ S2 未命中有三种解释：路由错、缺 case、内容错。它只看到没
 
 优化目标与评估对象正交，四个 target 的当前定论：
 
-| target | 改什么 | 评测面 | 授权 | 默认算法 |
-|---|---|---|---|---|
-| skill | skill 文本、步骤、流程 | golden + S2 + rubric | A2 | baseline |
-| knowledge | case/reference 内容 | rubric + 效用审计 | A2 | baseline |
-| tooling | 工具路由、分支、重试 | replay + trace 工具使用 | A2 | baseline |
-| harness | 调度与控制流 | 端到端回放 + 回归 | A1 | baseline |
+| target | 改什么 | 评测面 | 端到端 evaluator | 授权 | 默认算法 |
+|---|---|---|---|---|---|
+| skill | skill 文本、步骤、流程 | golden + S2 + rubric | 已接（`arena`） | A2 | baseline |
+| knowledge | case/reference 内容 | rubric + 效用审计 | 未接（`rubric`） | A2 | baseline |
+| tooling | 工具路由、分支、重试 | replay + trace 工具使用 | 未接（`replay_trace`） | A2 | baseline |
+| harness | 调度与控制流 | 端到端回放 + 回归 | 未接（`end_to_end`） | A1 | baseline |
+
+`evaluations/registry.py` 把 target 映射到 `EvalProfile`，`implemented` 只表示当前有没有端到端 scorer/gate，不表示有真实数据。未接的 target 仍可记录 baseline Patch，但 `experiment propose` 会打印 `eval_ready: false` 并警告“记录但不 gate-ready”；不把目标分发误当评测完成。
 
 `targets/registry.py` 只允许 target 白名单内的算法；未注册的 GEPA/AEL 等名字不会静默回退。加一个 target 或算法各改一个静态注册表，主循环、评测协议和记录格式不动。`experiment propose --target skill --component <组件>` 会调用当前 optimizer 生成一个 Patch 并写本地 `experiments.jsonl`；`experiment records` 读取最近记录。baseline 仍是人工提案，不会自动改文件或合入。
 

@@ -13,6 +13,7 @@ class TargetSpec:
     id: str
     change_surface: str
     eval_profile: str
+    eval_profile_id: str
     authority: str
     allowed_algorithms: Tuple[str, ...]
     default_algorithm: str = "baseline"
