@@ -31,7 +31,7 @@ from .adapters import AdapterError
 from .adapters.arena import counts_from_files
 from .adapters.metrics import load_metrics
 from .algorithms.registry import algorithm_ids, get_algorithm
-from .targets.registry import get_target, resolve_optimizer, target_ids
+from .targets.registry import get_target, resolve_evaluator, resolve_optimizer, target_ids
 from .adapters.replay import collect as replay_collect
 from .adapters.replay import prepare as replay_prepare
 from .adapters.issues import ingest_issues
@@ -569,8 +569,12 @@ def cmd_experiment_list(args: argparse.Namespace) -> int:
     print(f"configured_target: {configured_target}")
     for tid in target_ids():
         spec = get_target(tid)
+        profile = resolve_evaluator(tid)[1]
         marker = "*" if tid == configured_target else " "
-        print(f"{marker} target {tid}\t{spec.eval_profile}\t{spec.authority}\t{spec.allowed_algorithms}")
+        print(
+            f"{marker} target {tid}\t{spec.eval_profile_id}\t"
+            f"eval_ready={profile.implemented}\t{spec.authority}\t{spec.allowed_algorithms}"
+        )
     for name in algorithm_ids():
         algorithm = get_algorithm(name)
         marker = "*" if name == configured else " "
@@ -596,7 +600,11 @@ def cmd_experiment_propose(args: argparse.Namespace) -> int:
             patch.summary = args.summary
         patch.seed = seed
         patch.validate()
+        profile = resolve_evaluator(target)[1]
         record = asdict(patch)
+        record["eval_profile_id"] = profile.id
+        record["eval_gate"] = profile.gate
+        record["eval_ready"] = profile.implemented
         record["at"] = now_iso()
         ExperimentStore.for_base(_evolve_base(args)).append(record)
     except (PolicyError, AdapterError, StoreError, RecordError, ContractError, ValueError, TypeError) as exc:
@@ -609,6 +617,14 @@ def cmd_experiment_propose(args: argparse.Namespace) -> int:
     print(f"component: {patch.target_component}")
     print(f"algorithm: {patch.algorithm}")
     print(f"summary: {patch.summary}")
+    eval_ready = resolve_evaluator(patch.target_kind)[1].implemented
+    print(f"eval_profile_id: {resolve_evaluator(target)[1].id}")
+    print(f"eval_ready: {eval_ready}")
+    if not eval_ready:
+        print(
+            "warning: target evaluator is not implemented; Patch recorded but not gate-ready",
+            file=sys.stderr,
+        )
     print(f"recorded: {ExperimentStore.for_base(_evolve_base(args)).path}")
     return 0
 
@@ -624,7 +640,9 @@ def cmd_experiment_records(args: argparse.Namespace) -> int:
     for record in records[-limit:]:
         print(
             f"{record.get('at', '')} {record.get('target_kind', '')} "
-            f"{record.get('target_component', '')} {record.get('algorithm', '')}"
+            f"{record.get('target_component', '')} {record.get('algorithm', '')} "
+            f"eval_ready={record.get('eval_ready')} "
+            f"profile={record.get('eval_profile_id')}"
         )
     return 0
 
@@ -639,7 +657,13 @@ def cmd_experiment_resolve(args: argparse.Namespace) -> int:
     print(f"algorithm: {getattr(optimizer, 'id', args.algorithm or spec.default_algorithm)}")
     print(f"version: {getattr(optimizer, 'version', '')}")
     print(f"scope: {getattr(optimizer, 'scope', '')}")
+    profile = resolve_evaluator(spec.id)[1]
     print(f"eval_profile: {spec.eval_profile}")
+    print(f"eval_profile_id: {profile.id}")
+    print(f"eval_label: {profile.label}")
+    print(f"eval_gate: {profile.gate}")
+    print(f"eval_object_types: {', '.join(profile.object_types)}")
+    print(f"eval_ready: {profile.implemented}")
     print(f"authority: {spec.authority}")
     return 0
 
