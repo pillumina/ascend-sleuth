@@ -38,6 +38,7 @@ from .adapters.health import metrics as health_metrics
 from .adapters.issues import ingest_issues
 from .adapters.s2 import import_s2_samples
 from .decision import Decision, DecisionResult, decide
+from .experiments import ExperimentError, validate_experiment
 from .policy import PolicyError, load_policy, policy_hash
 from .records import ConclusionStore, ExperimentStore, RecordError
 from .runner import issue_plan, render_plan
@@ -631,6 +632,24 @@ def cmd_experiment_propose(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_experiment_record(args: argparse.Namespace) -> int:
+    try:
+        raw = _yaml_or_json_object(args.file, "--file")
+        if raw is None:
+            raise ExperimentError("--file is required")
+        record = validate_experiment(raw)
+        record["at"] = now_iso()
+        ExperimentStore.for_base(_evolve_base(args)).append(record)
+    except (ExperimentError, PolicyError, RecordError, OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"recorded: {record['target_kind']} {record['target_component']}")
+    print(f"decision: {record['decision']}")
+    print(f"baseline: {record['baseline']['score']:.4f}")
+    print(f"candidate: {record['candidate']['score']:.4f}")
+    return 0
+
+
 def cmd_experiment_records(args: argparse.Namespace) -> int:
     try:
         records = ExperimentStore.for_base(_evolve_base(args)).read()
@@ -640,11 +659,18 @@ def cmd_experiment_records(args: argparse.Namespace) -> int:
     limit = args.limit if args.limit and args.limit > 0 else 10
     print(f"experiments: {len(records)}")
     for record in records[-limit:]:
+        scores = ""
+        if isinstance(record.get("baseline"), dict) and isinstance(record.get("candidate"), dict):
+            scores = (
+                f" baseline={record['baseline'].get('score')} "
+                f"candidate={record['candidate'].get('score')} "
+                f"decision={record.get('decision')}"
+            )
         print(
             f"{record.get('at', '')} {record.get('target_kind', '')} "
             f"{record.get('target_component', '')} {record.get('algorithm', '')} "
             f"eval_ready={record.get('eval_ready')} "
-            f"profile={record.get('eval_profile_id')}"
+            f"profile={record.get('eval_profile_id')}{scores}"
         )
     return 0
 
@@ -1038,6 +1064,10 @@ def build_parser() -> argparse.ArgumentParser:
     exp_records.add_argument("--root", default=None)
     exp_records.add_argument("--limit", type=int, default=10)
     exp_records.set_defaults(func=cmd_experiment_records)
+    exp_record = experiment_sub.add_parser("record", help="记录一份外部 baseline/candidate 实验结果")
+    exp_record.add_argument("--root", default=None)
+    exp_record.add_argument("--file", required=True, help="结果 JSON/YAML 路径或内联")
+    exp_record.set_defaults(func=cmd_experiment_record)
     exp_gate = experiment_sub.add_parser("gate", help="按 target evaluator 判一个 rubric 样本")
     exp_gate.add_argument("--root", default=None)
     exp_gate.add_argument("--target", required=True)

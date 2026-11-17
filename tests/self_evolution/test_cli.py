@@ -450,6 +450,41 @@ class IngestCliTest(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
             self.assertIn("seed", result.stderr)
 
+    def test_experiment_record_persists_subagent_result(self):
+        result = {
+            "target_kind": "skill", "target_component": "diagnosis-skill",
+            "algorithm": "subagent-reflection", "algorithm_version": "workflow-1",
+            "decision": "reject", "samples": ["S-1", "S-2"],
+            "baseline": {"score": 1.0, "samples": ["S-1", "S-2"]},
+            "candidate": {"score": 0.5, "samples": ["S-1", "S-2"]},
+            "eval_profile_id": "arena", "eval_ready": True,
+            "summary": "candidate regressed on S-2",
+        }
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "result.json"
+            path.write_text(json.dumps(result), encoding="utf-8")
+            created = run_cli("experiment", "record", "--root", td, "--file", str(path))
+            self.assertEqual(created.returncode, 0, created.stderr)
+            self.assertIn("decision: reject", created.stdout)
+            records = run_cli("experiment", "records", "--root", td)
+            self.assertIn("subagent-reflection", records.stdout)
+            self.assertIn("baseline=1.0 candidate=0.5", records.stdout)
+
+    def test_experiment_record_rejects_mismatched_samples(self):
+        result = {
+            "target_kind": "skill", "target_component": "x",
+            "algorithm": "subagent-reflection", "algorithm_version": "1",
+            "decision": "reject", "samples": ["S-1"],
+            "baseline": {"score": 1, "samples": ["S-1"]},
+            "candidate": {"score": 0, "samples": ["S-2"]},
+        }
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "bad.json"
+            path.write_text(json.dumps(result), encoding="utf-8")
+            created = run_cli("experiment", "record", "--root", td, "--file", str(path))
+            self.assertEqual(created.returncode, 2)
+            self.assertIn("same set", created.stderr)
+
     def test_experiment_records_lists_written_patch(self):
         with tempfile.TemporaryDirectory() as td:
             run_cli("experiment", "propose", "--root", td, "--target", "skill",
