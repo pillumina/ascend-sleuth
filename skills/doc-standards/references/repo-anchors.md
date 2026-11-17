@@ -31,7 +31,7 @@
 | trace 人读字段 | 未映射到九类 | 自带模板 `skills/diagnose/references/diagnosis-trace.md` |
 | 诊断对话输出 | 未映射到九类 | 自带四段骨架：`skills/diagnose/SKILL.md` 的「命中时的输出格式」一节 |
 | case / reference 词条 | 参考词条 | 自带 schema：`skills/to-postmortem/SKILL.md`、`skills/to-reference/SKILL.md` |
-| EV 卡 `proposals/ideas/*.yaml` | 提案 | 自带 schema：`docs/mechanism/pipeline.md` §7「改进项的 schema 与状态机」 |
+| EV 卡 `proposals/ideas/*.yaml` | 提案 | 自带 schema：`docs/mechanism/records.md` |
 | postmortem `postmortems/**` | 复盘 | 本 spec + `type-catalog.md`；产出模板在 `skills/to-postmortem/SKILL.md` |
 | PR body / 评审摘要 | 提案 | 自带五类模板：`.github/PULL_REQUEST_TEMPLATE/` |
 | 设计 / 方案文档 `proposals/*.md` | 提案 | 自带清单：`docs/spec/writing-norms.md` §3 的「设计 / 方案文档」行（`proposals/README.md` 只给目录约定与 git 归属） |
@@ -63,7 +63,7 @@
 
 这几条在仓库里是既成事实，但没有任何文件写过，于是每篇文档都靠人记：
 
-- **一段一行**：中文段落在源文件里不硬换行，长行交给编辑器软换行。现状如此（`docs/mechanism/pipeline.md` 非空行 457、平均 151 字符），代价是 PR 里改一句话会让整段进 diff——接受这个代价，换掉它要重排全仓并让后续每次编辑都产生重排噪音。
+- **一段一行**：中文段落在源文件里不硬换行，长行交给编辑器软换行。以 `docs/mechanism/evaluation.md` 为例，代价是 PR 里改一句话会让整段进 diff——接受这个代价，换掉它要重排全仓并让后续每次编辑都产生重排噪音。
 - **直角引号**：正文一律用「」，不用弯引号。现状：`grep -rn '“' docs --include=*.md` 只命中 `docs/spec/writing-norms.md` 第 42 条的反例那一处（`docs/kb-explorer/*.js` 等素材文件里有，不属正文）。
 - **中文含义在前、内部代号放括号**：读者不先读一遍 `docs/` 就读不懂的词，都要当场展开。
 - **数字与名单不手写**：凡是「共 N 篇 / 共 N 个」这类计数，从 `docs/_manifest.yaml` 生成，正文里不写死。

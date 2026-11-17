@@ -61,6 +61,27 @@ class SelectUnitTestsTest(unittest.TestCase):
         result, _ = self.select(["scripts/_base.py"])
         self.assertEqual(result, ["tests.test_build_foo"])
 
+    def test_nested_test_module_is_selected(self):
+        self.write("scripts/cli.py")
+        self.write("tests/self_evolution/test_cli.py", "import cli\n")
+        result, _ = self.select(["tests/self_evolution/test_cli.py"])
+        self.assertEqual(result, ["tests.self_evolution.test_cli"])
+
+    def test_package_script_change_forces_all(self):
+        self.write("scripts/evolve/samples.py")
+        self.write("tests/evolve/test_samples.py", "from evolve import samples\n")
+        result, notes = self.select(["scripts/evolve/samples.py"])
+        self.assertEqual(result, "ALL")
+        self.assertTrue(any("子包" in note for note in notes))
+
+    def test_all_test_modules_recurse(self):
+        self.write("tests/test_a.py")
+        self.write("tests/self_evolution/test_b.py")
+        self.assertEqual(
+            sut.all_test_modules(self.root),
+            ["tests.self_evolution.test_b", "tests.test_a"],
+        )
+
     def test_changed_test_file_is_selected_even_without_script_change(self):
         self.write("scripts/cli.py")
         self.write("tests/test_cli.py", "import subprocess\n")

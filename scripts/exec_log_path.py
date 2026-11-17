@@ -25,7 +25,7 @@
 #
 # 边界（不假装）：**跨克隆/跨机不聚合**——本文件只解决"同一克隆内的一致性"。要跨机，
 #   得让**聚合值**（不是流水）进 git（如 metrics/timeline.yaml），见 tail_exec_log.py --summary
-#   与 docs/mechanism/run.md §4。
+#   与 docs/mechanism/operations.md。
 #
 # 用法（调用方共用）：
 #   from exec_log_path import LOG_REL, resolve
@@ -180,6 +180,9 @@ CHECKOUT_DIRS = {
     # 一次诊断的本机记录（含逐次工具调用明细与 token 账单）：gitignored，锚主检出——
     # 面板与汇总脚本读的是主检出那一份，写侧在 worktree 里跑也要落在同处。
     "entry-activity-local": Path("metrics") / "entry-activity.local",
+    # 自演进样本/结论/执行记录（.s2-replay/evolve/）：候选队列与结论只追加，worktree 清理
+    # 时不能跟着消失；面板与 brief 读主检出那一份，写侧在 worktree 跑也要落同处。
+    "evolve": Path(".s2-replay") / "evolve",
 }
 
 

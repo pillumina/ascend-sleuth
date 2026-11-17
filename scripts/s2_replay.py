@@ -18,7 +18,7 @@
 #   - 输出：replay 记录 + 缺口信号（知识库无 case 命中的 issue = 补 case 候选）
 #   - 非诊断样本（校准集行标了 non_diagnostic：输入里没有可判别信号）三步都跳过：
 #     跑一遍也不会有结论，产输入/列待测/进报告都只是白花一次完整诊断（口径见
-#     docs/mechanism/eval-arena.md §3）。跳过的条数与 id 会打印出来。
+#     docs/mechanism/evaluation.md）。跳过的条数与 id 会打印出来。
 #
 # 用法：
 #   python3 scripts/s2_replay.py --prepare    # 产 replay 输入清单
@@ -269,7 +269,7 @@ def todo(root: Path):
     rows.sort(key=lambda r: r[0])
     if nd_skipped:
         print(f"s2_replay: 非诊断样本 {len(nd_skipped)} 条已跳过（{'、'.join(nd_skipped)}）："
-              f"输入里没有可判别信号，跑了也不会有结论（docs/mechanism/eval-arena.md §3）")
+              f"输入里没有可判别信号，跑了也不会有结论（docs/mechanism/evaluation.md）")
     if not rows:
         print("s2_replay: 校准集全部已 replay（无待测）")
         return

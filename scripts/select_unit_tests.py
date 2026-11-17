@@ -45,7 +45,7 @@ from pathlib import Path
 SCRIPT_DIR = "scripts"
 TEST_DIR = "tests"
 CI_PREFIX = ".github/"
-TEST_FILE_RE = re.compile(r"^tests/(test_[A-Za-z0-9_]+)\.py$")
+TEST_FILE_RE = re.compile(r"^tests/(?:.+?/)?(test_[A-Za-z0-9_]+\.py)$")
 SCRIPT_REF_RE = re.compile(r"^scripts/([^/]+)$")
 SHARD_RE = re.compile(r"^(\d+)/(\d+)$")
 # 数据目录 → 消费它的脚本：数据文件不是脚本，静态扫描看不出归属。不登记的话，
@@ -122,7 +122,7 @@ def _test_references(root: Path, script_files: dict[str, Path]) -> dict[str, set
     directory = root / TEST_DIR
     if not directory.is_dir():
         return refs
-    for path in sorted(directory.glob("test_*.py")):
+    for path in sorted(directory.rglob("test_*.py")):
         tree = _parse(path)
         found: set[str] = set()
         for name in _import_names(tree):
@@ -133,7 +133,8 @@ def _test_references(root: Path, script_files: dict[str, Path]) -> dict[str, set
             name = match.group(1) if match else (text if text in script_files else None)
             if name is not None and name in script_files:
                 found.add(Path(name).stem)
-        refs[path.stem] = found
+        module = ".".join(path.relative_to(root).with_suffix("").parts)
+        refs[module] = found
     return refs
 
 
@@ -183,6 +184,10 @@ def select(
         shown = "、".join(missing[:3])
         return "ALL", [f"改动里含删除/不存在的脚本 {shown}——全量"]
 
+    if any(path.startswith("scripts/") and path.count("/") >= 2
+           for path in changed):
+        return "ALL", ["改动涉及 scripts/ 子包，静态引用扫描按全量（含 tests 子目录）"]
+
     script_files = _script_files(root)
     modules = {path.stem: path for path in script_files.values() if path.suffix == ".py"}
     changed_stems = {Path(path).stem for path in scripts_changed} | data_stems
@@ -204,7 +209,10 @@ def select(
     for stem in changed_stems:
         affected |= _dependents(stem, reverse)
 
-    changed_tests = {m.group(1) for path in tests_side if (m := TEST_FILE_RE.match(path))}
+    changed_tests = {
+        ".".join(Path(path).with_suffix("").parts)
+        for path in tests_side if TEST_FILE_RE.match(path)
+    }
     selected = {name for name, found in refs.items() if found & affected}
     selected |= changed_tests & set(refs)
     if scripts_changed:
@@ -230,7 +238,7 @@ def select(
             "以下改动的脚本没有单元测试覆盖（全量跑也不触达）：" + "、".join(uncovered)
         )
     notes.append(f"选中 {len(selected)} 个测试模块（共 {len(refs)} 个）")
-    return sorted(f"tests.{name}" for name in selected), notes
+    return sorted(selected), notes
 
 
 def all_test_modules(root: Path) -> list[str]:
@@ -243,7 +251,11 @@ def all_test_modules(root: Path) -> list[str]:
     directory = root / TEST_DIR
     if not directory.is_dir():
         raise _Unparseable(directory, FileNotFoundError("tests/ 不存在"))
-    return sorted(f"tests.{path.stem}" for path in directory.glob("test*.py") if path.is_file())
+    return sorted(
+        ".".join(path.relative_to(root).with_suffix("").parts)
+        for path in directory.rglob("test*.py")
+        if path.is_file()
+    )
 
 
 def shard(items: list[str], spec: str) -> list[str]:

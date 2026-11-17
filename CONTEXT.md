@@ -113,7 +113,7 @@ _避免_：隐含价格、机会成本（语义近但不等）
 | `A2-910B` / `A3-910C` / `A5-950` | 昇腾三代硬件平台标识；case 的 `platforms` 字段与各自的 diagnosis 分支按它分派 | `skills/diagnose/references/platform-dispatch.md` |
 | `DSH` | DeepSeek Harness：本仓的 agent 运行环境与零配置主路径；`.dsh/skills` 与诊断面板仅在 DSH 下生效 | 本仓 README「快速开始」 |
 | `S1` / `S2` | 反馈的两条通道：S1 = 现场 resolve（工程师回报 fix 是否解决）；S2 = 内容验证（issue-replay 对照外部 ground truth） | `docs/mechanism/rsi-mechanism.md` |
-| `EV 卡` | 演进提案卡（`proposals/ideas/EV-*.yaml`），演进闭环的改进单元 | `docs/mechanism/pipeline.md` |
+| `EV 卡` | 演进提案卡（`proposals/ideas/EV-*.yaml`），演进闭环的改进单元 | `docs/mechanism/records.md` |
 | `F1`–`F5` | 阶段一索引加载协议的优化子项编号 | `docs/plan/roadmap.md` 的「加载协议子流」条目 |
 | 格子 | 容量治理单元 = (框架 × 类别)；治理量是**查一次问题要读进来多少字**（评估线 8000 / 硬线 20000），条数只作观察值 | `docs/adr/0004-capacity-governance.md` |
 | 类视图 / 兜底视图 | 阶段一索引的两条读取路径：类视图 = `knowledge/_index/<框架>__<类别>.list`（性质判出来时读）；兜底视图 = `knowledge/_index/<框架>.list`（性质没判出来时才读）。两条路径**各判一条线**（同 8000 / 20000），后者更贵 | `docs/adr/0004-capacity-governance.md` |

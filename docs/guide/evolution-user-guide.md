@@ -14,7 +14,7 @@
 - 覆盖缺口驱动补 case：S2 replay 暴露的未覆盖问题 → 候选卡 → to-postmortem 沉淀。升格分场景：默认草稿进 inbox 待 owner 审；owner 预授权的自动化源（issue-ingest 链路）可直接 groom 升格，不等周批；
 - 工具：`ev_proposal.py`（产卡）/ `verify_proposals.py`（校验）/ `component_tally.py`（归因按需聚合）/ `settle_s2_feedback.py`（S2 反馈结算）/ `s2_calibration.py` + `s2_replay.py`（评测）/ `replay_golden.py`（回归）。
 
-待蓝图/数据（mechanism/pipeline.md §11.1 标注，触发后实现）：
+待蓝图/数据（状态见 `mechanism/status.md` 的「未建与空转」，触发后实现）：
 
 - 长期任务层（跨多轮自动攒批）、token 效率诊断（需 token 记账）、回滚归因轮（需真实 rolled_back 卡）、可视化面板（当前看 proposals/ 文件与对话报告）；
 - 超时降级态、策略记忆等蓝图机制。
@@ -23,7 +23,7 @@
 
 ## 2 前置条件
 
-- 读者是「用自演进系统改进诊断」的工程师。机制本身的设计与实现见 [rsi-mechanism.md](../mechanism/rsi-mechanism.md)、[pipeline.md](../mechanism/pipeline.md)、[execution.md](../mechanism/execution.md)、[orchestration.md](../mechanism/orchestration.md) 与 [run.md](../mechanism/run.md)。
+- 读者是「用自演进系统改进诊断」的工程师。机制本身的设计与实现见 [rsi-mechanism.md](../mechanism/rsi-mechanism.md)（入口）、[evaluation.md](../mechanism/evaluation.md)（评估与判定）、[records.md](../mechanism/records.md)（记录与卡）、[operations.md](../mechanism/operations.md)（节奏、预算与内容维护）。
 - 本文回答使用时的五个问题：我能说什么、一句话后会发生什么、怎么知道它在跑、怎么知道它跑得对不对、中途想改怎么办。
 - 目标不清晰时系统会先问清（grill），不猜着跑。数据源由你指定：系统不默认拉所有仓库、爬所有文档，只说你要的（「用 vllm-ascend 的 issue」「爬 CANN 环境变量文档」）。目标模糊没关系，说出来后系统给候选目标让你选。
 - 运行模式（介入度）由你选，第一次跑或明确要求时系统会先问偏好哪种：
