@@ -69,7 +69,8 @@ class AgentGepaTest(unittest.TestCase):
                                    "candidates": [{"id": "seed"}]})
 
     def test_state_roundtrip(self):
-        session = GepaSession("seed", ["S-1"], max_metric_calls=3, population=2, seed=9)
+        session = GepaSession("seed", ["S-1"], max_metric_calls=3, population=2, seed=9,
+                              target_skill="diagnose", mutable_region="routing_hints")
         drain(session, {"S-1": 0.0})
         session.record_candidate("candidate")
         restored = GepaSession.from_dict(session.to_dict())

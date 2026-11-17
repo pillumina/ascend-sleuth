@@ -84,6 +84,20 @@ class HealthCliTest(unittest.TestCase):
             readout = run_cli("health", "--root", td)
             self.assertEqual(readout.returncode, 0, readout.stdout + readout.stderr)
 
+    def test_traces_sync_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as td:
+            trace = Path(td) / "traces" / "t1.yaml"
+            trace.parent.mkdir()
+            trace.write_text("trace:\n- {action: attribution, attribution_kind: execution, component: diagnose}\n", encoding="utf-8")
+            first = run_cli("traces", "sync", "--root", td, "--state", str(Path(td) / "state.json"))
+            self.assertEqual(first.returncode, 0, first.stderr)
+            self.assertIn("new=1", first.stdout)
+            second = run_cli("traces", "sync", "--root", td, "--state", str(Path(td) / "state.json"))
+            self.assertIn("reused=1", second.stdout)
+            status = run_cli("traces", "status", "--root", td, "--state", str(Path(td) / "state.json"))
+            self.assertEqual(status.returncode, 0, status.stderr)
+            self.assertIn("snapshot_id", status.stdout)
+
     def test_health_json_is_machine_readable(self):
         result = run_cli("health", "--json")
         self.assertEqual(result.returncode, 0, result.stderr)

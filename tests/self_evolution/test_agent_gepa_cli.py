@@ -23,7 +23,8 @@ class AgentGepaCliTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             state = str(Path(td) / "state.json")
             init = run("init", "--seed", "seed skill", "--samples", "S-1,S-2",
-                       "--state", state, "--max-metric-calls", "4", "--population", "2")
+                       "--state", state, "--max-metric-calls", "4", "--population", "2",
+                       "--target-skill", "diagnose", "--region", "routing_hints")
             self.assertEqual(init.returncode, 0, init.stderr)
             action = json.loads(run("next", "--state", state).stdout)
             self.assertEqual(action["kind"], "evaluate")

@@ -32,6 +32,7 @@ from .adapters.arena import counts_from_files
 from .adapters.metrics import load_metrics
 from .algorithms.registry import algorithm_ids, get_algorithm
 from .targets.registry import get_target, resolve_evaluator, resolve_optimizer, target_ids
+from .trace_attribution import status as trace_status, sync as trace_sync
 from .adapters.replay import collect as replay_collect
 from .adapters.replay import prepare as replay_prepare
 from .adapters.health import metrics as health_metrics
@@ -745,7 +746,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     base = _evolve_base(args)
     try:
         policy = _policy_for(args)
-        plan = issue_plan(root, base, policy, metrics=load_metrics(root))
+        trace = trace_status(base / "trace-state.json")
+        plan = issue_plan(root, base, policy, metrics=load_metrics(root), trace_state=trace)
     except (PolicyError, StoreError, RecordError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -753,6 +755,40 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(json.dumps(plan, ensure_ascii=False, indent=2, sort_keys=True))
     else:
         print(render_plan(plan))
+    return 0
+
+
+# ---------------------------------------------------------------- traces
+def cmd_traces_sync(args: argparse.Namespace) -> int:
+    root = Path(args.root) if args.root else Path.cwd()
+    state = Path(args.state) if args.state else root / ".s2-replay" / "evolve" / "trace-state.json"
+    try:
+        stats = trace_sync(root, state, source_id=args.source_id)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps({k: v for k, v in stats.items() if k != "attributions"},
+                         ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        print(f"traces: {stats['traces']} new={stats['new']} changed={stats['changed']} reused={stats['reused']}")
+        print(f"events: {stats['events']}")
+        for region in stats.get("regions") or []:
+            print(f"region: {region['region']} hard={region['hard']} events={region['events']}")
+        print(f"snapshot_id: {stats['snapshot_id']}")
+        print(f"state: {stats['state_path']}")
+    return 0
+
+
+def cmd_traces_status(args: argparse.Namespace) -> int:
+    root = Path(args.root) if args.root else Path.cwd()
+    state = Path(args.state) if args.state else root / ".s2-replay" / "evolve" / "trace-state.json"
+    try:
+        payload = trace_status(state)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
 
 
@@ -806,6 +842,7 @@ def cmd_brief(args: argparse.Namespace) -> int:
         plan = issue_plan(
             Path(args.root) if args.root else Path.cwd(), base, policy,
             metrics=load_metrics(Path(args.root) if args.root else Path.cwd()),
+            trace_state=trace_status(base / "trace-state.json"),
         )
     except (StoreError, RecordError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -853,6 +890,7 @@ def cmd_brief(args: argparse.Namespace) -> int:
         )
     else:
         print("entry_usage: unavailable")
+    print(f"trace_snapshot: {plan.get('trace_snapshot') or 'unavailable'}")
     print(f"samples: {counts['total']}")
     print(f"by_status: {_format_counts(counts['status'])}")
     print(f"by_origin: {_format_counts(counts['origin'])}")
@@ -1094,6 +1132,19 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
     run.add_argument("--json", action="store_true", help="输出机器可读 JSON")
     run.set_defaults(func=cmd_run)
+
+    traces = sub.add_parser("traces", help="本地 trace 归因状态")
+    traces_sub = traces.add_subparsers(dest="traces_command", required=True)
+    traces_sync = traces_sub.add_parser("sync", help="增量归因本地 traces")
+    traces_sync.add_argument("--root", default=None)
+    traces_sync.add_argument("--state", default=None)
+    traces_sync.add_argument("--source-id", default="local")
+    traces_sync.add_argument("--json", action="store_true")
+    traces_sync.set_defaults(func=cmd_traces_sync)
+    traces_status = traces_sub.add_parser("status", help="查看 trace 状态/快照")
+    traces_status.add_argument("--root", default=None)
+    traces_status.add_argument("--state", default=None)
+    traces_status.set_defaults(func=cmd_traces_status)
 
     health = sub.add_parser("health", help="metrics 体检只读摘要")
     health.add_argument("--root", default=None)

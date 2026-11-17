@@ -173,9 +173,6 @@ skills:
     scope: 维护与演进
   - name: evolve-experiment
     scope: 维护与演进
-  - name: evolve-gepa
-    scope: 维护与演进
-    note: agent-native GEPA：JSON 状态机 + subagent task/judge/reflection；候选池/Pareto/预算；只改可变异文本
     note: 用当前 agent 的 subagent 编排跑 baseline/candidate 对照，不依赖外部 CLI；记录后停，不自动合入
   - name: evolve-check
     scope: 维护与演进

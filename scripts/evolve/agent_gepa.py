@@ -13,6 +13,9 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 
+GEPA_STATE_SCHEMA = "agent-gepa-v1"
+
+
 class GepaError(ValueError):
     """状态机输入或动作顺序不合法。"""
 
@@ -54,7 +57,8 @@ class GepaSession:
 
     def __init__(self, seed_skill: str, samples: List[str],
                  max_metric_calls: int = 12, population: int = 4,
-                 seed: int = 0, min_score: float = 0.0):
+                 seed: int = 0, min_score: float = 0.0,
+                 target_skill: str = "", mutable_region: str = ""):
         if not isinstance(seed_skill, str) or not seed_skill.strip():
             raise GepaError("seed_skill is required")
         if not samples or not all(isinstance(s, str) and s.strip() for s in samples):
@@ -70,6 +74,8 @@ class GepaSession:
         self.population = population
         self.seed = seed
         self.min_score = min_score
+        self.target_skill = str(target_skill or "")
+        self.mutable_region = str(mutable_region or "")
         self.candidates: List[Candidate] = [Candidate(id="seed", skill=seed_skill)]
         self.reflected: List[str] = []
         self.pending_reflect: Optional[str] = None
@@ -175,6 +181,8 @@ class GepaSession:
     def result(self) -> Dict[str, Any]:
         best = self.best()
         return {
+            "target_skill": self.target_skill,
+            "mutable_region": self.mutable_region,
             "best_id": best.id if best else None,
             "best_skill": best.skill if best else None,
             "best_score": (sum(best.scores.values()) / len(self.samples)) if best else None,
@@ -188,11 +196,14 @@ class GepaSession:
     # -- persistence -----------------------------------------------------
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "state_schema": GEPA_STATE_SCHEMA,
             "samples": list(self.samples),
             "max_metric_calls": self.max_metric_calls,
             "population": self.population,
             "seed": self.seed,
             "min_score": self.min_score,
+            "target_skill": self.target_skill,
+            "mutable_region": self.mutable_region,
             "candidates": [c.to_dict() for c in self.candidates],
             "reflected": list(self.reflected),
             "pending_reflect": self.pending_reflect,
@@ -201,6 +212,8 @@ class GepaSession:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "GepaSession":
+        if data.get("state_schema") not in (None, GEPA_STATE_SCHEMA):
+            raise GepaError("agent GEPA state schema mismatch")
         missing = [key for key in ("samples", "max_metric_calls", "population")
                    if key not in data]
         if missing:
@@ -218,6 +231,8 @@ class GepaSession:
             max_metric_calls=int(data["max_metric_calls"]),
             population=int(data["population"]), seed=int(data.get("seed", 0)),
             min_score=float(data.get("min_score", 0.0)),
+            target_skill=str(data.get("target_skill") or ""),
+            mutable_region=str(data.get("mutable_region") or ""),
         )
         session.candidates = candidates
         session.reflected = list(data.get("reflected") or [])

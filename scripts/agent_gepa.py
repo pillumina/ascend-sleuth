@@ -46,6 +46,7 @@ def cmd_init(args) -> int:
     session = GepaSession(
         seed, samples, max_metric_calls=args.max_metric_calls,
         population=args.population, seed=args.seed_value,
+        target_skill=args.target_skill or "", mutable_region=args.region or "",
     )
     _save(session, Path(args.state))
     print(f"initialized: {len(samples)} sample(s), budget={args.max_metric_calls}")
@@ -93,6 +94,8 @@ def main(argv=None) -> int:
     init.add_argument("--max-metric-calls", type=int, default=12)
     init.add_argument("--population", type=int, default=4)
     init.add_argument("--seed-value", type=int, default=0)
+    init.add_argument("--target-skill", default="")
+    init.add_argument("--region", default="")
     init.set_defaults(func=cmd_init)
     nxt = sub.add_parser("next")
     nxt.add_argument("--state", required=True)
