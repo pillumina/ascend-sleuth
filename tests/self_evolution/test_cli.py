@@ -81,6 +81,8 @@ class HealthCliTest(unittest.TestCase):
             result = run_cli("health", "--root", td, "--check")
             self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
             self.assertIn("broken:", result.stdout)
+            readout = run_cli("health", "--root", td)
+            self.assertEqual(readout.returncode, 0, readout.stdout + readout.stderr)
 
     def test_health_json_is_machine_readable(self):
         result = run_cli("health", "--json")

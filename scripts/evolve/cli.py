@@ -742,10 +742,11 @@ def cmd_health(args: argparse.Namespace) -> int:
                 print(f"- broken: {item}")
     if not payload.get("available"):
         return 1
-    if payload.get("broken"):
-        return 2
-    if args.check and int(payload.get("fail_count") or 0) > 0:
-        return 1
+    if args.check:
+        if payload.get("broken"):
+            return 2
+        if int(payload.get("fail_count") or 0) > 0:
+            return 1
     return 0
 
 
