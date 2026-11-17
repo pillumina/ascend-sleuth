@@ -127,7 +127,7 @@ python3 scripts/evolve_mode.py --json      # → {"mode": "full" | "record-only"
    `python3 scripts/ev_proposal.py --mark-merged --from-prs` 把上一批的指针补齐再看剩余量——
    把已合入的卡读成未合入，会让动作走成"停产"而真正该做的是回写；
 2. 查重 + **同组件先例咨询**（防重提被拒方案——skill-impact 咨询语义；
-   论证可选层 docs/mechanism/pipeline.md §13.2）：`python3 scripts/ev_proposal.py --list`
+   论证可选层 docs/mechanism/records.md）：`python3 scripts/ev_proposal.py --list`
    ——同 trajectory/同 target 已有在池卡 → 合并不新建；
    同时查本卡要改的组件（skill 步骤 / triage 分支 / script）在历史卡里的结局：
    `--list` 定位同组件卡 → 读其 decisions——该组件被改过 / 回滚过 / 有 rejected 结论 =
@@ -154,7 +154,7 @@ python3 scripts/evolve_mode.py --json      # → {"mode": "full" | "record-only"
      非全量；基线缓存复用，只跑改后侧）或 S2 replay（`scripts/replay_golden.py` /
      `scripts/s2_replay.py`），数据通过才算 eval solid；检索/路由层候选在 **arena
      selection 池可用时**（`scripts/eval_arena.py --stats` 出分、`--gate` 出判词，论证见
-     docs/mechanism/eval-arena.md 可选层）：无回归 + 门控判词为 **accept**
+     docs/mechanism/evaluation.md 可选层）：无回归 + 门控判词为 **accept**
      才判 solid（门控判定是数据门槛，不替代 dual 双签）。golden 无回归不在这两条命令里，
      由 `scripts/replay_golden.py` 单独跑（每条 fixture 一次完整诊断，要模型）。
      **判词三态，只有 accept 算通过**：`weak_accept` 表示"看起来涨了但证据不够"

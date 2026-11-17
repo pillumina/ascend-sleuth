@@ -1,0 +1,683 @@
+"""evolve 命令行：策略、样本队列、判定与周读数。
+
+编排在这里，规则在核心模块。核心模块不打印、不读文件；CLI 负责路径、
+终端输出与退出码：
+
+- ``0``：命令成功（判定结果本身是数据，accept/insufficient/reject/unknown 都算成功）
+- ``1``：样本/策略校验不过、状态转换非法、文件格式错
+- ``2``：命令行输入错误（judge 的 b/c/n 非法、缺文件等）
+"""
+
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import Any, Dict, Optional, Sequence
+
+import yaml
+
+from .contracts import (
+    OBJECT_TYPE_VALUES,
+    ORIGINS,
+    PURPOSES,
+    STATUSES,
+    Conclusion,
+    ContractError,
+    Version,
+    now_iso,
+)
+from .adapters import AdapterError
+from .adapters.arena import counts_from_files
+from .adapters.replay import collect as replay_collect
+from .adapters.replay import prepare as replay_prepare
+from .adapters.s2 import import_s2_samples
+from .decision import Decision, DecisionResult, decide
+from .policy import PolicyError, load_policy, policy_hash
+from .records import ConclusionStore, RecordError
+from .samples import SampleStore, StoreError
+
+from exec_log_path import resolve_checkout_dir
+
+PROG = "evolve.py"
+
+JUDGE_METHODS = ("paired_binary", "cost_primary")
+
+
+class CliError(ValueError):
+    """命令行输入错误。"""
+
+
+def _json_object(text: Optional[str], name: str) -> Optional[Dict[str, Any]]:
+    if text is None:
+        return None
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise CliError(f"{name} is not valid JSON: {exc}") from exc
+    if value is not None and not isinstance(value, dict):
+        raise CliError(f"{name} must be a JSON object")
+    return value
+
+
+def _yaml_or_json_object(text: Optional[str], name: str) -> Optional[Dict[str, Any]]:
+    """接受内联 YAML/JSON 或文件路径；用于 --versions。"""
+    if text is None:
+        return None
+    candidate = Path(text)
+    try:
+        raw_text = candidate.read_text(encoding="utf-8") if candidate.is_file() else text
+        value = yaml.safe_load(raw_text)
+    except (OSError, UnicodeDecodeError) as exc:
+        raise CliError(f"cannot read {name}: {exc}") from exc
+    except yaml.YAMLError as exc:
+        raise CliError(f"{name} is not valid YAML/JSON: {exc}") from exc
+    if not isinstance(value, dict):
+        raise CliError(f"{name} must be an object")
+    return value
+
+
+def _root(args: argparse.Namespace) -> Path:
+    """策略文件的检出根；默认当前目录（策略是 tracked 文件，不该锚主检出）。"""
+    return Path(getattr(args, "root", None) or ".")
+
+
+def _evolve_base(args: argparse.Namespace) -> Path:
+    """样本/结论/执行记录的 base（``.s2-replay/evolve``）。
+
+    未显式给 ``--root`` 时锚到同一克隆的主检出（与 traces/exec-log 同一条语义），
+    避免 worktree 清理时静默丢掉候选队列与结论；给了 ``--root`` 就落在该检出内，
+    测试与临时隔离用这条。
+    """
+    explicit = getattr(args, "root", None)
+    if explicit:
+        return Path(explicit) / ".s2-replay" / "evolve"
+    path, _where, _rel = resolve_checkout_dir("evolve", Path.cwd())
+    if path is None:
+        return Path.cwd() / ".s2-replay" / "evolve"
+    return path
+
+
+def _store(args: argparse.Namespace) -> SampleStore:
+    return SampleStore(base=_evolve_base(args))
+
+
+# ---------------------------------------------------------------- policy
+def cmd_policy_check(args: argparse.Namespace) -> int:
+    path = _root(args) / "eval" / "policy.yaml"
+    try:
+        policy = load_policy(path)
+    except PolicyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print("policy: ok")
+    print(f"policy_hash: {policy_hash(policy)}")
+    return 0
+
+
+def cmd_policy_show(args: argparse.Namespace) -> int:
+    path = _root(args) / "eval" / "policy.yaml"
+    try:
+        policy = load_policy(path)
+    except PolicyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    text = yaml.safe_dump(policy, sort_keys=False, allow_unicode=True)
+    print(text, end="" if text.endswith("\n") else "\n")
+    print(f"# policy_hash: {policy_hash(policy)}")
+    return 0
+
+
+# ---------------------------------------------------------------- sample
+def cmd_sample_new(args: argparse.Namespace) -> int:
+    expected = _json_object(args.expected, "--expected")
+    rubric = _json_object(args.rubric, "--rubric")
+    payload = _json_object(args.input, "--input")
+    proposed = _json_object(args.proposed, "--proposed")
+    try:
+        sample = _store(args).new(
+            id=args.id,
+            object_type=args.object_type,
+            origin=args.origin,
+            purpose=args.purpose,
+            source=args.source,
+            expected=expected,
+            rubric=rubric,
+            input=payload,
+            expected_kind=args.expected_kind,
+            proposed=proposed,
+            notes=args.notes,
+        )
+    except (StoreError, ContractError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"created: {sample.id}")
+    print(f"status: {sample.status}")
+    print(f"path: {_store(args).path_for(sample.id)}")
+    return 0
+
+
+def cmd_sample_import_s2(args: argparse.Namespace) -> int:
+    root = Path(args.root) if args.root else Path.cwd()
+    try:
+        stats = import_s2_samples(
+            root, args.source, _store(args), limit=args.limit,
+        )
+    except AdapterError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except (StoreError, ContractError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"created: {stats['created']}")
+    print(
+        "skipped: "
+        f"non_diagnostic={stats['skipped_non_diagnostic']} "
+        f"no_symptoms={stats['skipped_no_symptoms']} "
+        f"no_answer={stats.get('skipped_no_answer', 0)} "
+        f"split={stats.get('skipped_split', 0)} "
+        f"missing_issue={stats['skipped_missing_issue']} "
+        f"duplicate_source={stats['skipped_duplicate_source']} "
+        f"duplicate_id={stats['skipped_duplicate_id']}"
+    )
+    if stats["limit_reached"]:
+        print(f"limit reached: {args.limit}")
+    print(f"source: {stats['source']}")
+    return 0
+
+
+def cmd_sample_list(args: argparse.Namespace) -> int:
+    try:
+        samples = _store(args).list(status=args.status, origin=args.origin)
+    except StoreError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if not samples:
+        print("no samples")
+        return 0
+    for sample in samples:
+        print("\t".join([
+            sample.id,
+            sample.status,
+            sample.origin,
+            sample.purpose,
+            sample.object_type,
+        ]))
+    print(f"total: {len(samples)}")
+    return 0
+
+
+def cmd_sample_check(args: argparse.Namespace) -> int:
+    errors = _store(args).check(args.id)
+    if errors:
+        print(f"invalid: {args.id}", file=sys.stderr)
+        for message in errors:
+            print(f"  - {message}", file=sys.stderr)
+        return 1
+    print(f"ok: {args.id}")
+    return 0
+
+
+def cmd_sample_review(args: argparse.Namespace) -> int:
+    approve = args.approve
+    if approve is None:
+        print("error: one of --approve/--reject is required", file=sys.stderr)
+        return 2
+    try:
+        sample = _store(args).review(
+            args.id, approve=approve, actor=args.actor, reason=args.reason or "",
+        )
+    except StoreError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"{sample.id}: {sample.status}")
+    return 0
+
+
+def cmd_sample_promote(args: argparse.Namespace) -> int:
+    try:
+        sample = _store(args).promote(
+            args.id, to=args.to, actor=args.actor, reason=args.reason or "",
+        )
+    except StoreError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"{sample.id}: {sample.status} ({sample.origin})")
+    return 0
+
+
+def cmd_sample_retire(args: argparse.Namespace) -> int:
+    try:
+        sample = _store(args).retire(
+            args.id, actor=args.actor, reason=args.reason or "",
+        )
+    except StoreError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"{sample.id}: {sample.status}")
+    return 0
+
+
+def cmd_sample_set_purpose(args: argparse.Namespace) -> int:
+    try:
+        sample = _store(args).set_purpose(
+            args.id, args.purpose, actor=args.actor, reason=args.reason or "",
+        )
+    except (StoreError, ContractError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"{sample.id}: {sample.purpose}")
+    return 0
+
+
+def cmd_sample_absorb(args: argparse.Namespace) -> int:
+    try:
+        sample = _store(args).absorb(
+            args.id, actor=args.actor, reason=args.reason or "",
+        )
+    except StoreError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"{sample.id}: {sample.status} ({sample.purpose})")
+    return 0
+
+
+def cmd_sample_draw_test(args: argparse.Namespace) -> int:
+    try:
+        policy = _policy_for(args)
+    except PolicyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    size = args.size if args.size is not None else policy["samples"]["test"]
+    method = policy["samples"]["split"]
+    try:
+        samples = _store(args).draw_test(
+            size=size, method=method, actor=args.actor, reason=args.reason or "",
+        )
+    except StoreError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"drawn: {len(samples)}")
+    print(f"size: {size} ({'policy' if args.size is None else 'explicit'})")
+    print(f"split: {method} (policy)")
+    for sample in samples:
+        print(f"{sample.id}\t{sample.status}\t{sample.origin}\t{sample.purpose}")
+    return 0
+
+
+# ---------------------------------------------------------------- replay
+def cmd_replay_prepare(args: argparse.Namespace) -> int:
+    try:
+        replay_prepare(Path(args.root))
+    except (AdapterError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def cmd_replay_collect(args: argparse.Namespace) -> int:
+    try:
+        replay_collect(Path(args.root), Path(args.report))
+    except (AdapterError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+# ---------------------------------------------------------------- judge
+def _judge_policy(path: Optional[str]) -> Dict[str, Any]:
+    if path:
+        return load_policy(Path(path))
+    default = Path("eval") / "policy.yaml"
+    if default.exists():
+        return load_policy(default)
+    return load_policy(None)
+
+
+def _policy_for(args: argparse.Namespace) -> Dict[str, Any]:
+    """策略读取顺序：显式 ``--policy`` → ``--root/eval/policy.yaml`` → 当前检出。
+
+    ``--root`` 在样本命令里是本地运行件根，但测试与隔离用临时检出也把策略放在
+    ``<root>/eval/policy.yaml``；两条都看，显式路径优先。
+    """
+    explicit = getattr(args, "policy", None)
+    if explicit:
+        return _judge_policy(explicit)
+    root = getattr(args, "root", None)
+    candidates = []
+    if root:
+        candidates.append(Path(root) / "eval" / "policy.yaml")
+    candidates.append(Path("eval") / "policy.yaml")
+    for candidate in candidates:
+        if candidate.exists():
+            return load_policy(candidate)
+    return _judge_policy(None)
+
+
+def _decide_from_args(args: argparse.Namespace, b: int, c: int,
+                      n: int) -> DecisionResult:
+    """按 ``policy.decision`` 与 ``policy.cost`` 做一次二元配对判定。"""
+    policy = _policy_for(args)
+    method = policy["decision"]["method"]
+    if method not in JUDGE_METHODS:
+        raise CliError(
+            f"judge supports {list(JUDGE_METHODS)}, policy selects {method!r}"
+        )
+    cost = policy["cost"]
+    return decide(
+        method,
+        b=b,
+        c=c,
+        n=n,
+        alpha=policy["decision"]["alpha"],
+        k=args.k,
+        cost_b=args.cost_b,
+        cost_c=args.cost_c,
+        budget=cost["B"],
+        epsilon=cost["epsilon"],
+        delta=cost["delta"],
+    )
+
+
+def _record_conclusion(args: argparse.Namespace, result: DecisionResult) -> Path:
+    """把判定结果追加到结论记录；版本、指标与成本沿用 judge 的参数。"""
+    versions = Version.from_dict(
+        _yaml_or_json_object(args.versions, "--versions") or {}
+    )
+    metrics = _json_object(args.metrics_json, "--metrics-json") or {}
+    cost = _json_object(args.cost_json, "--cost-json")
+    conclusion = Conclusion(
+        decision=result.decision.value,
+        metrics=metrics,
+        cost=cost,
+        reason=result.reason,
+        versions=versions,
+        pool_hash=args.pool_hash,
+        reuse_index=args.k,
+        alpha_eff=result.alpha_eff,
+        b=result.b,
+        c=result.c,
+        n=result.n,
+        p_value=result.p_value,
+        delta_q=result.delta_q,
+        cost_ratio=result.cost_ratio,
+        sample=args.sample,
+        pool=args.pool,
+        at=now_iso(),
+    )
+    conclusion.validate()
+    store = ConclusionStore.for_base(_evolve_base(args))
+    store.append(conclusion.to_dict())
+    return store.path
+
+
+def _finish_judge(args: argparse.Namespace, result: DecisionResult) -> int:
+    _print_decision(result)
+    if not args.record:
+        return 0
+    try:
+        path = _record_conclusion(args, result)
+    except (ContractError, CliError, ValueError) as exc:
+        print(f"error: cannot record conclusion: {exc}", file=sys.stderr)
+        return 2
+    except (RecordError, OSError) as exc:
+        print(f"error: cannot append conclusion: {exc}", file=sys.stderr)
+        return 1
+    print(f"recorded: {path}")
+    return 0
+
+
+def cmd_judge(args: argparse.Namespace) -> int:
+    if args.record and not args.versions:
+        print("error: --versions is required with --record", file=sys.stderr)
+        return 2
+    try:
+        result = _decide_from_args(args, args.b, args.c, args.n)
+    except (PolicyError, CliError, ValueError, TypeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    return _finish_judge(args, result)
+
+
+def cmd_judge_stats(args: argparse.Namespace) -> int:
+    """读两份 stats，按配对读数判定；账本只写结论记录，不碰 arena 影响账本。"""
+    if args.record and not args.versions:
+        print("error: --versions is required with --record", file=sys.stderr)
+        return 2
+    try:
+        counts = counts_from_files(args.baseline, args.candidate)
+    except AdapterError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"paired: b={counts['b']} c={counts['c']} n={counts['n']}")
+    try:
+        result = _decide_from_args(args, counts["b"], counts["c"], counts["n"])
+    except (PolicyError, CliError, ValueError, TypeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    return _finish_judge(args, result)
+
+
+def _print_decision(result: DecisionResult) -> None:
+    data = result.to_dict()
+    print(f"decision: {data['decision']}")
+    print(f"reason: {data['reason']}")
+    for key in ("method", "b", "c", "n", "p_value", "alpha_eff",
+                "delta_q", "cost_ratio", "cost_ok", "cost_path"):
+        if key in data:
+            print(f"{key}: {data[key]}")
+    if result.decision in (Decision.ACCEPT, Decision.INSUFFICIENT, Decision.REJECT):
+        print("outcome: decided")
+    else:
+        print("outcome: unknown")
+
+
+# ---------------------------------------------------------------- brief
+def _format_counts(counts: Dict[str, int]) -> str:
+    if not counts:
+        return "none"
+    return " ".join(f"{key}={counts[key]}" for key in sorted(counts))
+
+
+def cmd_brief(args: argparse.Namespace) -> int:
+    base = _evolve_base(args)
+    store = SampleStore(base=base)
+    try:
+        policy = _policy_for(args)
+        counts = store.counts()
+        conclusions = ConclusionStore.for_base(base).read()
+    except (StoreError, RecordError, PolicyError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"policy_hash: {policy_hash(policy)}")
+    print(f"samples: {counts['total']}")
+    print(f"by_status: {_format_counts(counts['status'])}")
+    print(f"by_origin: {_format_counts(counts['origin'])}")
+    print(f"by_purpose: {_format_counts(counts['purpose'])}")
+    print(f"conclusions: {len(conclusions)}")
+    for record in conclusions[-3:]:
+        decision = record.get("decision", "unknown")
+        reason = record.get("reason", "")
+        print(f"last conclusion: {decision} {reason}".rstrip())
+    return 0
+
+
+# ---------------------------------------------------------------- parser
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog=PROG,
+        description="自演进评估循环：策略、样本队列、判定与读数（v1）。",
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    policy = sub.add_parser("policy", help="策略文件检查/展示")
+    policy_sub = policy.add_subparsers(dest="policy_command", required=True)
+    check = policy_sub.add_parser("check", help="校验 eval/policy.yaml")
+    check.add_argument("--root", default=".", help="检出根目录（默认 .）")
+    check.set_defaults(func=cmd_policy_check)
+    show = policy_sub.add_parser("show", help="打印合并默认值后的策略")
+    show.add_argument("--root", default=".", help="检出根目录（默认 .）")
+    show.set_defaults(func=cmd_policy_show)
+    sample = sub.add_parser("sample", help="样本队列与生命周期")
+    sample_sub = sample.add_subparsers(dest="sample_command", required=True)
+
+    new = sample_sub.add_parser("new", help="创建候选样本")
+    new.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    new.add_argument("--id", required=True)
+    new.add_argument("--object-type", required=True, choices=OBJECT_TYPE_VALUES)
+    new.add_argument("--origin", default="field", choices=ORIGINS)
+    new.add_argument("--purpose", default="evaluation", choices=PURPOSES)
+    new.add_argument("--source", required=True)
+    new.add_argument("--expected", default=None, help="JSON 对象")
+    new.add_argument("--rubric", default=None, help="JSON 对象")
+    new.add_argument("--input", default=None, help="JSON 对象")
+    new.add_argument("--expected-kind", default=None, choices=("resolution", "assertion", "rubric"))
+    new.add_argument("--proposed", default=None, help="JSON 对象（候选的待确认字段）")
+    new.add_argument("--notes", default=None)
+    new.set_defaults(func=cmd_sample_new)
+
+    import_s2 = sample_sub.add_parser(
+        "import-s2", help="把 eval/s2 校准集导入候选队列（跳过非诊断/无症状/重复来源）"
+    )
+    import_s2.add_argument("--root", default=None,
+                           help="校准集根目录（默认当前目录；样本仍默认锚主检出）")
+    import_s2.add_argument("--source", required=True,
+                           help="校准集路径，如 eval/s2/vllm-ascend.yaml")
+    import_s2.add_argument("--limit", type=int, default=None,
+                           help="最多创建多少条候选（默认不限）")
+    import_s2.set_defaults(func=cmd_sample_import_s2)
+
+    listing = sample_sub.add_parser("list", help="列出样本")
+    listing.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    listing.add_argument("--status", default=None, choices=STATUSES)
+    listing.add_argument("--origin", default=None, choices=ORIGINS)
+    listing.set_defaults(func=cmd_sample_list)
+
+    check_cmd = sample_sub.add_parser("check", help="复核一条样本")
+    check_cmd.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    check_cmd.add_argument("--id", required=True)
+    check_cmd.set_defaults(func=cmd_sample_check)
+
+    review = sample_sub.add_parser("review", help="维护者复核候选")
+    review.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    review.add_argument("--id", required=True)
+    verdict = review.add_mutually_exclusive_group(required=True)
+    verdict.add_argument("--approve", dest="approve", action="store_true")
+    verdict.add_argument("--reject", dest="approve", action="store_false")
+    review.add_argument("--actor", default="maintainer")
+    review.add_argument("--reason", default="")
+    review.set_defaults(func=cmd_sample_review)
+
+    promote = sample_sub.add_parser("promote", help="active/field → active/core（origin 转换）")
+    promote.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    promote.add_argument("--id", required=True)
+    promote.add_argument("--to", required=True, choices=("core",))
+    promote.add_argument("--actor", default="maintainer")
+    promote.add_argument("--reason", default="")
+    promote.set_defaults(func=cmd_sample_promote)
+
+    retire = sample_sub.add_parser("retire", help="active（field/core origin）→ retired")
+    retire.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    retire.add_argument("--id", required=True)
+    retire.add_argument("--actor", default="maintainer")
+    retire.add_argument("--reason", default="")
+    retire.set_defaults(func=cmd_sample_retire)
+
+    set_purpose = sample_sub.add_parser("set-purpose", help="active 样本改 purpose")
+    set_purpose.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    set_purpose.add_argument("--id", required=True)
+    set_purpose.add_argument("--purpose", required=True, choices=PURPOSES)
+    set_purpose.add_argument("--actor", default="maintainer")
+    set_purpose.add_argument("--reason", default="")
+    set_purpose.set_defaults(func=cmd_sample_set_purpose)
+
+    absorb = sample_sub.add_parser("absorb", help="答案进库：转 regression 或使 test 退休")
+    absorb.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    absorb.add_argument("--id", required=True)
+    absorb.add_argument("--actor", default="maintainer")
+    absorb.add_argument("--reason", default="")
+    absorb.set_defaults(func=cmd_sample_absorb)
+
+    draw = sample_sub.add_parser("draw-test", help="从 active/core/evaluation 抽 test")
+    draw.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    draw.add_argument("--size", type=int, default=None,
+                      help="抽几条（默认读 policy.samples.test）")
+    draw.add_argument("--policy", default=None, help="策略路径（默认 eval/policy.yaml）")
+    draw.add_argument("--actor", default="maintainer")
+    draw.add_argument("--reason", default="")
+    draw.set_defaults(func=cmd_sample_draw_test)
+
+    judge = sub.add_parser("judge", help="二元配对判定（b/c/n + 可选成本）")
+    judge.add_argument("--b", type=int, required=True, help="候选独家命中数")
+    judge.add_argument("--c", type=int, required=True, help="基线独家命中数")
+    judge.add_argument("--n", type=int, required=True, help="配对样本总数")
+    judge.add_argument("--cost-b", type=float, default=None)
+    judge.add_argument("--cost-c", type=float, default=None)
+    judge.add_argument("--policy", default=None, help="策略路径（默认 eval/policy.yaml）")
+    judge.add_argument("--k", type=int, default=0, help="同一评估池复用序号")
+    judge.add_argument("--root", default=None, help="结论记录本地根（默认锚主检出）")
+    judge.add_argument("--record", action="store_true",
+                       help="把结论追加到 .s2-replay/evolve/conclusions.jsonl")
+    judge.add_argument("--versions", default=None,
+                       help="结论版本 YAML/JSON（protocol/policy/base_kb/candidate_kb/candidate/model）")
+    judge.add_argument("--pool-hash", default=None, help="写进结论的池内容哈希")
+    judge.add_argument("--metrics-json", default=None, help="JSON 对象，写进结论 metrics")
+    judge.add_argument("--cost-json", default=None, help="JSON 对象，写进结论 cost")
+    judge.add_argument("--sample", default=None, help="写进结论的样本 id")
+    judge.add_argument("--pool", default=None, help="写进结论的评估池名")
+    judge.set_defaults(func=cmd_judge)
+
+    judge_stats = sub.add_parser(
+        "judge-stats", help="从两份 arena stats 的 issues 配对 b/c/n 并判定"
+    )
+    judge_stats.add_argument("--baseline", required=True, help="基线 stats YAML")
+    judge_stats.add_argument("--candidate", required=True, help="候选 stats YAML")
+    judge_stats.add_argument("--cost-b", type=float, default=None)
+    judge_stats.add_argument("--cost-c", type=float, default=None)
+    judge_stats.add_argument("--policy", default=None, help="策略路径（默认 eval/policy.yaml）")
+    judge_stats.add_argument("--k", type=int, default=0, help="同一评估池复用序号")
+    judge_stats.add_argument("--root", default=None, help="结论记录本地根（默认锚主检出）")
+    judge_stats.add_argument("--record", action="store_true",
+                             help="把结论追加到 .s2-replay/evolve/conclusions.jsonl")
+    judge_stats.add_argument("--versions", default=None,
+                             help="结论版本 YAML/JSON（protocol/policy/base_kb/"
+                                  "candidate_kb/candidate/model）")
+    judge_stats.add_argument("--pool-hash", default=None, help="写进结论的池内容哈希")
+    judge_stats.add_argument("--metrics-json", default=None, help="JSON 对象，写进结论 metrics")
+    judge_stats.add_argument("--cost-json", default=None, help="JSON 对象，写进结论 cost")
+    judge_stats.add_argument("--sample", default=None, help="写进结论的样本 id")
+    judge_stats.add_argument("--pool", default=None, help="写进结论的评估池名")
+    judge_stats.set_defaults(func=cmd_judge_stats)
+
+    replay = sub.add_parser("replay", help="S2 replay 输入准备与评分收集")
+    replay_sub = replay.add_subparsers(dest="replay_command", required=True)
+    replay_prepare_cmd = replay_sub.add_parser("prepare", help="产 replay 输入清单")
+    replay_prepare_cmd.add_argument("--root", default=".", help="检出根目录（默认 .）")
+    replay_prepare_cmd.set_defaults(func=cmd_replay_prepare)
+    replay_collect_cmd = replay_sub.add_parser("collect", help="读 result 并写评分报告")
+    replay_collect_cmd.add_argument("--root", default=".", help="检出根目录（默认 .）")
+    replay_collect_cmd.add_argument("--report", required=True, help="评分报告输出路径")
+    replay_collect_cmd.set_defaults(func=cmd_replay_collect)
+
+    brief = sub.add_parser("brief", help="样本计数与最近结论")
+    brief.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    brief.set_defaults(func=cmd_brief)
+
+    return parser
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        return int(args.func(args))
+    except (CliError, PolicyError, StoreError, RecordError, ContractError,
+            AdapterError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    except KeyboardInterrupt:
+        print("interrupted", file=sys.stderr)
+        return 130
+
+
+if __name__ == "__main__":  # pragma: no cover
+    raise SystemExit(main())

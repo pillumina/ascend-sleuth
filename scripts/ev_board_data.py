@@ -454,7 +454,7 @@ def full_decisions(decisions):
 def audit_gaps(doc, days_open):
     """卡自审：机制要求 vs 实际字段的缺口（诚实退化——面板报出来，不粉饰）。
 
-    依据 docs/mechanism/pipeline.md §7「生命周期完整性规则」与 verify_proposals.py：
+    依据 docs/mechanism/records.md「生命周期完整性规则」与 verify_proposals.py：
       - 终态卡必须有 decision 记录（审计缺口）
       - validated 卡 actual_cost 必填（成本审计缺口）
       - 执行/验证完成而卡停在 in_experiment = 卡不完整（机制推进，不靠 agent 记得改状态）
@@ -507,7 +507,7 @@ def collect_ideas(root):
             "id": d.get("id"),
             "title": d.get("title"),
             "layer": d.get("layer"),
-            # 卡契约里要求的目标组件（execution.md 定为必填）。历史上 0 张卡有它，
+            # 卡契约里要求的目标组件（records.md 定为必填）。历史上 0 张卡有它，
             # 于是"同组件先例咨询"没有可查的键——本字段透出后，--impact 与面板都能按它聚合；
             # 缺失时回退到 surface_basis.path（卡文本指到的落点），仍然可查。
             "target_component": d.get("target_component"),
