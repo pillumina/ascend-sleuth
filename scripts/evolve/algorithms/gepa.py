@@ -49,10 +49,9 @@ class GepaOptimizer:
             display_progress_bar=False,
         )
         best = getattr(result, "best_candidate", None)
-        if isinstance(best, dict) and "skill" in best:
-            best_text = best["skill"]
-        else:
-            best_text = str(best)
+        if not isinstance(best, dict) or not isinstance(best.get("skill"), str):
+            raise GepaUnavailable("GEPA result has no best_candidate['skill'] text")
+        best_text = best["skill"]
         return Patch(
             target_kind=target,
             target_component=config.get("component", "skill"),

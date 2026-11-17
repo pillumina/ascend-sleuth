@@ -36,6 +36,13 @@ class GepaAdapterTest(unittest.TestCase):
         with self.assertRaises(GepaUnavailable):
             GepaOptimizer().propose("knowledge", [], None, {"gepa": config()})
 
+    def test_result_without_skill_text_is_an_error(self):
+        result = types.SimpleNamespace(best_candidate=None, total_metric_calls=1)
+        fake = types.SimpleNamespace(optimize=lambda **kwargs: result)
+        with mock.patch.dict(sys.modules, {"gepa": fake}):
+            with self.assertRaises(GepaUnavailable):
+                GepaOptimizer().propose("skill", [], None, {"gepa": config()})
+
     def test_optimize_result_becomes_patch(self):
         result = types.SimpleNamespace(
             best_candidate={"skill": "new"}, total_metric_calls=7, candidates=[{}, {}],
