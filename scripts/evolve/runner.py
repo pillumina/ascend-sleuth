@@ -8,6 +8,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .pools import stratum_of
 from .policy import policy_hash
 from .records import ConclusionStore
 from .samples import SampleStore
@@ -57,6 +58,28 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
         if sample.status == "active" and sample.origin == "core"
         and sample.purpose == "regression"
     )
+    strata_targets = (targets.get("strata") or {}) if isinstance(targets, dict) else {}
+    strata_counts: Dict[str, Dict[str, int]] = {}
+    for sample in samples:
+        if sample.status != "active":
+            continue
+        key = stratum_of(sample)
+        bucket = strata_counts.setdefault(
+            key, {"field_eval": 0, "core_test": 0, "target": 0},
+        )
+        if sample.purpose == "evaluation" and sample.origin == "field":
+            bucket["field_eval"] += 1
+        if sample.purpose == "test" and sample.origin == "core":
+            bucket["core_test"] += 1
+    for key, target in strata_targets.items():
+        strata_counts.setdefault(
+            key, {"field_eval": 0, "core_test": 0, "target": 0},
+        )["target"] = int(target)
+    strata_short = sorted(
+        key for key, bucket in strata_counts.items()
+        if bucket["target"] and bucket["core_test"] < bucket["target"]
+    )
+
     missing_answer = [
         sample.id for sample in samples
         if sample.status == "candidate" and not sample.expected and not sample.rubric
@@ -77,6 +100,9 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
         "core_test": core_test,
         "core_regression": core_regression,
         "conclusions": len(conclusions),
+    }
+    counts["strata"] = {
+        key: dict(value) for key, value in sorted(strata_counts.items())
     }
 
     actions: List[str] = []
@@ -114,6 +140,13 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
     if core_test > target_test:
         warnings.append(
             f"test set has {core_test} sample(s), policy target is {target_test}"
+        )
+    if strata_short:
+        actions.append(
+            "test_strata_short: " + ", ".join(
+                f"{key} {strata_counts[key]['core_test']}/{strata_counts[key]['target']}"
+                for key in strata_short
+            )
         )
     if not samples:
         warnings.append("sample store is empty")
@@ -166,6 +199,14 @@ def render_plan(plan: Dict[str, Any]) -> str:
     lines.append(f"tier2_hit: {_metric_value(metrics.get('tier2_hit'))}")
     lines.append(f"case_total: {_metric_value(metrics.get('case_total'))}")
     lines.append(f"feedback: {_metric_value(metrics.get('feedback'))}")
+    strata = counts.get("strata") or {}
+    if strata:
+        lines.append("strata:")
+        for key, value in sorted(strata.items()):
+            lines.append(
+                f"- {key}: field_eval={value.get('field_eval', 0)} "
+                f"core_test={value.get('core_test', 0)} target={value.get('target', 0)}"
+            )
     last = (metrics.get("last_skill_exec") or {}).get("last") if isinstance(
         metrics.get("last_skill_exec"), dict) else None
     if last:

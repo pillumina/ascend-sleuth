@@ -113,12 +113,34 @@ def dedup(samples: Iterable[Any]) -> List[Any]:
     return out
 
 
+def stratum_of(sample: Any) -> str:
+    """case 子类型键：``expected.namespace/category``；缺失记 unknown。
+
+    不把 issue label 当类型真值；类型来自维护者补的 expected。object_type 与
+    stratum 正交：diagnosis/case/reference/trace 下面仍可再分 namespace×category。
+    """
+    expected = _field(sample, "expected") or {}
+    namespace = str(expected.get("namespace") or "").strip()
+    category = str(expected.get("category") or "").strip()
+    if namespace and category:
+        return f"{namespace}/{category}"
+    return namespace or category or "unknown"
+
+
+def stratify(samples: Iterable[Any]) -> Dict[str, List[Any]]:
+    grouped: Dict[str, List[Any]] = {}
+    for sample in samples:
+        grouped.setdefault(stratum_of(sample), []).append(sample)
+    return grouped
+
+
 def _test_sort_key(sample: Any) -> Tuple[str, str]:
     sid = _sample_id(sample)
     return hashlib.sha256(sid.encode("utf-8")).hexdigest(), sid
 
 
-def split_test(samples: Iterable[Any], size: int = 4, method: str = "hash") -> List[Any]:
+def split_test(samples: Iterable[Any], size: int = 4, method: str = "hash",
+               strata: Optional[Dict[str, int]] = None) -> List[Any]:
     """从 active + origin=core 的 evaluation 样本里稳定抽 ``size`` 条测试。
 
     ``method="hash"``（默认）按 id 的 SHA-256 排序；``method="group"`` 先按
@@ -129,12 +151,38 @@ def split_test(samples: Iterable[Any], size: int = 4, method: str = "hash") -> L
         raise ValueError("size must be a non-negative integer")
     if method not in ("hash", "group"):
         raise ValueError("method must be 'hash' or 'group'")
+    if strata is not None:
+        if not isinstance(strata, dict):
+            raise ValueError("strata must be an object of stratum -> target")
+        for key, value in strata.items():
+            if not isinstance(key, str) or not key.strip():
+                raise ValueError("strata keys must be non-empty strings")
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ValueError("strata targets must be non-negative integers")
+        if sum(strata.values()) > size:
+            raise ValueError("strata targets exceed test size")
     eligible = [
         sample for sample in samples
         if _field(sample, "status") == "active"
         and _field(sample, "origin") == "core"
         and _field(sample, "purpose") == "evaluation"
     ]
+    if strata:
+        chosen: List[Any] = []
+        remaining = sorted(eligible, key=_test_sort_key)
+        for key in sorted(strata):
+            target = strata[key]
+            bucket = [sample for sample in remaining if stratum_of(sample) == key]
+            picked = bucket[:target]
+            chosen.extend(picked)
+            picked_ids = {id(sample) for sample in picked}
+            remaining = [sample for sample in remaining if id(sample) not in picked_ids]
+        for sample in remaining:
+            if len(chosen) >= size:
+                break
+            chosen.append(sample)
+        return sorted(chosen, key=_test_sort_key)[:size]
+
     if method == "hash":
         return sorted(eligible, key=_test_sort_key)[:size]
 

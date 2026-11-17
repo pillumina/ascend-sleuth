@@ -368,7 +368,8 @@ def cmd_sample_draw_test(args: argparse.Namespace) -> int:
     method = policy["samples"]["split"]
     try:
         samples = _store(args).draw_test(
-            size=size, method=method, actor=args.actor, reason=args.reason or "",
+            size=size, method=method, strata=policy["samples"].get("strata") or {},
+            actor=args.actor, reason=args.reason or "",
         )
     except StoreError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -376,6 +377,9 @@ def cmd_sample_draw_test(args: argparse.Namespace) -> int:
     print(f"drawn: {len(samples)}")
     print(f"size: {size} ({'policy' if args.size is None else 'explicit'})")
     print(f"split: {method} (policy)")
+    strata = policy["samples"].get("strata") or {}
+    if strata:
+        print("strata: " + " ".join(f"{key}={value}" for key, value in sorted(strata.items())))
     for sample in samples:
         print(f"{sample.id}\t{sample.status}\t{sample.origin}\t{sample.purpose}")
     return 0
@@ -603,6 +607,11 @@ def cmd_brief(args: argparse.Namespace) -> int:
     print(f"tier2_hit: {_metric_value(metrics.get('tier2_hit'))}")
     print(f"case_total: {_metric_value(metrics.get('case_total'))}")
     print(f"feedback: {_metric_value(metrics.get('feedback'))}")
+    for key, value in sorted((plan_counts.get("strata") or {}).items()):
+        print(
+            f"stratum: {key} field_eval={value.get('field_eval', 0)} "
+            f"core_test={value.get('core_test', 0)} target={value.get('target', 0)}"
+        )
     last_exec = (metrics.get("last_skill_exec") or {}).get("last") \
         if isinstance(metrics.get("last_skill_exec"), dict) else None
     if last_exec:

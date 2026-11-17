@@ -46,6 +46,7 @@ DEFAULTS: Dict[str, Any] = {
         "field_eval": 9,
         "test": 4,
         "split": "hash",
+        "strata": {},
     },
     "cost": {
         "primary_dimension": "tokens",
@@ -182,6 +183,14 @@ def validate_policy(policy: Dict[str, Any]) -> None:
             errors.append(
                 f"samples.split must be one of {list(SPLIT_METHODS)}, got {samples.get('split')!r}"
             )
+        strata = samples.get("strata")
+        if not isinstance(strata, dict):
+            errors.append("samples.strata must be an object")
+        else:
+            for key, value in strata.items():
+                if not isinstance(key, str) or not key.strip():
+                    errors.append("samples.strata keys must be non-empty strings")
+                _validate_int(value, f"samples.strata.{key}", errors, minimum=0)
 
     cost = policy.get("cost")
     if not isinstance(cost, dict):

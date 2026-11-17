@@ -21,6 +21,7 @@ from evolve.pools import (  # noqa: E402
     purpose_transition_errors,
     select_pool,
     split_test,
+    stratum_of,
     transition_errors,
 )
 
@@ -112,6 +113,30 @@ class SplitTestTest(unittest.TestCase):
         ]
         chosen = {item.id for item in split_test(samples, size=4)}
         self.assertEqual(chosen, {"core-1", "core-2"})
+
+    def test_strata_quota_selects_each_type(self):
+        samples = [
+            sample(f"i-{i}", status="active", origin="core", purpose="evaluation",
+                   expected={"namespace": "inference/vllm-ascend", "category": "interrupt"})
+            for i in range(4)
+        ] + [
+            sample(f"p-{i}", status="active", origin="core", purpose="evaluation",
+                   expected={"namespace": "training/verl", "category": "precision"})
+            for i in range(4)
+        ]
+        chosen = split_test(
+            samples, size=2,
+            strata={"inference/vllm-ascend/interrupt": 1, "training/verl/precision": 1},
+        )
+        self.assertEqual(len(chosen), 2)
+        self.assertEqual(
+            {stratum_of(item) for item in chosen},
+            {"inference/vllm-ascend/interrupt", "training/verl/precision"},
+        )
+
+    def test_strata_targets_cannot_exceed_size(self):
+        with self.assertRaises(ValueError):
+            split_test([], size=1, strata={"a": 1, "b": 1})
 
     def test_size_and_stability(self):
         samples = [

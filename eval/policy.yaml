@@ -29,6 +29,7 @@ samples:
   field_eval: 9
   test: 4
   split: hash
+  strata: {}
 
 cost:
   primary_dimension: tokens

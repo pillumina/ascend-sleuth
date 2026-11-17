@@ -79,5 +79,6 @@ flowchart TD
 - 只建 candidate；不自动 active、不自动 promote core、不自动合并。
 - 不改 `knowledge/`、`references/`、case 草稿；case 沉淀走 `/skill:issue-ingest`。
 - 评论、关联 PR、resolution 不进入样本 `input`，防止泄题。
+- 类型来自 `expected.namespace/category`，不拿 issue label 猜；`samples.strata` 配每层 test 目标。
 - 所有人都能调用本 skill；写权限仍由 policy、CODEOWNERS、分支保护和人工 review 约束。
 - 完整来源协议、过滤规则和 state 语义见 [evaluation.md](../../docs/mechanism/evaluation.md)。

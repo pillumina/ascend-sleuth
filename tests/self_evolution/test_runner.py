@@ -92,6 +92,18 @@ class IssuePlanTest(unittest.TestCase):
         self.assertFalse(plan["metrics"]["timeline"]["available"])
         self.assertIsNone(plan["metrics"]["sessions_total"])
 
+    def test_strata_short_action_and_counts(self):
+        self.create("S-1", expected={"namespace": "inference/vllm-ascend", "category": "interrupt"})
+        self.store.review("S-1", approve=True)
+        self.store.promote("S-1", to="core")
+        self.store.set_purpose("S-1", "test")
+        self.policy["samples"]["strata"] = {"inference/vllm-ascend/interrupt": 2}
+        plan = self.plan()
+        bucket = plan["counts"]["strata"]["inference/vllm-ascend/interrupt"]
+        self.assertEqual((bucket["core_test"], bucket["target"]), (1, 2))
+        self.assertTrue(any(action.startswith("test_strata_short") for action in plan["next_actions"]))
+        self.assertIn("strata:", render_plan(plan))
+
     def test_conclusion_is_counted(self):
         ConclusionStore.for_base(self.base).append({"decision": "accept"})
         plan = self.plan()

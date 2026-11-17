@@ -456,6 +456,7 @@ class SampleStore:
         )
 
     def draw_test(self, size: int = 4, method: str = "hash",
+                  strata: Optional[Dict[str, int]] = None,
                   actor: str = "maintainer", reason: str = "") -> List[Sample]:
         """从 active + origin=core + evaluation 抽 test 并改 purpose。
 
@@ -471,7 +472,9 @@ class SampleStore:
         ]
         if len(existing) >= size:
             return sorted(existing, key=lambda sample: sample.id)
-        selected = split_test(self.read_all(), size=size - len(existing), method=method)
+        selected = split_test(
+            self.read_all(), size=size - len(existing), method=method, strata=strata,
+        )
         drawn: List[Sample] = []
         for sample in selected:
             drawn.append(self.set_purpose(

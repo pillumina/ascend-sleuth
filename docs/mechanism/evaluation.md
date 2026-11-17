@@ -112,6 +112,8 @@ flowchart TD
 
 总判定样本 = core 测试集 4 + field 评估集 9/26/46，即 13/30/50；13 = 9 + 4，30 = 26 + 4，50 = 46 + 4。core 回归集单独算，不进这个总数。
 
+`stratum` 是 case 子类型，不等于 `object_type`：它来自样本 `expected.namespace/category`，例如 `inference/vllm-ascend/interrupt`、`training/verl/precision`。`samples.strata` 配每层 test 目标；`split-test` 按目标层抽，目标之和不能超过 test 总数，剩余名额再从其他样本补。`run`/`brief` 按 stratum 报 field 评估、core test 与缺口。issue label 不是类型真值；维护者补 `expected` 后才产生 stratum。
+
 ### 3.4 规模与刷新
 
 评估池的下限由判定要支撑几轮反推。终判子集至少 4 条；评估侧要支撑 \(K\) 次判定，每次需要的最小独家命中数为 \(b^*(k)\)：
