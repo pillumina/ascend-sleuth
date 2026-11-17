@@ -3,6 +3,7 @@
 import sys
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -36,6 +37,15 @@ class MetricsTest(unittest.TestCase):
         self.assertEqual(entry["active_cases"], 1)
         self.assertEqual(entry["references"], 1)
         self.assertEqual(entry["cold_cases"], 172)
+
+    def test_live_period_age_marks_stale_against_gates(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = write_metrics(Path(td))
+            metrics = load_metrics(root, today=date(2026, 9, 10))
+        live = metrics["freshness"]["live"]
+        self.assertEqual(live["age_days"], 8)
+        self.assertEqual(live["max_age_days"], 7)
+        self.assertTrue(live["stale"])
 
     def test_missing_files_are_marked_not_zero(self):
         with tempfile.TemporaryDirectory() as td:

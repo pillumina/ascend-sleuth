@@ -245,7 +245,7 @@ S2 未命中有三种解释：路由错、缺 case、内容错。它只看到没
 | tooling | 工具路由、分支、重试 | replay + trace 工具使用 | A2 | baseline |
 | harness | 调度与控制流 | 端到端回放 + 回归 | A1 | baseline |
 
-`targets/registry.py` 只允许 target 白名单内的算法；未注册的 GEPA/AEL 等名字不会静默回退。加一个 target 或算法各改一个静态注册表，主循环、评测协议和记录格式不动。
+`targets/registry.py` 只允许 target 白名单内的算法；未注册的 GEPA/AEL 等名字不会静默回退。加一个 target 或算法各改一个静态注册表，主循环、评测协议和记录格式不动。`experiment propose --target skill --component <组件>` 会调用当前 optimizer 生成一个 Patch 并写本地 `experiments.jsonl`；baseline 仍是人工提案，不会自动改文件或合入。
 
 ## 4 边界与失败模式
 

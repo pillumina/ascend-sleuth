@@ -23,6 +23,7 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
     """返回计划字典；``root`` 用于 metrics 读取与无 ``base`` 时的默认落点。"""
     root_path = Path(root) if root is not None else Path(".")
     base_path = Path(base) if base is not None else None
+    metrics = metrics or {}
     if base_path is not None:
         store = SampleStore(base=base_path)
         conclusions = ConclusionStore.for_base(base_path).read()
@@ -141,6 +142,20 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
         warnings.append(
             f"test set has {core_test} sample(s), policy target is {target_test}"
         )
+    freshness = metrics.get("freshness") or {}
+    timeline = metrics.get("timeline") or {}
+    if timeline.get("available") is False:
+        actions.append(
+            "metrics_unavailable: run trace_entry_activity --apply / metrics_snapshot "
+            "before trusting trend readouts"
+        )
+    for key in ("live", "structural"):
+        item = freshness.get(key) or {}
+        if item.get("stale"):
+            actions.append(
+                f"metrics_stale_{key}: {item.get('period')} is {item.get('age_days')} "
+                f"days old (max {item.get('max_age_days')}); refresh before deciding"
+            )
     if strata_short:
         actions.append(
             "test_strata_short: " + ", ".join(

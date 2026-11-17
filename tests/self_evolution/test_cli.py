@@ -343,6 +343,22 @@ class IngestCliTest(unittest.TestCase):
             state = json.loads((Path(td) / "ingest-state.json").read_text(encoding="utf-8"))
             self.assertIn("local/o/r/evaluation", state["sources"])
 
+    def test_experiment_propose_records_baseline_patch(self):
+        with tempfile.TemporaryDirectory() as td:
+            result = run_cli(
+                "experiment", "propose", "--root", td, "--target", "skill",
+                "--component", "triage:branch", "--summary", "manual test patch",
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("algorithm: baseline", result.stdout)
+            path = Path(td) / ".s2-replay" / "evolve" / "experiments.jsonl"
+            self.assertTrue(path.exists())
+            record = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+            self.assertEqual(record["target_kind"], "skill")
+            self.assertEqual(record["target_component"], "triage:branch")
+            self.assertEqual(record["summary"], "manual test patch")
+            self.assertEqual(record["algorithm"], "baseline")
+
     def test_experiment_list_marks_policy_algorithm(self):
         with tempfile.TemporaryDirectory() as td:
             result = run_cli("experiment", "list", "--root", td)

@@ -104,6 +104,14 @@ class IssuePlanTest(unittest.TestCase):
         self.assertTrue(any(action.startswith("test_strata_short") for action in plan["next_actions"]))
         self.assertIn("strata:", render_plan(plan))
 
+    def test_metrics_stale_adds_action(self):
+        from datetime import date
+        from evolve.adapters.metrics import load_metrics
+        write_metrics(self.root)
+        metrics = load_metrics(self.root, today=date(2026, 9, 10))
+        plan = issue_plan(self.root, self.base, self.policy, metrics=metrics)
+        self.assertTrue(any(action.startswith("metrics_stale_live") for action in plan["next_actions"]))
+
     def test_conclusion_is_counted(self):
         ConclusionStore.for_base(self.base).append({"decision": "accept"})
         plan = self.plan()

@@ -4,6 +4,7 @@
 让调用方崩。本模块不联网、不跑模型、不写文件。
 """
 
+from datetime import date
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -197,13 +198,49 @@ def _entry_usage(root: Path, deployment: Optional[str]) -> Dict[str, Any]:
     }
 
 
-def load_metrics(root: Any, deployment: Optional[str] = None) -> Dict[str, Any]:
+def _period_age(period: Optional[Dict[str, Any]], today: date) -> Optional[int]:
+    if not period:
+        return None
+    raw = str(period.get("recorded_at") or "")[:10]
+    try:
+        return (today - date.fromisoformat(raw)).days
+    except ValueError:
+        return None
+
+
+def _freshness(timeline: Dict[str, Any], gates: Dict[str, Any],
+               today: date) -> Dict[str, Any]:
+    thresholds = gates.get("freshness") if isinstance(gates.get("freshness"), dict) else {}
+    result = {"available": bool(gates.get("available")), "live": None, "structural": None}
+    for key, period_key, max_key in (
+        ("live", "latest_live_period", "live_snapshot_max_age_days"),
+        ("structural", "latest_structural_period", "structural_max_age_days"),
+    ):
+        period = timeline.get(period_key)
+        age = _period_age(period, today)
+        max_age = thresholds.get(max_key)
+        stale = bool(age is not None and isinstance(max_age, int) and age > max_age)
+        result[key] = {
+            "period": (period or {}).get("period"),
+            "age_days": age,
+            "max_age_days": max_age,
+            "stale": stale,
+            "available": period is not None and age is not None,
+        }
+    return result
+
+
+def load_metrics(root: Any, deployment: Optional[str] = None,
+                 today: Optional[date] = None) -> Dict[str, Any]:
     """读四类 metrics 文件；缺文件/坏文件用 available=False 标记。"""
     root_path = Path(root)
     timeline = _timeline(root_path)
+    gates = _gates(root_path)
+    freshness = _freshness(timeline, gates, today or date.today())
     return {
         "timeline": timeline,
-        "gates": _gates(root_path),
+        "gates": gates,
+        "freshness": freshness,
         "last_skill_exec": _last_skill_exec(root_path),
         "entry_usage": _entry_usage(root_path, deployment),
         "latest_period": timeline.get("latest_period"),
