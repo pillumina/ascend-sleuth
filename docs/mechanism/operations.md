@@ -113,6 +113,7 @@
 | 记录一个 baseline 提案 | `python3 scripts/evolve.py experiment propose --target skill --component <组件> --summary <一句话>`（只写本地实验记录，不跑模型、不合入） |
 | GEPA 适配器 | 已注册，需 Python ≥3.10 的 `gepa`、`budget.gepa` 的 evaluator/task_lm/reflection_lm；CLI 不伪造实验配置 |
 | 查看本地实验记录 | `python3 scripts/evolve.py experiment records --limit 10` |
+| 记录 subagent 对照实验 | `/skill:evolve-experiment` 产 `result.json`，再 `experiment record --file result.json` |
 | 全库观测轮 | `/skill:self-evolve` |
 
 只跑新增样本，不每周跑全量；判定那一次才跑全量。读数包含六项：可评样本数、最近一次全量回放的命中率、单次回放成本、距上次收尾检查的天数、未执行的检查命令数、内容体检的越界项。没测过的项写「未测」，不补零。
