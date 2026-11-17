@@ -21,7 +21,8 @@ class EvalProfileTest(unittest.TestCase):
             eval_profile_ids(), ["arena", "end_to_end", "replay_trace", "rubric"]
         )
         self.assertTrue(EVAL_PROFILES["arena"].implemented)
-        self.assertFalse(EVAL_PROFILES["rubric"].implemented)
+        self.assertTrue(EVAL_PROFILES["rubric"].implemented)
+        self.assertFalse(EVAL_PROFILES["replay_trace"].implemented)
 
     def test_unknown_profile_is_an_error(self):
         with self.assertRaises(ValueError):
