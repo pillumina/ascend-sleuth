@@ -101,6 +101,21 @@ class ConclusionStore(JsonlStore):
         return cls(base=base, lock=lock)
 
 
+class ExperimentStore(JsonlStore):
+    """算法提案记录：``<root>/.s2-replay/evolve/experiments.jsonl``。"""
+
+    def __init__(self, path: Path = None, lock: bool = True, base: Path = None) -> None:
+        if base is not None:
+            path = Path(base) / "experiments.jsonl"
+        if path is None:
+            raise TypeError("ExperimentStore requires path or base")
+        super().__init__(path, lock=lock)
+
+    @classmethod
+    def for_base(cls, base: Path, lock: bool = True) -> "ExperimentStore":
+        return cls(base=base, lock=lock)
+
+
 class RunStore(JsonlStore):
     """执行记录：``<root>/.s2-replay/evolve/runs.jsonl``。"""
 

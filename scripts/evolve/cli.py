@@ -10,6 +10,7 @@
 
 import argparse
 import json
+from dataclasses import asdict
 import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
@@ -37,7 +38,7 @@ from .adapters.issues import ingest_issues
 from .adapters.s2 import import_s2_samples
 from .decision import Decision, DecisionResult, decide
 from .policy import PolicyError, load_policy, policy_hash
-from .records import ConclusionStore, RecordError
+from .records import ConclusionStore, ExperimentStore, RecordError
 from .runner import issue_plan, render_plan
 from .samples import SampleStore, StoreError
 from .sources.registry import get_source
@@ -577,6 +578,57 @@ def cmd_experiment_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_experiment_propose(args: argparse.Namespace) -> int:
+    try:
+        policy = _policy_for(args)
+        experiment = policy.get("experiment") or {}
+        target = args.target or experiment.get("target", "skill")
+        algorithm = args.algorithm or experiment.get("algorithm", "baseline")
+        spec, optimizer = resolve_optimizer(target, algorithm)
+        budget = _json_object(args.budget, "budget")
+        if budget is None:
+            budget = experiment.get("budget") or {}
+        seed = args.seed if args.seed is not None else experiment.get("seed", 0)
+        patch = optimizer.propose(target, [], None, budget)
+        if args.component:
+            patch.target_component = args.component
+        if args.summary:
+            patch.summary = args.summary
+        patch.seed = seed
+        patch.validate()
+        record = asdict(patch)
+        record["at"] = now_iso()
+        ExperimentStore.for_base(_evolve_base(args)).append(record)
+    except (PolicyError, AdapterError, StoreError, RecordError, ContractError, ValueError, TypeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except OSError as exc:
+        print(f"error: cannot write experiment record: {exc}", file=sys.stderr)
+        return 1
+    print(f"target: {patch.target_kind}")
+    print(f"component: {patch.target_component}")
+    print(f"algorithm: {patch.algorithm}")
+    print(f"summary: {patch.summary}")
+    print(f"recorded: {ExperimentStore.for_base(_evolve_base(args)).path}")
+    return 0
+
+
+def cmd_experiment_records(args: argparse.Namespace) -> int:
+    try:
+        records = ExperimentStore.for_base(_evolve_base(args)).read()
+    except RecordError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    limit = args.limit if args.limit and args.limit > 0 else 10
+    print(f"experiments: {len(records)}")
+    for record in records[-limit:]:
+        print(
+            f"{record.get('at', '')} {record.get('target_kind', '')} "
+            f"{record.get('target_component', '')} {record.get('algorithm', '')}"
+        )
+    return 0
+
+
 def cmd_experiment_resolve(args: argparse.Namespace) -> int:
     try:
         spec, optimizer = resolve_optimizer(args.target, args.algorithm)
@@ -643,7 +695,20 @@ def cmd_brief(args: argparse.Namespace) -> int:
     period = metrics.get("latest_period")
     print(f"policy_hash: {policy_hash(policy)}")
     print(f"target: {(policy.get('experiment') or {}).get('target', 'skill')}")
-    print(f"metrics_period: {period.get('period') if period else 'unavailable'}")
+    timeline = metrics.get("timeline") or {}
+    print(
+        f"metrics_period: {period.get('period') if period and timeline.get('available') else 'unavailable'}"
+    )
+    freshness = metrics.get("freshness") or {}
+    parts = []
+    for key in ("live", "structural"):
+        item = freshness.get(key) or {}
+        age = item.get("age_days")
+        status = "missing" if not item.get("available") else (
+            "stale" if item.get("stale") else "fresh"
+        )
+        parts.append(f"{key}={status}" + (f"({age}d)" if age is not None else ""))
+    print("metrics_freshness: " + " ".join(parts))
     print(f"sessions_total: {_metric_value(metrics.get('sessions_total'))}")
     print(f"tier2_hit: {_metric_value(metrics.get('tier2_hit'))}")
     print(f"case_total: {_metric_value(metrics.get('case_total'))}")
@@ -880,6 +945,20 @@ def build_parser() -> argparse.ArgumentParser:
     exp_resolve.add_argument("--target", required=True)
     exp_resolve.add_argument("--algorithm", default=None)
     exp_resolve.set_defaults(func=cmd_experiment_resolve)
+    exp_records = experiment_sub.add_parser("records", help="列出本地实验记录")
+    exp_records.add_argument("--root", default=None)
+    exp_records.add_argument("--limit", type=int, default=10)
+    exp_records.set_defaults(func=cmd_experiment_records)
+    exp_propose = experiment_sub.add_parser("propose", help="按 target 生成并记录一个 baseline Patch")
+    exp_propose.add_argument("--root", default=None)
+    exp_propose.add_argument("--policy", default=None)
+    exp_propose.add_argument("--target", default=None)
+    exp_propose.add_argument("--algorithm", default=None)
+    exp_propose.add_argument("--component", default=None)
+    exp_propose.add_argument("--summary", default=None)
+    exp_propose.add_argument("--budget", default=None, help="JSON 对象")
+    exp_propose.add_argument("--seed", type=int, default=None)
+    exp_propose.set_defaults(func=cmd_experiment_propose)
 
     run = sub.add_parser("run", help="维护者下一步计划（不跑模型/不写库）")
     run.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")

@@ -343,6 +343,40 @@ class IngestCliTest(unittest.TestCase):
             state = json.loads((Path(td) / "ingest-state.json").read_text(encoding="utf-8"))
             self.assertIn("local/o/r/evaluation", state["sources"])
 
+    def test_experiment_propose_records_baseline_patch(self):
+        with tempfile.TemporaryDirectory() as td:
+            result = run_cli(
+                "experiment", "propose", "--root", td, "--target", "skill",
+                "--component", "triage:branch", "--summary", "manual test patch",
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("algorithm: baseline", result.stdout)
+            path = Path(td) / ".s2-replay" / "evolve" / "experiments.jsonl"
+            self.assertTrue(path.exists())
+            record = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+            self.assertEqual(record["target_kind"], "skill")
+            self.assertEqual(record["target_component"], "triage:branch")
+            self.assertEqual(record["summary"], "manual test patch")
+            self.assertEqual(record["algorithm"], "baseline")
+
+    def test_experiment_propose_rejects_invalid_patch_fields(self):
+        with tempfile.TemporaryDirectory() as td:
+            result = run_cli(
+                "experiment", "propose", "--root", td, "--target", "skill",
+                "--seed", "-1",
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("seed", result.stderr)
+
+    def test_experiment_records_lists_written_patch(self):
+        with tempfile.TemporaryDirectory() as td:
+            run_cli("experiment", "propose", "--root", td, "--target", "skill",
+                    "--component", "triage:branch", "--summary", "manual")
+            result = run_cli("experiment", "records", "--root", td)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("experiments: 1", result.stdout)
+            self.assertIn("triage:branch", result.stdout)
+
     def test_experiment_list_marks_policy_algorithm(self):
         with tempfile.TemporaryDirectory() as td:
             result = run_cli("experiment", "list", "--root", td)

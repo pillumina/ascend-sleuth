@@ -23,6 +23,7 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
     """返回计划字典；``root`` 用于 metrics 读取与无 ``base`` 时的默认落点。"""
     root_path = Path(root) if root is not None else Path(".")
     base_path = Path(base) if base is not None else None
+    metrics = metrics or {}
     if base_path is not None:
         store = SampleStore(base=base_path)
         conclusions = ConclusionStore.for_base(base_path).read()
@@ -141,6 +142,35 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
         warnings.append(
             f"test set has {core_test} sample(s), policy target is {target_test}"
         )
+    freshness = metrics.get("freshness") or {}
+    timeline = metrics.get("timeline") or {}
+    if timeline.get("available") is False:
+        actions.append(
+            "metrics_unavailable: run trace_entry_activity --apply / metrics_snapshot "
+            "before trusting trend readouts"
+        )
+    else:
+        unavailable = []
+        stale: Dict[str, List[str]] = {}
+        for key in ("live", "structural"):
+            item = freshness.get(key) or {}
+            if not item.get("available"):
+                unavailable.append(key)
+            elif item.get("stale"):
+                stale.setdefault(str(item.get("period") or "unknown"), []).append(key)
+        if unavailable:
+            actions.append(
+                "metrics_freshness_unavailable: " + ", ".join(unavailable)
+                + "; run trace_entry_activity --apply / metrics_snapshot"
+            )
+        for period in sorted(stale):
+            keys = stale[period]
+            item = freshness.get(keys[0]) or {}
+            actions.append(
+                f"metrics_stale: {period} ({', '.join(keys)}) is "
+                f"{item.get('age_days')} days old (max {item.get('max_age_days')}); "
+                "refresh before deciding"
+            )
     if strata_short:
         actions.append(
             "test_strata_short: " + ", ".join(
