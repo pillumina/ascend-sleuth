@@ -7,6 +7,7 @@ reflection；记录必须写清算法/版本、样本、两侧分数和判定。
 
 from typing import Any, Dict, List
 
+from .evaluations.registry import get_eval_profile
 from .targets.registry import TARGETS, get_target
 
 
@@ -59,11 +60,27 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
         raise ExperimentError("samples must be a non-empty list")
     if not all(isinstance(item, str) and item.strip() for item in samples):
         raise ExperimentError("samples must contain non-empty strings")
+    if len(set(samples)) != len(samples):
+        raise ExperimentError("samples must not contain duplicates")
     baseline = _side(record.get("baseline"), "baseline")
     candidate = _side(record.get("candidate"), "candidate")
+    if len(set(baseline["samples"])) != len(baseline["samples"]):
+        raise ExperimentError("baseline.samples must not contain duplicates")
+    if len(set(candidate["samples"])) != len(candidate["samples"]):
+        raise ExperimentError("candidate.samples must not contain duplicates")
     if set(baseline["samples"]) != set(candidate["samples"]):
         raise ExperimentError("baseline/candidate samples must be the same set")
+    if set(samples) != set(baseline["samples"]):
+        raise ExperimentError("top-level samples must match baseline/candidate")
+    if decision == "accept" and candidate["score"] <= baseline["score"]:
+        raise ExperimentError("accept requires candidate.score > baseline.score")
     spec = get_target(target)
+    profile_id = record.get("eval_profile_id") or spec.eval_profile_id
+    profile = get_eval_profile(profile_id)
+    ready_input = record.get("eval_ready", profile.implemented)
+    if not isinstance(ready_input, bool):
+        raise ExperimentError("eval_ready must be boolean")
+    eval_ready = bool(profile.implemented and ready_input)
     result = {
         "target_kind": target,
         "target_component": component,
@@ -73,8 +90,8 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
         "samples": list(samples),
         "baseline": baseline,
         "candidate": candidate,
-        "eval_profile_id": record.get("eval_profile_id") or spec.eval_profile_id,
-        "eval_ready": bool(record.get("eval_ready", False)),
+        "eval_profile_id": profile.id,
+        "eval_ready": eval_ready,
         "summary": str(record.get("summary") or ""),
     }
     for key in ("budget", "seed"):

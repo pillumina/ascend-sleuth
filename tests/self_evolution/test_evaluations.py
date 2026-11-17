@@ -18,11 +18,12 @@ from evolve.targets.registry import resolve_evaluator  # noqa: E402
 class EvalProfileTest(unittest.TestCase):
     def test_profiles_are_registered(self):
         self.assertEqual(
-            eval_profile_ids(), ["arena", "end_to_end", "replay_trace", "rubric"]
+            eval_profile_ids(), ["arena", "end_to_end", "replay_trace", "rubric", "subagent_judge"]
         )
         self.assertTrue(EVAL_PROFILES["arena"].implemented)
         self.assertTrue(EVAL_PROFILES["rubric"].implemented)
         self.assertFalse(EVAL_PROFILES["replay_trace"].implemented)
+        self.assertFalse(EVAL_PROFILES["subagent_judge"].implemented)
 
     def test_unknown_profile_is_an_error(self):
         with self.assertRaises(ValueError):

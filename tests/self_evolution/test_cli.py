@@ -457,7 +457,7 @@ class IngestCliTest(unittest.TestCase):
             "decision": "reject", "samples": ["S-1", "S-2"],
             "baseline": {"score": 1.0, "samples": ["S-1", "S-2"]},
             "candidate": {"score": 0.5, "samples": ["S-1", "S-2"]},
-            "eval_profile_id": "arena", "eval_ready": True,
+            "eval_profile_id": "subagent_judge", "eval_ready": False,
             "summary": "candidate regressed on S-2",
         }
         with tempfile.TemporaryDirectory() as td:

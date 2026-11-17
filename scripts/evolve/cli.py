@@ -640,9 +640,12 @@ def cmd_experiment_record(args: argparse.Namespace) -> int:
         record = validate_experiment(raw)
         record["at"] = now_iso()
         ExperimentStore.for_base(_evolve_base(args)).append(record)
-    except (ExperimentError, PolicyError, RecordError, OSError, ValueError) as exc:
+    except (ExperimentError, PolicyError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    except (RecordError, OSError) as exc:
+        print(f"error: cannot write experiment record: {exc}", file=sys.stderr)
+        return 1
     print(f"recorded: {record['target_kind']} {record['target_component']}")
     print(f"decision: {record['decision']}")
     print(f"baseline: {record['baseline']['score']:.4f}")

@@ -17,6 +17,10 @@ EVAL_PROFILES: Dict[str, EvalProfile] = {
         id="replay_trace", label="回放工具调用与 trace",
         object_types=("trace",), gate="replay-trace", implemented=False,
     ),
+    "subagent_judge": EvalProfile(
+        id="subagent_judge", label="子 agent 对照评审",
+        object_types=("diagnosis",), gate="subagent-judge", implemented=False,
+    ),
     "end_to_end": EvalProfile(
         id="end_to_end", label="端到端回放与回归",
         object_types=("diagnosis", "case", "reference", "trace"),
