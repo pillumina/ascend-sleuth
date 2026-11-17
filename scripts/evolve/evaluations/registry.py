@@ -11,7 +11,7 @@ EVAL_PROFILES: Dict[str, EvalProfile] = {
     ),
     "rubric": EvalProfile(
         id="rubric", label="人工 rubric 双标",
-        object_types=("case", "reference"), gate="rubric-review", implemented=False,
+        object_types=("case", "reference"), gate="rubric-review", implemented=True,
     ),
     "replay_trace": EvalProfile(
         id="replay_trace", label="回放工具调用与 trace",

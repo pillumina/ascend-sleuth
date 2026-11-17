@@ -119,6 +119,42 @@ class SampleLifecycleCliTest(unittest.TestCase):
         listed = self.cli("sample", "list", "--status", "retired")
         self.assertIn("S-1\tretired", listed.stdout)
 
+    def test_experiment_gate_scores_knowledge_rubric(self):
+        rubric = json.dumps({
+            "dimensions": ["来源可追", "根因完整"], "threshold": 0.7,
+        })
+        created = self.cli(
+            "sample", "new", "--id", "K-1", "--object-type", "case",
+            "--source", "https://example.com/issues/K-1", "--rubric", rubric,
+        )
+        self.assertEqual(created.returncode, 0, created.stderr)
+        passed = self.cli(
+            "experiment", "gate", "--target", "knowledge", "--sample", "K-1",
+            "--scores", json.dumps({"来源可追": 2, "根因完整": 2}),
+        )
+        self.assertEqual(passed.returncode, 0, passed.stderr)
+        self.assertIn("passed: true", passed.stdout)
+        failed = self.cli(
+            "experiment", "gate", "--target", "knowledge", "--sample", "K-1",
+            "--scores", json.dumps({"来源可追": 2, "根因完整": 0}),
+        )
+        self.assertEqual(failed.returncode, 1, failed.stderr)
+        self.assertIn("failed_dimensions: 根因完整", failed.stdout)
+
+    def test_experiment_gate_rejects_unimplemented_target(self):
+        created = self.cli(
+            "sample", "new", "--id", "K-2", "--object-type", "case",
+            "--source", "https://example.com/issues/K-2",
+            "--rubric", json.dumps({"dimensions": ["来源可追"]}),
+        )
+        self.assertEqual(created.returncode, 0, created.stderr)
+        result = self.cli(
+            "experiment", "gate", "--target", "tooling", "--sample", "K-2",
+            "--scores", json.dumps({"来源可追": 2}),
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("no implemented evaluator", result.stderr)
+
     def test_reject(self):
         self.create()
         result = self.cli("sample", "review", "--id", "S-1", "--reject")

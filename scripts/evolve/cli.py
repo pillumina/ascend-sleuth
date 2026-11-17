@@ -40,6 +40,7 @@ from .decision import Decision, DecisionResult, decide
 from .policy import PolicyError, load_policy, policy_hash
 from .records import ConclusionStore, ExperimentStore, RecordError
 from .runner import issue_plan, render_plan
+from .scoring import RubricError, score_rubric
 from .samples import SampleStore, StoreError
 from .sources.registry import get_source
 
@@ -647,6 +648,37 @@ def cmd_experiment_records(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_experiment_gate(args: argparse.Namespace) -> int:
+    try:
+        spec, profile = resolve_evaluator(args.target)
+        if not profile.implemented:
+            raise ValueError(
+                f"target {args.target!r} has no implemented evaluator ({profile.id})"
+            )
+        if profile.id != "rubric":
+            raise ValueError(
+                f"target {args.target!r} uses {profile.id}; this command only gates rubric"
+            )
+        sample = _store(args).require(args.sample)
+        if sample.rubric is None:
+            raise ValueError(f"sample {sample.id!r} has no rubric")
+        scores = _json_object(args.scores, "--scores")
+        result = score_rubric(sample.rubric, scores)
+    except (ValueError, RubricError, CliError, StoreError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"target: {spec.id}")
+    print(f"eval_profile: {profile.id}")
+    print(f"passed: {str(result.passed).lower()}")
+    print(f"score: {result.score:.4f}")
+    print(f"threshold: {result.threshold:.4f}")
+    if result.failed_dimensions:
+        print("failed_dimensions: " + ", ".join(result.failed_dimensions))
+    if result.missing:
+        print("missing: " + ", ".join(result.missing))
+    return 0 if result.passed else 1
+
+
 def cmd_experiment_resolve(args: argparse.Namespace) -> int:
     try:
         spec, optimizer = resolve_optimizer(args.target, args.algorithm)
@@ -973,6 +1005,12 @@ def build_parser() -> argparse.ArgumentParser:
     exp_records.add_argument("--root", default=None)
     exp_records.add_argument("--limit", type=int, default=10)
     exp_records.set_defaults(func=cmd_experiment_records)
+    exp_gate = experiment_sub.add_parser("gate", help="按 target evaluator 判一个 rubric 样本")
+    exp_gate.add_argument("--root", default=None)
+    exp_gate.add_argument("--target", required=True)
+    exp_gate.add_argument("--sample", required=True)
+    exp_gate.add_argument("--scores", required=True, help="JSON 对象：维度 → 0/1/2")
+    exp_gate.set_defaults(func=cmd_experiment_gate)
     exp_propose = experiment_sub.add_parser("propose", help="按 target 生成并记录一个 baseline Patch")
     exp_propose.add_argument("--root", default=None)
     exp_propose.add_argument("--policy", default=None)
