@@ -16,6 +16,7 @@ class ExperimentError(ValueError):
 
 
 DECISIONS = ("accept", "reject", "insufficient", "unknown")
+EXECUTIONS = ("library", "subagent", "manual")
 
 
 def _number(value: Any, name: str) -> float:
@@ -55,6 +56,9 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
     decision = record.get("decision")
     if decision not in DECISIONS:
         raise ExperimentError(f"decision must be one of {list(DECISIONS)}")
+    execution = record.get("execution")
+    if execution not in EXECUTIONS:
+        raise ExperimentError(f"execution must be one of {list(EXECUTIONS)}")
     samples = record.get("samples")
     if not isinstance(samples, list) or not samples:
         raise ExperimentError("samples must be a non-empty list")
@@ -75,23 +79,33 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
     if decision == "accept" and candidate["score"] <= baseline["score"]:
         raise ExperimentError("accept requires candidate.score > baseline.score")
     spec = get_target(target)
-    profile_id = record.get("eval_profile_id") or spec.eval_profile_id
-    allowed_profiles = {spec.eval_profile_id, "subagent_judge"}
-    if profile_id not in allowed_profiles:
-        raise ExperimentError(
-            f"eval_profile_id {profile_id!r} is not allowed for target {target!r}; "
-            f"allowed: {sorted(allowed_profiles)}"
-        )
-    profile = get_eval_profile(profile_id)
-    ready_input = record.get("eval_ready", profile.implemented)
-    if not isinstance(ready_input, bool):
-        raise ExperimentError("eval_ready must be boolean")
-    eval_ready = bool(profile.implemented and ready_input)
+    if execution == "subagent":
+        profile_id = record.get("eval_profile_id")
+        if profile_id != "subagent_judge":
+            raise ExperimentError(
+                "execution=subagent requires eval_profile_id='subagent_judge'"
+            )
+        profile = get_eval_profile(profile_id)
+        if record.get("eval_ready") is not False:
+            raise ExperimentError("execution=subagent must set eval_ready=false")
+        eval_ready = False
+    else:
+        profile_id = record.get("eval_profile_id") or spec.eval_profile_id
+        if profile_id not in {spec.eval_profile_id}:
+            raise ExperimentError(
+                f"eval_profile_id {profile_id!r} is not allowed for target {target!r}"
+            )
+        profile = get_eval_profile(profile_id)
+        ready_input = record.get("eval_ready", profile.implemented)
+        if not isinstance(ready_input, bool):
+            raise ExperimentError("eval_ready must be boolean")
+        eval_ready = bool(profile.implemented and ready_input)
     result = {
         "target_kind": target,
         "target_component": component,
         "algorithm": algorithm,
         "algorithm_version": version,
+        "execution": execution,
         "decision": decision,
         "samples": list(samples),
         "baseline": baseline,

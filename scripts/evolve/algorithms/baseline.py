@@ -9,6 +9,7 @@ class BaselineOptimizer:
     id = "baseline"
     version = "manual"
     scope = "all"
+    execution = "manual"
 
     def propose(self, target: str, observations: List[Any], current: Any,
                 budget: Dict[str, Any]) -> Patch:

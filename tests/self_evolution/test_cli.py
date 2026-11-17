@@ -454,7 +454,7 @@ class IngestCliTest(unittest.TestCase):
         result = {
             "target_kind": "skill", "target_component": "diagnosis-skill",
             "algorithm": "subagent-reflection", "algorithm_version": "workflow-1",
-            "decision": "reject", "samples": ["S-1", "S-2"],
+            "execution": "subagent", "decision": "reject", "samples": ["S-1", "S-2"],
             "baseline": {"score": 1.0, "samples": ["S-1", "S-2"]},
             "candidate": {"score": 0.5, "samples": ["S-1", "S-2"]},
             "eval_profile_id": "subagent_judge", "eval_ready": False,
@@ -474,7 +474,7 @@ class IngestCliTest(unittest.TestCase):
         result = {
             "target_kind": "tooling", "target_component": "router",
             "algorithm": "subagent-reflection", "algorithm_version": "1",
-            "decision": "reject", "samples": ["S-1"],
+            "execution": "subagent", "decision": "reject", "samples": ["S-1"],
             "baseline": {"score": 1, "samples": ["S-1"]},
             "candidate": {"score": 0, "samples": ["S-1"]},
             "eval_profile_id": "arena",
@@ -484,13 +484,13 @@ class IngestCliTest(unittest.TestCase):
             path.write_text(json.dumps(result), encoding="utf-8")
             created = run_cli("experiment", "record", "--root", td, "--file", str(path))
             self.assertEqual(created.returncode, 2)
-            self.assertIn("not allowed", created.stderr)
+            self.assertIn("subagent_judge", created.stderr)
 
     def test_experiment_record_rejects_mismatched_samples(self):
         result = {
             "target_kind": "skill", "target_component": "x",
             "algorithm": "subagent-reflection", "algorithm_version": "1",
-            "decision": "reject", "samples": ["S-1"],
+            "execution": "subagent", "decision": "reject", "samples": ["S-1"],
             "baseline": {"score": 1, "samples": ["S-1"]},
             "candidate": {"score": 0, "samples": ["S-2"]},
         }

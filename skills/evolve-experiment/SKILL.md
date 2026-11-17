@@ -61,7 +61,7 @@ samples
    python3 scripts/evolve.py experiment record --file result.json
    ```
 
-   `result.json` 至少含 `target_kind`、`target_component`、`algorithm`、`algorithm_version`、`decision`、`samples`、`baseline`、`candidate`；baseline/candidate 的 `samples` 必须同集合。
+   `result.json` 至少含 `target_kind`、`target_component`、`algorithm`、`algorithm_version`、`execution`、`decision`、`samples`、`baseline`、`candidate`；本 skill 的 execution 写 `subagent`，并显式写 `eval_profile_id: subagent_judge`、`eval_ready: false`；baseline/candidate 的 `samples` 必须同集合。
 8. **停点**：记录后停；合入另走 review/PR，不由本 skill 自动做。
 
 ## 失败与边界

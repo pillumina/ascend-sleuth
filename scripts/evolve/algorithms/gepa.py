@@ -17,6 +17,7 @@ class GepaOptimizer:
     id = "gepa"
     version = "0.1"
     scope = "skill"
+    execution = "library"
 
     def propose(self, target: str, observations: List[Any], current: Any,
                 budget: Dict[str, Any]) -> Patch:
