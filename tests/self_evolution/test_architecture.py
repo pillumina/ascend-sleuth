@@ -107,7 +107,7 @@ class PackageLayoutTest(unittest.TestCase):
 class ImportBoundaryTest(unittest.TestCase):
     def test_non_cli_modules_do_not_import_cli_adapters_or_old_scripts(self):
         for name in ALL_MODULES:
-            if name in ("cli.py", "runner.py", "__init__.py"):
+            if name in ("cli.py", "__init__.py"):
                 continue
             modules = imported_modules(PACKAGE / name)
             for forbidden in FORBIDDEN:
@@ -132,7 +132,7 @@ class ImportBoundaryTest(unittest.TestCase):
 
     def test_core_modules_do_not_import_adapters(self):
         for name in ALL_MODULES:
-            if name in ("cli.py", "runner.py", "__init__.py"):
+            if name in ("cli.py", "__init__.py"):
                 continue
             modules = imported_modules(PACKAGE / name)
             self.assertFalse(
