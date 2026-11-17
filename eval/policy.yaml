@@ -39,6 +39,7 @@ cost:
   delta: 0
 
 experiment:
+  target: skill
   algorithm: baseline
   budget: {}
   seed: 0

@@ -20,7 +20,7 @@ class AlgorithmRegistryTest(unittest.TestCase):
 
     def test_baseline_returns_patch_with_algorithm_identity(self):
         patch = get_algorithm("baseline").propose(
-            [{"failure": "x"}], {"target": "skill"}, {"rollouts": 1},
+            "skill", [{"failure": "x"}], {"target": "skill"}, {"rollouts": 1},
         )
         self.assertIsInstance(patch, Patch)
         self.assertEqual((patch.algorithm, patch.algorithm_version), ("baseline", "manual"))

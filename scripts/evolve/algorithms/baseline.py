@@ -10,10 +10,11 @@ class BaselineOptimizer:
     version = "manual"
     scope = "all"
 
-    def propose(self, observations: List[Any], current: Any,
+    def propose(self, target: str, observations: List[Any], current: Any,
                 budget: Dict[str, Any]) -> Patch:
         return Patch(
-            target="manual",
+            target_kind=str(target),
+            target_component="manual",
             summary="baseline: no automatic proposal; human drafts the patch",
             algorithm=self.id,
             algorithm_version=self.version,

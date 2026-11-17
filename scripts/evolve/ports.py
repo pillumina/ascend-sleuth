@@ -41,7 +41,8 @@ class Optimizer(Protocol):
     version: str
     scope: str
 
-    def propose(self, observations: List[Any], current: Any, budget: Dict[str, Any]) -> Patch:
+    def propose(self, target: str, observations: List[Any], current: Any,
+                budget: Dict[str, Any]) -> Patch:
         ...
 
 

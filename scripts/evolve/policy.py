@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from .algorithms.registry import ALGORITHMS
+from .targets.registry import TARGETS, get_target
 from .decision import DECISION_METHODS
 from .metrics import DEFAULT_METRICS
 
@@ -63,6 +64,7 @@ DEFAULTS: Dict[str, Any] = {
         "double_label": 10,
     },
     "experiment": {
+        "target": "skill",
         "algorithm": "baseline",
         "budget": {},
         "seed": 0,
@@ -221,6 +223,16 @@ def validate_policy(policy: Dict[str, Any]) -> None:
     if not isinstance(experiment, dict):
         errors.append("experiment must be an object")
     else:
+        if experiment.get("target") not in TARGETS:
+            errors.append(
+                f"experiment.target must be one of {sorted(TARGETS)}, "
+                f"got {experiment.get('target')!r}"
+            )
+        elif experiment.get("algorithm") not in get_target(experiment["target"]).allowed_algorithms:
+            errors.append(
+                f"experiment.algorithm {experiment.get('algorithm')!r} is not allowed "
+                f"for target {experiment.get('target')!r}"
+            )
         if experiment.get("algorithm") not in ALGORITHMS:
             errors.append(
                 f"experiment.algorithm must be one of {sorted(ALGORITHMS)}, "

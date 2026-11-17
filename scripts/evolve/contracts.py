@@ -289,7 +289,8 @@ class Version:
 class Patch:
     """优化算法的提案；只描述改什么，不直接写库、不合入。"""
 
-    target: str
+    target_kind: str   # skill / knowledge / tooling / harness
+    target_component: str
     summary: str
     algorithm: str
     algorithm_version: str
@@ -298,7 +299,8 @@ class Patch:
     seed: Optional[int] = None
 
     def validate(self) -> "Patch":
-        for name in ("target", "summary", "algorithm", "algorithm_version"):
+        for name in ("target_kind", "target_component", "summary",
+                     "algorithm", "algorithm_version"):
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
                 raise ContractError(f"patch.{name} is required")

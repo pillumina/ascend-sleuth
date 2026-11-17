@@ -234,7 +234,18 @@ S2 未命中有三种解释：路由错、缺 case、内容错。它只看到没
 
 ### 3.8 算法适配器
 
-算法只做提案者，不做判定、不直接写库、不合入。`scripts/evolve/ports.py` 定义 `Optimizer`，`scripts/evolve/algorithms/registry.py` 是静态注册表；当前只有 `baseline`。`policy.experiment.algorithm` 选算法，`Version.algorithm`/`algorithm_version` 记身份，`budget`/`seed` 记实验条件。GEPA/AEL/SkillProx/EvolveMem 只在后续的实验适配器里接入，一次只接一个组件；没有动态插件加载。
+算法只做提案者，不做判定、不直接写库、不合入。`scripts/evolve/ports.py` 定义 `Optimizer`，`scripts/evolve/algorithms/registry.py` 是静态注册表；当前只有 `baseline`。`policy.experiment.target`/`algorithm` 选目标与算法，`Version.algorithm`/`algorithm_version` 记身份，`budget`/`seed` 记实验条件。GEPA/AEL/SkillProx/EvolveMem 只在后续的实验适配器里接入，一次只接一个组件；没有动态插件加载。
+
+优化目标与评估对象正交，四个 target 的当前定论：
+
+| target | 改什么 | 评测面 | 授权 | 默认算法 |
+|---|---|---|---|---|
+| skill | skill 文本、步骤、流程 | golden + S2 + rubric | A2 | baseline |
+| knowledge | case/reference 内容 | rubric + 效用审计 | A2 | baseline |
+| tooling | 工具路由、分支、重试 | replay + trace 工具使用 | A2 | baseline |
+| harness | 调度与控制流 | 端到端回放 + 回归 | A1 | baseline |
+
+`targets/registry.py` 只允许 target 白名单内的算法；未注册的 GEPA/AEL 等名字不会静默回退。加一个 target 或算法各改一个静态注册表，主循环、评测协议和记录格式不动。
 
 ## 4 边界与失败模式
 

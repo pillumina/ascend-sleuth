@@ -30,6 +30,7 @@ from .adapters import AdapterError
 from .adapters.arena import counts_from_files
 from .adapters.metrics import load_metrics
 from .algorithms.registry import algorithm_ids, get_algorithm
+from .targets.registry import get_target, resolve_optimizer, target_ids
 from .adapters.replay import collect as replay_collect
 from .adapters.replay import prepare as replay_prepare
 from .adapters.issues import ingest_issues
@@ -116,6 +117,7 @@ def cmd_policy_check(args: argparse.Namespace) -> int:
         return 1
     print("policy: ok")
     print(f"policy_hash: {policy_hash(policy)}")
+    print(f"target: {(policy.get('experiment') or {}).get('target', 'skill')}")
     return 0
 
 
@@ -560,11 +562,33 @@ def cmd_experiment_list(args: argparse.Namespace) -> int:
     except PolicyError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    configured = (policy.get("experiment") or {}).get("algorithm", "baseline")
+    experiment = policy.get("experiment") or {}
+    configured_target = experiment.get("target", "skill")
+    configured = experiment.get("algorithm", "baseline")
+    print(f"configured_target: {configured_target}")
+    for tid in target_ids():
+        spec = get_target(tid)
+        marker = "*" if tid == configured_target else " "
+        print(f"{marker} target {tid}\t{spec.eval_profile}\t{spec.authority}\t{spec.allowed_algorithms}")
     for name in algorithm_ids():
         algorithm = get_algorithm(name)
         marker = "*" if name == configured else " "
         print(f"{marker} {name}\t{getattr(algorithm, 'version', '')}\t{getattr(algorithm, 'scope', '')}")
+    return 0
+
+
+def cmd_experiment_resolve(args: argparse.Namespace) -> int:
+    try:
+        spec, optimizer = resolve_optimizer(args.target, args.algorithm)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"target: {spec.id}")
+    print(f"algorithm: {getattr(optimizer, 'id', args.algorithm or spec.default_algorithm)}")
+    print(f"version: {getattr(optimizer, 'version', '')}")
+    print(f"scope: {getattr(optimizer, 'scope', '')}")
+    print(f"eval_profile: {spec.eval_profile}")
+    print(f"authority: {spec.authority}")
     return 0
 
 
@@ -618,6 +642,7 @@ def cmd_brief(args: argparse.Namespace) -> int:
     metrics = plan.get("metrics") or {}
     period = metrics.get("latest_period")
     print(f"policy_hash: {policy_hash(policy)}")
+    print(f"target: {(policy.get('experiment') or {}).get('target', 'skill')}")
     print(f"metrics_period: {period.get('period') if period else 'unavailable'}")
     print(f"sessions_total: {_metric_value(metrics.get('sessions_total'))}")
     print(f"tier2_hit: {_metric_value(metrics.get('tier2_hit'))}")
@@ -851,6 +876,10 @@ def build_parser() -> argparse.ArgumentParser:
     exp_list.add_argument("--root", default=".", help="策略根目录")
     exp_list.add_argument("--policy", default=None, help="策略路径")
     exp_list.set_defaults(func=cmd_experiment_list)
+    exp_resolve = experiment_sub.add_parser("resolve", help="按 target/algorithm 解析适配器")
+    exp_resolve.add_argument("--target", required=True)
+    exp_resolve.add_argument("--algorithm", default=None)
+    exp_resolve.set_defaults(func=cmd_experiment_resolve)
 
     run = sub.add_parser("run", help="维护者下一步计划（不跑模型/不写库）")
     run.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
