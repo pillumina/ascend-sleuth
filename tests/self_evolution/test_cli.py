@@ -359,6 +359,24 @@ class IngestCliTest(unittest.TestCase):
             self.assertEqual(record["summary"], "manual test patch")
             self.assertEqual(record["algorithm"], "baseline")
 
+    def test_experiment_propose_rejects_invalid_patch_fields(self):
+        with tempfile.TemporaryDirectory() as td:
+            result = run_cli(
+                "experiment", "propose", "--root", td, "--target", "skill",
+                "--seed", "-1",
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("seed", result.stderr)
+
+    def test_experiment_records_lists_written_patch(self):
+        with tempfile.TemporaryDirectory() as td:
+            run_cli("experiment", "propose", "--root", td, "--target", "skill",
+                    "--component", "triage:branch", "--summary", "manual")
+            result = run_cli("experiment", "records", "--root", td)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("experiments: 1", result.stdout)
+            self.assertIn("triage:branch", result.stdout)
+
     def test_experiment_list_marks_policy_algorithm(self):
         with tempfile.TemporaryDirectory() as td:
             result = run_cli("experiment", "list", "--root", td)

@@ -306,6 +306,12 @@ class Patch:
                 raise ContractError(f"patch.{name} is required")
         if not isinstance(self.payload, dict):
             raise ContractError("patch.payload must be an object")
+        if self.budget is not None and not isinstance(self.budget, dict):
+            raise ContractError("patch.budget must be an object or null")
+        if self.seed is not None and (
+            not isinstance(self.seed, int) or isinstance(self.seed, bool) or self.seed < 0
+        ):
+            raise ContractError("patch.seed must be a non-negative integer or null")
         return self
 
 

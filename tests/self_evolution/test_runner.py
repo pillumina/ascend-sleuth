@@ -110,7 +110,39 @@ class IssuePlanTest(unittest.TestCase):
         write_metrics(self.root)
         metrics = load_metrics(self.root, today=date(2026, 9, 10))
         plan = issue_plan(self.root, self.base, self.policy, metrics=metrics)
-        self.assertTrue(any(action.startswith("metrics_stale_live") for action in plan["next_actions"]))
+        self.assertTrue(any(action.startswith("metrics_stale") for action in plan["next_actions"]))
+
+    def test_metrics_same_period_stale_is_not_duplicated(self):
+        from datetime import date
+        from evolve.adapters.metrics import load_metrics
+        write_metrics(self.root)
+        gates = self.root / "metrics" / "gates.yaml"
+        gates.write_text(
+            "freshness: {live_snapshot_max_age_days: 7, structural_max_age_days: 7}\n"
+            "gates: []\n",
+            encoding="utf-8",
+        )
+        (self.root / "metrics" / "timeline.yaml").write_text(
+            "periods:\n- period: 2026-W36\n  kind: live\n  recorded_at: '2026-09-02'\n"
+            "  metrics: {sessions_total: 1, case_total: 42}\n",
+            encoding="utf-8",
+        )
+        metrics = load_metrics(self.root, today=date(2026, 9, 10))
+        plan = issue_plan(self.root, self.base, self.policy, metrics=metrics)
+        stale = [a for a in plan["next_actions"] if a.startswith("metrics_stale:")]
+        self.assertEqual(len(stale), 1)
+        self.assertIn("live, structural", stale[0])
+
+    def test_metrics_without_gates_gets_unavailable_action(self):
+        from evolve.adapters.metrics import load_metrics
+        write_metrics(self.root)
+        (self.root / "metrics" / "gates.yaml").unlink()
+        metrics = load_metrics(self.root)
+        plan = issue_plan(self.root, self.base, self.policy, metrics=metrics)
+        self.assertTrue(any(
+            action.startswith("metrics_freshness_unavailable")
+            for action in plan["next_actions"]
+        ))
 
     def test_conclusion_is_counted(self):
         ConclusionStore.for_base(self.base).append({"decision": "accept"})

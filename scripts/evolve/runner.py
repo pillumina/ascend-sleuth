@@ -149,12 +149,27 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
             "metrics_unavailable: run trace_entry_activity --apply / metrics_snapshot "
             "before trusting trend readouts"
         )
-    for key in ("live", "structural"):
-        item = freshness.get(key) or {}
-        if item.get("stale"):
+    else:
+        unavailable = []
+        stale: Dict[str, List[str]] = {}
+        for key in ("live", "structural"):
+            item = freshness.get(key) or {}
+            if not item.get("available"):
+                unavailable.append(key)
+            elif item.get("stale"):
+                stale.setdefault(str(item.get("period") or "unknown"), []).append(key)
+        if unavailable:
             actions.append(
-                f"metrics_stale_{key}: {item.get('period')} is {item.get('age_days')} "
-                f"days old (max {item.get('max_age_days')}); refresh before deciding"
+                "metrics_freshness_unavailable: " + ", ".join(unavailable)
+                + "; run trace_entry_activity --apply / metrics_snapshot"
+            )
+        for period in sorted(stale):
+            keys = stale[period]
+            item = freshness.get(keys[0]) or {}
+            actions.append(
+                f"metrics_stale: {period} ({', '.join(keys)}) is "
+                f"{item.get('age_days')} days old (max {item.get('max_age_days')}); "
+                "refresh before deciding"
             )
     if strata_short:
         actions.append(

@@ -225,7 +225,7 @@ def _freshness(timeline: Dict[str, Any], gates: Dict[str, Any],
             "age_days": age,
             "max_age_days": max_age,
             "stale": stale,
-            "available": period is not None and age is not None,
+            "available": bool(gates.get("available")) and period is not None and age is not None,
         }
     return result
 
