@@ -126,7 +126,7 @@ sample:
 ```yaml
 run:
   sample: VLLM-ASC-14871
-  versions: {protocol: p1, policy: policy-3, base_kb: 9f2c1a, candidate_kb: 9f2c1a, candidate: 4d8e0b, model: deepseek-flash}
+  versions: {protocol: p1, policy: policy-3, base_kb: 9f2c1a, candidate_kb: 9f2c1a, candidate: 4d8e0b, model: deepseek-flash, algorithm: baseline, algorithm_version: manual, budget: {}, seed: 0}
   metrics: {routing: true, case_hit: false, root_cause: null, fix: null, safety: pass}
   cost:
     source: provider_billed     # provider_billed / normalized / estimate
@@ -139,7 +139,7 @@ run:
   trace_ref: traces/2026-11-17-....yaml
 ```
 
-`metrics` 是开放字典，缺数据的维度记 `null`，不补 `false` 或 0。`cost` 拿不到写 `null`，不写 0。回放必须带 `harness_session`，否则成本挂不到样本。指标的角色与方向写在 `eval/policy.yaml`，新增维度先在策略里注册。
+版本坐标必须带 `algorithm`/`algorithm_version`；算法实验还带 `budget`/`seed`。手工 baseline 写 `algorithm: baseline`、`algorithm_version: manual`；不写算法身份的结论不能用于 GEPA/AEL 对照。`metrics` 是开放字典，缺数据的维度记 `null`，不补 `false` 或 0。`cost` 拿不到写 `null`，不写 0。回放必须带 `harness_session`，否则成本挂不到样本。指标的角色与方向写在 `eval/policy.yaml`，新增维度先在策略里注册。
 
 ```yaml
 conclusion:

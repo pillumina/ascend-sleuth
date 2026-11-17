@@ -13,6 +13,8 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from .algorithms.registry import ALGORITHMS
+from .targets.registry import TARGETS, get_target
 from .decision import DECISION_METHODS
 from .metrics import DEFAULT_METRICS
 
@@ -46,6 +48,7 @@ DEFAULTS: Dict[str, Any] = {
         "field_eval": 9,
         "test": 4,
         "split": "hash",
+        "strata": {},
     },
     "cost": {
         "primary_dimension": "tokens",
@@ -60,10 +63,16 @@ DEFAULTS: Dict[str, Any] = {
         "threshold": 0.7,
         "double_label": 10,
     },
+    "experiment": {
+        "target": "skill",
+        "algorithm": "baseline",
+        "budget": {},
+        "seed": 0,
+    },
 }
 
 # 自由形态映射：键由部署决定，值仍逐项校验。
-_FREE_FORM = {"autonomy.overrides"}
+_FREE_FORM = {"autonomy.overrides", "samples.strata", "experiment.budget"}
 
 
 class PolicyError(ValueError):
@@ -182,6 +191,14 @@ def validate_policy(policy: Dict[str, Any]) -> None:
             errors.append(
                 f"samples.split must be one of {list(SPLIT_METHODS)}, got {samples.get('split')!r}"
             )
+        strata = samples.get("strata")
+        if not isinstance(strata, dict):
+            errors.append("samples.strata must be an object")
+        else:
+            for key, value in strata.items():
+                if not isinstance(key, str) or not key.strip():
+                    errors.append("samples.strata keys must be non-empty strings")
+                _validate_int(value, f"samples.strata.{key}", errors, minimum=0)
 
     cost = policy.get("cost")
     if not isinstance(cost, dict):
@@ -201,6 +218,29 @@ def validate_policy(policy: Dict[str, Any]) -> None:
             _validate_number(cost.get(key), f"cost.{key}", errors)
         if _is_number(cost.get("epsilon")) and not (0 <= cost["epsilon"] <= 1):
             errors.append("cost.epsilon must be between 0 and 1")
+
+    experiment = policy.get("experiment")
+    if not isinstance(experiment, dict):
+        errors.append("experiment must be an object")
+    else:
+        if experiment.get("target") not in TARGETS:
+            errors.append(
+                f"experiment.target must be one of {sorted(TARGETS)}, "
+                f"got {experiment.get('target')!r}"
+            )
+        elif experiment.get("algorithm") not in get_target(experiment["target"]).allowed_algorithms:
+            errors.append(
+                f"experiment.algorithm {experiment.get('algorithm')!r} is not allowed "
+                f"for target {experiment.get('target')!r}"
+            )
+        if experiment.get("algorithm") not in ALGORITHMS:
+            errors.append(
+                f"experiment.algorithm must be one of {sorted(ALGORITHMS)}, "
+                f"got {experiment.get('algorithm')!r}"
+            )
+        if not isinstance(experiment.get("budget"), dict):
+            errors.append("experiment.budget must be an object")
+        _validate_int(experiment.get("seed"), "experiment.seed", errors, minimum=0)
 
     rubrics = policy.get("rubrics")
     if not isinstance(rubrics, dict):

@@ -480,9 +480,84 @@ class PurposeLifecycleTest(SampleStoreTestBase):
             4,
         )
 
+    def test_draw_test_fills_remaining_after_absorb_retires_one(self):
+        for i in range(6):
+            self.create(id=f"S-{i}", source=f"https://example.com/{i}")
+            self.store.review(f"S-{i}", approve=True)
+            self.store.promote(f"S-{i}", to="core")
+        drawn = self.store.draw_test(size=4)
+        self.assertEqual(len(drawn), 4)
+        self.store.absorb(drawn[0].id)
+        refilled = self.store.draw_test(size=4)
+        self.assertEqual(len(refilled), 4)
+        self.assertEqual(len([s for s in self.store.read_all() if s.purpose == "test" and s.status == "active"]), 4)
+
+    def test_draw_test_reduces_targets_after_existing_test_samples(self):
+        for i in range(6):
+            self.create(id=f"S-{i}", source=f"https://example.com/{i}",
+                        expected={"namespace": "inference/vllm-ascend", "category": "interrupt"})
+            self.store.review(f"S-{i}", approve=True)
+            self.store.promote(f"S-{i}", to="core")
+        self.store.draw_test(size=3)
+        drawn = self.store.draw_test(
+            size=4, strata={"inference/vllm-ascend/interrupt": 4},
+        )
+        self.assertEqual(len(drawn), 4)
+
     def test_draw_test_returns_fewer_when_pool_is_small(self):
         self.active("S-1", origin="core")
         self.assertEqual([item.id for item in self.store.draw_test(size=4)], ["S-1"])
+
+
+class SetAnswerTest(SampleStoreTestBase):
+    def test_candidate_can_receive_answer_and_then_review(self):
+        self.create("S-1", expected=None)
+        sample = self.store.set_answer("S-1", expected=dict(EXPECTED))
+        self.assertEqual(sample.expected, EXPECTED)
+        self.assertEqual(sample.status, "candidate")
+        self.assertEqual(sample.history[-1]["reason"], "answer set by maintainer")
+        self.assertEqual(self.store.check("S-1"), [])
+        self.assertEqual(self.store.review("S-1", approve=True).status, "active")
+
+    def test_active_can_receive_answer(self):
+        self.write_raw(Sample(
+            id="S-1",
+            status="active",
+            object_type="diagnosis",
+            origin="field",
+            purpose="evaluation",
+            source="https://example.com/issues/S-1",
+            expected=None,
+        ).to_dict())
+        sample = self.store.set_answer("S-1", expected=dict(EXPECTED))
+        self.assertEqual((sample.status, sample.expected), ("active", EXPECTED))
+        self.assertEqual(self.store.check("S-1"), [])
+
+    def test_failure_does_not_write(self):
+        self.create("S-1", expected={"namespace": "old"})
+        before = self.store.load("S-1")
+        with self.assertRaises(StoreError):
+            self.store.set_answer("S-1", expected=None, rubric=None)
+        after = self.store.load("S-1")
+        self.assertEqual(after.expected, before.expected)
+        self.assertEqual(len(after.history), len(before.history))
+
+    def test_rubric_sets_expected_kind(self):
+        self.create("S-1", expected=None)
+        sample = self.store.set_answer("S-1", rubric={"source": 2})
+        self.assertEqual(sample.expected_kind, "rubric")
+        self.assertEqual(sample.rubric, {"source": 2})
+
+    def test_rejected_or_retired_cannot_receive_answer(self):
+        self.create("S-1", expected=None)
+        self.store.review("S-1", approve=False)
+        with self.assertRaises(StoreError):
+            self.store.set_answer("S-1", expected=dict(EXPECTED))
+
+    def test_negative_answer_is_rejected_by_admission(self):
+        self.create("S-1", expected=None)
+        with self.assertRaises(StoreError):
+            self.store.set_answer("S-1", expected={})
 
 
 if __name__ == "__main__":

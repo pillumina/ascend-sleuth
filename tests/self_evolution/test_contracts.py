@@ -120,6 +120,15 @@ class VersionRunConclusionTest(unittest.TestCase):
         with self.assertRaises(ContractError):
             Version.from_dict({**version.to_dict(), "extra": "x"})
 
+    def test_version_carries_algorithm_identity(self):
+        version = Version(
+            protocol="p1", policy="policy-3", base_kb="a", candidate_kb="a",
+            candidate="b", model="m", algorithm="gepa", algorithm_version="v1",
+            budget={"rollouts": 30}, seed=7,
+        )
+        self.assertEqual(Version.from_dict(version.to_dict()), version)
+        self.assertEqual(version.to_dict()["algorithm"], "gepa")
+
     def test_run_roundtrip(self):
         run = Run(
             sample="S-1",

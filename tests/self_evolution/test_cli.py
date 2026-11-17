@@ -1,17 +1,25 @@
 """CLI 回归：help、策略命令、样本生命周期子进程与 judge 输出。"""
 
+import contextlib
+import io
+import json
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import yaml  # noqa: E402
 
+from evolve import cli  # noqa: E402
+from evolve.adapters import AdapterError  # noqa: E402
+from evolve.adapters import issues as issue_adapter  # noqa: E402
 from evolve.records import ConclusionStore  # noqa: E402
+from evolve.samples import SampleStore  # noqa: E402
 
 SCRIPT = ROOT / "scripts" / "evolve.py"
 
@@ -132,6 +140,24 @@ class SampleLifecycleCliTest(unittest.TestCase):
         checked = self.cli("sample", "check", "--id", "S-2")
         self.assertEqual(checked.returncode, 1)
         self.assertIn("expected or rubric", checked.stderr)
+
+    def test_set_answer_unblocks_review(self):
+        created = self.cli(
+            "sample", "new", "--id", "S-5", "--object-type", "diagnosis",
+            "--source", "https://example.com/issues/S-5",
+        )
+        self.assertEqual(created.returncode, 0, created.stderr)
+        updated = self.cli(
+            "sample", "set-answer", "--id", "S-5",
+            "--expected", '{"namespace": "inference/vllm-ascend"}',
+        )
+        self.assertEqual(updated.returncode, 0, updated.stderr)
+        self.assertIn("updated: S-5", updated.stdout)
+        self.assertIn("path:", updated.stdout)
+        checked = self.cli("sample", "check", "--id", "S-5")
+        self.assertEqual(checked.returncode, 0, checked.stderr)
+        reviewed = self.cli("sample", "review", "--id", "S-5", "--approve")
+        self.assertEqual(reviewed.returncode, 0, reviewed.stderr)
 
     def test_promote_before_review_fails(self):
         self.create()
@@ -257,6 +283,140 @@ class SampleLifecycleCliTest(unittest.TestCase):
         self.assertIn("last conclusion: accept", result.stdout)
 
 
+class IngestCliTest(unittest.TestCase):
+    def test_help_lists_ingest(self):
+        result = run_cli("sample", "ingest-issues", "--help")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--repo", result.stdout)
+        self.assertIn("--dry-run", result.stdout)
+
+    def test_fetch_error_exits_2(self):
+        with tempfile.TemporaryDirectory() as td:
+            with mock.patch.object(cli, "ingest_issues",
+                                   side_effect=AdapterError("gh CLI not found")):
+                with contextlib.redirect_stderr(io.StringIO()) as err:
+                    rc = cli.main([
+                        "sample", "ingest-issues", "--repo", "o/r",
+                        "--root", td, "--state", "ingest-state.json",
+                    ])
+            self.assertEqual(rc, 2)
+            self.assertIn("gh CLI not found", err.getvalue())
+
+    def test_dry_run_output_does_not_claim_writes(self):
+        stats = {
+            "created": 0, "created_ids": [], "created_paths": [],
+            "would_create": ["GH-O-R-1"], "source": "github/o/r",
+            "skipped_pr": 0, "skipped_processed": 0, "skipped_no_label": 0,
+            "skipped_low_comments": 0, "skipped_title": 0,
+            "skipped_empty_body": 0, "skipped_short_body": 0,
+            "skipped_feature_title": 0, "skipped_duplicate_source": 0,
+            "skipped_duplicate_id": 0, "limit_reached": False,
+            "state_updated": False,
+        }
+        with tempfile.TemporaryDirectory() as td:
+            with mock.patch.object(cli, "ingest_issues", return_value=stats):
+                with contextlib.redirect_stdout(io.StringIO()) as out:
+                    rc = cli.main([
+                        "sample", "ingest-issues", "--repo", "o/r",
+                        "--root", td, "--state", "ingest-state.json", "--dry-run",
+                    ])
+            self.assertEqual(rc, 0)
+            self.assertIn("would create: GH-O-R-1", out.getvalue())
+            self.assertIn("dry-run", out.getvalue())
+
+    def test_local_source_end_to_end(self):
+        cache = Path(tempfile.mkdtemp()) / "issues.json"
+        cache.write_text(json.dumps([{
+            "number": 9, "title": "T9", "body": "long local body for ingest " * 2,
+            "comments": 5, "state": "closed", "labels": ["triaged"],
+        }]), encoding="utf-8")
+        with tempfile.TemporaryDirectory() as td:
+            result = run_cli(
+                "sample", "ingest-issues", "--source", "local", "--cache", str(cache),
+                "--repo", "o/r", "--root", td, "--state", "ingest-state.json",
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("created: 1", result.stdout)
+            self.assertIn("candidate:", result.stdout)
+            sample = Path(td) / ".s2-replay" / "evolve" / "samples" / "LOCAL-O-R-9.yaml"
+            self.assertTrue(sample.exists())
+            state = json.loads((Path(td) / "ingest-state.json").read_text(encoding="utf-8"))
+            self.assertIn("local/o/r/evaluation", state["sources"])
+
+    def test_experiment_list_marks_policy_algorithm(self):
+        with tempfile.TemporaryDirectory() as td:
+            result = run_cli("experiment", "list", "--root", td)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("* baseline", result.stdout)
+
+    def test_unknown_source_exits_2(self):
+        with tempfile.TemporaryDirectory() as td:
+            result = run_cli(
+                "sample", "ingest-issues", "--source", "gitcode",
+                "--repo", "o/r", "--root", td,
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("unknown issue source", result.stderr)
+
+    def test_local_source_missing_cache_exits_2(self):
+        with tempfile.TemporaryDirectory() as td:
+            result = run_cli(
+                "sample", "ingest-issues", "--source", "local",
+                "--repo", "o/r", "--root", td,
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("cache", result.stderr.lower())
+
+    def test_ingested_candidate_can_be_answered_and_reviewed(self):
+        body_text = "Traceback: runtime error on this node; logs and reproduce steps " * 2
+        with tempfile.TemporaryDirectory() as td:
+            store = SampleStore(base=Path(td) / ".s2-replay" / "evolve")
+            stats = issue_adapter.ingest_issues(
+                Path(td), "o/r", store=store, state_path="ingest-state.json",
+                fetch_metadata_fn=lambda repo, labels, since: [{
+                    "number": 1, "title": "runtime error", "comments": 5,
+                    "closed_at": "2026-11-01T00:00:00Z",
+                    "state_reason": "completed", "labels": ["triaged"],
+                }],
+                fetch_body_fn=lambda repo, issue: {
+                    "title": "runtime error", "body": body_text,
+                    "closed_at": "2026-11-01T00:00:00Z",
+                },
+            )
+            sample_id = stats["created_ids"][0]
+            self.assertTrue(Path(stats["created_paths"][0]).exists())
+            answered = run_cli(
+                "sample", "set-answer", "--root", td, "--id", sample_id,
+                "--expected", '{"namespace": "inference/vllm-ascend"}',
+            )
+            self.assertEqual(answered.returncode, 0, answered.stderr)
+            reviewed = run_cli("sample", "review", "--root", td,
+                               "--id", sample_id, "--approve")
+            self.assertEqual(reviewed.returncode, 0, reviewed.stderr)
+
+    def test_candidate_path_is_printed(self):
+        stats = {
+            "created": 1, "created_ids": ["GH-O-R-1"],
+            "created_paths": ["/tmp/samples/GH-O-R-1.yaml"],
+            "would_create": [], "source": "github/o/r",
+            "skipped_pr": 0, "skipped_processed": 0, "skipped_no_label": 0,
+            "skipped_low_comments": 0, "skipped_title": 0,
+            "skipped_empty_body": 0, "skipped_short_body": 0,
+            "skipped_feature_title": 0, "skipped_duplicate_source": 0,
+            "skipped_duplicate_id": 0, "limit_reached": False,
+            "state_updated": True, "state_path": "/tmp/ingest-state.json",
+        }
+        with tempfile.TemporaryDirectory() as td:
+            with mock.patch.object(cli, "ingest_issues", return_value=stats):
+                with contextlib.redirect_stdout(io.StringIO()) as out:
+                    rc = cli.main([
+                        "sample", "ingest-issues", "--repo", "o/r",
+                        "--root", td, "--state", "ingest-state.json",
+                    ])
+            self.assertEqual(rc, 0)
+            self.assertIn("candidate: GH-O-R-1\t/tmp/samples/GH-O-R-1.yaml", out.getvalue())
+
+
 class JudgeCliTest(unittest.TestCase):
     def judge(self, *args, cwd=None):
         return run_cli("judge", *args, cwd=cwd)
@@ -357,6 +517,8 @@ class JudgeCliTest(unittest.TestCase):
                 "candidate_kb": "9f2c1a",
                 "candidate": "4d8e0b",
                 "model": "deepseek-flash/default",
+                "algorithm": "baseline",
+                "algorithm_version": "manual",
             })
             self.assertTrue(record["at"])
             self.assertEqual(record["sample"], "S-1")
@@ -398,7 +560,9 @@ class JudgeCliTest(unittest.TestCase):
                                 "--record", "--root", td, "--versions", str(path))
             self.assertEqual(result.returncode, 0, result.stderr)
             record = ConclusionStore.for_root(Path(td)).read()[0]
-            self.assertEqual(record["versions"], versions)
+            expected_versions = dict(versions)
+        expected_versions.update({"algorithm": "baseline", "algorithm_version": "manual"})
+        self.assertEqual(record["versions"], expected_versions)
 
     def test_record_requires_versions(self):
         with tempfile.TemporaryDirectory() as td:

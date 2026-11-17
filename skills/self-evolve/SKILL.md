@@ -25,6 +25,42 @@ disable-model-invocation: true
 
 用户下**内容目标**（"沉淀 vllm-ascend 的 closed issue""做 reference 沉淀"）→ **不触发本 skill**：路由到 issue-ingest / to-reference / to-postmortem 执行，其收尾自动 evolve-check。
 
+## 维护者入口：`evolve run` 与 `brief`
+
+维护者不直接拼 `sample/replay/judge` 命令；本 skill 先调 `python3 scripts/evolve.py run`（或 `brief`），按 `next_actions` 进入对应分支。`run` 只读、不跑模型、不写库、不合并。它同时读 `metrics/timeline.yaml`/`gates.yaml`/`skill-exec-log.yaml`/`entry-activity/<部署>.yaml`；缺文件标 unavailable，不补零。图只画执行控制；完整机制与取舍在机制文档。
+
+```mermaid
+flowchart TD
+  A[run / brief] --> B{next_actions}
+  B -->|候选/缺答案| C[set-answer → review]
+  B -->|field 不足| D[ingest-issues]
+  B -->|test 不足| E[absorb → draw-test]
+  B -->|无结论| F[replay → judge-stats]
+  F --> G{判定}
+  G -->|accept| H[record → A2 批 PR]
+  G -->|weak/reject| I[停：补样本或记证据不足]
+  C --> A
+  D --> A
+  E --> A
+  H --> J[人工 review / 合入]
+```
+
+图只画执行控制；完整机制与取舍见 [operations.md](../../docs/mechanism/operations.md)。
+
+分支边界：
+
+- 没有 `gh auth`、issue 源不可达、state 损坏：停在读取，不写半份样本；报具体修法。
+- 候选没有答案：先 `set-answer`，再 `review`；ingest 不会把 issue 评论自动当答案。
+- test 退休或失效：先 `absorb`，再 `draw-test` 按剩余槽位补齐；不重复加满。
+- 判定 `weak_accept`/`insufficient`/`reject`：不产 PR，补样本、扩池或记证据不足。
+- `accept`：写 `judge --record`，A2 攒批；不自动合入。
+
+skill 可以被所有人调用；它只做流程与建议，不授予写权限。`sample review/promote`、`judge --record`、合入仍由 policy、CODEOWNERS、分支保护和人工审批约束。
+
+## 评测集补充：独立入口 `/skill:eval-ingest`
+
+补评测集不塞进本 skill。用户说“补评测集/补 field 样本”时，转 `/skill:eval-ingest`：它负责 repo/labels/limit、dry-run、ingest、set-answer、review、draw-test。本 skill 只在 `run` 的 `next_actions` 出现 field 不足时提示转过去，不重复 issue 过滤与答辩流程。
+
 ## 一、入口分流（先分清用户要什么，再决定跑不跑本 skill）
 
 | 用户说 | 路由 | 演进如何发生 |

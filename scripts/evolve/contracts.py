@@ -223,8 +223,13 @@ class Version:
     candidate_kb: str
     candidate: str
     model: str
+    algorithm: str = "baseline"
+    algorithm_version: str = "manual"
+    budget: Optional[Dict[str, Any]] = None
+    seed: Optional[int] = None
 
     REQUIRED = ("protocol", "policy", "base_kb", "candidate_kb", "candidate", "model")
+    OPTIONAL = ("algorithm", "algorithm_version", "budget", "seed")
 
     def errors(self) -> List[str]:
         errs: List[str] = []
@@ -232,6 +237,16 @@ class Version:
             value = getattr(self, name)
             if not isinstance(value, str) or not value.strip():
                 errs.append(f"versions.{name} is required")
+        for name in ("algorithm", "algorithm_version"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                errs.append(f"versions.{name} is required")
+        if self.budget is not None and not isinstance(self.budget, dict):
+            errs.append("versions.budget must be an object or null")
+        if self.seed is not None and (
+            not isinstance(self.seed, int) or isinstance(self.seed, bool) or self.seed < 0
+        ):
+            errs.append("versions.seed must be a non-negative integer or null")
         return errs
 
     def validate(self) -> "Version":
@@ -241,7 +256,14 @@ class Version:
         return self
 
     def to_dict(self) -> Dict[str, Any]:
-        return {name: getattr(self, name) for name in self.REQUIRED}
+        data = {name: getattr(self, name) for name in self.REQUIRED}
+        data["algorithm"] = self.algorithm
+        data["algorithm_version"] = self.algorithm_version
+        if self.budget is not None:
+            data["budget"] = self.budget
+        if self.seed is not None:
+            data["seed"] = self.seed
+        return data
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Version":
@@ -249,12 +271,42 @@ class Version:
             return data
         if not isinstance(data, dict):
             raise ContractError("versions must be an object")
-        unknown = [key for key in data if key not in cls.REQUIRED]
+        known = set(cls.REQUIRED + cls.OPTIONAL)
+        unknown = [key for key in data if key not in known]
         if unknown:
             raise ContractError(f"unknown versions field(s): {', '.join(sorted(unknown))}")
-        version = cls(**{name: data.get(name, "") for name in cls.REQUIRED})
+        values = {name: data.get(name, "") for name in cls.REQUIRED}
+        values["algorithm"] = data.get("algorithm", "baseline") or "baseline"
+        values["algorithm_version"] = data.get("algorithm_version", "manual") or "manual"
+        values["budget"] = data.get("budget")
+        values["seed"] = data.get("seed")
+        version = cls(**values)
         version.validate()
         return version
+
+
+@dataclass
+class Patch:
+    """优化算法的提案；只描述改什么，不直接写库、不合入。"""
+
+    target_kind: str   # skill / knowledge / tooling / harness
+    target_component: str
+    summary: str
+    algorithm: str
+    algorithm_version: str
+    payload: Dict[str, Any] = field(default_factory=dict)
+    budget: Optional[Dict[str, Any]] = None
+    seed: Optional[int] = None
+
+    def validate(self) -> "Patch":
+        for name in ("target_kind", "target_component", "summary",
+                     "algorithm", "algorithm_version"):
+            value = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise ContractError(f"patch.{name} is required")
+        if not isinstance(self.payload, dict):
+            raise ContractError("patch.payload must be an object")
+        return self
 
 
 @dataclass

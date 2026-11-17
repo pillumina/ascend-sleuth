@@ -105,11 +105,39 @@
 | 批处理、升格、去重、结算、算分、退休 | `/skill:knowledge-groom` |
 | 组装本期读数 | `python3 scripts/metrics_snapshot.py --kind live`，人复核后写 `metrics/timeline.d/` |
 | 批量拉取上游 issue | `/skill:issue-ingest` |
+| 补 issue 评测样本 | `/skill:eval-ingest`（底层 `sample ingest-issues`；补答案用 `sample set-answer`，审候选用 `sample review`） |
 | 跑一次体检 | `python3 scripts/evolution_health.py` |
 | 评审一项改进 | `python3 scripts/ev_measure.py <卡号> --run` |
+| 查看算法适配器 | `python3 scripts/evolve.py experiment list`；按 target 解析用 `experiment resolve --target skill` |
 | 全库观测轮 | `/skill:self-evolve` |
 
 只跑新增样本，不每周跑全量；判定那一次才跑全量。读数包含六项：可评样本数、最近一次全量回放的命中率、单次回放成本、距上次收尾检查的天数、未执行的检查命令数、内容体检的越界项。没测过的项写「未测」，不补零。
+
+维护者每周只看一个入口：`python3 scripts/evolve.py run`（面板或脚本用 `--json`）。它不跑模型、不写库，只根据样本队列、结论、`eval/policy.yaml` 和 metrics 给出 `next_actions`：候选待审、field 评估样本不足、test 不足或未抽、尚无结论、core 回归不足；同时给出 candidate/field/test 计数、按 `stratum` 的分层计数与 warnings（例如候选缺答案、某层 test 不足）。`samples.strata` 配每层目标；`draw-test` 按目标层补齐。
+
+metrics 的消费分两跳：诊断只写本地 trace；`trace_entry_activity.py --apply` 把现场使用折成 `metrics/entry-activity.d/<周>.yaml` 并更新共享游标，`metrics_snapshot.py --kind live` 在周界组装 `metrics/timeline.d/<期号>.yaml`；groom/PR 提交这些 tracked 源和生成物，原始 trace 与 `metrics/entry-activity.local/` 不上仓。`evolve run/brief` 只读 `metrics/timeline.yaml`、`gates.yaml`、`skill-exec-log.yaml` 和 `entry-activity/<部署>.yaml`，缺文件标 unavailable，不补零，也不把本地明细当中心数据。
+
+维护者入口收敛到 `/skill:self-evolve`；skill 先调 `evolve run`，再按 `next_actions` 分支：
+
+```mermaid
+flowchart TD
+  A[self-evolve] --> B[evolve run / brief]
+  B --> C{next_actions}
+  C -->|候选/缺答案| D[sample set-answer → review]
+  C -->|field 不足| E[sample ingest-issues 或 sample new]
+  C -->|test 不足/失效| F[absorb → draw-test]
+  C -->|无结论| G[replay → judge-stats]
+  C -->|core 回归不足| H[补 core regression]
+  G --> I{判定}
+  I -->|accept| J[record → A2 批 PR]
+  I -->|weak/reject| K[停：补样本或记证据不足]
+  J --> L[人工 review / 合入]
+  H --> B
+```
+
+skill 所有人可调用；它只给流程与建议，`review/promote/record/merge` 仍由 policy、CODEOWNERS、分支保护和人工审批约束。阅读 `run`/`brief` 是只读入口。
+
+`brief` 是同一份计划的读数版，另带最近结论。关注项按输出顺序处理：先审候选；还没有结论就补一条带版本的结论；再补 field 样本、抽 test；最后看 core 回归。`run` 不自动合并任何内容。
 
 读数直接给出本周动作：命中率未测就跑一次全量；未执行的检查命令太多先清一批；样本不够补样本；外部验证停摆跑一次外部回放；内容越界修最重的一项。没有命中规则就写「本周无动作」。
 

@@ -28,13 +28,19 @@ from .contracts import (
 )
 from .adapters import AdapterError
 from .adapters.arena import counts_from_files
+from .adapters.metrics import load_metrics
+from .algorithms.registry import algorithm_ids, get_algorithm
+from .targets.registry import get_target, resolve_optimizer, target_ids
 from .adapters.replay import collect as replay_collect
 from .adapters.replay import prepare as replay_prepare
+from .adapters.issues import ingest_issues
 from .adapters.s2 import import_s2_samples
 from .decision import Decision, DecisionResult, decide
 from .policy import PolicyError, load_policy, policy_hash
 from .records import ConclusionStore, RecordError
+from .runner import issue_plan, render_plan
 from .samples import SampleStore, StoreError
+from .sources.registry import get_source
 
 from exec_log_path import resolve_checkout_dir
 
@@ -111,6 +117,7 @@ def cmd_policy_check(args: argparse.Namespace) -> int:
         return 1
     print("policy: ok")
     print(f"policy_hash: {policy_hash(policy)}")
+    print(f"target: {(policy.get('experiment') or {}).get('target', 'skill')}")
     return 0
 
 
@@ -153,6 +160,79 @@ def cmd_sample_new(args: argparse.Namespace) -> int:
     print(f"created: {sample.id}")
     print(f"status: {sample.status}")
     print(f"path: {_store(args).path_for(sample.id)}")
+    return 0
+
+
+def cmd_sample_set_answer(args: argparse.Namespace) -> int:
+    expected = _json_object(args.expected, "--expected")
+    rubric = _json_object(args.rubric, "--rubric")
+    try:
+        sample = _store(args).set_answer(
+            args.id,
+            expected=expected,
+            rubric=rubric,
+            expected_kind=args.expected_kind,
+            actor=args.actor,
+            reason=args.reason or "",
+        )
+    except (StoreError, ContractError, CliError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"updated: {sample.id}")
+    print(f"path: {_store(args).path_for(sample.id)}")
+    return 0
+
+
+def cmd_sample_ingest_issues(args: argparse.Namespace) -> int:
+    base = _evolve_base(args)
+    # 样本总在主检出（或显式 --root 的本地运行件）；ingest-state.json 是 tracked 文件，
+    # 默认跟随当前检出，worktree 里跑完能提交，不会写到主检出却看不见。
+    root = Path(args.root) if args.root else Path.cwd()
+    try:
+        source = get_source(args.source, repo=args.repo, cache=args.cache)
+        stats = ingest_issues(
+            root,
+            args.repo,
+            labels=args.labels,
+            since=args.since,
+            min_comments=args.min_comments,
+            limit=args.limit,
+            state_path=args.state,
+            store=SampleStore(base=base),
+            dry_run=args.dry_run,
+            source=source,
+            state_key=f"{source.source_id}/evaluation",
+        )
+    except AdapterError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except (StoreError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"created: {stats['created']}")
+    for sample_id, path in zip(stats["created_ids"], stats["created_paths"]):
+        print(f"candidate: {sample_id}\t{path}")
+    for sample_id in stats["would_create"]:
+        print(f"would create: {sample_id}")
+    print(
+        "skipped: "
+        f"pr={stats['skipped_pr']} "
+        f"processed={stats['skipped_processed']} "
+        f"label={stats['skipped_no_label']} "
+        f"comments={stats['skipped_low_comments']} "
+        f"title={stats['skipped_title']} "
+        f"empty_body={stats['skipped_empty_body']} "
+        f"short_body={stats['skipped_short_body']} "
+        f"feature_title={stats['skipped_feature_title']} "
+        f"duplicate_source={stats['skipped_duplicate_source']} "
+        f"duplicate_id={stats['skipped_duplicate_id']}"
+    )
+    if stats["limit_reached"]:
+        print(f"limit reached: {args.limit}")
+    if args.dry_run:
+        print("dry-run: no samples written, state unchanged")
+    elif stats["state_updated"]:
+        print(f"state: {stats['state_path']}")
     return 0
 
 
@@ -291,14 +371,18 @@ def cmd_sample_draw_test(args: argparse.Namespace) -> int:
     method = policy["samples"]["split"]
     try:
         samples = _store(args).draw_test(
-            size=size, method=method, actor=args.actor, reason=args.reason or "",
+            size=size, method=method, strata=policy["samples"].get("strata") or {},
+            actor=args.actor, reason=args.reason or "",
         )
-    except StoreError as exc:
+    except (StoreError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     print(f"drawn: {len(samples)}")
     print(f"size: {size} ({'policy' if args.size is None else 'explicit'})")
     print(f"split: {method} (policy)")
+    strata = policy["samples"].get("strata") or {}
+    if strata:
+        print("strata: " + " ".join(f"{key}={value}" for key, value in sorted(strata.items())))
     for sample in samples:
         print(f"{sample.id}\t{sample.status}\t{sample.origin}\t{sample.purpose}")
     return 0
@@ -471,11 +555,69 @@ def _print_decision(result: DecisionResult) -> None:
         print("outcome: unknown")
 
 
+# ---------------------------------------------------------------- experiment
+def cmd_experiment_list(args: argparse.Namespace) -> int:
+    try:
+        policy = _policy_for(args)
+    except PolicyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    experiment = policy.get("experiment") or {}
+    configured_target = experiment.get("target", "skill")
+    configured = experiment.get("algorithm", "baseline")
+    print(f"configured_target: {configured_target}")
+    for tid in target_ids():
+        spec = get_target(tid)
+        marker = "*" if tid == configured_target else " "
+        print(f"{marker} target {tid}\t{spec.eval_profile}\t{spec.authority}\t{spec.allowed_algorithms}")
+    for name in algorithm_ids():
+        algorithm = get_algorithm(name)
+        marker = "*" if name == configured else " "
+        print(f"{marker} {name}\t{getattr(algorithm, 'version', '')}\t{getattr(algorithm, 'scope', '')}")
+    return 0
+
+
+def cmd_experiment_resolve(args: argparse.Namespace) -> int:
+    try:
+        spec, optimizer = resolve_optimizer(args.target, args.algorithm)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"target: {spec.id}")
+    print(f"algorithm: {getattr(optimizer, 'id', args.algorithm or spec.default_algorithm)}")
+    print(f"version: {getattr(optimizer, 'version', '')}")
+    print(f"scope: {getattr(optimizer, 'scope', '')}")
+    print(f"eval_profile: {spec.eval_profile}")
+    print(f"authority: {spec.authority}")
+    return 0
+
+
+# ---------------------------------------------------------------- run
+def cmd_run(args: argparse.Namespace) -> int:
+    root = Path(args.root) if args.root else Path.cwd()
+    base = _evolve_base(args)
+    try:
+        policy = _policy_for(args)
+        plan = issue_plan(root, base, policy, metrics=load_metrics(root))
+    except (PolicyError, StoreError, RecordError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(plan, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        print(render_plan(plan))
+    return 0
+
+
 # ---------------------------------------------------------------- brief
 def _format_counts(counts: Dict[str, int]) -> str:
     if not counts:
         return "none"
     return " ".join(f"{key}={counts[key]}" for key in sorted(counts))
+
+
+def _metric_value(value: Any) -> str:
+    return "unavailable" if value is None else str(value)
 
 
 def cmd_brief(args: argparse.Namespace) -> int:
@@ -488,16 +630,59 @@ def cmd_brief(args: argparse.Namespace) -> int:
     except (StoreError, RecordError, PolicyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    try:
+        plan = issue_plan(
+            Path(args.root) if args.root else Path.cwd(), base, policy,
+            metrics=load_metrics(Path(args.root) if args.root else Path.cwd()),
+        )
+    except (StoreError, RecordError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    plan_counts = plan["counts"]
+    metrics = plan.get("metrics") or {}
+    period = metrics.get("latest_period")
     print(f"policy_hash: {policy_hash(policy)}")
+    print(f"target: {(policy.get('experiment') or {}).get('target', 'skill')}")
+    print(f"metrics_period: {period.get('period') if period else 'unavailable'}")
+    print(f"sessions_total: {_metric_value(metrics.get('sessions_total'))}")
+    print(f"tier2_hit: {_metric_value(metrics.get('tier2_hit'))}")
+    print(f"case_total: {_metric_value(metrics.get('case_total'))}")
+    print(f"feedback: {_metric_value(metrics.get('feedback'))}")
+    for key, value in sorted((plan_counts.get("strata") or {}).items()):
+        print(
+            f"stratum: {key} field_eval={value.get('field_eval', 0)} "
+            f"core_test={value.get('core_test', 0)} target={value.get('target', 0)}"
+        )
+    last_exec = (metrics.get("last_skill_exec") or {}).get("last") \
+        if isinstance(metrics.get("last_skill_exec"), dict) else None
+    if last_exec:
+        print(f"last_skill_exec: {last_exec.get('skill')} {last_exec.get('at')}")
+    else:
+        print("last_skill_exec: unavailable")
+    entry = metrics.get("entry_usage") or {}
+    if isinstance(entry, dict) and entry.get("available"):
+        print(
+            f"entry_usage: cases={_metric_value(entry.get('cases'))} "
+            f"active={_metric_value(entry.get('active_cases'))} "
+            f"references={_metric_value(entry.get('references'))}"
+        )
+    else:
+        print("entry_usage: unavailable")
     print(f"samples: {counts['total']}")
     print(f"by_status: {_format_counts(counts['status'])}")
     print(f"by_origin: {_format_counts(counts['origin'])}")
     print(f"by_purpose: {_format_counts(counts['purpose'])}")
+    print(f"candidate: {plan_counts['candidate']}")
+    print(f"field: {plan_counts['field']}")
+    print(f"test: {plan_counts['test']}")
     print(f"conclusions: {len(conclusions)}")
     for record in conclusions[-3:]:
         decision = record.get("decision", "unknown")
         reason = record.get("reason", "")
         print(f"last conclusion: {decision} {reason}".rstrip())
+    print("next_actions:")
+    for action in plan["next_actions"]:
+        print(f"- {action}")
     return 0
 
 
@@ -535,6 +720,17 @@ def build_parser() -> argparse.ArgumentParser:
     new.add_argument("--notes", default=None)
     new.set_defaults(func=cmd_sample_new)
 
+    set_answer = sample_sub.add_parser("set-answer", help="给 candidate/active 补 expected/rubric")
+    set_answer.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    set_answer.add_argument("--id", required=True)
+    set_answer.add_argument("--expected", default=None, help="JSON 对象")
+    set_answer.add_argument("--rubric", default=None, help="JSON 对象")
+    set_answer.add_argument("--expected-kind", default=None,
+                            choices=("resolution", "assertion", "rubric"))
+    set_answer.add_argument("--actor", default="maintainer")
+    set_answer.add_argument("--reason", default="")
+    set_answer.set_defaults(func=cmd_sample_set_answer)
+
     import_s2 = sample_sub.add_parser(
         "import-s2", help="把 eval/s2 校准集导入候选队列（跳过非诊断/无症状/重复来源）"
     )
@@ -545,6 +741,22 @@ def build_parser() -> argparse.ArgumentParser:
     import_s2.add_argument("--limit", type=int, default=None,
                            help="最多创建多少条候选（默认不限）")
     import_s2.set_defaults(func=cmd_sample_import_s2)
+
+    ingest = sample_sub.add_parser(
+        "ingest-issues", help="从 GitHub issue 建诊断候选（先过滤，按需取 body）"
+    )
+    ingest.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    ingest.add_argument("--source", default="github",
+                        help="issue 源（默认 github；已注册 github/local）")
+    ingest.add_argument("--cache", default=None, help="local 源的 JSON/YAML issue 导出路径")
+    ingest.add_argument("--repo", required=True, help="如 vllm-project/vllm-ascend")
+    ingest.add_argument("--labels", default=None, help="逗号分隔 label 池")
+    ingest.add_argument("--since", default=None, help="ISO 时间，增量拉取")
+    ingest.add_argument("--min-comments", type=int, default=3)
+    ingest.add_argument("--limit", type=int, default=20, help="最多创建多少条候选")
+    ingest.add_argument("--state", default="ingest-state.json", help="ingest-state.json 路径")
+    ingest.add_argument("--dry-run", action="store_true", help="只打印候选，不写库/不更新 state")
+    ingest.set_defaults(func=cmd_sample_ingest_issues)
 
     listing = sample_sub.add_parser("list", help="列出样本")
     listing.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
@@ -657,6 +869,22 @@ def build_parser() -> argparse.ArgumentParser:
     replay_collect_cmd.add_argument("--root", default=".", help="检出根目录（默认 .）")
     replay_collect_cmd.add_argument("--report", required=True, help="评分报告输出路径")
     replay_collect_cmd.set_defaults(func=cmd_replay_collect)
+
+    experiment = sub.add_parser("experiment", help="算法适配器")
+    experiment_sub = experiment.add_subparsers(dest="experiment_command", required=True)
+    exp_list = experiment_sub.add_parser("list", help="列出注册算法与 policy 选择")
+    exp_list.add_argument("--root", default=".", help="策略根目录")
+    exp_list.add_argument("--policy", default=None, help="策略路径")
+    exp_list.set_defaults(func=cmd_experiment_list)
+    exp_resolve = experiment_sub.add_parser("resolve", help="按 target/algorithm 解析适配器")
+    exp_resolve.add_argument("--target", required=True)
+    exp_resolve.add_argument("--algorithm", default=None)
+    exp_resolve.set_defaults(func=cmd_experiment_resolve)
+
+    run = sub.add_parser("run", help="维护者下一步计划（不跑模型/不写库）")
+    run.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    run.add_argument("--json", action="store_true", help="输出机器可读 JSON")
+    run.set_defaults(func=cmd_run)
 
     brief = sub.add_parser("brief", help="样本计数与最近结论")
     brief.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")

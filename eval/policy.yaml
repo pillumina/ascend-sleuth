@@ -29,6 +29,7 @@ samples:
   field_eval: 9
   test: 4
   split: hash
+  strata: {}
 
 cost:
   primary_dimension: tokens
@@ -36,6 +37,12 @@ cost:
   B: 0.10
   epsilon: 0.10
   delta: 0
+
+experiment:
+  target: skill
+  algorithm: baseline
+  budget: {}
+  seed: 0
 
 rubrics:
   case_version: case-v1

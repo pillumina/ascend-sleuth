@@ -32,6 +32,7 @@ from .pools import (
     check_transition,
     source_group,
     split_test,
+    stratum_of,
 )
 
 EVOLVE_DIR = Path(".s2-replay") / "evolve"
@@ -346,6 +347,49 @@ class SampleStore:
         self._write(sample)
         return sample
 
+    def set_answer(
+        self,
+        id: str,
+        expected: Optional[Dict[str, Any]] = None,
+        rubric: Optional[Dict[str, Any]] = None,
+        expected_kind: Optional[str] = None,
+        actor: str = "maintainer",
+        reason: str = "",
+    ) -> Sample:
+        """给 candidate/active 补答案；写前走准入校验，失败不落盘。"""
+        sample = self.require(id)
+        if sample.status not in ("candidate", "active"):
+            raise StoreError(
+                f"answer can only be set on candidate/active; {id} is {sample.status}"
+            )
+        if expected is None and rubric is None:
+            raise StoreError("expected or rubric is required")
+        if expected_kind is None:
+            if rubric is not None and expected is None:
+                expected_kind = "rubric"
+            elif expected is not None and rubric is None:
+                expected_kind = "resolution"
+            else:
+                expected_kind = sample.expected_kind
+        prospective = replace(
+            sample,
+            expected=dict(expected) if expected is not None else None,
+            rubric=dict(rubric) if rubric is not None else None,
+            expected_kind=expected_kind,
+        )
+        errors = self._admission_errors(prospective)
+        if errors:
+            raise StoreError("set-answer rejected: " + "; ".join(errors))
+        sample.expected = prospective.expected
+        sample.rubric = prospective.rubric
+        sample.expected_kind = prospective.expected_kind
+        self._record_change(
+            sample, sample.status, sample.status,
+            reason or "answer set by maintainer", actor,
+        )
+        self._write(sample)
+        return sample
+
     def set_purpose(
         self,
         id: str,
@@ -413,6 +457,7 @@ class SampleStore:
         )
 
     def draw_test(self, size: int = 4, method: str = "hash",
+                  strata: Optional[Dict[str, int]] = None,
                   actor: str = "maintainer", reason: str = "") -> List[Sample]:
         """从 active + origin=core + evaluation 抽 test 并改 purpose。
 
@@ -426,20 +471,35 @@ class SampleStore:
             if sample.status == "active" and sample.origin == "core"
             and sample.purpose == "test"
         ]
-        if existing:
-            if len(existing) >= size:
-                return sorted(existing, key=lambda sample: sample.id)
-            raise StoreError(
-                f"test set already has {len(existing)} sample(s); retire or re-draw before adding more"
-            )
-        selected = split_test(self.read_all(), size=size, method=method)
+        if len(existing) >= size:
+            return sorted(existing, key=lambda sample: sample.id)
+        remaining = size - len(existing)
+        targets = dict(strata or {})
+        if targets:
+            seen = {}
+            for sample in existing:
+                key = stratum_of(sample)
+                seen[key] = seen.get(key, 0) + 1
+            targets = {
+                key: max(0, target - seen.get(key, 0))
+                for key, target in targets.items()
+            }
+            # 已有 test 覆盖了部分层后，配额之和不能超过剩余槽位；超出时按缺口
+            # 从大到小截断，避免 draw_test 在“补一层”时整体报错。
+            while sum(targets.values()) > remaining:
+                key = max(targets, key=lambda item: (targets[item], item))
+                targets[key] -= 1
+            targets = {key: value for key, value in targets.items() if value}
+        selected = split_test(
+            self.read_all(), size=remaining, method=method, strata=targets,
+        )
         drawn: List[Sample] = []
         for sample in selected:
             drawn.append(self.set_purpose(
                 sample.id, "test", actor=actor,
                 reason=reason or "drawn for test set",
             ))
-        return sorted(drawn, key=lambda sample: sample.id)
+        return sorted(existing + drawn, key=lambda sample: sample.id)
 
     def retire(self, id: str, actor: str = "maintainer", reason: str = "") -> Sample:
         """active → retired（软退休，可复活）。"""

@@ -6,7 +6,7 @@
 
 from typing import Any, Dict, List, Protocol, runtime_checkable
 
-from .contracts import Run, Sample, Version
+from .contracts import Patch, Run, Sample, Version
 
 
 @runtime_checkable
@@ -30,6 +30,19 @@ class Scorer(Protocol):
     """评分器：样本 + 执行 → 指标字典。"""
 
     def score(self, sample: Sample, run: Run) -> Dict[str, Any]:
+        ...
+
+
+@runtime_checkable
+class Optimizer(Protocol):
+    """优化算法适配器：只产出 Patch 提案，不直接写库或合入。"""
+
+    id: str
+    version: str
+    scope: str
+
+    def propose(self, target: str, observations: List[Any], current: Any,
+                budget: Dict[str, Any]) -> Patch:
         ...
 
 
