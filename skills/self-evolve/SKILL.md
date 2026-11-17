@@ -27,9 +27,25 @@ disable-model-invocation: true
 
 ## 维护者入口：`evolve run` 与 `brief`
 
-维护者不直接拼 `sample/replay/judge` 命令；本 skill 先调 `python3 scripts/evolve.py run`（或 `brief`），按 `next_actions` 进入对应分支。`run` 只读、不跑模型、不写库、不合并。它同时读 `metrics/timeline.yaml`/`gates.yaml`/`skill-exec-log.yaml`/`entry-activity/<部署>.yaml`；缺文件标 unavailable，不补零。流程与分支图放机制文档，skill 只保留执行规则。
+维护者不直接拼 `sample/replay/judge` 命令；本 skill 先调 `python3 scripts/evolve.py run`（或 `brief`），按 `next_actions` 进入对应分支。`run` 只读、不跑模型、不写库、不合并。它同时读 `metrics/timeline.yaml`/`gates.yaml`/`skill-exec-log.yaml`/`entry-activity/<部署>.yaml`；缺文件标 unavailable，不补零。图只画执行控制；完整机制与取舍在机制文档。
 
-维护者分支流程图见 [operations.md](../../docs/mechanism/operations.md) 的 `evolve run` 一节。
+```mermaid
+flowchart TD
+  A[run / brief] --> B{next_actions}
+  B -->|候选/缺答案| C[set-answer → review]
+  B -->|field 不足| D[ingest-issues]
+  B -->|test 不足| E[absorb → draw-test]
+  B -->|无结论| F[replay → judge-stats]
+  F --> G{判定}
+  G -->|accept| H[record → A2 批 PR]
+  G -->|weak/reject| I[停：补样本或记证据不足]
+  C --> A
+  D --> A
+  E --> A
+  H --> J[人工 review / 合入]
+```
+
+图只画执行控制；完整机制与取舍见 [operations.md](../../docs/mechanism/operations.md)。
 
 分支边界：
 
@@ -45,7 +61,19 @@ skill 可以被所有人调用；它只做流程与建议，不授予写权限�
 
 用户说“补评测集/从 issue 补样本”时，入口仍是本 skill；`issue-ingest` 只负责 case 草稿，不负责评估样本。交互顺序：
 
-评测集补充流程图见 [evaluation.md](../../docs/mechanism/evaluation.md) 的 issue 来源一节。
+```mermaid
+flowchart TD
+  A[问 repo / labels / limit / dry-run] --> B[ingest-issues --dry-run]
+  B --> C{候选列表}
+  C -->|改参数| A
+  C -->|确认| D[ingest-issues 正式执行]
+  D --> E[set-answer 补 expected]
+  E --> F[check → review]
+  F -->|通过| G[active/field → draw-test]
+  F -->|拒绝| H[rejected]
+```
+
+完整来源协议与过滤规则见 [evaluation.md](../../docs/mechanism/evaluation.md)。
 
 交互只问四类事：哪个 repo、哪些 label、取多少条、先 dry-run 还是直接导。其余由脚本做：拉元数据、PR/已处理/label/评论/标题过滤、按需取 body、查重、state 幂等。维护者只对候选做“补答案、通过/拒绝”；不写 prompt、不手工拼 YAML。
 
