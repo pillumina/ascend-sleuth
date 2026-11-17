@@ -30,10 +30,12 @@ from .adapters import AdapterError
 from .adapters.arena import counts_from_files
 from .adapters.replay import collect as replay_collect
 from .adapters.replay import prepare as replay_prepare
+from .adapters.issues import ingest_issues
 from .adapters.s2 import import_s2_samples
 from .decision import Decision, DecisionResult, decide
 from .policy import PolicyError, load_policy, policy_hash
 from .records import ConclusionStore, RecordError
+from .runner import issue_plan, render_plan
 from .samples import SampleStore, StoreError
 
 from exec_log_path import resolve_checkout_dir
@@ -153,6 +155,76 @@ def cmd_sample_new(args: argparse.Namespace) -> int:
     print(f"created: {sample.id}")
     print(f"status: {sample.status}")
     print(f"path: {_store(args).path_for(sample.id)}")
+    return 0
+
+
+def cmd_sample_set_answer(args: argparse.Namespace) -> int:
+    expected = _json_object(args.expected, "--expected")
+    rubric = _json_object(args.rubric, "--rubric")
+    try:
+        sample = _store(args).set_answer(
+            args.id,
+            expected=expected,
+            rubric=rubric,
+            expected_kind=args.expected_kind,
+            actor=args.actor,
+            reason=args.reason or "",
+        )
+    except (StoreError, ContractError, CliError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"updated: {sample.id}")
+    print(f"path: {_store(args).path_for(sample.id)}")
+    return 0
+
+
+def cmd_sample_ingest_issues(args: argparse.Namespace) -> int:
+    base = _evolve_base(args)
+    # 样本总在主检出（或显式 --root 的本地运行件）；ingest-state.json 是 tracked 文件，
+    # 默认跟随当前检出，worktree 里跑完能提交，不会写到主检出却看不见。
+    root = Path(args.root) if args.root else Path.cwd()
+    try:
+        stats = ingest_issues(
+            root,
+            args.repo,
+            labels=args.labels,
+            since=args.since,
+            min_comments=args.min_comments,
+            limit=args.limit,
+            state_path=args.state,
+            store=SampleStore(base=base),
+            dry_run=args.dry_run,
+        )
+    except AdapterError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except (StoreError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"created: {stats['created']}")
+    for sample_id, path in zip(stats["created_ids"], stats["created_paths"]):
+        print(f"candidate: {sample_id}\t{path}")
+    for sample_id in stats["would_create"]:
+        print(f"would create: {sample_id}")
+    print(
+        "skipped: "
+        f"pr={stats['skipped_pr']} "
+        f"processed={stats['skipped_processed']} "
+        f"label={stats['skipped_no_label']} "
+        f"comments={stats['skipped_low_comments']} "
+        f"title={stats['skipped_title']} "
+        f"empty_body={stats['skipped_empty_body']} "
+        f"short_body={stats['skipped_short_body']} "
+        f"feature_title={stats['skipped_feature_title']} "
+        f"duplicate_source={stats['skipped_duplicate_source']} "
+        f"duplicate_id={stats['skipped_duplicate_id']}"
+    )
+    if stats["limit_reached"]:
+        print(f"limit reached: {args.limit}")
+    if args.dry_run:
+        print("dry-run: no samples written, state unchanged")
+    elif stats["state_updated"]:
+        print(f"state: {stats['state_path']}")
     return 0
 
 
@@ -471,6 +543,23 @@ def _print_decision(result: DecisionResult) -> None:
         print("outcome: unknown")
 
 
+# ---------------------------------------------------------------- run
+def cmd_run(args: argparse.Namespace) -> int:
+    root = Path(args.root) if args.root else Path.cwd()
+    base = _evolve_base(args)
+    try:
+        policy = _policy_for(args)
+        plan = issue_plan(root, base, policy)
+    except (PolicyError, StoreError, RecordError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(plan, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        print(render_plan(plan))
+    return 0
+
+
 # ---------------------------------------------------------------- brief
 def _format_counts(counts: Dict[str, int]) -> str:
     if not counts:
@@ -488,16 +577,28 @@ def cmd_brief(args: argparse.Namespace) -> int:
     except (StoreError, RecordError, PolicyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    try:
+        plan = issue_plan(Path(args.root) if args.root else Path.cwd(), base, policy)
+    except (StoreError, RecordError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    plan_counts = plan["counts"]
     print(f"policy_hash: {policy_hash(policy)}")
     print(f"samples: {counts['total']}")
     print(f"by_status: {_format_counts(counts['status'])}")
     print(f"by_origin: {_format_counts(counts['origin'])}")
     print(f"by_purpose: {_format_counts(counts['purpose'])}")
+    print(f"candidate: {plan_counts['candidate']}")
+    print(f"field: {plan_counts['field']}")
+    print(f"test: {plan_counts['test']}")
     print(f"conclusions: {len(conclusions)}")
     for record in conclusions[-3:]:
         decision = record.get("decision", "unknown")
         reason = record.get("reason", "")
         print(f"last conclusion: {decision} {reason}".rstrip())
+    print("next_actions:")
+    for action in plan["next_actions"]:
+        print(f"- {action}")
     return 0
 
 
@@ -535,6 +636,17 @@ def build_parser() -> argparse.ArgumentParser:
     new.add_argument("--notes", default=None)
     new.set_defaults(func=cmd_sample_new)
 
+    set_answer = sample_sub.add_parser("set-answer", help="给 candidate/active 补 expected/rubric")
+    set_answer.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    set_answer.add_argument("--id", required=True)
+    set_answer.add_argument("--expected", default=None, help="JSON 对象")
+    set_answer.add_argument("--rubric", default=None, help="JSON 对象")
+    set_answer.add_argument("--expected-kind", default=None,
+                            choices=("resolution", "assertion", "rubric"))
+    set_answer.add_argument("--actor", default="maintainer")
+    set_answer.add_argument("--reason", default="")
+    set_answer.set_defaults(func=cmd_sample_set_answer)
+
     import_s2 = sample_sub.add_parser(
         "import-s2", help="把 eval/s2 校准集导入候选队列（跳过非诊断/无症状/重复来源）"
     )
@@ -545,6 +657,19 @@ def build_parser() -> argparse.ArgumentParser:
     import_s2.add_argument("--limit", type=int, default=None,
                            help="最多创建多少条候选（默认不限）")
     import_s2.set_defaults(func=cmd_sample_import_s2)
+
+    ingest = sample_sub.add_parser(
+        "ingest-issues", help="从 GitHub issue 建诊断候选（先过滤，按需取 body）"
+    )
+    ingest.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    ingest.add_argument("--repo", required=True, help="如 vllm-project/vllm-ascend")
+    ingest.add_argument("--labels", default=None, help="逗号分隔 label 池")
+    ingest.add_argument("--since", default=None, help="ISO 时间，增量拉取")
+    ingest.add_argument("--min-comments", type=int, default=3)
+    ingest.add_argument("--limit", type=int, default=20, help="最多创建多少条候选")
+    ingest.add_argument("--state", default="ingest-state.json", help="ingest-state.json 路径")
+    ingest.add_argument("--dry-run", action="store_true", help="只打印候选，不写库/不更新 state")
+    ingest.set_defaults(func=cmd_sample_ingest_issues)
 
     listing = sample_sub.add_parser("list", help="列出样本")
     listing.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
@@ -657,6 +782,11 @@ def build_parser() -> argparse.ArgumentParser:
     replay_collect_cmd.add_argument("--root", default=".", help="检出根目录（默认 .）")
     replay_collect_cmd.add_argument("--report", required=True, help="评分报告输出路径")
     replay_collect_cmd.set_defaults(func=cmd_replay_collect)
+
+    run = sub.add_parser("run", help="维护者下一步计划（不跑模型/不写库）")
+    run.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    run.add_argument("--json", action="store_true", help="输出机器可读 JSON")
+    run.set_defaults(func=cmd_run)
 
     brief = sub.add_parser("brief", help="样本计数与最近结论")
     brief.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")

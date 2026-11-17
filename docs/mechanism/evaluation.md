@@ -70,6 +70,22 @@
 
 候选按对象类型分开检查：诊断要有来源、有答案、输入里有可诊断信号、按来源分组去重，答案已进知识库的转回归；case 与 reference 要有 rubric、不与已有条目重复、namespace 或适用范围正确、至少一位维护者复核；trace 要已脱敏、有确认的结论或反馈、有 rubric、不是重复 trace。去重按来源分组，测试集按组切分，避免同一问题换一种措辞后同时进入评估与测试。
 
+#### 3.3.1 从 GitHub issue 补诊断候选
+
+维护者缺 field 评估样本时，先从上游 closed issue 建候选：
+
+```bash
+python3 scripts/evolve.py sample ingest-issues --repo vllm-project/vllm-ascend \
+  --labels triaged --min-comments 3 --limit 20 --state ingest-state.json --dry-run
+```
+
+- 元数据由 `fetch_issues.py` 拉取，只有 number/title/comments/closed_at/labels，不含 body；硬过滤复用 `issue_filter.py`（排除 PR 与已处理编号、label 池、评论数、标题规则，并按 label 优先级/已解决/评论数排序）。
+- 只对过滤后的候选单条取首帖 body；样本 `input` 只有 title 与 body，正文少于 20 字符的候选跳过。评论和 issue 里的 resolution 不写进 `input`，也不自动当答案。
+- 候选统一是 `diagnosis/field/evaluation`，`expected` 留空；`source` 为 `github/<repo>#<n>`，重复来源跳过。
+- `--dry-run` 只打印候选，不写样本库、不更新 state。正式运行成功后把实际创建的编号原子追加到 state 的 `processed`；失败不标，重复运行不会重复导入。
+- 默认 state 跟随当前检出，样本库/`run`/`brief` 仍锚主检出；显式 `--root` 才把两者都落到本地运行件。这样 worktree 里产出的 state 能随分支提交，候选不会在 worktree 清理时丢。
+- 维护者用 `sample set-answer --id ... --expected '<json>'` 补答案，再走 `sample check`、`sample review`。ingest 不自动把候选转 active；非诊断或无答案的候选留给 review 拒收。
+
 诊断标注由 agent 预标、维护者抽检，抽检覆盖每周新增样本的两成或两条，取大。case 与 reference 先做 10–20 条双标与裁决，再定 rubric 阈值。trace 先全审 10 条，再抽检。自动标注只做提名，不能直接当答案。
 
 维护方式分两层，判定时分开报告，不混算：

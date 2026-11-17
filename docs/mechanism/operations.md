@@ -105,11 +105,16 @@
 | 批处理、升格、去重、结算、算分、退休 | `/skill:knowledge-groom` |
 | 组装本期读数 | `python3 scripts/metrics_snapshot.py --kind live`，人复核后写 `metrics/timeline.d/` |
 | 批量拉取上游 issue | `/skill:issue-ingest` |
+| 补 issue 评测样本 | `python3 scripts/evolve.py sample ingest-issues --repo <repo> [--dry-run]`；补答案用 `sample set-answer`，审候选用 `sample review` |
 | 跑一次体检 | `python3 scripts/evolution_health.py` |
 | 评审一项改进 | `python3 scripts/ev_measure.py <卡号> --run` |
 | 全库观测轮 | `/skill:self-evolve` |
 
 只跑新增样本，不每周跑全量；判定那一次才跑全量。读数包含六项：可评样本数、最近一次全量回放的命中率、单次回放成本、距上次收尾检查的天数、未执行的检查命令数、内容体检的越界项。没测过的项写「未测」，不补零。
+
+维护者每周只看一个入口：`python3 scripts/evolve.py run`（面板或脚本用 `--json`）。它不跑模型、不写库，只根据样本队列、结论和 `eval/policy.yaml` 给出 `next_actions`：候选待审、field 评估样本不足、test 不足或未抽、尚无结论、core 回归不足；同时给出 candidate/field/test 计数与 warnings（例如候选缺答案）。
+
+`brief` 是同一份计划的读数版，另带最近结论。关注项按输出顺序处理：先审候选；还没有结论就补一条带版本的结论；再补 field 样本、抽 test；最后看 core 回归。`run` 不自动合并任何内容。
 
 读数直接给出本周动作：命中率未测就跑一次全量；未执行的检查命令太多先清一批；样本不够补样本；外部验证停摆跑一次外部回放；内容越界修最重的一项。没有命中规则就写「本周无动作」。
 

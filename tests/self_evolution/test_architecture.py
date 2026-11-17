@@ -30,6 +30,7 @@ ADAPTER_LEGACY_MAP = {
     "evidence.py": "verify_evidence",
     "cards.py": "ev_proposal",
     "health.py": "evolution_health",
+    "issues.py": "fetch_issues",
 }
 
 FORBIDDEN = (
@@ -86,12 +87,12 @@ class PackageLayoutTest(unittest.TestCase):
         required = {
             "__init__.py", "contracts.py", "object_types.py", "metrics.py",
             "statistics.py", "decision.py", "pools.py", "policy.py",
-            "samples.py", "records.py", "ports.py", "cli.py",
+            "samples.py", "records.py", "ports.py", "runner.py", "cli.py",
         }
         self.assertEqual(required - set(ALL_MODULES), set())
         self.assertEqual(
             {"__init__.py", "s2.py", "arena.py", "replay.py",
-             "evidence.py", "cards.py", "health.py"} - set(ADAPTER_MODULES),
+             "evidence.py", "cards.py", "health.py", "issues.py"} - set(ADAPTER_MODULES),
             set(),
         )
         self.assertTrue((ROOT / "scripts" / "evolve.py").exists())
