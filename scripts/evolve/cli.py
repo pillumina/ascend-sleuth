@@ -660,17 +660,24 @@ def cmd_experiment_gate(args: argparse.Namespace) -> int:
                 f"target {args.target!r} uses {profile.id}; this command only gates rubric"
             )
         sample = _store(args).require(args.sample)
+        if sample.object_type not in profile.object_types:
+            raise ValueError(
+                f"sample {sample.id!r} object_type {sample.object_type!r} is not "
+                f"in target {args.target!r} ({', '.join(profile.object_types)})"
+            )
         if sample.rubric is None:
             raise ValueError(f"sample {sample.id!r} has no rubric")
+        policy = _policy_for(args)
+        threshold = (policy.get("rubrics") or {}).get("threshold")
         scores = _json_object(args.scores, "--scores")
-        result = score_rubric(sample.rubric, scores)
+        result = score_rubric(sample.rubric, scores, threshold=threshold)
     except (ValueError, RubricError, CliError, StoreError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     print(f"target: {spec.id}")
     print(f"eval_profile: {profile.id}")
     print(f"passed: {str(result.passed).lower()}")
-    print(f"score: {result.score:.4f}")
+    print(f"score: {result.score:.4f}" if result.score is not None else "score: unavailable")
     print(f"threshold: {result.threshold:.4f}")
     if result.failed_dimensions:
         print("failed_dimensions: " + ", ".join(result.failed_dimensions))

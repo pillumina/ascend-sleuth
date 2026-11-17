@@ -247,7 +247,7 @@ S2 未命中有三种解释：路由错、缺 case、内容错。它只看到没
 
 `evaluations/registry.py` 把 target 映射到 `EvalProfile`，`implemented` 只表示当前有没有端到端 scorer/gate，不表示有真实数据。未接的 target 仍可记录 baseline Patch，但 `experiment propose` 会打印 `eval_ready: false` 并警告“记录但不 gate-ready”；不把目标分发误当评测完成。
 
-knowledge 的 rubric 评分是确定性算分：`rubric.dimensions` 是维度名列表或对象，`threshold` 默认 0.7；每维只接受 0/1/2，任一维 0 即退回，缺维度不当 0 补。入口：
+knowledge 的 rubric 评分是确定性算分：`rubric.dimensions` 是维度名列表或对象；`threshold` 由 `eval/policy.yaml` 的 `rubrics.threshold` 决定（当前 0.7），不在 scorer 里另写一份。每维只接受 0/1/2，任一维 0 即退回；缺维度不当 0 补，分数不可计算，`score` 显示 unavailable。入口只接受 target 允许的 object_type（knowledge 只收 case/reference）：
 
 ```bash
 python3 scripts/evolve.py experiment gate --target knowledge --sample K-1 \

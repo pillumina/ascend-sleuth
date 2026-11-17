@@ -32,6 +32,14 @@ class RubricScoringTest(unittest.TestCase):
         result = score_rubric(RUBRIC, {"来源可追": 2, "根因完整": 2})
         self.assertFalse(result.passed)
         self.assertEqual(result.missing, ["可复用"])
+        self.assertIsNone(result.score)
+
+    def test_explicit_threshold_overrides_default(self):
+        result = score_rubric(
+            RUBRIC, {"来源可追": 2, "根因完整": 2, "可复用": 1}, threshold=1.0,
+        )
+        self.assertFalse(result.passed)
+        self.assertEqual(result.threshold, 1.0)
 
     def test_bad_shape_and_values_are_errors(self):
         with self.assertRaises(RubricError):

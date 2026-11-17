@@ -141,6 +141,20 @@ class SampleLifecycleCliTest(unittest.TestCase):
         self.assertEqual(failed.returncode, 1, failed.stderr)
         self.assertIn("failed_dimensions: 根因完整", failed.stdout)
 
+    def test_experiment_gate_rejects_wrong_object_type(self):
+        created = self.cli(
+            "sample", "new", "--id", "K-3", "--object-type", "diagnosis",
+            "--source", "https://example.com/issues/K-3",
+            "--rubric", json.dumps({"dimensions": ["来源可追"]}),
+        )
+        self.assertEqual(created.returncode, 0, created.stderr)
+        result = self.cli(
+            "experiment", "gate", "--target", "knowledge", "--sample", "K-3",
+            "--scores", json.dumps({"来源可追": 2}),
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("object_type", result.stderr)
+
     def test_experiment_gate_rejects_unimplemented_target(self):
         created = self.cli(
             "sample", "new", "--id", "K-2", "--object-type", "case",

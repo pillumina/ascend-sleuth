@@ -15,7 +15,7 @@ class RubricError(ValueError):
 @dataclass
 class RubricResult:
     passed: bool
-    score: float
+    score: Optional[float]
     threshold: float
     failed_dimensions: List[str]
     missing: List[str]
@@ -23,7 +23,7 @@ class RubricResult:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "passed": self.passed,
-            "score": round(self.score, 4),
+            "score": round(self.score, 4) if self.score is not None else None,
             "threshold": self.threshold,
             "failed_dimensions": list(self.failed_dimensions),
             "missing": list(self.missing),
@@ -75,9 +75,9 @@ def score_rubric(rubric: Any, scores: Any,
         if value == 0:
             failed_dimensions.append(name)
 
-    score = (sum(values) / (2 * len(values))) if values else 0.0
+    score = None if missing else (sum(values) / (2 * len(values)) if values else 0.0)
     passed = bool(
-        not missing and not failed_dimensions and score >= float(threshold)
+        score is not None and not failed_dimensions and score >= float(threshold)
     )
     return RubricResult(
         passed=passed, score=score, threshold=float(threshold),
