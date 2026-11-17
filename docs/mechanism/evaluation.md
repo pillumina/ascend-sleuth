@@ -240,7 +240,7 @@ S2 未命中有三种解释：路由错、缺 case、内容错。它只看到没
 
 | target | 改什么 | 评测面 | 端到端 evaluator | 授权 | 默认算法 |
 |---|---|---|---|---|---|
-| skill | skill 文本、步骤、流程 | golden + S2 + rubric | 已接（`arena`） | A2 | baseline |
+| skill | skill 文本、步骤、流程 | arena 配对门禁（golden/S2 旁路） | 已接（`arena`） | A2 | baseline |
 | knowledge | case/reference 内容 | rubric + 效用审计 | 未接（`rubric`） | A2 | baseline |
 | tooling | 工具路由、分支、重试 | replay + trace 工具使用 | 未接（`replay_trace`） | A2 | baseline |
 | harness | 调度与控制流 | 端到端回放 + 回归 | 未接（`end_to_end`） | A1 | baseline |

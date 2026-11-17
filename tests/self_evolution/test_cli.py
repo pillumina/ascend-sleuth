@@ -358,6 +358,8 @@ class IngestCliTest(unittest.TestCase):
             self.assertEqual(record["target_component"], "triage:branch")
             self.assertEqual(record["summary"], "manual test patch")
             self.assertEqual(record["algorithm"], "baseline")
+            self.assertEqual(record["eval_profile_id"], "arena")
+            self.assertTrue(record["eval_ready"])
 
     def test_experiment_propose_rejects_invalid_patch_fields(self):
         with tempfile.TemporaryDirectory() as td:

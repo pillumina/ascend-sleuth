@@ -9,7 +9,7 @@ from .base import TargetSpec
 TARGETS: Dict[str, TargetSpec] = {
     "skill": TargetSpec(
         id="skill", change_surface="skill text / flow / prompt",
-        eval_profile="golden + s2 + rubric", eval_profile_id="arena", authority="A2",
+        eval_profile="arena 配对门禁（golden/S2 旁路）", eval_profile_id="arena", authority="A2",
         allowed_algorithms=("baseline", "gepa"), default_algorithm="baseline",
         description="改 skill 的文本、步骤与流程；评测走 golden/S2/rubric",
     ),
