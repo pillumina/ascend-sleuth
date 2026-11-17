@@ -113,7 +113,13 @@ def _gates(root: Path) -> Dict[str, Any]:
 
 
 def _last_skill_exec(root: Path) -> Dict[str, Any]:
-    path = root / EXEC_LOG_REL
+    # exec-log 是跨 worktree 共享的运行时件：worktree 里跑 run/brief 也要读主检出那份。
+    # 无 git 的临时目录/测试退化为 root。
+    try:
+        from exec_log_path import resolve as _resolve_exec_log
+        path, where = _resolve_exec_log(root)
+    except (ImportError, OSError):
+        path, where = root / EXEC_LOG_REL, "fallback"
     if not path.exists():
         return _missing(path)
     try:
@@ -136,6 +142,7 @@ def _last_skill_exec(root: Path) -> Dict[str, Any]:
     return {
         "available": True,
         "path": str(path),
+        "where": where,
         "count": len(records),
         "last": summary,
     }

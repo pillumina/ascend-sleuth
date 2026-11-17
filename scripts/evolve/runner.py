@@ -8,7 +8,6 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .adapters.metrics import load_metrics
 from .policy import policy_hash
 from .records import ConclusionStore
 from .samples import SampleStore
@@ -122,7 +121,7 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
         actions.append("no_action: nothing required this week")
 
     if metrics is None:
-        metrics = load_metrics(root_path)
+        metrics = {"available": False, "reason": "metrics not loaded by caller"}
     return {
         "policy_hash": policy_hash(policy),
         "counts": counts,

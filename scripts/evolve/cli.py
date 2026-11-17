@@ -28,6 +28,7 @@ from .contracts import (
 )
 from .adapters import AdapterError
 from .adapters.arena import counts_from_files
+from .adapters.metrics import load_metrics
 from .adapters.replay import collect as replay_collect
 from .adapters.replay import prepare as replay_prepare
 from .adapters.issues import ingest_issues
@@ -552,7 +553,7 @@ def cmd_run(args: argparse.Namespace) -> int:
     base = _evolve_base(args)
     try:
         policy = _policy_for(args)
-        plan = issue_plan(root, base, policy)
+        plan = issue_plan(root, base, policy, metrics=load_metrics(root))
     except (PolicyError, StoreError, RecordError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -585,7 +586,10 @@ def cmd_brief(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     try:
-        plan = issue_plan(Path(args.root) if args.root else Path.cwd(), base, policy)
+        plan = issue_plan(
+            Path(args.root) if args.root else Path.cwd(), base, policy,
+            metrics=load_metrics(Path(args.root) if args.root else Path.cwd()),
+        )
     except (StoreError, RecordError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

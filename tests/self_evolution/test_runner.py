@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from evolve.adapters.metrics import load_metrics  # noqa: E402
 from evolve.policy import load_policy  # noqa: E402
 from evolve.records import ConclusionStore  # noqa: E402
 from evolve.runner import issue_plan, render_plan  # noqa: E402
@@ -79,7 +80,7 @@ class IssuePlanTest(unittest.TestCase):
 
     def test_metrics_block_reads_fixture(self):
         write_metrics(self.root)
-        plan = self.plan()
+        plan = issue_plan(self.root, self.base, self.policy, metrics=load_metrics(self.root))
         self.assertEqual(plan["metrics"]["latest_period"]["period"], "2026-W36-live")
         self.assertEqual(plan["metrics"]["sessions_total"], 11)
         self.assertEqual(plan["metrics"]["tier2_hit"], 4)
@@ -87,7 +88,7 @@ class IssuePlanTest(unittest.TestCase):
         self.assertEqual(plan["metrics"]["entry_usage"]["active_cases"], 1)
 
     def test_metrics_missing_is_unavailable_not_zero(self):
-        plan = self.plan()
+        plan = issue_plan(self.root, self.base, self.policy, metrics=load_metrics(self.root))
         self.assertFalse(plan["metrics"]["timeline"]["available"])
         self.assertIsNone(plan["metrics"]["sessions_total"])
 

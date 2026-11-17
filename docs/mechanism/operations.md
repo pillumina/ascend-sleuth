@@ -126,9 +126,12 @@ flowchart TD
   C -->|field 不足| E[sample ingest-issues 或 sample new]
   C -->|test 不足/失效| F[absorb → draw-test]
   C -->|无结论| G[replay → judge-stats]
-  C -->|accept| H[record → A2 批 PR]
-  C -->|weak/reject| I[停：补样本或记证据不足]
-  H --> J[人工 review / 合入]
+  C -->|core 回归不足| H[补 core regression]
+  G --> I{判定}
+  I -->|accept| J[record → A2 批 PR]
+  I -->|weak/reject| K[停：补样本或记证据不足]
+  J --> L[人工 review / 合入]
+  H --> B
 ```
 
 skill 所有人可调用；它只给流程与建议，`review/promote/record/merge` 仍由 policy、CODEOWNERS、分支保护和人工审批约束。阅读 `run`/`brief` 是只读入口。
