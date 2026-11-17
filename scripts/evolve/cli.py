@@ -605,6 +605,7 @@ def cmd_experiment_propose(args: argparse.Namespace) -> int:
         patch.validate()
         profile = resolve_evaluator(target)[1]
         record = asdict(patch)
+        record["execution"] = getattr(optimizer, "execution", "manual")
         record["eval_profile_id"] = profile.id
         record["eval_gate"] = profile.gate
         record["eval_ready"] = profile.implemented

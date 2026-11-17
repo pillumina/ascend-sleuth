@@ -428,6 +428,7 @@ class IngestCliTest(unittest.TestCase):
             self.assertEqual(record["target_component"], "triage:branch")
             self.assertEqual(record["summary"], "manual test patch")
             self.assertEqual(record["algorithm"], "baseline")
+            self.assertEqual(record["execution"], "manual")
             self.assertEqual(record["eval_profile_id"], "arena")
             self.assertTrue(record["eval_ready"])
 
