@@ -256,7 +256,7 @@ python3 scripts/evolve.py experiment gate --target knowledge --sample K-1 \
 
 通过退出 0，拒绝退出 1，输入或 evaluator 未接退出 2。该命令只判一个已有 rubric 的样本，不替代双标、不生成 rubric。
 
-`targets/registry.py` 只允许 target 白名单内的算法；未注册的 GEPA/AEL 等名字不会静默回退。加一个 target 或算法各改一个静态注册表，主循环、评测协议和记录格式不动。`experiment propose --target skill --component <组件>` 会调用当前 optimizer 生成一个 Patch 并写本地 `experiments.jsonl`；`experiment records` 读取最近记录。baseline 仍是人工提案，不会自动改文件或合入。
+`targets/registry.py` 只允许 target 白名单内的算法；未注册的算法不会静默回退。GEPA 适配器已注册在 `algorithms/gepa.py`，只接 `skill` target；它不在 CLI 里伪造 evaluator/model，调用方必须在 `budget.gepa` 提供 `seed_candidate`、`trainset`、`evaluator`、`task_lm`、`reflection_lm`，并安装 `gepa`（Python ≥3.10）。未安装或配置缺失会报可照做的错误，不产生 Patch。加一个 target 或算法各改一个静态注册表，主循环、评测协议和记录格式不动。`experiment propose --target skill --component <组件>` 会调用当前 optimizer 生成一个 Patch 并写本地 `experiments.jsonl`；`experiment records` 读取最近记录。baseline 仍是人工提案，不会自动改文件或合入。
 
 ## 4 边界与失败模式
 
