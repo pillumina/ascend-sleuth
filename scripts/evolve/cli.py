@@ -609,7 +609,7 @@ def cmd_experiment_propose(args: argparse.Namespace) -> int:
         record["eval_ready"] = profile.implemented
         record["at"] = now_iso()
         ExperimentStore.for_base(_evolve_base(args)).append(record)
-    except (PolicyError, AdapterError, StoreError, RecordError, ContractError, ValueError, TypeError) as exc:
+    except (PolicyError, AdapterError, StoreError, RecordError, ContractError, ValueError, TypeError, RuntimeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except OSError as exc:

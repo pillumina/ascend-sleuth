@@ -33,7 +33,7 @@ class TargetRegistryTest(unittest.TestCase):
 
     def test_unregistered_algorithm_is_rejected(self):
         with self.assertRaises(ValueError):
-            resolve_optimizer("skill", "gepa")
+            resolve_optimizer("skill", "magic")
 
     def test_algorithm_not_allowed_for_target_is_rejected(self):
         with self.assertRaises(ValueError):
