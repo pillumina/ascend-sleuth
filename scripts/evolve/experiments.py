@@ -76,6 +76,12 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
         raise ExperimentError("accept requires candidate.score > baseline.score")
     spec = get_target(target)
     profile_id = record.get("eval_profile_id") or spec.eval_profile_id
+    allowed_profiles = {spec.eval_profile_id, "subagent_judge"}
+    if profile_id not in allowed_profiles:
+        raise ExperimentError(
+            f"eval_profile_id {profile_id!r} is not allowed for target {target!r}; "
+            f"allowed: {sorted(allowed_profiles)}"
+        )
     profile = get_eval_profile(profile_id)
     ready_input = record.get("eval_ready", profile.implemented)
     if not isinstance(ready_input, bool):
