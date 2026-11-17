@@ -4,10 +4,13 @@
 读数函数暴露出来。完整 CLI 报告仍走旧脚本（它们有各自的三态退出码）。
 """
 
+import json
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Dict
 
-from . import load_legacy
+from . import AdapterError, load_legacy
 
 
 def evolution(root: Any) -> Dict[str, Any]:
@@ -26,3 +29,28 @@ def metrics_structure(root: Any):
     返回旧脚本的原样元组 ``(structural, notes)``；容量判据与越界规则不在包装层。
     """
     return load_legacy("metrics_health").collect_structural_safe(Path(root).resolve())
+
+
+def metrics(root: Any) -> Dict[str, Any]:
+    """``metrics_health.py --json`` 的只读摘要；判据仍由旧脚本负责。"""
+    script = Path(__file__).resolve().parents[2] / "metrics_health.py"
+    if not script.exists():
+        return {"available": False, "error": f"missing {script.name}"}
+    try:
+        proc = subprocess.run(
+            [sys.executable, str(script), "--json", "--root", str(Path(root).resolve())],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=120,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"available": False, "error": str(exc)}
+    if not proc.stdout.strip():
+        return {"available": False, "error": proc.stderr.strip() or "empty health output"}
+    try:
+        payload = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        return {"available": False, "error": f"invalid health JSON: {exc}"}
+    if not isinstance(payload, dict):
+        return {"available": False, "error": "health output must be an object"}
+    payload["available"] = True
+    return payload

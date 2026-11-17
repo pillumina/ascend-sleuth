@@ -109,6 +109,7 @@
 | 跑一次体检 | `python3 scripts/evolution_health.py` |
 | 评审一项改进 | `python3 scripts/ev_measure.py <卡号> --run` |
 | 查看算法适配器 | `python3 scripts/evolve.py experiment list`；按 target 解析用 `experiment resolve --target skill` |
+| 看完整 metrics 体检 | `python3 scripts/evolve.py health --json`（只读；`--check` 有 fail 退出 1，broken 退出 2；不带 `--check` 的读数命令仍退出 0，与 `metrics_health.py` 一致） |
 | 记录一个 baseline 提案 | `python3 scripts/evolve.py experiment propose --target skill --component <组件> --summary <一句话>`（只写本地实验记录，不跑模型、不合入） |
 | 查看本地实验记录 | `python3 scripts/evolve.py experiment records --limit 10` |
 | 全库观测轮 | `/skill:self-evolve` |
