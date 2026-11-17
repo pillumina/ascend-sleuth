@@ -34,6 +34,7 @@ from .algorithms.registry import algorithm_ids, get_algorithm
 from .targets.registry import get_target, resolve_evaluator, resolve_optimizer, target_ids
 from .adapters.replay import collect as replay_collect
 from .adapters.replay import prepare as replay_prepare
+from .adapters.health import metrics as health_metrics
 from .adapters.issues import ingest_issues
 from .adapters.s2 import import_s2_samples
 from .decision import Decision, DecisionResult, decide
@@ -724,6 +725,26 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+# ---------------------------------------------------------------- health
+def cmd_health(args: argparse.Namespace) -> int:
+    payload = health_metrics(Path(args.root) if args.root else Path.cwd())
+    if args.json:
+        print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        if not payload.get("available"):
+            print(f"metrics_health: unavailable ({payload.get('error', 'unknown')})")
+        else:
+            print(f"metrics_health: {payload.get('check_verdict', 'unknown')}")
+            print(f"fail_count: {payload.get('fail_count', 0)}")
+            for finding in (payload.get("findings") or [])[:5]:
+                print(f"- {finding.get('face', '')}: {finding.get('text', '')}")
+    if not payload.get("available"):
+        return 1
+    if args.check and int(payload.get("fail_count") or 0) > 0:
+        return 1
+    return 0
+
+
 # ---------------------------------------------------------------- brief
 def _format_counts(counts: Dict[str, int]) -> str:
     if not counts:
@@ -1033,6 +1054,12 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
     run.add_argument("--json", action="store_true", help="输出机器可读 JSON")
     run.set_defaults(func=cmd_run)
+
+    health = sub.add_parser("health", help="metrics 体检只读摘要")
+    health.add_argument("--root", default=None)
+    health.add_argument("--json", action="store_true")
+    health.add_argument("--check", action="store_true", help="有 fail 时退出 1")
+    health.set_defaults(func=cmd_health)
 
     brief = sub.add_parser("brief", help="样本计数与最近结论")
     brief.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")

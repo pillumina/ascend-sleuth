@@ -72,6 +72,15 @@ class HelpAndPolicyCliTest(unittest.TestCase):
             self.assertIn("not found", result.stderr)
 
 
+class HealthCliTest(unittest.TestCase):
+    def test_health_json_is_machine_readable(self):
+        result = run_cli("health", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertTrue(payload["available"])
+        self.assertIn("check_verdict", payload)
+
+
 class SampleLifecycleCliTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
