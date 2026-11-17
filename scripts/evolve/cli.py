@@ -738,8 +738,12 @@ def cmd_health(args: argparse.Namespace) -> int:
             print(f"fail_count: {payload.get('fail_count', 0)}")
             for finding in (payload.get("findings") or [])[:5]:
                 print(f"- {finding.get('face', '')}: {finding.get('text', '')}")
+            for item in payload.get("broken") or []:
+                print(f"- broken: {item}")
     if not payload.get("available"):
         return 1
+    if payload.get("broken"):
+        return 2
     if args.check and int(payload.get("fail_count") or 0) > 0:
         return 1
     return 0

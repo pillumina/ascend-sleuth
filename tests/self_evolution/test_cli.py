@@ -73,6 +73,15 @@ class HelpAndPolicyCliTest(unittest.TestCase):
 
 
 class HealthCliTest(unittest.TestCase):
+    def test_health_check_broken_metrics_exits_2(self):
+        with tempfile.TemporaryDirectory() as td:
+            metrics = Path(td) / "metrics"
+            metrics.mkdir()
+            (metrics / "gates.yaml").write_text("gates: [", encoding="utf-8")
+            result = run_cli("health", "--root", td, "--check")
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("broken:", result.stdout)
+
     def test_health_json_is_machine_readable(self):
         result = run_cli("health", "--json")
         self.assertEqual(result.returncode, 0, result.stderr)
