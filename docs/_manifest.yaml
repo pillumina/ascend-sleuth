@@ -171,9 +171,6 @@ skills:
     scope: 维护与演进
   - name: self-evolve
     scope: 维护与演进
-  - name: evolve-experiment
-    scope: 维护与演进
-    note: 用当前 agent 的 subagent 编排跑 baseline/candidate 对照，不依赖外部 CLI；记录后停，不自动合入
   - name: evolve-check
     scope: 维护与演进
     note: 内部协议，由内容流程收尾自动转接，不单独调用
