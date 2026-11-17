@@ -492,6 +492,18 @@ class PurposeLifecycleTest(SampleStoreTestBase):
         self.assertEqual(len(refilled), 4)
         self.assertEqual(len([s for s in self.store.read_all() if s.purpose == "test" and s.status == "active"]), 4)
 
+    def test_draw_test_reduces_targets_after_existing_test_samples(self):
+        for i in range(6):
+            self.create(id=f"S-{i}", source=f"https://example.com/{i}",
+                        expected={"namespace": "inference/vllm-ascend", "category": "interrupt"})
+            self.store.review(f"S-{i}", approve=True)
+            self.store.promote(f"S-{i}", to="core")
+        self.store.draw_test(size=3)
+        drawn = self.store.draw_test(
+            size=4, strata={"inference/vllm-ascend/interrupt": 4},
+        )
+        self.assertEqual(len(drawn), 4)
+
     def test_draw_test_returns_fewer_when_pool_is_small(self):
         self.active("S-1", origin="core")
         self.assertEqual([item.id for item in self.store.draw_test(size=4)], ["S-1"])

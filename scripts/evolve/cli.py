@@ -372,7 +372,7 @@ def cmd_sample_draw_test(args: argparse.Namespace) -> int:
             size=size, method=method, strata=policy["samples"].get("strata") or {},
             actor=args.actor, reason=args.reason or "",
         )
-    except StoreError as exc:
+    except (StoreError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     print(f"drawn: {len(samples)}")

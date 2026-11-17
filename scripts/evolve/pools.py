@@ -122,9 +122,11 @@ def stratum_of(sample: Any) -> str:
     expected = _field(sample, "expected") or {}
     namespace = str(expected.get("namespace") or "").strip()
     category = str(expected.get("category") or "").strip()
-    if namespace and category:
-        return f"{namespace}/{category}"
-    return namespace or category or "unknown"
+    fault_class = str(expected.get("fault_class") or "").strip()
+    base = f"{namespace}/{category}" if namespace and category else (namespace or category)
+    if base and fault_class:
+        return f"{base}/{fault_class}"
+    return base or "unknown"
 
 
 def stratify(samples: Iterable[Any]) -> Dict[str, List[Any]]:

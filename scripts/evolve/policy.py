@@ -70,7 +70,7 @@ DEFAULTS: Dict[str, Any] = {
 }
 
 # 自由形态映射：键由部署决定，值仍逐项校验。
-_FREE_FORM = {"autonomy.overrides"}
+_FREE_FORM = {"autonomy.overrides", "samples.strata", "experiment.budget"}
 
 
 class PolicyError(ValueError):

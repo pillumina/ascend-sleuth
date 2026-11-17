@@ -45,6 +45,16 @@ class PolicyLoadTest(unittest.TestCase):
         self.assertEqual(policy["decision"]["alpha"], 0.2)
         self.assertEqual(policy["decision"]["method"], "paired_binary")
         self.assertEqual(policy["samples"], DEFAULTS["samples"])
+        self.assertEqual(policy["experiment"], DEFAULTS["experiment"])
+
+    def test_free_form_strata_and_budget_are_allowed(self):
+        path = self.write({
+            "samples": {"strata": {"inference/vllm-ascend/interrupt": 2}},
+            "experiment": {"budget": {"rollouts": 30}},
+        })
+        policy = load_policy(path)
+        self.assertEqual(policy["samples"]["strata"]["inference/vllm-ascend/interrupt"], 2)
+        self.assertEqual(policy["experiment"]["budget"]["rollouts"], 30)
 
     def test_top_level_unknown_key_fails(self):
         path = self.write({**DEFAULTS, "unknown": 1})

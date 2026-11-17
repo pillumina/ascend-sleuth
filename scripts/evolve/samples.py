@@ -32,6 +32,7 @@ from .pools import (
     check_transition,
     source_group,
     split_test,
+    stratum_of,
 )
 
 EVOLVE_DIR = Path(".s2-replay") / "evolve"
@@ -472,8 +473,25 @@ class SampleStore:
         ]
         if len(existing) >= size:
             return sorted(existing, key=lambda sample: sample.id)
+        remaining = size - len(existing)
+        targets = dict(strata or {})
+        if targets:
+            seen = {}
+            for sample in existing:
+                key = stratum_of(sample)
+                seen[key] = seen.get(key, 0) + 1
+            targets = {
+                key: max(0, target - seen.get(key, 0))
+                for key, target in targets.items()
+            }
+            # 已有 test 覆盖了部分层后，配额之和不能超过剩余槽位；超出时按缺口
+            # 从大到小截断，避免 draw_test 在“补一层”时整体报错。
+            while sum(targets.values()) > remaining:
+                key = max(targets, key=lambda item: (targets[item], item))
+                targets[key] -= 1
+            targets = {key: value for key, value in targets.items() if value}
         selected = split_test(
-            self.read_all(), size=size - len(existing), method=method, strata=strata,
+            self.read_all(), size=remaining, method=method, strata=targets,
         )
         drawn: List[Sample] = []
         for sample in selected:
