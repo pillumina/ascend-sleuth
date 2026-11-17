@@ -158,6 +158,9 @@ skills:
     scope: 知识沉淀
   - name: issue-ingest
     scope: 知识沉淀
+  - name: eval-ingest
+    scope: 维护与演进
+    note: 评测集补充入口：从 GitHub/本地 issue 建 candidate，补答案、复核入池；不产 case、不自动 active
   - name: reference-ingest
     scope: 知识沉淀
   # internal: true = 项目自用、不面向使用者：不进 README 名单，也不进"共 N 个"的计数。

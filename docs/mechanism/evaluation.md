@@ -72,7 +72,7 @@
 
 #### 3.3.1 从 GitHub issue 补诊断候选
 
-维护者缺 field 评估样本时，先从上游 closed issue 建候选：
+维护者缺 field 评估样本时，走 `/skill:eval-ingest` 或底层命令；先从上游 closed issue 建候选：
 
 ```bash
 python3 scripts/evolve.py sample ingest-issues --repo vllm-project/vllm-ascend \

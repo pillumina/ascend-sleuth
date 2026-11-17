@@ -57,25 +57,9 @@ flowchart TD
 
 skill 可以被所有人调用；它只做流程与建议，不授予写权限。`sample review/promote`、`judge --record`、合入仍由 policy、CODEOWNERS、分支保护和人工审批约束。
 
-## 评测集补充：也是本 skill 的子流程
+## 评测集补充：独立入口 `/skill:eval-ingest`
 
-用户说“补评测集/从 issue 补样本”时，入口仍是本 skill；`issue-ingest` 只负责 case 草稿，不负责评估样本。交互顺序：
-
-```mermaid
-flowchart TD
-  A[问 repo / labels / limit / dry-run] --> B[ingest-issues --dry-run]
-  B --> C{候选列表}
-  C -->|改参数| A
-  C -->|确认| D[ingest-issues 正式执行]
-  D --> E[set-answer 补 expected]
-  E --> F[check → review]
-  F -->|通过| G[active/field → draw-test]
-  F -->|拒绝| H[rejected]
-```
-
-完整来源协议与过滤规则见 [evaluation.md](../../docs/mechanism/evaluation.md)。
-
-交互只问四类事：哪个 repo、哪些 label、取多少条、先 dry-run 还是直接导。其余由脚本做：拉元数据、PR/已处理/label/评论/标题过滤、按需取 body、查重、state 幂等。维护者只对候选做“补答案、通过/拒绝”；不写 prompt、不手工拼 YAML。
+补评测集不塞进本 skill。用户说“补评测集/补 field 样本”时，转 `/skill:eval-ingest`：它负责 repo/labels/limit、dry-run、ingest、set-answer、review、draw-test。本 skill 只在 `run` 的 `next_actions` 出现 field 不足时提示转过去，不重复 issue 过滤与答辩流程。
 
 ## 一、入口分流（先分清用户要什么，再决定跑不跑本 skill）
 

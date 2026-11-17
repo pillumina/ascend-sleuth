@@ -105,7 +105,7 @@
 | 批处理、升格、去重、结算、算分、退休 | `/skill:knowledge-groom` |
 | 组装本期读数 | `python3 scripts/metrics_snapshot.py --kind live`，人复核后写 `metrics/timeline.d/` |
 | 批量拉取上游 issue | `/skill:issue-ingest` |
-| 补 issue 评测样本 | `python3 scripts/evolve.py sample ingest-issues --repo <repo> [--dry-run]`；补答案用 `sample set-answer`，审候选用 `sample review` |
+| 补 issue 评测样本 | `/skill:eval-ingest`（底层 `sample ingest-issues`；补答案用 `sample set-answer`，审候选用 `sample review`） |
 | 跑一次体检 | `python3 scripts/evolution_health.py` |
 | 评审一项改进 | `python3 scripts/ev_measure.py <卡号> --run` |
 | 全库观测轮 | `/skill:self-evolve` |
