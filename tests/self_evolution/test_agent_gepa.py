@@ -46,6 +46,13 @@ class AgentGepaTest(unittest.TestCase):
         action = drain(session, {"S-1": 0.0})
         self.assertEqual(action, {"kind": "stop", "reason": "budget"})
 
+    def test_budget_checked_before_pending_sample(self):
+        session = GepaSession("seed", ["S-1", "S-2"], max_metric_calls=1, population=3)
+        action = session.next_action()
+        self.assertEqual(action["kind"], "evaluate")
+        session.record_evaluation("seed", "S-1", 0.0)
+        self.assertEqual(session.next_action(), {"kind": "stop", "reason": "budget"})
+
     def test_pareto_keeps_non_dominated(self):
         session = GepaSession("seed", ["S-1", "S-2"], max_metric_calls=8, population=3)
         drain(session, {"S-1": 1.0, "S-2": 0.0})

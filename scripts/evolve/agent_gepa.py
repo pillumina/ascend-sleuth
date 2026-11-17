@@ -68,6 +68,8 @@ class GepaSession:
 
     # -- actions ---------------------------------------------------------
     def next_action(self) -> Dict[str, Any]:
+        if self.calls >= self.max_metric_calls:
+            return {"kind": "stop", "reason": "budget"}
         incomplete = [c for c in self.candidates if len(c.scores) < len(self.samples)]
         if incomplete:
             candidate = incomplete[0]
@@ -76,8 +78,6 @@ class GepaSession:
                 "kind": "evaluate", "candidate_id": candidate.id,
                 "skill": candidate.skill, "sample_id": missing[0],
             }
-        if self.calls >= self.max_metric_calls:
-            return {"kind": "stop", "reason": "budget"}
         best = self.best()
         if best is not None and all(score >= 1.0 for score in best.scores.values()):
             return {"kind": "stop", "reason": "perfect_score"}
@@ -192,6 +192,10 @@ class GepaSession:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "GepaSession":
+        missing = [key for key in ("samples", "max_metric_calls", "population")
+                   if key not in data]
+        if missing:
+            raise GepaError("state missing: " + ", ".join(missing))
         candidates = [Candidate.from_dict(c) for c in data.get("candidates") or []]
         if not candidates:
             raise GepaError("state has no candidates")

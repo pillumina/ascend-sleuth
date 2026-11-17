@@ -79,5 +79,7 @@ samples
 ## 与其他入口的关系
 
 - `self-evolve` 负责发现改什么；本 skill 负责验证一个候选 skill；
+- 本 skill 是一次 reflection 对照；要候选池/Pareto/预算循环用 `evolve-gepa`；
+- 官方 `gepa` 库走 `GepaOptimizer`，需要同步 task_lm；不要把 subagent 实验记成官方库结果；
 - `eval-ingest` 负责补样本；
 - `gepa` 适配器是可选 proposer；没有 GEPA 库时，本 skill 的 reflection 仍是合法实验，但算法名写 `subagent-reflection`，不要写成 `gepa`。
