@@ -36,6 +36,11 @@ class AgentGepaTest(unittest.TestCase):
         self.assertEqual(result["best_score"], 1.0)
         self.assertEqual(result["calls"], 4)
 
+    def test_perfect_seed_stops_without_reflection(self):
+        session = GepaSession("seed", ["S-1"], max_metric_calls=4, population=3)
+        action = drain(session, {"S-1": 1.0})
+        self.assertEqual(action, {"kind": "stop", "reason": "perfect_score"})
+
     def test_budget_stops_without_new_candidate(self):
         session = GepaSession("seed", ["S-1"], max_metric_calls=1, population=3)
         action = drain(session, {"S-1": 0.0})

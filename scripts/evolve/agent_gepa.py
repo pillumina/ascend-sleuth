@@ -78,6 +78,9 @@ class GepaSession:
             }
         if self.calls >= self.max_metric_calls:
             return {"kind": "stop", "reason": "budget"}
+        best = self.best()
+        if best is not None and all(score >= 1.0 for score in best.scores.values()):
+            return {"kind": "stop", "reason": "perfect_score"}
         if len(self.candidates) >= self.population:
             return {"kind": "stop", "reason": "population"}
         parent = self._select_parent()
