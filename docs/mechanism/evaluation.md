@@ -112,7 +112,7 @@ flowchart TD
 
 总判定样本 = core 测试集 4 + field 评估集 9/26/46，即 13/30/50；13 = 9 + 4，30 = 26 + 4，50 = 46 + 4。core 回归集单独算，不进这个总数。
 
-`stratum` 是 case 子类型，不等于 `object_type`：它来自样本 `expected.namespace/category`，例如 `inference/vllm-ascend/interrupt`、`training/verl/precision`。`samples.strata` 配每层 test 目标；`split-test` 按目标层抽，目标之和不能超过 test 总数，剩余名额再从其他样本补。`run`/`brief` 按 stratum 报 field 评估、core test 与缺口。issue label 不是类型真值；维护者补 `expected` 后才产生 stratum。
+`stratum` 是 case 子类型，不等于 `object_type`：它来自样本 `expected.namespace/category`，例如 `inference/vllm-ascend/interrupt`、`training/verl/precision`；可选加 `fault_class`（hardware / software / coupled / unknown）。`samples.strata` 配每层 test 目标；`split-test` 按目标层抽，目标之和不能超过 test 总数，剩余名额再从其他样本补。`run`/`brief` 按 stratum 报 field 评估、core test 与缺口。issue label 不是类型真值；维护者补 `expected` 后才产生 stratum。
 
 ### 3.4 规模与刷新
 
@@ -231,6 +231,10 @@ S2 未命中有三种解释：路由错、缺 case、内容错。它只看到没
 评估台只做回放对照与配对比较，不替代人闸：高风险的 dual 级改动结论为 `accept` 之后，仍按 `kb/high-risk` 双签送人审。它的无回归范围只到本池（影响记录里记 `no_regression_scope: arena-pool-only`）；golden 全量无回归是另一步，由 `scripts/replay_golden.py` 逐条跑，要模型，不在 `--gate` 内。
 
 `--self-test` 用合成样本复现三种结论，CI 跑它（`kb-checks` 的 `arena-gate-rule`）；判据写坏、只会判 `accept` 时 CI 就红。
+
+### 3.8 算法适配器
+
+算法只做提案者，不做判定、不直接写库、不合入。`scripts/evolve/ports.py` 定义 `Optimizer`，`scripts/evolve/algorithms/registry.py` 是静态注册表；当前只有 `baseline`。`policy.experiment.algorithm` 选算法，`Version.algorithm`/`algorithm_version` 记身份，`budget`/`seed` 记实验条件。GEPA/AEL/SkillProx/EvolveMem 只在后续的实验适配器里接入，一次只接一个组件；没有动态插件加载。
 
 ## 4 边界与失败模式
 

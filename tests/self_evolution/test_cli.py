@@ -343,6 +343,12 @@ class IngestCliTest(unittest.TestCase):
             state = json.loads((Path(td) / "ingest-state.json").read_text(encoding="utf-8"))
             self.assertIn("local/o/r/evaluation", state["sources"])
 
+    def test_experiment_list_marks_policy_algorithm(self):
+        with tempfile.TemporaryDirectory() as td:
+            result = run_cli("experiment", "list", "--root", td)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("* baseline", result.stdout)
+
     def test_unknown_source_exits_2(self):
         with tempfile.TemporaryDirectory() as td:
             result = run_cli(
@@ -511,6 +517,8 @@ class JudgeCliTest(unittest.TestCase):
                 "candidate_kb": "9f2c1a",
                 "candidate": "4d8e0b",
                 "model": "deepseek-flash/default",
+                "algorithm": "baseline",
+                "algorithm_version": "manual",
             })
             self.assertTrue(record["at"])
             self.assertEqual(record["sample"], "S-1")
@@ -552,7 +560,9 @@ class JudgeCliTest(unittest.TestCase):
                                 "--record", "--root", td, "--versions", str(path))
             self.assertEqual(result.returncode, 0, result.stderr)
             record = ConclusionStore.for_root(Path(td)).read()[0]
-            self.assertEqual(record["versions"], versions)
+            expected_versions = dict(versions)
+        expected_versions.update({"algorithm": "baseline", "algorithm_version": "manual"})
+        self.assertEqual(record["versions"], expected_versions)
 
     def test_record_requires_versions(self):
         with tempfile.TemporaryDirectory() as td:

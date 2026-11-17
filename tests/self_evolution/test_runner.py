@@ -113,7 +113,7 @@ class IssuePlanTest(unittest.TestCase):
     def test_json_plan_has_policy_hash(self):
         plan = self.plan()
         self.assertEqual(len(plan["policy_hash"]), 64)
-        self.assertEqual(set(plan), {"policy_hash", "counts", "metrics", "next_actions", "warnings"})
+        self.assertEqual(set(plan), {"policy_hash", "algorithm", "counts", "metrics", "next_actions", "warnings"})
 
 
 class RunCliTest(unittest.TestCase):

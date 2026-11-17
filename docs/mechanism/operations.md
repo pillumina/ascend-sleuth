@@ -108,6 +108,7 @@
 | 补 issue 评测样本 | `/skill:eval-ingest`（底层 `sample ingest-issues`；补答案用 `sample set-answer`，审候选用 `sample review`） |
 | 跑一次体检 | `python3 scripts/evolution_health.py` |
 | 评审一项改进 | `python3 scripts/ev_measure.py <卡号> --run` |
+| 查看算法适配器 | `python3 scripts/evolve.py experiment list` |
 | 全库观测轮 | `/skill:self-evolve` |
 
 只跑新增样本，不每周跑全量；判定那一次才跑全量。读数包含六项：可评样本数、最近一次全量回放的命中率、单次回放成本、距上次收尾检查的天数、未执行的检查命令数、内容体检的越界项。没测过的项写「未测」，不补零。

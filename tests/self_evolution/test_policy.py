@@ -74,6 +74,7 @@ class PolicyLoadTest(unittest.TestCase):
             {"samples": {"split": "random"}},
             {"cost": {"primary_dimension": "money"}},
             {"rubrics": {"threshold": 1.5}},
+            {"experiment": {"algorithm": "magic"}},
         ]
         for index, data in enumerate(cases):
             with self.subTest(data=data):

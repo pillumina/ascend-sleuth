@@ -157,6 +157,7 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
         metrics = {"available": False, "reason": "metrics not loaded by caller"}
     return {
         "policy_hash": policy_hash(policy),
+        "algorithm": ((policy.get("experiment") or {}).get("algorithm") or "baseline"),
         "counts": counts,
         "metrics": metrics,
         "next_actions": actions,
@@ -169,6 +170,7 @@ def render_plan(plan: Dict[str, Any]) -> str:
     counts = plan.get("counts") or {}
     lines = [
         f"policy_hash: {plan.get('policy_hash', '')}",
+        f"algorithm: {plan.get('algorithm', 'baseline')}",
         (
             "samples: {total} (candidate={candidate} active={active} "
             "field={field} core={core} test={test})"

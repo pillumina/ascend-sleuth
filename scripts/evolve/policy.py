@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
+from .algorithms.registry import ALGORITHMS
 from .decision import DECISION_METHODS
 from .metrics import DEFAULT_METRICS
 
@@ -60,6 +61,11 @@ DEFAULTS: Dict[str, Any] = {
         "reference_version": "ref-v1",
         "threshold": 0.7,
         "double_label": 10,
+    },
+    "experiment": {
+        "algorithm": "baseline",
+        "budget": {},
+        "seed": 0,
     },
 }
 
@@ -210,6 +216,19 @@ def validate_policy(policy: Dict[str, Any]) -> None:
             _validate_number(cost.get(key), f"cost.{key}", errors)
         if _is_number(cost.get("epsilon")) and not (0 <= cost["epsilon"] <= 1):
             errors.append("cost.epsilon must be between 0 and 1")
+
+    experiment = policy.get("experiment")
+    if not isinstance(experiment, dict):
+        errors.append("experiment must be an object")
+    else:
+        if experiment.get("algorithm") not in ALGORITHMS:
+            errors.append(
+                f"experiment.algorithm must be one of {sorted(ALGORITHMS)}, "
+                f"got {experiment.get('algorithm')!r}"
+            )
+        if not isinstance(experiment.get("budget"), dict):
+            errors.append("experiment.budget must be an object")
+        _validate_int(experiment.get("seed"), "experiment.seed", errors, minimum=0)
 
     rubrics = policy.get("rubrics")
     if not isinstance(rubrics, dict):

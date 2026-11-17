@@ -29,6 +29,7 @@ from .contracts import (
 from .adapters import AdapterError
 from .adapters.arena import counts_from_files
 from .adapters.metrics import load_metrics
+from .algorithms.registry import algorithm_ids, get_algorithm
 from .adapters.replay import collect as replay_collect
 from .adapters.replay import prepare as replay_prepare
 from .adapters.issues import ingest_issues
@@ -552,6 +553,21 @@ def _print_decision(result: DecisionResult) -> None:
         print("outcome: unknown")
 
 
+# ---------------------------------------------------------------- experiment
+def cmd_experiment_list(args: argparse.Namespace) -> int:
+    try:
+        policy = _policy_for(args)
+    except PolicyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    configured = (policy.get("experiment") or {}).get("algorithm", "baseline")
+    for name in algorithm_ids():
+        algorithm = get_algorithm(name)
+        marker = "*" if name == configured else " "
+        print(f"{marker} {name}\t{getattr(algorithm, 'version', '')}\t{getattr(algorithm, 'scope', '')}")
+    return 0
+
+
 # ---------------------------------------------------------------- run
 def cmd_run(args: argparse.Namespace) -> int:
     root = Path(args.root) if args.root else Path.cwd()
@@ -828,6 +844,13 @@ def build_parser() -> argparse.ArgumentParser:
     replay_collect_cmd.add_argument("--root", default=".", help="检出根目录（默认 .）")
     replay_collect_cmd.add_argument("--report", required=True, help="评分报告输出路径")
     replay_collect_cmd.set_defaults(func=cmd_replay_collect)
+
+    experiment = sub.add_parser("experiment", help="算法适配器")
+    experiment_sub = experiment.add_subparsers(dest="experiment_command", required=True)
+    exp_list = experiment_sub.add_parser("list", help="列出注册算法与 policy 选择")
+    exp_list.add_argument("--root", default=".", help="策略根目录")
+    exp_list.add_argument("--policy", default=None, help="策略路径")
+    exp_list.set_defaults(func=cmd_experiment_list)
 
     run = sub.add_parser("run", help="维护者下一步计划（不跑模型/不写库）")
     run.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
