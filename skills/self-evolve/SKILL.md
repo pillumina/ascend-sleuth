@@ -25,6 +25,58 @@ disable-model-invocation: true
 
 用户下**内容目标**（"沉淀 vllm-ascend 的 closed issue""做 reference 沉淀"）→ **不触发本 skill**：路由到 issue-ingest / to-reference / to-postmortem 执行，其收尾自动 evolve-check。
 
+## 维护者入口：`evolve run` 与 `brief`
+
+维护者不直接拼 `sample/replay/judge` 命令；本 skill 先调 `python3 scripts/evolve.py run`（或 `brief`），按 `next_actions` 进入对应分支。`run` 只读、不跑模型、不写库、不合并。它同时读 `metrics/timeline.yaml`/`gates.yaml`/`skill-exec-log.yaml`/`entry-activity/<部署>.yaml`；缺文件标 unavailable，不补零。
+
+```mermaid
+flowchart TD
+  A[maintainer 触发 self-evolve] --> B[evolve run / brief]
+  B --> C{next_actions}
+  C -->|候选待审 / 缺答案| D[sample set-answer → sample review]
+  C -->|field 样本不足| E[sample ingest-issues 或手工 sample new]
+  C -->|test 未抽 / 失效| F[sample draw-test 或 absorb 后补齐]
+  C -->|尚无结论| G[replay prepare/collect → judge-stats]
+  C -->|有回归 / 结论不足| H[停：不产 PR，补样本或重跑]
+  D --> B
+  E --> D
+  F --> B
+  G --> I{判定}
+  I -->|accept| J[record 结论 → A2 批 PR]
+  I -->|weak/reject| H
+  J --> K[人工 review / 合入]
+```
+
+分支边界：
+
+- 没有 `gh auth`、issue 源不可达、state 损坏：停在读取，不写半份样本；报具体修法。
+- 候选没有答案：先 `set-answer`，再 `review`；ingest 不会把 issue 评论自动当答案。
+- test 退休或失效：先 `absorb`，再 `draw-test` 按剩余槽位补齐；不重复加满。
+- 判定 `weak_accept`/`insufficient`/`reject`：不产 PR，补样本、扩池或记证据不足。
+- `accept`：写 `judge --record`，A2 攒批；不自动合入。
+
+skill 可以被所有人调用；它只做流程与建议，不授予写权限。`sample review/promote`、`judge --record`、合入仍由 policy、CODEOWNERS、分支保护和人工审批约束。
+
+## 评测集补充：也是本 skill 的子流程
+
+用户说“补评测集/从 issue 补样本”时，入口仍是本 skill；`issue-ingest` 只负责 case 草稿，不负责评估样本。交互顺序：
+
+```mermaid
+flowchart TD
+  A[用户：补评测集] --> B[问 repo / labels / limit / 是否 dry-run]
+  B --> C[sample ingest-issues --dry-run]
+  C --> D{候选列表}
+  D -->|用户改参数| B
+  D -->|确认导入| E[sample ingest-issues 正式执行]
+  E --> F[逐个 set-answer 补 expected]
+  F --> G[sample check → sample review]
+  G -->|通过| H[active/field → 可抽 test]
+  G -->|拒绝| I[留 rejected，不进入评测池]
+  H --> J[draw-test / promote core]
+```
+
+交互只问四类事：哪个 repo、哪些 label、取多少条、先 dry-run 还是直接导。其余由脚本做：拉元数据、PR/已处理/label/评论/标题过滤、按需取 body、查重、state 幂等。维护者只对候选做“补答案、通过/拒绝”；不写 prompt、不手工拼 YAML。
+
 ## 一、入口分流（先分清用户要什么，再决定跑不跑本 skill）
 
 | 用户说 | 路由 | 演进如何发生 |

@@ -9,11 +9,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from evolve.policy import load_policy  # noqa: E402
 from evolve.records import ConclusionStore  # noqa: E402
 from evolve.runner import issue_plan, render_plan  # noqa: E402
 from evolve.samples import SampleStore  # noqa: E402
+from metrics_fixture import write_metrics  # noqa: E402
 
 SCRIPT = ROOT / "scripts" / "evolve.py"
 
@@ -75,6 +77,20 @@ class IssuePlanTest(unittest.TestCase):
         self.assertEqual(plan["counts"]["core_test"], 1)
         self.assertFalse(any(action.startswith("draw_test") for action in plan["next_actions"]))
 
+    def test_metrics_block_reads_fixture(self):
+        write_metrics(self.root)
+        plan = self.plan()
+        self.assertEqual(plan["metrics"]["latest_period"]["period"], "2026-W36-live")
+        self.assertEqual(plan["metrics"]["sessions_total"], 11)
+        self.assertEqual(plan["metrics"]["tier2_hit"], 4)
+        self.assertEqual(plan["metrics"]["case_total"], 42)
+        self.assertEqual(plan["metrics"]["entry_usage"]["active_cases"], 1)
+
+    def test_metrics_missing_is_unavailable_not_zero(self):
+        plan = self.plan()
+        self.assertFalse(plan["metrics"]["timeline"]["available"])
+        self.assertIsNone(plan["metrics"]["sessions_total"])
+
     def test_conclusion_is_counted(self):
         ConclusionStore.for_base(self.base).append({"decision": "accept"})
         plan = self.plan()
@@ -84,7 +100,7 @@ class IssuePlanTest(unittest.TestCase):
     def test_json_plan_has_policy_hash(self):
         plan = self.plan()
         self.assertEqual(len(plan["policy_hash"]), 64)
-        self.assertEqual(set(plan), {"policy_hash", "counts", "next_actions", "warnings"})
+        self.assertEqual(set(plan), {"policy_hash", "counts", "metrics", "next_actions", "warnings"})
 
 
 class RunCliTest(unittest.TestCase):
@@ -102,6 +118,21 @@ class RunCliTest(unittest.TestCase):
         plan = json.loads(payload.stdout)
         self.assertIn("counts", plan)
         self.assertIn("next_actions", plan)
+
+    def test_brief_includes_metrics(self):
+        write_metrics(self.root)
+        result = run_cli("brief", "--root", str(self.root))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("metrics_period: 2026-W36-live", result.stdout)
+        self.assertIn("sessions_total: 11", result.stdout)
+        self.assertIn("tier2_hit: 4", result.stdout)
+        self.assertIn("case_total: 42", result.stdout)
+
+    def test_brief_missing_metrics_says_unavailable(self):
+        result = run_cli("brief", "--root", str(self.root))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("metrics_period: unavailable", result.stdout)
+        self.assertIn("sessions_total: unavailable", result.stdout)
 
     def test_brief_includes_plan_fields(self):
         created = run_cli(

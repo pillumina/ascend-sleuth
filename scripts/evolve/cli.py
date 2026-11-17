@@ -37,6 +37,7 @@ from .policy import PolicyError, load_policy, policy_hash
 from .records import ConclusionStore, RecordError
 from .runner import issue_plan, render_plan
 from .samples import SampleStore, StoreError
+from .sources.registry import get_source
 
 from exec_log_path import resolve_checkout_dir
 
@@ -184,6 +185,7 @@ def cmd_sample_ingest_issues(args: argparse.Namespace) -> int:
     # 默认跟随当前检出，worktree 里跑完能提交，不会写到主检出却看不见。
     root = Path(args.root) if args.root else Path.cwd()
     try:
+        source = get_source(args.source, repo=args.repo, cache=args.cache)
         stats = ingest_issues(
             root,
             args.repo,
@@ -194,6 +196,7 @@ def cmd_sample_ingest_issues(args: argparse.Namespace) -> int:
             state_path=args.state,
             store=SampleStore(base=base),
             dry_run=args.dry_run,
+            source=source,
         )
     except AdapterError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -567,6 +570,10 @@ def _format_counts(counts: Dict[str, int]) -> str:
     return " ".join(f"{key}={counts[key]}" for key in sorted(counts))
 
 
+def _metric_value(value: Any) -> str:
+    return "unavailable" if value is None else str(value)
+
+
 def cmd_brief(args: argparse.Namespace) -> int:
     base = _evolve_base(args)
     store = SampleStore(base=base)
@@ -583,7 +590,29 @@ def cmd_brief(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     plan_counts = plan["counts"]
+    metrics = plan.get("metrics") or {}
+    period = metrics.get("latest_period")
     print(f"policy_hash: {policy_hash(policy)}")
+    print(f"metrics_period: {period.get('period') if period else 'unavailable'}")
+    print(f"sessions_total: {_metric_value(metrics.get('sessions_total'))}")
+    print(f"tier2_hit: {_metric_value(metrics.get('tier2_hit'))}")
+    print(f"case_total: {_metric_value(metrics.get('case_total'))}")
+    print(f"feedback: {_metric_value(metrics.get('feedback'))}")
+    last_exec = (metrics.get("last_skill_exec") or {}).get("last") \
+        if isinstance(metrics.get("last_skill_exec"), dict) else None
+    if last_exec:
+        print(f"last_skill_exec: {last_exec.get('skill')} {last_exec.get('at')}")
+    else:
+        print("last_skill_exec: unavailable")
+    entry = metrics.get("entry_usage") or {}
+    if isinstance(entry, dict) and entry.get("available"):
+        print(
+            f"entry_usage: cases={_metric_value(entry.get('cases'))} "
+            f"active={_metric_value(entry.get('active_cases'))} "
+            f"references={_metric_value(entry.get('references'))}"
+        )
+    else:
+        print("entry_usage: unavailable")
     print(f"samples: {counts['total']}")
     print(f"by_status: {_format_counts(counts['status'])}")
     print(f"by_origin: {_format_counts(counts['origin'])}")
@@ -662,6 +691,9 @@ def build_parser() -> argparse.ArgumentParser:
         "ingest-issues", help="从 GitHub issue 建诊断候选（先过滤，按需取 body）"
     )
     ingest.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    ingest.add_argument("--source", default="github",
+                        help="issue 源（默认 github；已注册 github/local）")
+    ingest.add_argument("--cache", default=None, help="local 源的 JSON/YAML issue 导出路径")
     ingest.add_argument("--repo", required=True, help="如 vllm-project/vllm-ascend")
     ingest.add_argument("--labels", default=None, help="逗号分隔 label 池")
     ingest.add_argument("--since", default=None, help="ISO 时间，增量拉取")

@@ -20,6 +20,8 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence
 
 from . import AdapterError, load_legacy
 from ..samples import SampleStore, StoreError
+from ..sources.github import GitHubSource
+from ..sources.registry import get_source
 
 MIN_BODY_CHARS = 20
 SOURCE_PREFIX = "github/"
@@ -66,60 +68,16 @@ def _wrap_gh_error(exc: BaseException) -> AdapterError:
     return AdapterError(f"gh api failed: {detail}")
 
 
-def _gh_api(url: str, module: Any = None) -> Any:
-    module = module or load_legacy("fetch_issues")
-    try:
-        return module.gh_api(url)
-    except (AdapterError, KeyboardInterrupt):
-        raise
-    except BaseException as exc:
-        raise _wrap_gh_error(exc) from exc
-
-
-def _url(repo: str, *, state: str, labels: Optional[Sequence[str]],
-         since: Optional[str]) -> str:
-    url = f"repos/{repo}/issues?state={state}&per_page=100"
-    if labels:
-        url += "&labels=" + ",".join(_labels(labels))
-    if since:
-        url += f"&since={since}"
-    return url
-
-
 def fetch_metadata(repo: str, labels: Optional[Sequence[str]] = None,
                    since: Optional[str] = None, state: str = "closed") -> List[Dict[str, Any]]:
-    """拉精简元数据（number/title/comments/closed_at/state_reason/labels），不拉 body。
-
-    与 ``scripts/fetch_issues.py`` 的 slim 输出一致，并在这里排除 PR；body 留给
-    真正要建的候选按需单条取。
-    """
-    module = load_legacy("fetch_issues")
-    items = _gh_api(
-        _url(repo, state=state, labels=labels, since=since), module=module,
-    )
-    if not isinstance(items, list):
-        raise AdapterError("gh issues response must be a list")
-    return [module.slim(item) for item in items
-            if item.get("pull_request") is None]
+    """GitHub 元数据兼容入口；实现已移到 ``sources.github``。"""
+    return GitHubSource(repo, loader=load_legacy).list_issues(repo, labels, since, state)
 
 
 def fetch_body(repo: str, issue: Any) -> Dict[str, Any]:
-    """只取首帖 title/body/closed_at；评论不进入样本 input。
-
-    issue 可以是元数据字典或编号。评论里的 resolution 不是答案，本函数不读评论正文。
-    """
+    """GitHub 首帖兼容入口；实现已移到 ``sources.github``。"""
     number = issue.get("number") if isinstance(issue, dict) else issue
-    if number is None or str(number).strip() == "":
-        raise AdapterError("cannot fetch issue body without a number")
-    module = load_legacy("fetch_issues")
-    payload = _gh_api(f"repos/{repo}/issues/{number}", module=module)
-    if not isinstance(payload, dict):
-        raise AdapterError(f"gh issue response for #{number} must be an object")
-    return {
-        "title": payload.get("title") or "",
-        "body": payload.get("body") or "",
-        "closed_at": payload.get("closed_at"),
-    }
+    return GitHubSource(repo, loader=load_legacy).fetch_issue(repo, number)
 
 
 def _filter_with_stats(
@@ -195,11 +153,13 @@ def _slug(value: Any) -> str:
     return cleaned or "REPO"
 
 
-def candidate_id(repo: str, issue: Any) -> str:
-    return f"GH-{_slug(repo)}-{str(issue).strip()}"
+def candidate_id(repo: str, issue: Any, source_id: str = "github") -> str:
+    prefix = "GH" if str(source_id).startswith("github") else _slug(str(source_id).split("/")[0])
+    return f"{prefix}-{_slug(repo)}-{str(issue).strip()}"
 
 
-def issue_to_candidate(item: Dict[str, Any], body: Any, repo: str) -> Dict[str, Any]:
+def issue_to_candidate(item: Dict[str, Any], body: Any, repo: str,
+                       source_id: Optional[str] = None) -> Dict[str, Any]:
     """一条 issue 的 ``SampleStore.new`` 参数；纯函数，expected 留空给 review 补。
 
     ``body`` 可以是 ``fetch_body`` 的字典，也可以是正文字符串；只取 title/body，
@@ -220,12 +180,13 @@ def issue_to_candidate(item: Dict[str, Any], body: Any, repo: str) -> Dict[str, 
         closed_at = item.get("closed_at")
     labels = _labels(item.get("labels"))
     number_text = str(number).strip()
+    source_id = source_id or f"{SOURCE_PREFIX}{repo}"
     return {
-        "id": candidate_id(repo, number_text),
+        "id": candidate_id(repo, number_text, source_id),
         "object_type": "diagnosis",
         "origin": "field",
         "purpose": "evaluation",
-        "source": f"{SOURCE_PREFIX}{repo}#{number_text}",
+        "source": f"{source_id}#{number_text}",
         "input": {"title": str(title), "body": str(body_text)},
         "expected": None,
         "expected_kind": "resolution",
@@ -234,7 +195,7 @@ def issue_to_candidate(item: Dict[str, Any], body: Any, repo: str) -> Dict[str, 
             "issue": number,
             "labels": labels,
             "closed_at": closed_at,
-            "url": f"https://github.com/{repo}/issues/{number_text}",
+            "url": item.get("url") or f"https://github.com/{repo}/issues/{number_text}",
         },
     }
 
@@ -283,6 +244,7 @@ def ingest_issues(
     dry_run: bool = False,
     fetch_metadata_fn=None,
     fetch_body_fn=None,
+    source: Any = None,
 ) -> Dict[str, Any]:
     """拉元数据 → 硬过滤 → 按需取 body → 建候选。
 
@@ -297,18 +259,25 @@ def ingest_issues(
         raise AdapterError("limit must be a non-negative integer or None")
     root_path = Path(root)
     store = store or SampleStore(root_path)
+    if source is None:
+        source = GitHubSource(repo, loader=load_legacy)
+    elif isinstance(source, str):
+        source = get_source(source, repo=repo)
+    source_id = getattr(source, "source_id", None)
+    if not source_id:
+        raise AdapterError("issue source must provide a non-empty source_id")
     state_file = Path(state_path) if state_path is not None else root_path / "ingest-state.json"
     if not state_file.is_absolute():
         state_file = root_path / state_file
     state = _load_state(state_file)
-    source = f"{SOURCE_PREFIX}{repo}"
-    source_state = state.setdefault("sources", {}).setdefault(source, {})
+    source_state = state.setdefault("sources", {}).setdefault(source_id, {})
     processed = _processed_numbers(source_state.get("processed"))
 
-    fetch_metadata_fn = fetch_metadata_fn or fetch_metadata
-    fetch_body_fn = fetch_body_fn or fetch_body
     try:
-        items = fetch_metadata_fn(repo, labels, since)
+        if fetch_metadata_fn is not None:
+            items = fetch_metadata_fn(repo, labels, since)
+        else:
+            items = source.list_issues(repo, labels, since, "closed")
     except AdapterError:
         raise
     except Exception as exc:
@@ -322,7 +291,8 @@ def ingest_issues(
 
     stats: Dict[str, Any] = {
         "repo": repo,
-        "source": source,
+        "source": source_id,
+        "source_id": source_id,
         "state_path": str(state_file),
         "total": len(items),
         "filtered": len(candidates),
@@ -348,7 +318,10 @@ def ingest_issues(
             stats["limit_reached"] = index < len(candidates)
             break
         try:
-            body = fetch_body_fn(repo, item)
+            if fetch_body_fn is not None:
+                body = fetch_body_fn(repo, item)
+            else:
+                body = source.fetch_issue(repo, item.get("number"))
         except AdapterError:
             raise
         except Exception as exc:
@@ -367,7 +340,7 @@ def ingest_issues(
         if module.title_skippable(title):
             stats["skipped_feature_title"] += 1
             continue
-        candidate = issue_to_candidate(item, body, repo)
+        candidate = issue_to_candidate(item, body, repo, source_id=source_id)
         sample_id = candidate["id"]
         sample_source = candidate["source"]
         if sample_source in seen_sources or store.find_by_source(sample_source):

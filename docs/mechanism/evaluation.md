@@ -81,10 +81,12 @@ python3 scripts/evolve.py sample ingest-issues --repo vllm-project/vllm-ascend \
 
 - 元数据由 `fetch_issues.py` 拉取，只有 number/title/comments/closed_at/labels，不含 body；硬过滤复用 `issue_filter.py`（排除 PR 与已处理编号、label 池、评论数、标题规则，并按 label 优先级/已解决/评论数排序）。
 - 只对过滤后的候选单条取首帖 body；样本 `input` 只有 title 与 body，正文少于 20 字符的候选跳过。评论和 issue 里的 resolution 不写进 `input`，也不自动当答案。
+- 源通过 `IssueSource` Protocol 接入：`github` 与 `local` 是当前两个实现，GitCode 等新增源只实现 `list_issues`/`fetch_issue` 并登记 registry；state 以 `source_id` 分区，不复制过滤/去重/入库管线。
 - 候选统一是 `diagnosis/field/evaluation`，`expected` 留空；`source` 为 `github/<repo>#<n>`，重复来源跳过。
 - `--dry-run` 只打印候选，不写样本库、不更新 state。正式运行成功后把实际创建的编号原子追加到 state 的 `processed`；失败不标，重复运行不会重复导入。
 - 默认 state 跟随当前检出，样本库/`run`/`brief` 仍锚主检出；显式 `--root` 才把两者都落到本地运行件。这样 worktree 里产出的 state 能随分支提交，候选不会在 worktree 清理时丢。
 - 维护者用 `sample set-answer --id ... --expected '<json>'` 补答案，再走 `sample check`、`sample review`。ingest 不自动把候选转 active；非诊断或无答案的候选留给 review 拒收。
+- 数据源由 `scripts/evolve/sources/base.py` 的 `IssueSource` 定义：`source_id`、`list_issues`、`fetch_issue`。GitHub 是默认实现；`local` 读本地 JSON/YAML 导出（含 body），用 `--source local --cache <path>`。新增 GitCode 等源只实现这个 Protocol 并登记进 `registry.py`，过滤、建候选、state 仍走同一条管线；`source_id` 是 state 分区键，也是候选 `source` 的前缀。
 
 诊断标注由 agent 预标、维护者抽检，抽检覆盖每周新增样本的两成或两条，取大。case 与 reference 先做 10–20 条双标与裁决，再定 rubric 阈值。trace 先全审 10 条，再抽检。自动标注只做提名，不能直接当答案。
 

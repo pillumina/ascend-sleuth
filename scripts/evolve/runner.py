@@ -6,8 +6,9 @@
 
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
+from .adapters.metrics import load_metrics
 from .policy import policy_hash
 from .records import ConclusionStore
 from .samples import SampleStore
@@ -17,15 +18,17 @@ def _purpose_count(samples: List[Any], purpose: str) -> int:
     return sum(1 for sample in samples if sample.purpose == purpose)
 
 
-def issue_plan(root: Any, base: Any, policy: Dict[str, Any]) -> Dict[str, Any]:
-    """返回计划字典；``root`` 只用于无 ``base`` 时的默认落点。"""
+def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
+               metrics: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """返回计划字典；``root`` 用于 metrics 读取与无 ``base`` 时的默认落点。"""
+    root_path = Path(root) if root is not None else Path(".")
     base_path = Path(base) if base is not None else None
     if base_path is not None:
         store = SampleStore(base=base_path)
         conclusions = ConclusionStore.for_base(base_path).read()
     else:
-        store = SampleStore(Path(root))
-        conclusions = ConclusionStore.for_root(Path(root)).read()
+        store = SampleStore(root_path)
+        conclusions = ConclusionStore.for_root(root_path).read()
     samples = store.read_all()
     by_status = Counter(sample.status for sample in samples)
     by_origin = Counter(sample.origin for sample in samples)
@@ -118,9 +121,12 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any]) -> Dict[str, Any]:
     if not actions:
         actions.append("no_action: nothing required this week")
 
+    if metrics is None:
+        metrics = load_metrics(root_path)
     return {
         "policy_hash": policy_hash(policy),
         "counts": counts,
+        "metrics": metrics,
         "next_actions": actions,
         "warnings": warnings,
     }
@@ -146,9 +152,47 @@ def render_plan(plan: Dict[str, Any]) -> str:
     ]
     for action in plan.get("next_actions") or ["no_action"]:
         lines.append(f"- {action}")
+    metrics = plan.get("metrics") or {}
+    period = metrics.get("latest_period")
+    if period:
+        lines.append(
+            "metrics_latest: {period} ({kind})".format(
+                period=period.get("period", "unavailable"),
+                kind=period.get("kind", "unknown"),
+            )
+        )
+    else:
+        lines.append("metrics_latest: unavailable")
+    lines.append(f"sessions_total: {_metric_value(metrics.get('sessions_total'))}")
+    lines.append(f"tier2_hit: {_metric_value(metrics.get('tier2_hit'))}")
+    lines.append(f"case_total: {_metric_value(metrics.get('case_total'))}")
+    lines.append(f"feedback: {_metric_value(metrics.get('feedback'))}")
+    last = (metrics.get("last_skill_exec") or {}).get("last") if isinstance(
+        metrics.get("last_skill_exec"), dict) else None
+    if last:
+        lines.append(f"last_skill_exec: {last.get('skill')} {last.get('at')}")
+    else:
+        lines.append("last_skill_exec: unavailable")
+    entry = metrics.get("entry_usage") or {}
+    if isinstance(entry, dict) and entry.get("available"):
+        lines.append(
+            "entry_usage: cases={cases} active={active} references={refs} "
+            "cold={cold}".format(
+                cases=_metric_value(entry.get("cases")),
+                active=_metric_value(entry.get("active_cases")),
+                refs=_metric_value(entry.get("references")),
+                cold=_metric_value(entry.get("cold_cases")),
+            )
+        )
+    else:
+        lines.append("entry_usage: unavailable")
     warnings = plan.get("warnings") or []
     if warnings:
         lines.append("warnings:")
         for warning in warnings:
             lines.append(f"- {warning}")
     return "\n".join(lines)
+
+
+def _metric_value(value: Any) -> str:
+    return "unavailable" if value is None else str(value)

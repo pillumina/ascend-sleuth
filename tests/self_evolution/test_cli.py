@@ -2,6 +2,7 @@
 
 import contextlib
 import io
+import json
 import subprocess
 import sys
 import tempfile
@@ -322,6 +323,43 @@ class IngestCliTest(unittest.TestCase):
             self.assertEqual(rc, 0)
             self.assertIn("would create: GH-O-R-1", out.getvalue())
             self.assertIn("dry-run", out.getvalue())
+
+    def test_local_source_end_to_end(self):
+        cache = Path(tempfile.mkdtemp()) / "issues.json"
+        cache.write_text(json.dumps([{
+            "number": 9, "title": "T9", "body": "long local body for ingest " * 2,
+            "comments": 5, "state": "closed", "labels": ["triaged"],
+        }]), encoding="utf-8")
+        with tempfile.TemporaryDirectory() as td:
+            result = run_cli(
+                "sample", "ingest-issues", "--source", "local", "--cache", str(cache),
+                "--repo", "o/r", "--root", td, "--state", "ingest-state.json",
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("created: 1", result.stdout)
+            self.assertIn("candidate:", result.stdout)
+            sample = Path(td) / ".s2-replay" / "evolve" / "samples" / "LOCAL-O-R-9.yaml"
+            self.assertTrue(sample.exists())
+            state = json.loads((Path(td) / "ingest-state.json").read_text(encoding="utf-8"))
+            self.assertIn("local/o/r", state["sources"])
+
+    def test_unknown_source_exits_2(self):
+        with tempfile.TemporaryDirectory() as td:
+            result = run_cli(
+                "sample", "ingest-issues", "--source", "gitcode",
+                "--repo", "o/r", "--root", td,
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("unknown issue source", result.stderr)
+
+    def test_local_source_missing_cache_exits_2(self):
+        with tempfile.TemporaryDirectory() as td:
+            result = run_cli(
+                "sample", "ingest-issues", "--source", "local",
+                "--repo", "o/r", "--root", td,
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("cache", result.stderr.lower())
 
     def test_ingested_candidate_can_be_answered_and_reviewed(self):
         body_text = "Traceback: runtime error on this node; logs and reproduce steps " * 2
