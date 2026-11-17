@@ -60,6 +60,14 @@ class AgentGepaTest(unittest.TestCase):
         drain(session, {"S-1": 0.0, "S-2": 1.0}, "c1")
         self.assertEqual(set(session.pareto_ids()), {"seed", "c1"})
 
+    def test_bad_state_shape_is_an_error(self):
+        with self.assertRaises(GepaError):
+            GepaSession.from_dict({"samples": "S-1", "max_metric_calls": 1, "population": 2,
+                                   "candidates": []})
+        with self.assertRaises(GepaError):
+            GepaSession.from_dict({"samples": ["S-1"], "max_metric_calls": 1, "population": 2,
+                                   "candidates": [{"id": "seed"}]})
+
     def test_state_roundtrip(self):
         session = GepaSession("seed", ["S-1"], max_metric_calls=3, population=2, seed=9)
         drain(session, {"S-1": 0.0})

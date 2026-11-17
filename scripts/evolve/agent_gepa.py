@@ -33,10 +33,19 @@ class Candidate:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Candidate":
+        if not isinstance(data, dict):
+            raise GepaError("candidate must be an object")
+        missing = [key for key in ("id", "skill") if not data.get(key)]
+        if missing:
+            raise GepaError("candidate missing: " + ", ".join(missing))
+        scores = data.get("scores") or {}
+        feedback = data.get("feedback") or {}
+        if not isinstance(scores, dict) or not isinstance(feedback, dict):
+            raise GepaError("candidate scores/feedback must be objects")
         return cls(
             id=str(data["id"]), skill=str(data["skill"]), parent=data.get("parent"),
-            scores={str(k): float(v) for k, v in (data.get("scores") or {}).items()},
-            feedback={str(k): str(v) for k, v in (data.get("feedback") or {}).items()},
+            scores={str(k): float(v) for k, v in scores.items()},
+            feedback={str(k): str(v) for k, v in feedback.items()},
         )
 
 
@@ -196,7 +205,12 @@ class GepaSession:
                    if key not in data]
         if missing:
             raise GepaError("state missing: " + ", ".join(missing))
-        candidates = [Candidate.from_dict(c) for c in data.get("candidates") or []]
+        if not isinstance(data["samples"], list):
+            raise GepaError("state samples must be a list")
+        raw_candidates = data.get("candidates")
+        if not isinstance(raw_candidates, list):
+            raise GepaError("state candidates must be a list")
+        candidates = [Candidate.from_dict(c) for c in raw_candidates]
         if not candidates:
             raise GepaError("state has no candidates")
         session = cls(
