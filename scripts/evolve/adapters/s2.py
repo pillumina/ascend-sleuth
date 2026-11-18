@@ -185,6 +185,10 @@ def import_s2_samples(
         if not any(expected.get(key) for key in ("namespace", "category", "resolution", "fix_commit")):
             stats["skipped_no_answer"] = stats.get("skipped_no_answer", 0) + 1
             continue
+        resolution = str(expected.get("resolution") or "").lower()
+        if any(marker in resolution for marker in ("待补", "todo", "tbd", "待定")):
+            stats["skipped_no_answer"] = stats.get("skipped_no_answer", 0) + 1
+            continue
         sample_id = sample_id_for(calibration["path"], issue)
         source_label = f"{relative}#{str(issue).strip()}"
         if store.find_by_source(source_label):

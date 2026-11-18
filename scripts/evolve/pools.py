@@ -5,6 +5,7 @@
 """
 
 import hashlib
+import re
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 STATUS_TRANSITIONS: Dict[str, Tuple[str, ...]] = {
@@ -88,6 +89,25 @@ def _sample_id(sample: Any) -> str:
     return str(_field(sample, "id", ""))
 
 
+_ISSUE_REF = re.compile(r"(?:#|/issues/)(\d+)\s*$")
+_REPO_PREFIX = re.compile(r"^(?:github|gitcode|local)/([^#]+?)(?:#|$)", re.IGNORECASE)
+
+
+def _issue_key(source: str):
+    match = _ISSUE_REF.search(source)
+    if not match:
+        return None
+    repo = ""
+    repo_match = _REPO_PREFIX.match(source)
+    if repo_match:
+        repo = repo_match.group(1).strip().split("/")[-1]
+    else:
+        s2_match = re.match(r"eval/s2/([^#]+)", source, re.IGNORECASE)
+        if s2_match:
+            repo = s2_match.group(1).strip().rsplit(".", 1)[0].split("/")[-1]
+    return f"issue:{repo.lower()}:{match.group(1)}"
+
+
 def source_group(sample: Any) -> str:
     """来源分组键：同一 issue/同一来源归一化后算一组。
 
@@ -97,6 +117,9 @@ def source_group(sample: Any) -> str:
     source = str(_field(sample, "source", "") or "").strip().rstrip("/")
     if not source:
         return f"id:{_sample_id(sample)}"
+    issue = _issue_key(source)
+    if issue:
+        return issue
     return source.lower()
 
 

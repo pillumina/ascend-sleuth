@@ -136,6 +136,15 @@ class Sample:
         if not isinstance(self.history, list):
             errs.append("history must be a list")
         has_answer = bool(self.expected) or bool(self.rubric)
+        if self.expected and not self.rubric:
+            for key in ("resolution", "fix", "fix_commit"):
+                value = self.expected.get(key)
+                if isinstance(value, str) and any(
+                    marker in value.lower() for marker in ("待补", "todo", "tbd", "待定")
+                ):
+                    errs.append(f"expected.{key} is a placeholder, not an answer")
+                    has_answer = False
+                    break
         if self.status == "active" and not has_answer:
             errs.append("active sample must have expected or rubric")
         if require_answer and not has_answer:
