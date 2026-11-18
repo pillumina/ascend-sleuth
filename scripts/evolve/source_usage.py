@@ -147,25 +147,29 @@ def from_trace(document: Any, source_ok: Optional[bool] = None) -> Dict[str, Any
     repos = sorted({str(e["repo"]) for e in events if e.get("repo")})
     refs = sorted({str(e["ref"]) for e in events if e.get("ref")})
     files = []
-    calls = 0
-    fetches = 0
-    greps = 0
+    calls = None
+    fetches = None
+    greps = None
+    followups = None
     for e in events:
-        for item in e.get("files_read") or []:
+        for item in (e.get("files_read") or e.get("files") or []):
             files.append(str(item))
-        tool_calls = e.get("tool_calls") or []
-        calls += len(tool_calls)
-        for call in tool_calls:
-            text = str(call)
-            fetches += 1 if ("src_fetch.py" in text or "git fetch" in text) else 0
-            greps += 1 if "grep" in text else 0
+        tool_calls = e.get("tool_calls")
+        if tool_calls:
+            calls = (calls or 0) + len(tool_calls)
+            fetches = (fetches or 0) + sum(
+                1 for call in tool_calls
+                if "src_fetch.py" in str(call) or "git fetch" in str(call)
+            )
+            greps = (greps or 0) + sum(1 for call in tool_calls if "grep" in str(call))
+        if isinstance(e.get("followup"), list):
+            followups = (followups or 0) + len(e["followup"])
     return validate_record({
         "sample_id": str(document.get("session_id") or "unknown"),
         "repos": repos, "refs": refs,
         "files_read": len(set(files)), "tool_calls": calls,
         "fetch_calls": fetches, "grep_calls": greps,
-        "followups": sum(len(e.get("followup") or []) for e in events
-                         if isinstance(e.get("followup"), list)),
+        "followups": followups,
         "elapsed_ms": _elapsed(document, events),
         "source_ok": source_ok,
     })

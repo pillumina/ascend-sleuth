@@ -88,6 +88,62 @@ def _validate_usage_evidence(usage: Dict[str, Any]) -> None:
             raise ExperimentError("knowledge_usage accept requires improvement without regression")
 
 
+def _validate_source_side(value: Any, name: str) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ExperimentError(f"source_usage.{name} must be an object")
+    n = value.get("n")
+    if not isinstance(n, int) or isinstance(n, bool) or n <= 0:
+        raise ExperimentError(f"source_usage.{name}.n must be a positive integer")
+    ok = value.get("source_ok")
+    if ok is not None and (not isinstance(ok, int) or isinstance(ok, bool) or not 0 <= ok <= n):
+        raise ExperimentError(f"source_usage.{name}.source_ok must be 0..n or null")
+    for field in ("files_read", "tool_calls", "fetch_calls", "grep_calls",
+                  "followups", "downloads", "bytes", "elapsed_ms", "cache_hits"):
+        item = value.get(field)
+        if item is not None and (not isinstance(item, (int, float)) or isinstance(item, bool) or item < 0):
+            raise ExperimentError(f"source_usage.{name}.{field} must be non-negative or null")
+    return value
+
+
+def _validate_source_usage_evidence(usage: Dict[str, Any]) -> None:
+    for key in ("baseline", "candidate", "deltas", "reasons"):
+        if key not in usage:
+            raise ExperimentError(f"source_usage.{key} is required")
+    baseline = _validate_source_side(usage.get("baseline"), "baseline")
+    candidate = _validate_source_side(usage.get("candidate"), "candidate")
+    if baseline["n"] != candidate["n"]:
+        raise ExperimentError("source_usage baseline/candidate n must match")
+    if not isinstance(usage.get("reasons"), list):
+        raise ExperimentError("source_usage.reasons must be a list")
+    deltas = usage.get("deltas")
+    if not isinstance(deltas, dict):
+        raise ExperimentError("source_usage.deltas must be an object")
+    for field in ("files_read", "tool_calls", "fetch_calls", "grep_calls",
+                  "followups", "downloads", "bytes", "elapsed_ms", "cache_hits"):
+        if field not in deltas:
+            raise ExperimentError(f"source_usage.deltas.{field} is required")
+        item = deltas[field]
+        if item is not None and (not isinstance(item, (int, float)) or isinstance(item, bool)):
+            raise ExperimentError(f"source_usage.deltas.{field} must be numeric or null")
+    if usage.get("decision") == "accept":
+        if usage.get("reasons"):
+            raise ExperimentError("source_usage accept must have no reasons")
+        if baseline.get("source_ok") is None or candidate.get("source_ok") is None:
+            raise ExperimentError("source_usage accept requires source correctness")
+        if candidate["source_ok"] < baseline["source_ok"]:
+            raise ExperimentError("source_usage accept regresses correctness")
+        lower = ("files_read", "tool_calls", "fetch_calls", "grep_calls",
+                 "followups", "downloads", "bytes", "elapsed_ms")
+        improved = any(deltas[f] is not None and deltas[f] < 0 for f in lower)
+        if deltas.get("cache_hits") is not None and deltas["cache_hits"] > 0:
+            improved = True
+        worsened = any(deltas[f] is not None and deltas[f] > 0 for f in lower)
+        if deltas.get("cache_hits") is not None and deltas["cache_hits"] < 0:
+            worsened = True
+        if not improved or worsened:
+            raise ExperimentError("source_usage accept requires improvement without regression")
+
+
 def _side(value: Any, name: str) -> Dict[str, Any]:
     if not isinstance(value, dict):
         raise ExperimentError(f"{name} must be an object")
@@ -218,11 +274,7 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
             raise ExperimentError("source_usage must be an object")
         if source_usage.get("decision") not in ("accept", "reject", "insufficient"):
             raise ExperimentError("source_usage.decision must be accept/reject/insufficient")
-        for key in ("baseline", "candidate", "deltas", "reasons"):
-            if key not in source_usage:
-                raise ExperimentError(f"source_usage.{key} is required")
-        if not isinstance(source_usage.get("reasons"), list):
-            raise ExperimentError("source_usage.reasons must be a list")
+        _validate_source_usage_evidence(source_usage)
         if decision == "accept" and (source_usage.get("decision") != "accept" or source_usage.get("reasons")):
             raise ExperimentError("accept requires source_usage.decision=accept and no reasons")
         result["source_usage"] = source_usage

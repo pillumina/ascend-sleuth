@@ -37,6 +37,28 @@ class SourceUsageTest(unittest.TestCase):
         self.assertEqual(out["grep_calls"], 2)
         self.assertIsNone(out["source_ok"])
 
+    def test_files_field_and_missing_tools(self):
+        trace = {"session_id": "s", "trace": [
+            {"action": "source_analysis", "repo": "r", "files": ["a.py"]},
+        ]}
+        out = from_trace(trace)
+        self.assertEqual(out["files_read"], 1)
+        self.assertIsNone(out["tool_calls"])
+
+    def test_empty_source_accept_evidence_is_rejected(self):
+        record = {
+            "target_kind": "skill", "target_component": "diagnose.source_usage",
+            "algorithm": "subagent-reflection", "algorithm_version": "1",
+            "execution": "subagent", "decision": "accept", "samples": ["S-1"],
+            "baseline": {"score": 0.5, "samples": ["S-1"]},
+            "candidate": {"score": 0.6, "samples": ["S-1"]},
+            "paired": {"b": 4, "c": 0, "n": 4},
+            "source_usage": {"decision": "accept", "baseline": {}, "candidate": {},
+                             "deltas": {}, "reasons": []},
+        }
+        with self.assertRaises(ExperimentError):
+            validate_experiment(record)
+
     def test_missing_values_are_unknown(self):
         out = summarize([row("a", files=None, calls=None, fetch=None, grep=None, elapsed=None)])
         self.assertIsNone(out["files_read"])
