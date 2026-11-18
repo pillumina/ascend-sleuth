@@ -1249,7 +1249,7 @@ def cmd_brief(args: argparse.Namespace) -> int:
     print(f"test: {plan_counts['test']}")
     print(f"conclusions: {len(conclusions)}")
     capacity = plan.get("judgment_capacity") or {}
-    print(f"judgment_capacity: potential={capacity.get('potential', 0)} "
+    print(f"judgment_capacity: pool_samples={capacity.get('potential', 0)} "
           f"required_b={capacity.get('required_b', 0)} "
           f"alpha={capacity.get('alpha', 0)}")
     for record in conclusions[-3:]:

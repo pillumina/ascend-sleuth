@@ -271,11 +271,13 @@ python3 scripts/evolve.py knowledge-usage compare --baseline base.json --candida
 
 某项只有部分样本可测时，差值照报，但不算改善或回退。它的差值仍超过判定阈值（1e-9）时记 `efficiency_partial_unknown`，结论不能是 `accept`。改善/回退方向与实验记录校验用同一个阈值。
 
+`elapsed_ms` 是例外：部分样本可测时方向一律记未知；正差值会阻断 `accept`（记 `elapsed_inconclusive`），负差值不算改善。
+
 `compare` 只有在准确率不降、至少一个效率项改善、且没有效率项变差时给 `accept`；准确率或效率回退给 `reject`；没有改善或证据不全给 `insufficient`。实验记录的 `knowledge_usage.decision` 若存在，整体 `accept` 必须同时为 `accept`。每个效率项同时报配对差值的均值与置信区间（`ci`）。计数项用点估计与 1e-9 阈值；`elapsed_ms` 是连续项，方向只在区间排除 0 时成立，区间跨 0 且差值为正时记 `elapsed_inconclusive`，结论不能是 `accept`。
 
 判定容量单独算。同一评估池第 k 次判定时 `alpha_eff = alpha/(k+1)`；达成证据所需的最少独家命中数 `required_b` 是 `min{b: 2^-b <= alpha_eff}`。
 
-配对样本数少于 `required_b` 时，这个池在原理上给不出 `accept`；`pilot decide` 会写「判定容量不足」。若结论本是 `accept`，会降为 `insufficient`；`reject` 只加前缀。
+配对样本数少于 `required_b` 时，这个池在原理上给不出 `accept`；`pilot decide` 会写「判定容量不足」，作为提示，不改变结论。`brief` 的 `judgment_capacity` 另用池样本数（field 加待审候选）做入池前提示，两个数不是同一个量。
 
 `pilot collect` 之后跑 `pilot decide`。它把每条 rollout 写成一条执行记录（`Run`，见 records.md），把一次对照写成一条结论（`Conclusion`，同篇）。
 

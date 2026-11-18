@@ -146,7 +146,7 @@ class E2ELoopTest(unittest.TestCase):
         fourth = decide(output, judge_path, policy, reuse_index=1)
         self.assertFalse(fourth.get("duplicate"))
 
-    def test_knowledge_candidate_capacity_downgrades_accept(self):
+    def test_small_pool_reports_capacity_short(self):
         root, output, collected, result, judge_path = self._run(
             "skill",
             {"region": "diagnose.knowledge_usage", "file": "skills/diagnose/SKILL.md",

@@ -161,9 +161,12 @@ class KnowledgeUsageTest(unittest.TestCase):
         self.assertEqual(result["decision"], "reject")
 
     def test_partial_elapsed_improvement_is_not_accept(self):
-        base = [row("a", elapsed=1000), row("b", elapsed=None)]
-        cand = [row("a", elapsed=900), row("b", elapsed=800)]
-        self.assertNotEqual(compare(base, cand)["decision"], "accept")
+        base = [row("a", elapsed=1000), row("b", elapsed=1000), row("c", elapsed=None)]
+        cand = [row("a", elapsed=900), row("b", elapsed=900), row("c", elapsed=800)]
+        result = compare(base, cand)
+        self.assertEqual(result["paired"]["elapsed_ms"]["n"], 2)
+        self.assertEqual(result["paired"]["elapsed_ms"]["unknown"], 1)
+        self.assertNotEqual(result["decision"], "accept")
 
     def test_confirmed_elapsed_change_uses_paired_interval(self):
         base = [row(f"s{i}", elapsed=1000) for i in range(5)]

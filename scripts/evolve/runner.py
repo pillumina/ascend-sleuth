@@ -141,7 +141,7 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
     potential = field_eval + counts["candidate"]
     if potential < required:
         actions.append(
-            f"judgment_capacity_short: potential={potential} < required_b={required}; "
+            f"judgment_capacity_short: pool_samples={potential} < required_b={required}; "
             "this pool can only return insufficient"
         )
     if missing_answer:

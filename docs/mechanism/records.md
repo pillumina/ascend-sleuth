@@ -126,7 +126,7 @@ sample:
 ```yaml
 run:
   sample: VLLM-ASC-14871
-  versions: {protocol: p1, policy: policy-3, base_kb: 9f2c1a, candidate_kb: 9f2c1a, candidate: 4d8e0b, model: deepseek-flash, algorithm: baseline, algorithm_version: manual, budget: {}, seed: 0}
+  versions: {protocol: p1, policy: policy-3, base_kb: 9f2c1a, candidate_kb: 9f2c1a, candidate: C-14871-001, model: deepseek-flash, algorithm: baseline, algorithm_version: manual, budget: {}, seed: 0}
   metrics: {routing: true, case_hit: false, root_cause: null, fix: null, safety: pass}
   cost:
     source: provider_billed     # provider_billed / normalized / estimate
@@ -170,7 +170,7 @@ conclusion:
 | 候选改动 | `candidate` | 候选 id；pilot 的补丁在隔离 worktree 内未提交，差异由 `candidate_kb` 的 patch 哈希标识 |
 | 模型 | `model` | provider、model、思考等级；pilot 的 trace 不记模型，当前写 `unknown` |
 
-判定时协议、策略、基线知识库与模型必须相同；候选知识与候选改动可以不同，但差异必须等于候选补丁（`git diff base..candidate`）。两个知识库哈希都要记：基线是改动前的知识库，候选是改动后的，后者正是被检验的差异。
+判定时协议、策略、基线知识库与模型必须相同；候选知识与候选改动可以不同，但差异必须等于候选补丁。两个知识库版本都要记：基线是 HEAD 短 sha；候选是 HEAD，或候选 worktree 有未提交补丁时的 `<base>+patch:<补丁哈希>`；worktree 已失效记 `unknown`。
 
 两项记录的变更方式不同：改协议要单独走一次评审并升版本，旧结论标上当时的版本；改策略写在 `eval/policy.yaml`，加载时校验未知键、非法枚举与缺失字段，哈希写进 `versions.policy`。改过的策略与旧结论不可直接比较。
 
