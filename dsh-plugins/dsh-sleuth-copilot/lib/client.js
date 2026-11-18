@@ -3792,7 +3792,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         label: tr('action.copyResume'),
         onSelect: () => copyItem({ text: resumeDraft(row) }),
       }]
-      if (row && (row.status === 'resolved' || row.status === 'ended')) {
+      if (row && ['resolved', 'escalated', 'archived'].includes(row.status)) {
         copyItems.push({
           key: 'sample-copy',
           label: tr('action.copySample'),

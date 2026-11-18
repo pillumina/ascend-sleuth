@@ -144,7 +144,7 @@ class Sample:
             errs.append("non_diagnostic must be a boolean")
         if not isinstance(self.history, list):
             errs.append("history must be a list")
-        has_answer = bool(self.expected) or bool(self.rubric)
+        has_answer = bool(self.rubric) or _expected_has_answer(self.expected)
         if self.expected and not self.rubric:
             for key in ("resolution", "fix", "fix_commit"):
                 value = self.expected.get(key)
@@ -226,6 +226,23 @@ class Sample:
         except (TypeError, ValueError) as exc:
             raise ContractError(f"invalid sample: {exc}") from exc
         return sample
+
+
+def _expected_has_answer(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return bool(value)
+    for item in value.values():
+        if isinstance(item, str):
+            if item.strip():
+                return True
+        elif item not in (None, [], {}):
+            return True
+    return False
+
+
+def source_needs_provenance(source: str) -> bool:
+    """非 URL 来源按本地材料处理，必须带来源信息与脱敏结论。"""
+    return "://" not in str(source or "").strip()
 
 
 def _provenance_errors(value: Any) -> List[str]:

@@ -18,6 +18,7 @@ import yaml
 
 from .contracts import (
     ORIGINS,
+    source_needs_provenance,
     PURPOSES,
     STATUSES,
     Sample,
@@ -265,9 +266,13 @@ class SampleStore:
             errors.append("purpose=test only from active/core-evaluation")
         if sample.purpose == "feedback" and sample.origin == "core":
             errors.append("purpose=feedback must stay in origin=field")
-        if (sample.purpose in ("evaluation", "test")
-                and (sample.provenance or {}).get("sanitized") is False):
-            errors.append("purpose=evaluation/test requires sanitized provenance")
+        if (sample.object_type == "diagnosis"
+                and sample.purpose in ("evaluation", "test")):
+            provenance = sample.provenance or {}
+            if provenance.get("sanitized") is False or (
+                    provenance.get("sanitized") is None
+                    and source_needs_provenance(sample.source)):
+                errors.append("purpose=evaluation/test requires sanitized provenance")
         if sample.non_diagnostic and sample.purpose in ("evaluation", "test"):
             errors.append("non_diagnostic sample cannot enter evaluation/test")
         if sample.object_type in OBJECT_TYPES:
@@ -599,6 +604,9 @@ def import_pilot(store: "SampleStore", tasks_path: Path) -> Dict[str, List[str]]
             input=data.get("input") or {},
             expected=data.get("expected"),
             expected_kind=data.get("expected_kind") or "resolution",
+            provenance={"trigger": "issue_import", "sanitized": True,
+                        "redactions": [], "confidence": "issue-verified",
+                        "extraction": "auto"},
             notes=f"imported from pilot {tasks.get('candidate_id', '')}".strip(),
         )
         created.append(sid)

@@ -374,6 +374,10 @@ def ingest_issues(
             item, body, repo, source_id=source_id,
             expected=expected, quality=quality_item,
         )
+        candidate["provenance"] = {
+            "trigger": "issue_import", "sanitized": True, "redactions": [],
+            "confidence": "issue-verified", "extraction": "auto",
+        }
         sample_id = candidate["id"]
         sample_source = candidate["source"]
         if sample_source in seen_sources or store.find_by_source(sample_source):

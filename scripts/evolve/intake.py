@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 
 import yaml
 
-from .contracts import Sample, now_iso
+from .contracts import Sample, now_iso, source_needs_provenance
 
 TRACE_LIMIT = 2400
 SYMPTOM_LIMIT = 1200
@@ -52,14 +52,15 @@ def _segments(text: str) -> Dict[str, str]:
     return out
 
 
-def _phenomenon(summary: str) -> str:
+def _phenomenon(summary: str, user_content: str = "") -> str:
     parts = _segments(summary)
     if parts.get("现象"):
         return parts["现象"]
     first = MARKER_RE.search(summary or "")
     if first and first.start() > 0:
         return (summary or "")[:first.start()].strip()
-    return (summary or "").strip()
+    # 没有标签的 summary 常是 agent 的整段结论；不拿它当现象，退回 user 材料。
+    return _one_line(user_content)
 
 
 def _proposed_resolution(summary: str) -> str:
@@ -112,11 +113,13 @@ def extract_trace(trace_path: Path, root: Path) -> Dict[str, Any]:
     summary = str(doc.get("summary") or "").strip()
     user = next((e for e in doc.get("trace") or []
                  if isinstance(e, dict) and e.get("role") == "user"), {})
+    user_content = str((user or {}).get("content") or "")
     evidence = user.get("evidence") if isinstance(user, dict) else None
     try:
         rel = trace_path.resolve().relative_to(Path(root).resolve()).as_posix()
     except ValueError:
         rel = f"traces/{trace_path.name}"
+    phenomenon = _phenomenon(summary, user_content)
     provenance = {
         "trigger": "diagnosis_end",
         "trace_ref": rel,
@@ -134,14 +137,14 @@ def extract_trace(trace_path: Path, root: Path) -> Dict[str, Any]:
         "source": rel,
         "purpose": "feedback",
         "input": {
-            "phenomenon": _text_block(_phenomenon(summary)),
+            "phenomenon": _text_block(phenomenon),
             "environment": _one_line(doc.get("incident_env")),
             "evidence": evidence if isinstance(evidence, dict) else {},
         },
         "proposed": {"resolution": _text_block(_proposed_resolution(summary)),
                      "confidence": "agent-reviewed"},
         "expected_kind": "resolution",
-        "non_diagnostic": not bool(summary),
+        "non_diagnostic": not bool(phenomenon),
         "provenance": provenance,
         "notes": f"extracted from {rel}",
     }
@@ -209,7 +212,9 @@ def extract_case(case_path: Path, root: Path) -> Dict[str, Any]:
 
 def _repo_index(root: Path) -> Dict[str, Any]:
     root = Path(root)
-    issues = set()
+    s2_issues = set()
+    holdout_issues = set()
+    knowledge_issues = set()
     cases = set()
     fixtures = set()
     s2 = root / "eval" / "s2"
@@ -220,7 +225,7 @@ def _repo_index(root: Path) -> Dict[str, Any]:
             continue
         for row in (doc or {}).get("calibration") or []:
             if isinstance(row, dict) and isinstance(row.get("issue"), int):
-                issues.add(row["issue"])
+                s2_issues.add(row["issue"])
     holdout = root / "eval" / "holdout.yaml"
     if holdout.exists():
         try:
@@ -232,7 +237,7 @@ def _repo_index(root: Path) -> Dict[str, Any]:
             fixtures.add(fixture)
             number = _issue_number(fixture)
             if number is not None:
-                issues.add(number)
+                holdout_issues.add(number)
     knowledge = root / "knowledge"
     if knowledge.exists():
         for path in knowledge.rglob("*.yaml"):
@@ -244,8 +249,10 @@ def _repo_index(root: Path) -> Dict[str, Any]:
             cases.add(stem)
             number = _issue_number(stem)
             if number is not None:
-                issues.add(number)
-    return {"issues": issues, "cases": cases, "fixtures": fixtures}
+                knowledge_issues.add(number)
+    return {"s2": s2_issues, "holdout": holdout_issues,
+            "knowledge": knowledge_issues, "cases": cases,
+            "fixtures": fixtures}
 
 
 def completeness(sample: Sample, *, store=None, root: Optional[Path] = None) -> Dict[str, Any]:
@@ -267,7 +274,11 @@ def completeness(sample: Sample, *, store=None, root: Optional[Path] = None) -> 
     sanitized = None
     if sample.provenance is not None:
         sanitized = sample.provenance.get("sanitized")
-        if sanitized is False:
+        if sanitized is False or (
+                sample.object_type == "diagnosis"
+                and sample.purpose in ("evaluation", "test")
+                and sanitized is None
+                and source_needs_provenance(source)):
             reasons.append("not_sanitized")
         trace_ref = sample.provenance.get("trace_ref")
         if trace_ref and root is not None:
@@ -280,15 +291,14 @@ def completeness(sample: Sample, *, store=None, root: Optional[Path] = None) -> 
             duplicates.append(f"local:{existing[0].id}")
     if root is not None:
         index = _repo_index(Path(root))
-        if issue is not None and issue in index["issues"]:
+        if issue is not None and issue in index["s2"]:
             duplicates.append(f"eval:{issue}")
-        if sample.expected and str((sample.expected or {}).get("case") or "") in index["cases"]:
-            duplicates.append(f"knowledge:{sample.expected['case']}")
-        if issue is not None and any(_issue_number(fixture) == issue
-                                     for fixture in index["fixtures"]):
+        if issue is not None and issue in index["holdout"]:
             duplicates.append(f"holdout:{issue}")
-        if issue is not None and any(
-                case.endswith(f"-{issue}") for case in index["cases"]):
+        expected_case = str((sample.expected or {}).get("case") or "")
+        if expected_case and expected_case in index["cases"]:
+            duplicates.append(f"knowledge:{expected_case}")
+        if issue is not None and issue in index["knowledge"]:
             reasons.append("absorbed")
     if duplicates:
         reasons.append("duplicate_sample")

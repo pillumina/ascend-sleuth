@@ -71,6 +71,34 @@ class IntakeTest(unittest.TestCase):
             self.assertNotIn("绑定未刷新", payload["input"]["phenomenon"])
             self.assertIn("绑定未刷新", payload["proposed"]["resolution"])
 
+    def test_unlabeled_summary_uses_user_content_not_summary(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            trace = root / "t.yaml"
+            trace.write_text(yaml.safe_dump({
+                "session_id": "s",
+                "summary": "定位：命中 case 但触发不稳，根因在 kernel。",
+                "trace": [{"role": "user", "content": "服务启动崩"}],
+            }), encoding="utf-8")
+            payload = extract_trace(trace, root)
+            self.assertEqual(payload["input"]["phenomenon"], "服务启动崩")
+            self.assertNotIn("根因", payload["input"]["phenomenon"])
+            self.assertEqual(payload["proposed"]["resolution"], "")
+
+    def test_empty_resolution_is_missing_answer(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            store = SampleStore(root=root)
+            sample = store.new(
+                id="S-EMPTY", object_type="diagnosis", source="traces/t.yaml",
+                purpose="evaluation", expected={"resolution": ""},
+                provenance={"trigger": "manual_case", "sanitized": True,
+                            "redactions": [], "confidence": "maintainer-reviewed",
+                            "extraction": "manual"},
+            )
+            with self.assertRaises(Exception):
+                store.review(sample.id, approve=True)
+
     def test_case_without_root_cause_is_needs_answer(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

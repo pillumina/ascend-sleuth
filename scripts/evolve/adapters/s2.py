@@ -201,7 +201,12 @@ def import_s2_samples(
             stats["limit_reached"] = True
             continue
         try:
-            sample = store.new(**candidate_kwargs(row, source_label, sample_id))
+            kwargs = candidate_kwargs(row, source_label, sample_id)
+            kwargs["provenance"] = {
+                "trigger": "issue_import", "sanitized": True, "redactions": [],
+                "confidence": "issue-verified", "extraction": "auto",
+            }
+            sample = store.new(**kwargs)
         except StoreError as exc:
             message = str(exc)
             if "duplicate source" in message:

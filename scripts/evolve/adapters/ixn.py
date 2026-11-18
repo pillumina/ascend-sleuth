@@ -52,6 +52,9 @@ def import_ixn(store: SampleStore, root: Path, source: Path,
                 input={"symptoms": symptoms, "title": f"ixn {issue}"},
                 expected={"resolution": expected, "namespace": "unknown", "category": "unknown"},
                 expected_kind="resolution",
+                provenance={"trigger": "issue_import", "sanitized": True,
+                            "redactions": [], "confidence": "issue-verified",
+                            "extraction": "auto"},
                 proposed={"repo": repo, "issue": issue, "source": "ixn-arena"},
             )
         except StoreError as exc:
