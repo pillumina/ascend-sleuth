@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from evolve.knowledge_usage import UsageError, compare, summarize  # noqa: E402
+from evolve.knowledge_usage import UsageError, compare, from_trace, summarize  # noqa: E402
 from evolve.regions import REGIONS  # noqa: E402
 from evolve.experiments import ExperimentError, validate_experiment  # noqa: E402
 
@@ -19,6 +19,36 @@ def row(sample, hit=True, step=1, candidates=1, body=1, refs=0, wrong=0, tokens=
 
 
 class KnowledgeUsageTest(unittest.TestCase):
+    def test_from_trace_derives_usage_without_zero_fill(self):
+        trace = {
+            "session_id": "s1",
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "updated_at": "2026-01-01T00:00:02+00:00",
+            "trace": [
+                {"action": "load_index", "considered_candidates": 5},
+                {"action": "quickly_check", "case": "C-1"},
+                {"action": "quickly_check", "case": "C-2"},
+                {"action": "reference_lookup", "outcome": "hit"},
+                {"action": "reference_lookup", "outcome": "skipped"},
+                {"action": "hit", "case": "C-2", "step": 3},
+            ],
+        }
+        out = from_trace(trace, expected_case="C-2")
+        self.assertEqual(out["candidates_examined"], 5)
+        self.assertEqual(out["full_body_reads"], 2)
+        self.assertEqual(out["reference_lookups"], 1)
+        self.assertEqual(out["first_hit_step"], 3)
+        self.assertTrue(out["hit"])
+        self.assertEqual(out["wrong_cases"], 0)
+        self.assertAlmostEqual(out["elapsed_ms"], 2000.0)
+
+    def test_from_trace_marks_wrong_final_case(self):
+        trace = {"session_id": "s2", "trace": [{"action": "hit", "case": "C-1", "step": 2}]}
+        out = from_trace(trace, expected_case="C-2")
+        self.assertFalse(out["hit"])
+        self.assertIsNone(out["first_hit_step"])
+        self.assertEqual(out["wrong_cases"], 1)
+
     def test_region_is_registered(self):
         self.assertIn("diagnose.knowledge_usage", REGIONS)
 

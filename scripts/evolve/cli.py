@@ -43,7 +43,7 @@ from .adapters.s2 import import_s2_samples
 from .decision import Decision, DecisionResult, decide
 from .experiments import ExperimentError, validate_experiment
 from .holdout_guard import is_holdout_source, issue_numbers
-from .knowledge_usage import UsageError, compare as compare_usage, evaluate as evaluate_usage
+from .knowledge_usage import UsageError, compare as compare_usage, evaluate as evaluate_usage, from_trace
 from .quality import QualityError, load_quality
 from .policy import PolicyError, load_policy, policy_hash
 from .records import ConclusionStore, ExperimentStore, RecordError
@@ -888,6 +888,21 @@ def cmd_knowledge_usage_evaluate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_knowledge_usage_from_trace(args: argparse.Namespace) -> int:
+    try:
+        document = yaml.safe_load(Path(args.trace).read_text(encoding="utf-8"))
+        result = from_trace(document, expected_case=args.expected_case)
+    except (OSError, ValueError, yaml.YAMLError, UsageError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(f"sample_id: {result['sample_id']}")
+        print(f"hit: {result['hit']} first_hit_step={result['first_hit_step']}")
+    return 0
+
+
 def cmd_knowledge_usage_compare(args: argparse.Namespace) -> int:
     try:
         result = compare_usage(_read_json(args.baseline), _read_json(args.candidate))
@@ -1320,6 +1335,11 @@ def build_parser() -> argparse.ArgumentParser:
     rsi_select.set_defaults(func=cmd_rsi_select)
     usage = sub.add_parser("knowledge-usage", help="知识使用效率观测/对照")
     usage_sub = usage.add_subparsers(dest="usage_command", required=True)
+    usage_trace = usage_sub.add_parser("from-trace", help="从 diagnose trace 推导 usage")
+    usage_trace.add_argument("--trace", required=True)
+    usage_trace.add_argument("--expected-case", default=None)
+    usage_trace.add_argument("--json", action="store_true")
+    usage_trace.set_defaults(func=cmd_knowledge_usage_from_trace)
     usage_eval = usage_sub.add_parser("evaluate", help="汇总一份 usage 记录")
     usage_eval.add_argument("--file", required=True)
     usage_eval.add_argument("--json", action="store_true")

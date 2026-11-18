@@ -251,9 +251,14 @@ S2 未命中有三种解释：路由错、缺 case、内容错。它只看到没
 `hit=true` 必须有 `first_hit_step`；缺失字段记 unknown，不补 0。入口：
 
 ```bash
+# 现有 diagnose trace 直接导出 usage；trace 放在演进评估目录，不写真实 traces/
+python3 scripts/evolve.py knowledge-usage from-trace \
+  --trace .s2-replay/evolve/usage-traces/<session>.yaml --expected-case <case-id>
 python3 scripts/evolve.py knowledge-usage evaluate --file usage.json
 python3 scripts/evolve.py knowledge-usage compare --baseline base.json --candidate cand.json
 ```
+
+演进评估的 trace 统一放 `.s2-replay/evolve/usage-traces/`（本地运行件，git-ignored），不得写入 `traces/`；真实诊断 trace 与演进评估 trace 分开。`from-trace` 从 `load_index`/`quickly_check`/`reference_lookup`/`hit` 推导，token 不在 trace 里时保持 null。
 
 `compare` 只有在准确率不降、`wrong_cases` 不增、至少一个效率项改善、且没有效率项变差时给 `accept`；准确率或效率回退给 `reject`；没有改善给 `insufficient`。实验记录的 `knowledge_usage.decision` 若存在，整体 `accept` 必须同时为 `accept`。
 

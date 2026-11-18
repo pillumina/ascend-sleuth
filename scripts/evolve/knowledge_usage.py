@@ -4,6 +4,7 @@
 使用记录。字段全部来自 trace/实验记录，缺失就记 unknown，不补零。
 """
 
+from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
 
 EFFICIENCY_FIELDS = (
@@ -126,6 +127,74 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
         "baseline": b_sum, "candidate": c_sum, "deltas": deltas,
         "reasons": reasons,
     }
+
+
+def _elapsed_ms(document: Dict[str, Any], events: List[Dict[str, Any]]) -> Optional[float]:
+    stamps = []
+    for value in (document.get("created_at"), document.get("updated_at")):
+        if isinstance(value, str):
+            try:
+                stamps.append(datetime.fromisoformat(value.replace("Z", "+00:00")))
+            except ValueError:
+                pass
+    for event in events:
+        value = event.get("ts")
+        if isinstance(value, str):
+            try:
+                stamps.append(datetime.fromisoformat(value.replace("Z", "+00:00")))
+            except ValueError:
+                pass
+    if len(stamps) < 2:
+        return None
+    return max(0.0, (max(stamps) - min(stamps)).total_seconds() * 1000)
+
+
+def from_trace(document: Any, expected_case: Optional[str] = None) -> Dict[str, Any]:
+    """从 diagnose trace 推导一条 usage 记录；缺失项不补 0。"""
+    if not isinstance(document, dict):
+        raise UsageError("trace must be an object")
+    events = document.get("trace")
+    if not isinstance(events, list):
+        raise UsageError("trace.trace must be a list")
+    checks = {
+        str(event.get("case")) for event in events
+        if event.get("action") == "quickly_check" and event.get("case")
+    }
+    considered = None
+    for event in events:
+        if event.get("action") == "load_index":
+            value = event.get("considered_candidates")
+            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+                considered = value
+    candidates = considered if considered is not None else len(checks)
+    refs = sum(
+        1 for event in events
+        if event.get("action") == "reference_lookup" and event.get("outcome") != "skipped"
+    )
+    hit_event = next((event for event in events if event.get("action") == "hit"), None)
+    hit_case = str(hit_event.get("case")) if hit_event and hit_event.get("case") else None
+    if expected_case:
+        hit = hit_case == expected_case
+        wrong = 1 if hit_case and not hit else 0
+    else:
+        hit = hit_event is not None
+        wrong = 0
+    first_step = None
+    if hit and hit_event is not None:
+        step = hit_event.get("step")
+        if isinstance(step, int) and not isinstance(step, bool) and step >= 0:
+            first_step = step
+    return validate_record({
+        "sample_id": str(document.get("session_id") or "unknown"),
+        "hit": hit,
+        "first_hit_step": first_step,
+        "candidates_examined": candidates,
+        "full_body_reads": len(checks),
+        "reference_lookups": refs,
+        "wrong_cases": wrong,
+        "tokens": None,
+        "elapsed_ms": _elapsed_ms(document, events),
+    })
 
 
 def evaluate(data: Any) -> Dict[str, Any]:
