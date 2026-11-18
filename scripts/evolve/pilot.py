@@ -151,7 +151,7 @@ def collect(output: Path, judge: Optional[Path] = None) -> Dict[str, Any]:
 def _git_rev(root: Path) -> str:
     try:
         proc = subprocess.run(["git", "-C", str(root), "rev-parse", "--short", "HEAD"],
-                              check=True, capture_output=True, text=True)
+                              check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
         return proc.stdout.strip() or "unknown"
     except (OSError, subprocess.CalledProcessError):
         return "unknown"
@@ -161,7 +161,7 @@ def _worktree_patch(root: Path) -> str:
     """候选 worktree 未提交补丁的哈希；没有差异时返回空串。"""
     try:
         proc = subprocess.run(["git", "-C", str(root), "diff", "HEAD", "--", "."],
-                              check=True, capture_output=True, text=True)
+                              check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
     except (OSError, subprocess.CalledProcessError):
         return "unknown"
     if not proc.stdout.strip():

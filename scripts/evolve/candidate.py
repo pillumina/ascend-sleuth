@@ -143,7 +143,7 @@ def _run_checks(root: Path, checks: List[str]) -> None:
         try:
             proc = subprocess.run(
                 command, shell=True, cwd=str(root), capture_output=True,
-                text=True, timeout=CHECK_TIMEOUT,
+                text=True, encoding="utf-8", errors="replace", timeout=CHECK_TIMEOUT,
             )
         except subprocess.TimeoutExpired as exc:
             raise CandidateError(f"check timed out after {CHECK_TIMEOUT}s: {command}") from exc
@@ -204,13 +204,13 @@ def create_workspace(root: Path, candidate: Dict[str, Any], workspace: Path) -> 
     workspace.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run(
         ["git", "-C", str(root), "worktree", "add", "--detach", str(workspace), candidate["base_rev"]],
-        check=True, capture_output=True, text=True,
+        check=True, capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     try:
         info = apply_to_root(workspace, candidate)
     except Exception:
         subprocess.run(["git", "-C", str(root), "worktree", "remove", "--force", str(workspace)],
-                       check=False, capture_output=True, text=True)
+                       check=False, capture_output=True, text=True, encoding="utf-8", errors="replace")
         raise
     meta = workspace / ".evolve-candidate.json"
     meta.write_text(json.dumps({"candidate": candidate, "apply": info},
@@ -223,12 +223,12 @@ def rollback_workspace(root: Path, workspace: Path) -> None:
     if not workspace.exists():
         return
     subprocess.run(["git", "-C", str(root), "worktree", "remove", "--force", str(workspace)],
-                   check=True, capture_output=True, text=True)
+                   check=True, capture_output=True, text=True, encoding="utf-8", errors="replace")
 
 
 def diff_workspace(workspace: Path) -> str:
     result = subprocess.run(
         ["git", "-C", str(Path(workspace)), "diff", "--", "."],
-        check=True, capture_output=True, text=True,
+        check=True, capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     return result.stdout
