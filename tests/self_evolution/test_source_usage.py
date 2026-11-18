@@ -139,6 +139,13 @@ class SourceUsageTest(unittest.TestCase):
         self.assertIn("source_efficiency_partial_unknown", out["reasons"])
         self.assertEqual(out["decision"], "insufficient")
 
+    def test_partial_threshold_uses_the_same_epsilon(self):
+        base = [row("a", elapsed=1000.0), row("b", elapsed=None)]
+        tiny = [row("a", elapsed=1000.00000000005), row("b", elapsed=1000)]
+        self.assertNotIn("source_efficiency_partial_unknown", compare(base, tiny)["reasons"])
+        real = [row("a", elapsed=1000.001), row("b", elapsed=1000)]
+        self.assertIn("source_efficiency_partial_unknown", compare(base, real)["reasons"])
+
 
 if __name__ == "__main__":
     unittest.main()

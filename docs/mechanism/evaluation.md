@@ -262,7 +262,7 @@ python3 scripts/evolve.py knowledge-usage compare --baseline base.json --candida
 
 `compare` 逐样本配对。同一效率项只在两侧都有值的样本上求均值，样本 id 集合仍要求两侧一致。同一字段在两侧可测的样本数不同时，各自求均值会把「一侧缺数据」算成「另一侧变好或变差」。
 
-某项只有部分样本可测时，差值照报，但不算改善或回退。它的差值仍超过判定阈值（1e-9）时记 `efficiency_partial_unknown`，结论不能是 `accept`。
+某项只有部分样本可测时，差值照报，但不算改善或回退。它的差值仍超过判定阈值（1e-9）时记 `efficiency_partial_unknown`，结论不能是 `accept`。改善/回退方向与实验记录校验用同一个阈值。
 
 `compare` 只有在准确率不降、`wrong_cases` 不增、至少一个效率项改善、且没有效率项变差时给 `accept`；准确率或效率回退给 `reject`；没有改善或证据不全给 `insufficient`。实验记录的 `knowledge_usage.decision` 若存在，整体 `accept` 必须同时为 `accept`。
 

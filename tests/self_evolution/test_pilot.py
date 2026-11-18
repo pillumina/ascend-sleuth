@@ -53,9 +53,16 @@ class PilotCollectTest(unittest.TestCase):
 
     def test_empty_trace_reports_usage_error(self):
         row = self._collect("")
-        self.assertIn("usage_error", row)
+        self.assertEqual(row["usage_error"], "trace is empty")
         self.assertNotIn("knowledge_usage", row)
         self.assertNotIn("source_usage", row)
+        self.assertTrue(row["has_trace"] and row["has_output"])
+
+    def test_malformed_trace_keeps_parse_error(self):
+        row = self._collect("trace: [unclosed")
+        self.assertIn("usage_error", row)
+        self.assertNotEqual(row["usage_error"], "trace is empty")
+        self.assertTrue(row["has_trace"])
 
     def test_knowledge_failure_keeps_source_usage_visible(self):
         trace = {"session_id": "s", "trace": [

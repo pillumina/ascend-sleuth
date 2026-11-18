@@ -94,7 +94,8 @@ def collect(output: Path, judge: Optional[Path] = None) -> Dict[str, Any]:
                 except Exception as exc:  # unreadable or malformed trace
                     row["usage_error"] = str(exc)
                 if doc is None:
-                    row["usage_error"] = "trace is empty"
+                    if "usage_error" not in row:
+                        row["usage_error"] = "trace is empty"
                 else:
                     try:
                         knowledge = knowledge_from_trace(doc)
