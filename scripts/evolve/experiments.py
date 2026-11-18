@@ -29,6 +29,65 @@ def _number(value: Any, name: str) -> float:
     return float(value)
 
 
+def _validate_usage_side(value: Any, name: str) -> Dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ExperimentError(f"knowledge_usage.{name} must be an object")
+    n = value.get("n")
+    if not isinstance(n, int) or isinstance(n, bool) or n <= 0:
+        raise ExperimentError(f"knowledge_usage.{name}.n must be a positive integer")
+    hits = value.get("hits")
+    wrong = value.get("wrong_cases")
+    for key, item in (("hits", hits), ("wrong_cases", wrong)):
+        if not isinstance(item, int) or isinstance(item, bool) or not 0 <= item <= n:
+            raise ExperimentError(f"knowledge_usage.{name}.{key} must be 0..n")
+    rate = value.get("hit_rate")
+    if not isinstance(rate, (int, float)) or isinstance(rate, bool):
+        raise ExperimentError(f"knowledge_usage.{name}.hit_rate must be a number")
+    if abs(float(rate) - hits / n) > 1e-6:
+        raise ExperimentError(f"knowledge_usage.{name}.hit_rate does not match hits/n")
+    for field in ("first_hit_step", "candidates_examined", "full_body_reads",
+                  "reference_lookups", "tokens", "elapsed_ms"):
+        item = value.get(field)
+        if item is not None and (not isinstance(item, (int, float)) or isinstance(item, bool) or item < 0):
+            raise ExperimentError(f"knowledge_usage.{name}.{field} must be non-negative or null")
+    return value
+
+
+def _validate_usage_evidence(usage: Dict[str, Any]) -> None:
+    for key in ("baseline", "candidate", "deltas", "reasons"):
+        if key not in usage:
+            raise ExperimentError(f"knowledge_usage.{key} is required")
+    baseline = _validate_usage_side(usage.get("baseline"), "baseline")
+    candidate = _validate_usage_side(usage.get("candidate"), "candidate")
+    if baseline["n"] != candidate["n"]:
+        raise ExperimentError("knowledge_usage baseline/candidate n must match")
+    if not isinstance(usage.get("reasons"), list):
+        raise ExperimentError("knowledge_usage.reasons must be a list")
+    deltas = usage.get("deltas")
+    if not isinstance(deltas, dict):
+        raise ExperimentError("knowledge_usage.deltas must be an object")
+    for field in ("first_hit_step", "candidates_examined", "full_body_reads",
+                  "reference_lookups", "tokens", "elapsed_ms"):
+        if field not in deltas:
+            raise ExperimentError(f"knowledge_usage.deltas.{field} is required")
+        item = deltas[field]
+        if item is not None and (not isinstance(item, (int, float)) or isinstance(item, bool)):
+            raise ExperimentError(f"knowledge_usage.deltas.{field} must be numeric or null")
+        bv, cv = baseline.get(field), candidate.get(field)
+        if bv is not None and cv is not None and item is not None:
+            if abs(float(item) - (float(cv) - float(bv))) > 1e-6:
+                raise ExperimentError(f"knowledge_usage.deltas.{field} does not match sides")
+    if usage.get("decision") == "accept":
+        if usage.get("reasons"):
+            raise ExperimentError("knowledge_usage accept must have no reasons")
+        if candidate["hits"] < baseline["hits"] or candidate["wrong_cases"] > baseline["wrong_cases"]:
+            raise ExperimentError("knowledge_usage accept regresses accuracy/wrong_cases")
+        improved = any(item is not None and item < 0 for item in deltas.values())
+        worsened = any(item is not None and item > 0 for item in deltas.values())
+        if not improved or worsened:
+            raise ExperimentError("knowledge_usage accept requires improvement without regression")
+
+
 def _side(value: Any, name: str) -> Dict[str, Any]:
     if not isinstance(value, dict):
         raise ExperimentError(f"{name} must be an object")
@@ -159,11 +218,7 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
             raise ExperimentError("knowledge_usage must be an object")
         if usage.get("decision") not in ("accept", "reject", "insufficient"):
             raise ExperimentError("knowledge_usage.decision must be accept/reject/insufficient")
-        for key in ("baseline", "candidate", "deltas", "reasons"):
-            if key not in usage:
-                raise ExperimentError(f"knowledge_usage.{key} is required")
-        if not isinstance(usage.get("reasons"), list):
-            raise ExperimentError("knowledge_usage.reasons must be a list")
+        _validate_usage_evidence(usage)
         if decision == "accept" and (usage.get("decision") != "accept" or usage.get("reasons")):
             raise ExperimentError("accept requires knowledge_usage.decision=accept and no reasons")
         result["knowledge_usage"] = usage
