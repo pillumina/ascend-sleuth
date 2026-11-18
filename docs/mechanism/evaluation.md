@@ -237,7 +237,27 @@ S2 未命中有三种解释：路由错、缺 case、内容错。它只看到没
 
 自演进实验按六个节点固定算法：`attribute`、`select_region`、`select_candidate`、`propose`、`judge`、`gate`。当前注册：`attribute.trace_rule`/`attribute.agent`、`select.region_hardcount`/`select.region_agent`、`select.none`/`select.best`/`select.pareto`、`propose.none`/`propose.agent`/`propose.reflection`（兼容别名）、`judge.subagent`、`gate.paired`。默认 agent heuristic 是 `select_candidate.best` + `propose.agent`；GEPA 是 `select_candidate.pareto` + `propose.agent` 的组合。归因/选 region 先规则，规则不确定才让 agent 补证据；agent 不能把推断写成 hard，也不做最终 gate。`policy.experiment.stages` 是可覆盖的默认组合；实验记录保存解析后的 stages，禁止把算法写错节点。
 
-### 3.9 算法适配器
+### 3.9 知识使用效率
+
+知识使用的可变异区是 `diagnose.knowledge_usage`，只改检索顺序、读索引/全文时机、候选数、reference 查询与停止条件；不改 case/reference 内容，也不改 trace schema。归因组件用 `knowledge_usage`、`case_retrieval`、`case_loading`、`reference_lookup`。
+
+每个 rollout 记录一行：
+
+```json
+{"sample_id":"S-1","hit":true,"first_hit_step":2,"candidates_examined":2,
+ "full_body_reads":1,"reference_lookups":0,"wrong_cases":0,"tokens":1200}
+```
+
+`hit=true` 必须有 `first_hit_step`；缺失字段记 unknown，不补 0。入口：
+
+```bash
+python3 scripts/evolve.py knowledge-usage evaluate --file usage.json
+python3 scripts/evolve.py knowledge-usage compare --baseline base.json --candidate cand.json
+```
+
+`compare` 只有在准确率不降、`wrong_cases` 不增、至少一个效率项改善、且没有效率项变差时给 `accept`；准确率或效率回退给 `reject`；没有改善给 `insufficient`。实验记录的 `knowledge_usage.decision` 若存在，整体 `accept` 必须同时为 `accept`。
+
+### 3.10 算法适配器
 
 算法只做提案者，不做判定、不直接写库、不合入。`scripts/evolve/ports.py` 定义 `Optimizer`，`scripts/evolve/algorithms/registry.py` 是静态注册表；当前只有 `baseline`。`policy.experiment.target`/`algorithm` 选目标与算法，`Version.algorithm`/`algorithm_version` 记身份，`budget`/`seed` 记实验条件。GEPA/AEL/SkillProx/EvolveMem 只在后续的实验适配器里接入，一次只接一个组件；没有动态插件加载。
 
@@ -261,7 +281,7 @@ python3 scripts/evolve.py experiment gate --target knowledge --sample K-1 \
 
 通过退出 0，拒绝退出 1，输入或 evaluator 未接退出 2。该命令只判一个已有 rubric 的样本，不替代双标、不生成 rubric。
 
-`targets/registry.py` 只允许 target 白名单内的算法；未注册的算法不会静默回退。官方 GEPA 库没有注册：它需要外部 endpoint 和同步 `task_lm`/`reflection_lm`，不属于本框架的自包含路径。GEPA 效果由 agent-native 实现承担：`select.pareto` + `propose.agent`，由 subagent 执行 task/judge/reflection，不调用官方库。`experiment propose --target skill --component <组件>` 会调用当前 optimizer 生成一个 Patch 并写本地 `experiments.jsonl`；`experiment records` 读取最近记录。baseline 仍是人工提案，不会自动改文件或合入。
+`targets/registry.py` 只允许 target 白名单内的算法；未注册的算法不会静默回退。官方 GEPA 库没有注册：它需要外部 endpoint 和同步 `task_lm`/`reflection_lm`，不属于本框架的自包含路径。GEPA 效果由 agent-native 实现承担：`select_candidate.pareto` + `propose.agent`，由 subagent 执行 task/judge/reflection，不调用官方库。`experiment propose --target skill --component <组件>` 会调用当前 optimizer 生成一个 Patch 并写本地 `experiments.jsonl`；`experiment records` 读取最近记录。baseline 仍是人工提案，不会自动改文件或合入。
 
 ## 4 边界与失败模式
 

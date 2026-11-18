@@ -43,6 +43,7 @@ from .adapters.s2 import import_s2_samples
 from .decision import Decision, DecisionResult, decide
 from .experiments import ExperimentError, validate_experiment
 from .holdout_guard import is_holdout_source, issue_numbers
+from .knowledge_usage import UsageError, compare as compare_usage, evaluate as evaluate_usage
 from .quality import QualityError, load_quality
 from .policy import PolicyError, load_policy, policy_hash
 from .records import ConclusionStore, ExperimentStore, RecordError
@@ -866,6 +867,44 @@ def cmd_rsi_select(args: argparse.Namespace) -> int:
     return 0
 
 
+def _read_json(path: str) -> Any:
+    import json
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def cmd_knowledge_usage_evaluate(args: argparse.Namespace) -> int:
+    try:
+        result = evaluate_usage(_read_json(args.file))
+    except (OSError, ValueError, UsageError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        import json
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(f"samples: {result['n']}")
+        print(f"hit_rate: {result['hit_rate']:.3f}")
+        print(f"wrong_cases: {result['wrong_cases']}")
+    return 0
+
+
+def cmd_knowledge_usage_compare(args: argparse.Namespace) -> int:
+    try:
+        result = compare_usage(_read_json(args.baseline), _read_json(args.candidate))
+    except (OSError, ValueError, UsageError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        import json
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(f"decision: {result['decision']}")
+        print(f"reasons: {', '.join(result['reasons']) or 'none'}")
+        print(f"baseline hit_rate: {result['baseline']['hit_rate']:.3f}")
+        print(f"candidate hit_rate: {result['candidate']['hit_rate']:.3f}")
+    return 0
+
+
 def cmd_rsi_status(args: argparse.Namespace) -> int:
     path = Path(args.state)
     try:
@@ -1279,6 +1318,17 @@ def build_parser() -> argparse.ArgumentParser:
     rsi_select.add_argument("--state", required=True)
     rsi_select.add_argument("--file", required=True)
     rsi_select.set_defaults(func=cmd_rsi_select)
+    usage = sub.add_parser("knowledge-usage", help="知识使用效率观测/对照")
+    usage_sub = usage.add_subparsers(dest="usage_command", required=True)
+    usage_eval = usage_sub.add_parser("evaluate", help="汇总一份 usage 记录")
+    usage_eval.add_argument("--file", required=True)
+    usage_eval.add_argument("--json", action="store_true")
+    usage_eval.set_defaults(func=cmd_knowledge_usage_evaluate)
+    usage_cmp = usage_sub.add_parser("compare", help="baseline/candidate 使用效率门禁")
+    usage_cmp.add_argument("--baseline", required=True)
+    usage_cmp.add_argument("--candidate", required=True)
+    usage_cmp.add_argument("--json", action="store_true")
+    usage_cmp.set_defaults(func=cmd_knowledge_usage_compare)
     rsi_status = rsi_sub.add_parser("status", help="读取已保存的 RSI 计划")
     rsi_status.add_argument("--state", required=True)
     rsi_status.set_defaults(func=cmd_rsi_status)

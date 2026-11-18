@@ -516,6 +516,23 @@ class IngestCliTest(unittest.TestCase):
             self.assertEqual(created.returncode, 2)
             self.assertIn("subagent_judge", created.stderr)
 
+    def test_knowledge_usage_compare_cli(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td) / "base.json"
+            cand = Path(td) / "cand.json"
+            base.write_text(json.dumps([
+                {"sample_id": "a", "hit": True, "first_hit_step": 4,
+                 "candidates_examined": 3, "full_body_reads": 3, "tokens": 100},
+            ]), encoding="utf-8")
+            cand.write_text(json.dumps([
+                {"sample_id": "a", "hit": True, "first_hit_step": 2,
+                 "candidates_examined": 1, "full_body_reads": 1, "tokens": 50},
+            ]), encoding="utf-8")
+            result = run_cli("knowledge-usage", "compare",
+                             "--baseline", str(base), "--candidate", str(cand), "--json")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('"decision": "accept"', result.stdout)
+
     def test_experiment_record_rejects_fake_p_value(self):
         result = {
             "target_kind": "skill", "target_component": "x",

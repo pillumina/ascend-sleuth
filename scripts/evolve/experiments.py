@@ -151,6 +151,15 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
                 )
             normalized_stages[point] = spec.id
         result["stages"] = normalized_stages
+    usage = record.get("knowledge_usage")
+    if usage is not None:
+        if not isinstance(usage, dict):
+            raise ExperimentError("knowledge_usage must be an object")
+        if usage.get("decision") not in ("accept", "reject", "insufficient"):
+            raise ExperimentError("knowledge_usage.decision must be accept/reject/insufficient")
+        if decision == "accept" and usage.get("decision") != "accept":
+            raise ExperimentError("accept requires knowledge_usage.decision=accept")
+        result["knowledge_usage"] = usage
     if paired is not None:
         result["paired"] = {
             "b": paired.get("b"), "c": paired.get("c"), "n": paired.get("n"),

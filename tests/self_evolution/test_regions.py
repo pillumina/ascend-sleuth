@@ -19,6 +19,10 @@ class RegionsTest(unittest.TestCase):
         self.assertEqual(result[0]["region"], "diagnose.routing_hints")
         self.assertEqual(result[0]["hard"], 2)
 
+    def test_knowledge_usage_component_maps_to_usage_region(self):
+        result = recommend({"case_retrieval": {"events": 2, "hard": 1}})
+        self.assertEqual(result[0]["region"], "diagnose.knowledge_usage")
+
     def test_unknown_components_return_empty(self):
         self.assertEqual(recommend({"unknown": {"events": 1, "hard": 1}}), [])
 

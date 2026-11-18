@@ -38,6 +38,8 @@ task subagents → judge subagents
 
 agent 归因只能给候选，不能写成 hard；agent 选点只能在注册区里选。
 
+如果目标是 `diagnose.knowledge_usage`，记录命中、首命中步、候选数、全文读取、reference 查询、wrong_cases、token/时间；用 `knowledge-usage compare` 做准确率不降、效率不降的门禁，不能只看速度。
+
 ## 停点
 
 - 预算用尽、种群满、没有未反射候选：停；
