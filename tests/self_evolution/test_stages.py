@@ -14,7 +14,9 @@ from evolve.stages import get_stage, stage_ids  # noqa: E402
 class StageRegistryTest(unittest.TestCase):
     def test_points_and_gepa_composition(self):
         self.assertIn("attribute.trace_rule", stage_ids("attribute"))
+        self.assertIn("attribute.agent", stage_ids("attribute"))
         self.assertIn("select.pareto", stage_ids("select"))
+        self.assertIn("select.agent", stage_ids("select"))
         self.assertIn("propose.reflection", stage_ids("propose"))
         self.assertIn("judge.subagent", stage_ids("judge"))
         self.assertIn("gate.paired", stage_ids("gate"))
@@ -23,6 +25,10 @@ class StageRegistryTest(unittest.TestCase):
         self.assertEqual(session.propose_stage.id, "propose.agent")
         self.assertEqual(session.result()["stages"],
                          {"select": "select.pareto", "propose": "propose.agent"})
+
+    def test_agent_selector_requires_external_choice(self):
+        with self.assertRaises(Exception):
+            GepaSession("seed", ["S-1"], select_stage="select.agent")
 
     def test_unknown_stage_is_an_error(self):
         with self.assertRaises(ValueError):

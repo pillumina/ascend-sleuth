@@ -89,6 +89,8 @@ class AgentRsiSession:
         if self.propose_stage.point not in ("propose",):
             raise GepaError("propose_stage must be a propose stage")
         if selector is None:
+            if select_stage == "select.agent":
+                raise GepaError("select.agent requires an external selector")
             selector = ParetoSelector() if select_stage == "select.pareto" else BestSelector()
         self.selector = selector
         self.candidates: List[Candidate] = [Candidate(id="seed", skill=seed_skill)]

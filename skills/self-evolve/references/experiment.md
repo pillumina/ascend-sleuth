@@ -32,13 +32,13 @@ task 只看样本输入；judge 看 expected/rubric；reflection 不写仓库；
 
 | stage | 当前实现 |
 |---|---|
-| attribute | `attribute.trace_rule` |
-| select | `select.region_hardcount`（选点）/ `select.best`（单候选默认）/ `select.pareto`（GEPA） |
+| attribute | `attribute.trace_rule`（先跑）/ `attribute.agent`（规则不确定时补证据） |
+| select | `select.region_hardcount`（先跑）/ `select.agent`（多 region 歧义）/ `select.best`（单候选默认）/ `select.pareto`（GEPA） |
 | propose | `propose.agent`（agent heuristic 默认；`propose.reflection` 是兼容别名） |
 | judge | `judge.subagent` |
 | gate | `gate.paired` |
 
-GEPA 不是整条循环，而是 `select.pareto` + `propose.agent` 的组合；默认 agent heuristic 是 `select.best` + `propose.agent`，不需要 GEPA。其他 stage 可替换，但一次实验固定一组。
+GEPA 不是整条循环，而是 `select.pareto` + `propose.agent` 的组合；默认 agent heuristic 是 `select.best` + `propose.agent`，不需要 GEPA。归因/选点先走规则，规则不确定时才用 `attribute.agent`/`select.agent`；agent 只能给候选/在注册 region 中选，不能把推断写成 hard，也不能做最终 gate。
 
 ## 模式 B：agent-native GEPA
 

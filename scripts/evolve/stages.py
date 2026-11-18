@@ -35,6 +35,14 @@ STAGES: Dict[str, StageSpec] = {
         "select.region_hardcount", "select", "v1", "manual",
         "按硬归因数把组件映射到可变异区",
     ),
+    "attribute.agent": StageSpec(
+        "attribute.agent", "attribute", "v1", "subagent",
+        "规则归因不确定/冲突时，由 agent 读 trace/metrics/replay 信号补证据；只能给候选归因",
+    ),
+    "select.agent": StageSpec(
+        "select.agent", "select", "v1", "subagent",
+        "多个注册 region 接近时，由 agent 按证据选一个；不能发明 region",
+    ),
     "select.none": StageSpec(
         "select.none", "select", "v1", "manual",
         "baseline 控制臂：不选新父候选，只评估当前 skill",
