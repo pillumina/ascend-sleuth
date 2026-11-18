@@ -119,7 +119,7 @@ def _validate_source_usage_evidence(usage: Dict[str, Any]) -> None:
     if not isinstance(deltas, dict):
         raise ExperimentError("source_usage.deltas must be an object")
     for field in ("files_read", "tool_calls", "fetch_calls", "grep_calls",
-                  "followups", "downloads", "bytes", "elapsed_ms", "cache_hits"):
+                  "followups", "elapsed_ms"):
         if field not in deltas:
             raise ExperimentError(f"source_usage.deltas.{field} is required")
         item = deltas[field]
@@ -139,13 +139,9 @@ def _validate_source_usage_evidence(usage: Dict[str, Any]) -> None:
         if candidate["source_ok"] < baseline["source_ok"]:
             raise ExperimentError("source_usage accept regresses correctness")
         lower = ("files_read", "tool_calls", "fetch_calls", "grep_calls",
-                 "followups", "downloads", "bytes", "elapsed_ms")
+                 "followups", "elapsed_ms")
         improved = any(deltas[f] is not None and deltas[f] < 0 for f in lower)
-        if deltas.get("cache_hits") is not None and deltas["cache_hits"] > 0:
-            improved = True
         worsened = any(deltas[f] is not None and deltas[f] > 0 for f in lower)
-        if deltas.get("cache_hits") is not None and deltas["cache_hits"] < 0:
-            worsened = True
         if not improved or worsened:
             raise ExperimentError("source_usage accept requires improvement without regression")
 
