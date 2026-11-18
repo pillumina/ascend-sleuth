@@ -4671,5 +4671,14 @@ function clickWith(node, extra) {
     String(byClass(view, 'scp-cmd').length))
 }
 
+{
+  const t = await mount('closed')
+  click(findToolbar(t.view()))
+  await t.settle()
+  click(findButton(await t.settle(), '更多操作'))
+  const view = await t.settle()
+  expect('更多操作：已闭环单有复制候选样本指令', view.text.includes('复制候选样本指令'))
+}
+
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')
 process.exit(failures === 0 ? 0 : 1)

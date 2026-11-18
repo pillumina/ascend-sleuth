@@ -85,6 +85,31 @@ class IntakeTest(unittest.TestCase):
             self.assertNotIn("根因", payload["input"]["phenomenon"])
             self.assertEqual(payload["proposed"]["resolution"], "")
 
+    def test_preamble_without_phenomenon_uses_user_content(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            trace = root / "t.yaml"
+            trace.write_text(yaml.safe_dump({
+                "session_id": "s",
+                "summary": "启动崩，根因是绑定未刷新。排除链：候选都不符。",
+                "trace": [{"role": "user", "content": "启动崩，贴日志"}],
+            }), encoding="utf-8")
+            payload = extract_trace(trace, root)
+            self.assertEqual(payload["input"]["phenomenon"], "启动崩，贴日志")
+            self.assertNotIn("根因", payload["input"]["phenomenon"])
+
+    def test_status_and_check_agree_on_missing_provenance(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            store = SampleStore(root=root)
+            sample = store.new(
+                id="S-LOCAL", object_type="diagnosis", source="traces/x.yaml",
+                purpose="evaluation", expected={"resolution": "r"},
+            )
+            self.assertEqual(completeness(sample, store=store, root=root)["state"],
+                             "needs_sanitize")
+            self.assertTrue(store.check(sample.id))
+
     def test_empty_resolution_is_missing_answer(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

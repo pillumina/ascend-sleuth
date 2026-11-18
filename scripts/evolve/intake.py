@@ -56,10 +56,7 @@ def _phenomenon(summary: str, user_content: str = "") -> str:
     parts = _segments(summary)
     if parts.get("现象"):
         return parts["现象"]
-    first = MARKER_RE.search(summary or "")
-    if first and first.start() > 0:
-        return (summary or "")[:first.start()].strip()
-    # 没有标签的 summary 常是 agent 的整段结论；不拿它当现象，退回 user 材料。
+    # 没有「现象」段时不拿 summary 的任何前缀当现象：summary 是 agent 的结论。
     return _one_line(user_content)
 
 
@@ -216,7 +213,6 @@ def _repo_index(root: Path) -> Dict[str, Any]:
     holdout_issues = set()
     knowledge_issues = set()
     cases = set()
-    fixtures = set()
     s2 = root / "eval" / "s2"
     for path in sorted(s2.glob("*.yaml")) if s2.exists() else []:
         try:
@@ -234,7 +230,6 @@ def _repo_index(root: Path) -> Dict[str, Any]:
             doc = {}
         for row in (doc or {}).get("entries") or []:
             fixture = str((row or {}).get("fixture") or "")
-            fixtures.add(fixture)
             number = _issue_number(fixture)
             if number is not None:
                 holdout_issues.add(number)
@@ -251,8 +246,7 @@ def _repo_index(root: Path) -> Dict[str, Any]:
             if number is not None:
                 knowledge_issues.add(number)
     return {"s2": s2_issues, "holdout": holdout_issues,
-            "knowledge": knowledge_issues, "cases": cases,
-            "fixtures": fixtures}
+            "knowledge": knowledge_issues, "cases": cases}
 
 
 def completeness(sample: Sample, *, store=None, root: Optional[Path] = None) -> Dict[str, Any]:
@@ -271,20 +265,19 @@ def completeness(sample: Sample, *, store=None, root: Optional[Path] = None) -> 
         reasons.append("missing_answer")
     if sample.non_diagnostic:
         reasons.append("non_diagnostic")
-    sanitized = None
-    if sample.provenance is not None:
-        sanitized = sample.provenance.get("sanitized")
-        if sanitized is False or (
-                sample.object_type == "diagnosis"
-                and sample.purpose in ("evaluation", "test")
-                and sanitized is None
-                and source_needs_provenance(source)):
-            reasons.append("not_sanitized")
-        trace_ref = sample.provenance.get("trace_ref")
-        if trace_ref and root is not None:
-            path = Path(root) / str(trace_ref)
-            if not path.exists():
-                reasons.append("missing_trace")
+    provenance = sample.provenance or {}
+    sanitized = provenance.get("sanitized")
+    if sanitized is False or (
+            sample.object_type == "diagnosis"
+            and sample.purpose in ("evaluation", "test")
+            and sanitized is not True
+            and source_needs_provenance(source)):
+        reasons.append("not_sanitized")
+    trace_ref = provenance.get("trace_ref")
+    if trace_ref and root is not None:
+        path = Path(root) / str(trace_ref)
+        if not path.exists():
+            reasons.append("missing_trace")
     if store is not None and source:
         existing = store.find_by_source(source, exclude_id=sample.id)
         if existing:
