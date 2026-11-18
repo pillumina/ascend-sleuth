@@ -74,11 +74,12 @@ class KnowledgeUsageTest(unittest.TestCase):
         base = [row("a")]
         self.assertEqual(compare(base, [row("a")])["decision"], "insufficient")
 
-    def test_missing_efficiency_field_is_an_error(self):
-        with self.assertRaises(UsageError):
-            summarize([{"sample_id": "a", "hit": False, "first_hit_step": None,
-                        "candidates_examined": 1, "full_body_reads": 1,
-                        "reference_lookups": 1}])
+    def test_missing_efficiency_field_stays_unknown(self):
+        out = summarize([{"sample_id": "a", "hit": False, "first_hit_step": None,
+                          "candidates_examined": 1, "full_body_reads": 1,
+                          "reference_lookups": 1}])
+        self.assertIsNone(out["wrong_cases"])
+        self.assertEqual(out["candidates_examined"], 1)
 
     def test_knowledge_usage_accept_requires_usage_evidence(self):
         record = {

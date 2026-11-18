@@ -42,10 +42,10 @@ def validate_record(record: Any) -> Dict[str, Any]:
     hit = record.get("hit")
     if not isinstance(hit, bool):
         raise UsageError("hit must be boolean")
-    wrong = _int(record.get("wrong_cases"), "wrong_cases")
-    candidate_examined = _int(record.get("candidates_examined"), "candidates_examined")
-    full_body = _int(record.get("full_body_reads"), "full_body_reads")
-    refs = _int(record.get("reference_lookups"), "reference_lookups")
+    wrong = _int(record.get("wrong_cases"), "wrong_cases", optional=True)
+    candidate_examined = _int(record.get("candidates_examined"), "candidates_examined", optional=True)
+    full_body = _int(record.get("full_body_reads"), "full_body_reads", optional=True)
+    refs = _int(record.get("reference_lookups"), "reference_lookups", optional=True)
     first_step = _int(record.get("first_hit_step"), "first_hit_step", optional=True)
     tokens = _int(record.get("tokens"), "tokens", optional=True)
     elapsed = _num(record.get("elapsed_ms"), "elapsed_ms", optional=True)
@@ -73,11 +73,12 @@ def _records(data: Any) -> List[Dict[str, Any]]:
 def summarize(data: Any) -> Dict[str, Any]:
     records = _records(data)
     hits = sum(1 for item in records if item["hit"])
+    wrong_values = [item["wrong_cases"] for item in records]
     result: Dict[str, Any] = {
         "n": len(records),
         "hits": hits,
         "hit_rate": hits / len(records),
-        "wrong_cases": sum(item["wrong_cases"] for item in records),
+        "wrong_cases": (sum(wrong_values) if all(v is not None for v in wrong_values) else None),
     }
     for field in EFFICIENCY_FIELDS:
         values = [item[field] for item in records if item[field] is not None]
@@ -96,7 +97,9 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
     reasons = []
     if c_sum["hits"] < b_sum["hits"]:
         reasons.append("accuracy_regressed")
-    if c_sum["wrong_cases"] > b_sum["wrong_cases"]:
+    if b_sum["wrong_cases"] is None or c_sum["wrong_cases"] is None:
+        reasons.append("wrong_cases_unknown")
+    elif c_sum["wrong_cases"] > b_sum["wrong_cases"]:
         reasons.append("wrong_cases_increased")
     deltas = {}
     improved = 0
@@ -174,7 +177,7 @@ def from_trace(document: Any, expected_case: Optional[str] = None) -> Dict[str, 
                 considered = value
             elif isinstance(value, list):
                 considered = len(value)
-    candidates = considered if considered is not None else len(checks)
+    candidates = considered if considered is not None else (len(checks) if checks else None)
     refs = sum(
         1 for event in events
         if event.get("action") == "reference_lookup" and event.get("outcome") != "skipped"
@@ -186,7 +189,7 @@ def from_trace(document: Any, expected_case: Optional[str] = None) -> Dict[str, 
         wrong = 1 if hit_case and not hit else 0
     else:
         hit = hit_event is not None
-        wrong = 0
+        wrong = None
     first_step = None
     if hit and hit_event is not None:
         step = hit_event.get("step")
@@ -197,7 +200,7 @@ def from_trace(document: Any, expected_case: Optional[str] = None) -> Dict[str, 
         "hit": hit,
         "first_hit_step": first_step,
         "candidates_examined": candidates,
-        "full_body_reads": len(full_loads),
+        "full_body_reads": (len(full_loads) if full_loads else (len(checks) if checks else None)),
         "reference_lookups": refs,
         "wrong_cases": wrong,
         "tokens": None,
