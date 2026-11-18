@@ -4,7 +4,7 @@ maintainer 只调用 `/skill:self-evolve`；本文件是它的内部执行参考
 
 ## 先选目标
 
-- 先跑 `python3 scripts/evolve.py traces sync`；它把本地 trace 归因映射到 `regions.py` 的可变异区，按硬归因数排序；
+- 先跑 `python3 scripts/evolve.py traces sync`，再跑 `python3 scripts/evolve.py rsi plan`；RSI plan 合并 trace/metrics/replay 信号，推荐 region，并标记 `actionable` / `needs_agent_attribution` / `needs_agent_selection`；
 - 从推荐 region、`self-evolve run` 的 next_actions、或评测失败中选一个组件；
 - 目标必须是具体 skill 的可变异区，例如 `diagnose` 的 `routing_hints`；
 - 先从 `traces sync` 的 `experiment` 推荐拿 target/region；holdout issue 不进候选池；

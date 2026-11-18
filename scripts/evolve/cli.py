@@ -32,6 +32,7 @@ from .adapters.arena import counts_from_files
 from .adapters.metrics import load_metrics
 from .algorithms.registry import algorithm_ids, get_algorithm
 from .targets.registry import get_target, resolve_evaluator, resolve_optimizer, target_ids
+from .rsi import build_plan, save_plan
 from .trace_attribution import status as trace_status, sync as trace_sync
 from .adapters.replay import collect as replay_collect
 from .adapters.replay import prepare as replay_prepare
@@ -776,6 +777,48 @@ def cmd_run(args: argparse.Namespace) -> int:
     return 0
 
 
+# ---------------------------------------------------------------- rsi
+def cmd_rsi_plan(args: argparse.Namespace) -> int:
+    root = Path(args.root) if args.root else Path.cwd()
+    try:
+        metrics = load_metrics(root)
+        plan = build_plan(
+            root,
+            trace_state=Path(args.trace_state) if args.trace_state else None,
+            replay=Path(args.replay) if args.replay else None,
+            metrics=metrics,
+        )
+        state = Path(args.state) if args.state else root / ".s2-replay" / "evolve" / "rsi-plan.json"
+        save_plan(plan, state)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(plan, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        print(f"rsi_status: {plan['status']}")
+        print(f"snapshot_id: {plan['snapshot_id']}")
+        for name, source in plan["sources"].items():
+            print(f"source {name}: available={source.get('available')} snapshot={source.get('snapshot_id')}")
+        for region in plan.get("regions") or []:
+            print(f"region: {region['region']} hard={region['hard']} events={region['events']}")
+        if plan.get("experiment"):
+            spec = plan["experiment"]
+            print(f"experiment: target={spec['target_skill']} region={spec['mutable_region']}")
+        print(f"stages: {plan['stages']}")
+    return 0
+
+
+def cmd_rsi_status(args: argparse.Namespace) -> int:
+    path = Path(args.state)
+    try:
+        print(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
 # ---------------------------------------------------------------- traces
 def cmd_traces_sync(args: argparse.Namespace) -> int:
     root = Path(args.root) if args.root else Path.cwd()
@@ -1153,6 +1196,19 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
     run.add_argument("--json", action="store_true", help="输出机器可读 JSON")
     run.set_defaults(func=cmd_run)
+
+    rsi = sub.add_parser("rsi", help="RSI 多源归因与实验计划")
+    rsi_sub = rsi.add_subparsers(dest="rsi_command", required=True)
+    rsi_plan = rsi_sub.add_parser("plan", help="trace/metrics/replay -> 实验计划")
+    rsi_plan.add_argument("--root", default=None)
+    rsi_plan.add_argument("--trace-state", default=None)
+    rsi_plan.add_argument("--replay", default=None)
+    rsi_plan.add_argument("--state", default=None)
+    rsi_plan.add_argument("--json", action="store_true")
+    rsi_plan.set_defaults(func=cmd_rsi_plan)
+    rsi_status = rsi_sub.add_parser("status", help="读取已保存的 RSI 计划")
+    rsi_status.add_argument("--state", required=True)
+    rsi_status.set_defaults(func=cmd_rsi_status)
 
     traces = sub.add_parser("traces", help="本地 trace 归因状态")
     traces_sub = traces.add_subparsers(dest="traces_command", required=True)
