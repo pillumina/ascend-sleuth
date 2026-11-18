@@ -16,7 +16,7 @@ from evolve.candidate import (  # noqa: E402
 )
 
 
-def candidate(root: Path, old="old line", new="new line"):
+def candidate(root: Path, old="quickly_check old line", new="quickly_check new line"):
     return {
         "candidate_id": "C-1", "target_kind": "skill",
         "target_component": "diagnose.verification_checklist",
@@ -31,13 +31,24 @@ class CandidateTest(unittest.TestCase):
     def _repo(self, td: str):
         root = Path(td) / "repo"
         (root / "skills/diagnose").mkdir(parents=True)
-        (root / "skills/diagnose/SKILL.md").write_text("before\nold line\nafter\n", encoding="utf-8")
+        (root / "skills/diagnose/SKILL.md").write_text("before\nquickly_check old line\nafter\n", encoding="utf-8")
         subprocess.run(["git", "init", "-q"], cwd=root, check=True)
         subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=root, check=True)
         subprocess.run(["git", "config", "user.name", "t"], cwd=root, check=True)
         subprocess.run(["git", "add", "."], cwd=root, check=True)
         subprocess.run(["git", "commit", "-qm", "base"], cwd=root, check=True)
         return root
+
+    def test_traversal_is_rejected(self):
+        data = candidate(Path("."))
+        data["file"] = "skills/diagnose/../../../x.md"
+        with self.assertRaises(CandidateError):
+            validate_candidate(data)
+
+    def test_region_marker_is_required(self):
+        data = candidate(Path("."), old="unrelated text", new="new")
+        with self.assertRaises(CandidateError):
+            validate_candidate(data)
 
     def test_apply_exactly_once_and_hash(self):
         with tempfile.TemporaryDirectory() as td:
@@ -51,7 +62,7 @@ class CandidateTest(unittest.TestCase):
     def test_duplicate_old_text_is_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             root = self._repo(td)
-            (root / "skills/diagnose/SKILL.md").write_text("old line\nold line\n", encoding="utf-8")
+            (root / "skills/diagnose/SKILL.md").write_text("quickly_check old line\nquickly_check old line\n", encoding="utf-8")
             with self.assertRaises(CandidateError):
                 apply_to_root(root, validate_candidate(candidate(root)))
 

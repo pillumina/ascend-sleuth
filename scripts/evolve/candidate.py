@@ -14,6 +14,17 @@ from typing import Any, Dict, Optional
 from .regions import REGIONS
 
 
+REGION_MARKERS = {
+    "diagnose.routing_hints": ("triage", "路由", "追问", "routing"),
+    "diagnose.verification_checklist": ("quickly_check", "验证", "候选", "case"),
+    "diagnose.trace_evidence": ("trace", "evidence", "证据"),
+    "diagnose.knowledge_usage": ("知识", "case", "reference", "索引", "全文"),
+    "diagnose.source_usage": ("源码", "src_fetch", "grep", "source_analysis", "ref"),
+    "knowledge.case_content": ("case", "症状", "symptoms", "quickly_check"),
+    "knowledge.reference_content": ("reference", "词条", "来源", "scope"),
+}
+
+
 class CandidateError(ValueError):
     pass
 
@@ -42,10 +53,15 @@ def validate_candidate(data: Any) -> Dict[str, Any]:
     if skill != spec.skill:
         raise CandidateError(f"region {region!r} belongs to skill {spec.skill!r}")
     file = _text(data.get("file"), "file")
+    if file.startswith("/") or "\\" in file or ".." in file.split("/"):
+        raise CandidateError("file must be a relative path without traversal")
     if not (file.startswith(f"skills/{skill}/") and file.endswith(".md")):
         raise CandidateError(f"file must be under skills/{skill}/")
     old = _text(data.get("old_text"), "old_text")
     new = _text(data.get("new_text"), "new_text")
+    markers = REGION_MARKERS.get(region, ())
+    if not any(marker.lower() in old.lower() for marker in markers):
+        raise CandidateError(f"old_text does not look like region {region!r}")
     if old == new:
         raise CandidateError("old_text and new_text must differ")
     if len(new) > 8000:
@@ -68,7 +84,10 @@ def _sha(path: Path) -> str:
 def apply_to_root(root: Path, candidate: Dict[str, Any], *,
                   allow_existing_workspace: bool = False) -> Dict[str, Any]:
     root = Path(root)
-    path = root / candidate["file"]
+    path = (root / candidate["file"]).resolve()
+    expected_parent = (root / "skills" / candidate["skill"]).resolve()
+    if expected_parent not in path.parents:
+        raise CandidateError("candidate file escapes its skill directory")
     if not path.exists():
         raise CandidateError(f"target file does not exist: {path}")
     before = path.read_text(encoding="utf-8")
