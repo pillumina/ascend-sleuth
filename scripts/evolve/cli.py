@@ -294,6 +294,7 @@ def cmd_sample_import_ixn(args: argparse.Namespace) -> int:
     try:
         stats = import_ixn(
             _store(args), root, root / args.source, limit=args.limit,
+            holdout_numbers=issue_numbers(root),
         )
     except (AdapterError, StoreError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)

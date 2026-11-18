@@ -92,14 +92,14 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
             raise ExperimentError("paired.n must be >= paired.b + paired.c")
         if b <= c:
             raise ExperimentError("accept requires paired.b > paired.c")
-        p_value = paired.get("p_value", exact_mcnemar_ge(b, c))
+        p_value = exact_mcnemar_ge(b, c)
         alpha = paired.get("alpha_eff", 0.1)
-        if not isinstance(p_value, (int, float)) or isinstance(p_value, bool) or not 0 <= p_value <= 1:
-            raise ExperimentError("paired.p_value must be between 0 and 1")
-        if not isinstance(alpha, (int, float)) or isinstance(alpha, bool) or not 0 < alpha < 1:
-            raise ExperimentError("paired.alpha_eff must be between 0 and 1")
+        if not isinstance(alpha, (int, float)) or isinstance(alpha, bool) or not 0 < alpha <= 0.1:
+            raise ExperimentError("paired.alpha_eff must be in (0, 0.1]")
         if p_value > alpha:
-            raise ExperimentError("accept requires paired.p_value <= alpha_eff")
+            raise ExperimentError(
+                f"accept requires exact paired p={p_value:.4f} <= alpha_eff={alpha}"
+            )
         if candidate["score"] <= baseline["score"]:
             raise ExperimentError("accept requires candidate.score > baseline.score")
     spec = get_target(target)
@@ -154,7 +154,7 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
     if paired is not None:
         result["paired"] = {
             "b": paired.get("b"), "c": paired.get("c"), "n": paired.get("n"),
-            "p_value": paired.get("p_value", exact_mcnemar_ge(paired["b"], paired["c"])),
+            "p_value": exact_mcnemar_ge(paired["b"], paired["c"]),
             "alpha_eff": paired.get("alpha_eff", 0.1),
         }
     for key in ("budget", "seed"):

@@ -15,7 +15,8 @@ def _sample_id(repo: str, issue: str) -> str:
 
 
 def import_ixn(store: SampleStore, root: Path, source: Path,
-               limit: Optional[int] = None) -> Dict[str, Any]:
+               limit: Optional[int] = None,
+               holdout_numbers: Optional[set] = None) -> Dict[str, Any]:
     source = Path(source)
     stats = {"source": str(source), "created": 0, "skipped_held_out": 0,
              "skipped_duplicate": 0, "skipped_missing": 0, "created_ids": []}
@@ -30,6 +31,9 @@ def import_ixn(store: SampleStore, root: Path, source: Path,
         except (OSError, yaml.YAMLError) as exc:
             raise AdapterError(f"cannot read {gold}: {exc}") from exc
         if doc.get("held_out"):
+            stats["skipped_held_out"] += 1
+            continue
+        if holdout_numbers and str(issue) in holdout_numbers:
             stats["skipped_held_out"] += 1
             continue
         issue = str(doc.get("issue") or directory.name)

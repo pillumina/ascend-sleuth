@@ -516,6 +516,22 @@ class IngestCliTest(unittest.TestCase):
             self.assertEqual(created.returncode, 2)
             self.assertIn("subagent_judge", created.stderr)
 
+    def test_experiment_record_rejects_fake_p_value(self):
+        result = {
+            "target_kind": "skill", "target_component": "x",
+            "algorithm": "subagent-reflection", "algorithm_version": "1",
+            "execution": "subagent", "decision": "accept", "samples": ["S-1"],
+            "baseline": {"score": 0, "samples": ["S-1"]},
+            "candidate": {"score": 1, "samples": ["S-1"]},
+            "paired": {"b": 1, "c": 0, "n": 1, "p_value": 0, "alpha_eff": 0.1},
+        }
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "bad.json"
+            path.write_text(json.dumps(result), encoding="utf-8")
+            created = run_cli("experiment", "record", "--root", td, "--file", str(path))
+            self.assertEqual(created.returncode, 2)
+            self.assertIn("exact paired p", created.stderr)
+
     def test_experiment_record_rejects_mismatched_samples(self):
         result = {
             "target_kind": "skill", "target_component": "x",
