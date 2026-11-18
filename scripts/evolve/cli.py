@@ -226,7 +226,7 @@ def cmd_sample_ingest_issues(args: argparse.Namespace) -> int:
             holdout_numbers=issue_numbers(root),
             quality=quality,
         )
-    except AdapterError as exc:
+    except (AdapterError, QualityError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except (StoreError, OSError) as exc:

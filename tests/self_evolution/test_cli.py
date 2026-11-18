@@ -600,6 +600,18 @@ class IngestCliTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("created: 0", result.stdout)
 
+    def test_issue_ingest_malformed_quality_file_fails_cleanly(self):
+        with tempfile.TemporaryDirectory() as td:
+            quality = Path(td) / "quality.json"
+            quality.write_text("{bad", encoding="utf-8")
+            result = run_cli(
+                "sample", "ingest-issues", "--source", "local", "--cache", "/tmp/none.json",
+                "--repo", "o/r", "--root", td, "--state", "ingest-state.json",
+                "--quality-file", str(quality),
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertNotIn("Traceback", result.stderr)
+
     def test_issue_ingest_rejects_low_quality(self):
         cache = Path(tempfile.mkdtemp()) / "issues.json"
         cache.write_text(json.dumps([{
