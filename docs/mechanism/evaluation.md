@@ -258,9 +258,11 @@ python3 scripts/evolve.py knowledge-usage evaluate --file usage.json
 python3 scripts/evolve.py knowledge-usage compare --baseline base.json --candidate cand.json
 ```
 
-演进评估的 trace 统一放 `.s2-replay/evolve/usage-traces/`（本地运行件，git-ignored），不得写入 `traces/`；真实诊断 trace 与演进评估 trace 分开。`from-trace` 从 `load_index`/`load_full`/`quickly_check`/`reference_lookup`/`hit` 推导，token 不在 trace 里时保持 null。取全文的候选按事件里的 `case` 或 `candidates` 列表计，两者都写时取并集。
+演进评估的 trace 统一放 `.s2-replay/evolve/usage-traces/`（本地运行件，git-ignored），不得写入 `traces/`；真实诊断 trace 与演进评估 trace 分开。`from-trace` 从 `load_index`/`load_full`/`quickly_check`/`reference_lookup`/`hit` 推导，token 不在 trace 里时保持 null。`full_body_reads` 数 `load_full` 事件里点名的候选：`case` 或 `candidates` 列表，两者都写时取并集。没有可判定的 `load_full` 记录时，退回 `quickly_check` 点名的候选。
 
-`compare` 逐样本配对，只在两侧都有值的样本上算该效率项的均值。只在一侧有值的样本不进入均值，也不当改善或回退证据：两侧样本集不同时分别求均值，会把「一侧缺数据」算成「另一侧变好或变差」。某项只有部分样本可测时，差值照报，但不参与判定；该项若变差，记 `efficiency_partial_unknown`。
+`compare` 逐样本配对。同一效率项只在两侧都有值的样本上求均值，样本 id 集合仍要求两侧一致。同一字段在两侧可测的样本数不同时，各自求均值会把「一侧缺数据」算成「另一侧变好或变差」。
+
+某项只有部分样本可测时，差值照报，但不算改善或回退。它的差值仍为正时记 `efficiency_partial_unknown`，结论不能是 `accept`。
 
 `compare` 只有在准确率不降、`wrong_cases` 不增、至少一个效率项改善、且没有效率项变差时给 `accept`；准确率或效率回退给 `reject`；没有改善或证据不全给 `insufficient`。实验记录的 `knowledge_usage.decision` 若存在，整体 `accept` 必须同时为 `accept`。
 
@@ -277,7 +279,7 @@ python3 scripts/evolve.py source-usage evaluate --file source-usage.json
 python3 scripts/evolve.py source-usage compare --baseline base.json --candidate cand.json
 ```
 
-记录 repo/ref、files_read、tool_calls、fetch_calls、grep_calls、followups、elapsed；cache/download/bytes 只做可选观测，不进门禁。`compare` 与知识使用效率同样逐样本配对：只在两侧都有值的样本上算该项总数，部分样本可测的项只报差值、不参与判定，变差时记 `source_efficiency_partial_unknown`。
+记录 repo/ref、files_read、tool_calls、fetch_calls、grep_calls、followups、elapsed；cache/download/bytes 只做可选观测，不进门禁。`compare` 与知识使用效率一样逐样本配对：只在两侧都有值的样本上算该项总数。某项只有部分样本可测时，差值照报，但不算改善或回退。它的差值仍为正时记 `source_efficiency_partial_unknown`。
 
 `compare` 要求源码结论 correctness 不降，且 files/tool/fetch/grep/elapsed 至少一项改善、没有项变差；correctness 或效率 unknown 只能记 `insufficient`。
 

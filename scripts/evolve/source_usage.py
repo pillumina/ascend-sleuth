@@ -11,6 +11,7 @@ OBSERVED_FIELDS = ("files_read", "tool_calls", "fetch_calls", "grep_calls",
                   "followups", "downloads", "bytes", "elapsed_ms")
 GATE_FIELDS = ("files_read", "tool_calls", "fetch_calls", "grep_calls",
                "followups", "elapsed_ms")
+EPSILON = 1e-9
 
 
 class SourceUsageError(ValueError):
@@ -132,9 +133,9 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
         if paired[field]["unknown"]:
             partial.append(field)
             continue
-        if deltas[field] < 0:
+        if deltas[field] < -EPSILON:
             improved += 1
-        elif deltas[field] > 0:
+        elif deltas[field] > EPSILON:
             worsened += 1
     deltas["cache_hits"] = None
     if any(paired[field]["delta"] is not None and paired[field]["delta"] > 0

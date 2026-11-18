@@ -88,13 +88,21 @@ def collect(output: Path, judge: Optional[Path] = None) -> Dict[str, Any]:
             row = {"sample_id": sid, "source_id": sample_id, "trace": str(trace), "output": str(out),
                    "has_trace": trace.exists(), "has_output": out.exists()}
             if trace.exists():
+                doc = None
                 try:
                     doc = yaml.safe_load(trace.read_text(encoding="utf-8"))
-                    knowledge = knowledge_from_trace(doc)
-                    # usage 的 sample_id 取 pilot 样本 id，不取 trace 里的 session_id：
-                    # 两臂的 trace 往往由不同会话写出，session_id 不保证同名。
-                    knowledge["sample_id"] = sid
-                    row["knowledge_usage"] = knowledge
+                except Exception as exc:  # unreadable or malformed trace
+                    row["usage_error"] = str(exc)
+                if doc is not None:
+                    try:
+                        knowledge = knowledge_from_trace(doc)
+                    except Exception as exc:  # trace has no usable knowledge events
+                        row["usage_error"] = str(exc)
+                    else:
+                        # usage 的 sample_id 取 pilot 样本 id，不取 trace 里的 session_id：
+                        # 两臂的 trace 往往由不同会话写出，session_id 不保证同名。
+                        knowledge["sample_id"] = sid
+                        row["knowledge_usage"] = knowledge
                     score = (judge_data.get(arm) or {}).get(sid)
                     source_ok = None if score is None else bool(score)
                     try:
@@ -104,8 +112,6 @@ def collect(output: Path, judge: Optional[Path] = None) -> Dict[str, Any]:
                     else:
                         source["sample_id"] = sid
                         row["source_usage"] = source
-                except Exception as exc:  # trace unreadable or invalid
-                    row["usage_error"] = str(exc)
             rows.append(row)
         result["arms"][arm] = rows
     result["complete"] = all(

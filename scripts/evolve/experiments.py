@@ -19,6 +19,7 @@ class ExperimentError(ValueError):
 
 DECISIONS = ("accept", "reject", "insufficient", "unknown")
 EXECUTIONS = ("library", "subagent", "manual")
+EPSILON = 1e-9
 
 
 def _number(value: Any, name: str) -> float:
@@ -86,8 +87,8 @@ def _validate_usage_evidence(usage: Dict[str, Any]) -> None:
             raise ExperimentError("knowledge_usage accept requires known wrong_cases")
         if candidate["hits"] < baseline["hits"] or candidate["wrong_cases"] > baseline["wrong_cases"]:
             raise ExperimentError("knowledge_usage accept regresses accuracy/wrong_cases")
-        improved = any(item is not None and item < 0 for item in deltas.values())
-        worsened = any(item is not None and item > 0 for item in deltas.values())
+        improved = any(item is not None and item < -EPSILON for item in deltas.values())
+        worsened = any(item is not None and item > EPSILON for item in deltas.values())
         if not improved or worsened:
             raise ExperimentError("knowledge_usage accept requires improvement without regression")
 
@@ -144,8 +145,8 @@ def _validate_source_usage_evidence(usage: Dict[str, Any]) -> None:
             raise ExperimentError("source_usage accept regresses correctness")
         lower = ("files_read", "tool_calls", "fetch_calls", "grep_calls",
                  "followups", "elapsed_ms")
-        improved = any(deltas[f] is not None and deltas[f] < 0 for f in lower)
-        worsened = any(deltas[f] is not None and deltas[f] > 0 for f in lower)
+        improved = any(deltas[f] is not None and deltas[f] < -EPSILON for f in lower)
+        worsened = any(deltas[f] is not None and deltas[f] > EPSILON for f in lower)
         if not improved or worsened:
             raise ExperimentError("source_usage accept requires improvement without regression")
 

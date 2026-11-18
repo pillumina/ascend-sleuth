@@ -125,6 +125,13 @@ class SourceUsageTest(unittest.TestCase):
         self.assertEqual(out["baseline"]["files_read"], 4)
         self.assertEqual(out["candidate"]["files_read"], 2)
 
+    def test_tiny_delta_is_not_a_change(self):
+        base = [row("a", elapsed=1000.0)]
+        cand = [row("a", elapsed=1000.0000000001)]
+        out = compare(base, cand)
+        self.assertNotIn("source_efficiency_regressed", out["reasons"])
+        self.assertEqual(out["decision"], "insufficient")
+
     def test_partial_regression_is_insufficient(self):
         base = [row("a", elapsed=1000), row("b", elapsed=None)]
         cand = [row("a", elapsed=9000), row("b", elapsed=1000)]

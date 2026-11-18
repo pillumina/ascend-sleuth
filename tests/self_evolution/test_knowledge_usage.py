@@ -120,6 +120,13 @@ class KnowledgeUsageTest(unittest.TestCase):
         self.assertEqual(result["paired"]["candidates_examined"]["n"], 1)
         self.assertNotEqual(result["decision"], "accept")
 
+    def test_tiny_delta_is_not_a_change(self):
+        base = [row("a", elapsed=1000.0)]
+        cand = [row("a", elapsed=1000.00000000005)]
+        result = compare(base, cand)
+        self.assertNotIn("efficiency_regressed", result["reasons"])
+        self.assertEqual(result["decision"], "insufficient")
+
     def test_partial_regression_is_insufficient(self):
         base = [row("a", elapsed=1000), row("b", elapsed=None)]
         cand = [row("a", elapsed=9000), row("b", elapsed=1000)]
