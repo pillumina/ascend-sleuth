@@ -16,12 +16,12 @@ from .regions import REGIONS
 
 REGION_MARKERS = {
     "diagnose.routing_hints": ("triage", "路由", "追问", "routing"),
-    "diagnose.verification_checklist": ("quickly_check", "验证", "候选", "case"),
+    "diagnose.verification_checklist": ("quickly_check", "验证", "候选", "排除"),
     "diagnose.trace_evidence": ("trace", "evidence", "证据"),
-    "diagnose.knowledge_usage": ("知识", "case", "reference", "索引", "全文"),
-    "diagnose.source_usage": ("源码", "src_fetch", "grep", "source_analysis", "ref"),
-    "knowledge.case_content": ("case", "症状", "symptoms", "quickly_check"),
-    "knowledge.reference_content": ("reference", "词条", "来源", "scope"),
+    "diagnose.knowledge_usage": ("知识", "reference", "索引", "全文", "候选数"),
+    "diagnose.source_usage": ("源码分析", "src_fetch", "grep 定位", "source_analysis"),
+    "knowledge.case_content": ("症状", "symptoms", "quickly_check", "判别"),
+    "knowledge.reference_content": ("词条", "适用范围", "来源", "scope"),
 }
 
 
