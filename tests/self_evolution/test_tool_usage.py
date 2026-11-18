@@ -56,6 +56,12 @@ class ToolUsageTest(unittest.TestCase):
         self.assertEqual(out["fetch_calls"], 3)
         self.assertEqual(out["grep_calls"], 1)
 
+    def test_explicit_retries_take_precedence_over_derived(self):
+        trace = {"session_id": "s", "trace": [
+            {"action": "source_analysis", "tool_calls": ["retry fetch"], "retries": 2},
+        ]}
+        self.assertEqual(from_trace(trace)["retries"], 2)
+
     def test_missing_source_events_raise(self):
         with self.assertRaises(ToolUsageError):
             from_trace({"session_id": "s", "trace": []})

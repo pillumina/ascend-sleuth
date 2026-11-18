@@ -181,10 +181,12 @@ def from_trace(document: Any, resolved: Optional[bool] = None) -> Dict[str, Any]
         if isinstance(event.get("tool_calls"), list):
             has_calls = True
             current = [str(call) for call in event["tool_calls"]]
-            retries += sum(1 for call in current if "retry" in call.lower())
         if isinstance(event.get("retries"), int):
             has_retries = True
             retries += event["retries"]
+        elif current:
+            has_retries = True
+            retries += sum(1 for call in current if "retry" in call.lower())
         if isinstance(event.get("cache_hits"), int):
             has_cache = True
             cache_hits += event["cache_hits"]

@@ -269,13 +269,11 @@ python3 scripts/evolve.py knowledge-usage compare --baseline base.json --candida
 
 `compare` 逐样本配对。同一效率项只在两侧都有值的样本上求均值，样本 id 集合仍要求两侧一致。同一字段在两侧可测的样本数不同时，各自求均值会把「一侧缺数据」算成「另一侧变好或变差」。
 
-某项只有部分样本可测时，差值照报，但不算改善或回退。它的差值仍超过判定阈值（1e-9）时记 `efficiency_partial_unknown`，结论不能是 `accept`。改善/回退方向与实验记录校验用同一个阈值。
-
-`elapsed_ms` 是例外：部分样本可测时方向一律记未知；正差值会阻断 `accept`（记 `elapsed_inconclusive`），负差值不算改善。
+某项只有部分样本可测时，差值照报，但不算改善或回退；超过 1e-9 时记 `efficiency_partial_unknown`，结论不能是 `accept`。`elapsed_ms` 例外：部分覆盖时方向记未知，正差值记 `elapsed_inconclusive` 并阻断 `accept`，负差值不算改善。
 
 `compare` 只有在准确率不降、至少一个效率项改善、且没有效率项变差时给 `accept`；准确率或效率回退给 `reject`；没有改善或证据不全给 `insufficient`。实验记录的 `knowledge_usage.decision` 若存在，整体 `accept` 必须同时为 `accept`。每个效率项同时报配对差值的均值与置信区间（`ci`）。计数项用点估计与 1e-9 阈值；`elapsed_ms` 是连续项，方向只在区间排除 0 时成立，区间跨 0 且差值为正时记 `elapsed_inconclusive`，结论不能是 `accept`。
 
-判定容量在 `brief` 算：同一评估池第 k 次判定时 `alpha_eff = alpha/(k+1)`，达成证据所需的最少独家命中数 `required_b` 是 `min{b: 2^-b <= alpha_eff}`。池样本数（field 加待审候选）少于 `required_b` 时记 `judgment_capacity_short`；这是入池前提示，不改判定结论，判定记录里不重复算。
+判定容量在 `brief` 算：同一评估池第 k 次判定时 `alpha_eff = alpha/(k+1)`，达成证据所需的最少独家命中数 `required_b` 是 `min{b: 2^-b <= alpha_eff}`。池样本数（field 加待审候选）少于 `required_b` 时记 `judgment_capacity_short`；这是入池前提示，不改判定结论，判定记录里不重复算。预检按 k=0 算，因为不知道下一次会复用哪个池。
 
 `pilot collect` 之后跑 `pilot decide`。它把每条 rollout 写成一条执行记录（`Run`，见 records.md），把一次对照写成一条结论（`Conclusion`，同篇）。
 
@@ -315,7 +313,7 @@ python3 scripts/evolve.py tool-usage compare --baseline base.json --candidate ca
 
 `compare` 与另两处一样逐样本配对：`resolved` 不降，且至少一项工具指标改善、没有项变差才给 `accept`。`replay_trace` 的 `experiment gate` 直接读这两份 JSON。
 
-工具补丁走 `target_kind: tooling` 的 candidate：文件只能落在 region 登记的 `paths`（`tooling.source_fetch` 是 `scripts/src_fetch.py` 与 `source-catalog.d`），不能碰 `skills/`、`knowledge/`、`eval/`、`tests/`、`.github/`。补丁可带最多 5 个 `checks`，取值是固定枚举：`py_compile`（编译补丁文件）、`diff_check`（`git diff --check`）、`src_fetch_self_test`（只对 `tooling.source_fetch`）。检查按 argv 在 worktree 内执行，不走 shell；任一失败回滚文件并删除 worktree。
+工具补丁走 `target_kind: tooling` 的 candidate：文件只能落在 region 登记的 `paths`（`tooling.source_fetch` 是 `scripts/src_fetch.py` 与 `source-catalog.d`），不能碰 `skills/`、`knowledge/`、`eval/`、`tests/`、`.github/`。补丁可带 `checks`，取值是固定枚举：`py_compile`（编译补丁文件）、`diff_check`（`git diff --check`）、`src_fetch_self_test`（只对 `tooling.source_fetch` 与 `tooling.source_catalog`）。检查按 argv 在 worktree 内执行，不走 shell；任一失败回滚文件并删除 worktree。
 
 ### 3.11 算法适配器
 

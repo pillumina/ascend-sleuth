@@ -59,6 +59,13 @@ class IssuePlanTest(unittest.TestCase):
         self.assertIn("next_actions:", text)
         self.assertIn("samples: 0", text)
 
+    def test_pool_capacity_short_is_reported(self):
+        plan = self.plan()
+        self.assertTrue(any(action.startswith("judgment_capacity_short")
+                            for action in plan["next_actions"]))
+        self.assertEqual(plan["judgment_capacity"]["required_b"], 4)
+        self.assertEqual(plan["judgment_capacity"]["potential"], 0)
+
     def test_candidates_need_review_and_missing_answer_warns(self):
         self.create("S-1", expected=None)
         plan = self.plan()

@@ -15,7 +15,6 @@ import hashlib
 import json
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -27,7 +26,6 @@ FORBIDDEN_PREFIXES = (
     ".git/", ".github/", "knowledge/", "references/", "postmortems/",
     "eval/", "tests/", "docs/", "skills/", ".s2-replay/", ".worktrees/",
 )
-MAX_CHECKS = 5
 CHECK_TIMEOUT = 120
 CHECK_KINDS = ("py_compile", "diff_check", "src_fetch_self_test")
 MAX_TEXT = {"skill": 8000, "tooling": 20000}
@@ -75,8 +73,6 @@ def _checks(value: Any) -> List[str]:
         if item in out:
             raise CandidateError(f"duplicate check {item!r}")
         out.append(item)
-    if len(out) > MAX_CHECKS:
-        raise CandidateError(f"checks supports at most {MAX_CHECKS} entries")
     return out
 
 
@@ -123,6 +119,9 @@ def validate_candidate(data: Any) -> Dict[str, Any]:
         raise CandidateError(f"old_text does not look like region {region!r}")
     if old == new:
         raise CandidateError("old_text and new_text must differ")
+    checks = _checks(data.get("checks"))
+    if "py_compile" in checks and not file.endswith(".py"):
+        raise CandidateError("py_compile check requires a .py file")
     if len(new) > MAX_TEXT[target]:
         raise CandidateError(f"new_text is too large for {target} patch")
     base = _text(data.get("base_rev"), "base_rev")
@@ -131,7 +130,7 @@ def validate_candidate(data: Any) -> Dict[str, Any]:
         "target_component": component, "region": region,
         "skill": skill, "file": file, "old_text": old,
         "new_text": new, "base_rev": base,
-        "checks": _checks(data.get("checks")),
+        "checks": checks,
         "evidence": list(data.get("evidence") or []),
         "expected_effect": str(data.get("expected_effect") or ""),
     }
@@ -151,8 +150,9 @@ def _check_commands(root: Path, candidate: Dict[str, Any]) -> List[List[str]]:
         elif kind == "diff_check":
             commands.append(["git", "-C", str(root), "diff", "--check"])
         elif kind == "src_fetch_self_test":
-            if candidate["region"] != "tooling.source_fetch":
-                raise CandidateError("src_fetch_self_test is only valid for tooling.source_fetch")
+            if candidate["region"] not in ("tooling.source_fetch", "tooling.source_catalog"):
+                raise CandidateError(
+                    "src_fetch_self_test is only valid for source tooling regions")
             commands.append([sys.executable, "scripts/src_fetch.py", "--self-test"])
     return commands
 

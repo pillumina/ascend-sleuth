@@ -37,6 +37,15 @@ class SourceUsageTest(unittest.TestCase):
         self.assertEqual(out["grep_calls"], 2)
         self.assertIsNone(out["source_ok"])
 
+    def test_empty_tool_calls_is_zero_not_unknown(self):
+        trace = {"session_id": "s", "trace": [
+            {"action": "source_analysis", "tool_calls": []},
+        ]}
+        out = from_trace(trace)
+        self.assertEqual(out["tool_calls"], 0)
+        self.assertEqual(out["fetch_calls"], 0)
+        self.assertEqual(out["grep_calls"], 0)
+
     def test_files_field_and_missing_tools(self):
         trace = {"session_id": "s", "trace": [
             {"action": "source_analysis", "repo": "r", "files": ["a.py"]},

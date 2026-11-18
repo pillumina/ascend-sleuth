@@ -89,6 +89,24 @@ class CandidateTest(unittest.TestCase):
             apply_to_root(root, validated)
             self.assertIn("strip", (root / "scripts/src_fetch.py").read_text(encoding="utf-8"))
 
+    def test_catalog_candidate_can_use_src_fetch_self_test(self):
+        data = {
+            "candidate_id": "C-CAT", "target_kind": "tooling",
+            "target_component": "tooling.source_catalog",
+            "region": "tooling.source_catalog",
+            "file": "source-catalog.d/repos.yaml", "base_rev": "HEAD",
+            "old_text": "# repos\n", "new_text": "# repos\n- org/repo\n",
+            "checks": ["src_fetch_self_test"],
+        }
+        validate_candidate(data)
+
+    def test_py_compile_rejects_non_python_file_at_validate(self):
+        data = tool_candidate(Path("."))
+        data["file"] = "source-catalog.d/repos.yaml"
+        data["checks"] = ["py_compile"]
+        with self.assertRaises(CandidateError):
+            validate_candidate(data)
+
     def test_tooling_file_outside_region_is_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             root = self._repo(td)
