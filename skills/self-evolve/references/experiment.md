@@ -28,17 +28,15 @@ task 只看样本输入；judge 看 expected/rubric；reflection 不写仓库；
 
 ## RSI stage
 
-实验固定这五个节点的算法，记录在实验里：
+不要手选或写死 stage id；以 `rsi plan` 输出的 `stages` 为准，注册表与当前实现见机制文档。默认组合是：
 
-| stage | 当前实现 |
-|---|---|
-| attribute | `attribute.trace_rule`（先跑）/ `attribute.agent`（规则不确定时补证据） |
-| select | `select.region_hardcount`（先跑）/ `select.agent`（多 region 歧义）/ `select.best`（单候选默认）/ `select.pareto`（GEPA） |
-| propose | `propose.agent`（agent heuristic 默认；`propose.reflection` 是兼容别名） |
-| judge | `judge.subagent` |
-| gate | `gate.paired` |
+- 归因、选点先走规则；规则不确定时才让 agent 补证据/在注册区中选；
+- 提案默认由 agent 从失败反馈写可变异区；
+- judge 独立于 proposer；
+- gate 确定性/人工，不交给 agent；
+- baseline 只评估 seed，不产生候选；GEPA 是“Pareto 选择 + agent 提案”的可选组合。
 
-GEPA 不是整条循环，而是 `select.pareto` + `propose.agent` 的组合；默认 agent heuristic 是 `select.best` + `propose.agent`，不需要 GEPA。归因/选点先走规则，规则不确定时才用 `attribute.agent`/`select.agent`；agent 只能给候选/在注册 region 中选，不能把推断写成 hard，也不能做最终 gate。
+agent 归因只能给候选，不能写成 hard；agent 选点只能在注册区里选。
 
 ## 模式 B：agent-native GEPA
 
