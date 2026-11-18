@@ -160,12 +160,20 @@ def from_trace(document: Any, expected_case: Optional[str] = None) -> Dict[str, 
         str(event.get("case")) for event in events
         if event.get("action") == "quickly_check" and event.get("case")
     }
+    full_loads = {
+        str(event.get("case")) for event in events
+        if event.get("action") == "load_full" and event.get("case")
+    }
+    if not full_loads:
+        full_loads = checks
     considered = None
     for event in events:
         if event.get("action") == "load_index":
             value = event.get("considered_candidates")
             if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
                 considered = value
+            elif isinstance(value, list):
+                considered = len(value)
     candidates = considered if considered is not None else len(checks)
     refs = sum(
         1 for event in events
@@ -189,7 +197,7 @@ def from_trace(document: Any, expected_case: Optional[str] = None) -> Dict[str, 
         "hit": hit,
         "first_hit_step": first_step,
         "candidates_examined": candidates,
-        "full_body_reads": len(checks),
+        "full_body_reads": len(full_loads),
         "reference_lookups": refs,
         "wrong_cases": wrong,
         "tokens": None,
