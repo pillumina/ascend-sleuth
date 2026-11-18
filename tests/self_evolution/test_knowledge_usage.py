@@ -127,6 +127,23 @@ class KnowledgeUsageTest(unittest.TestCase):
         self.assertNotIn("efficiency_regressed", result["reasons"])
         self.assertEqual(result["decision"], "insufficient")
 
+    def test_tiny_delta_keeps_accept_consistent_with_record_validation(self):
+        base = [row("a", body=2, elapsed=1000.0)]
+        cand = [row("a", body=1, elapsed=1000.00000000005)]
+        result = compare(base, cand)
+        self.assertEqual(result["decision"], "accept")
+        record = {
+            "target_kind": "skill", "target_component": "diagnose.knowledge_usage",
+            "algorithm": "subagent-reflection", "algorithm_version": "1",
+            "execution": "subagent", "eval_profile_id": "subagent_judge",
+            "eval_ready": False, "decision": "accept", "samples": ["a"],
+            "baseline": {"score": 0.5, "samples": ["a"]},
+            "candidate": {"score": 0.6, "samples": ["a"]},
+            "paired": {"b": 4, "c": 0, "n": 4},
+            "knowledge_usage": dict(result),
+        }
+        validate_experiment(record)
+
     def test_partial_regression_is_insufficient(self):
         base = [row("a", elapsed=1000), row("b", elapsed=None)]
         cand = [row("a", elapsed=9000), row("b", elapsed=1000)]

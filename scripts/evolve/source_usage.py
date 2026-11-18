@@ -138,7 +138,7 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
         elif deltas[field] > EPSILON:
             worsened += 1
     deltas["cache_hits"] = None
-    if any(paired[field]["delta"] is not None and paired[field]["delta"] > 0
+    if any(paired[field]["delta"] is not None and paired[field]["delta"] > EPSILON
            for field in partial):
         reasons.append("source_efficiency_partial_unknown")
     if worsened:

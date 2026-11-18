@@ -93,7 +93,9 @@ def collect(output: Path, judge: Optional[Path] = None) -> Dict[str, Any]:
                     doc = yaml.safe_load(trace.read_text(encoding="utf-8"))
                 except Exception as exc:  # unreadable or malformed trace
                     row["usage_error"] = str(exc)
-                if doc is not None:
+                if doc is None:
+                    row["usage_error"] = "trace is empty"
+                else:
                     try:
                         knowledge = knowledge_from_trace(doc)
                     except Exception as exc:  # trace has no usable knowledge events
