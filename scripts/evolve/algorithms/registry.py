@@ -3,11 +3,9 @@
 from typing import Any, Dict
 
 from .baseline import BaselineOptimizer
-from .gepa import GepaOptimizer
 
 ALGORITHMS = {
     "baseline": BaselineOptimizer,
-    "gepa": GepaOptimizer,
 }
 
 

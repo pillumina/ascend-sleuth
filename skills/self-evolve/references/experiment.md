@@ -63,10 +63,6 @@ python3 scripts/agent_gepa.py next --state /tmp/gepa-state.json
 - `result` 给 target_skill/mutable_region/best/pareto/calls；按它判 accept/reject/insufficient。
 - 算法名写 `gepa-agent`，不冒充官方 `gepa` 库。
 
-## 模式 C：官方 GEPA 库（可选）
-
-只有在 Python ≥3.10、稳定模型 endpoint、`task_lm`/`reflection_lm` 可用时才走 `GepaOptimizer`；否则不要接。官方库结果算法名写 `gepa`。
-
 ## 停点
 
 - 预算用尽、种群满、没有未反射 Pareto：停；

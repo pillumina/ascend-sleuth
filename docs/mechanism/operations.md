@@ -111,10 +111,9 @@
 | 查看算法适配器 | `python3 scripts/evolve.py experiment list`；按 target 解析用 `experiment resolve --target skill` |
 | 看完整 metrics 体检 | `python3 scripts/evolve.py health --json`（只读；`--check` 有 fail 退出 1，broken 退出 2；不带 `--check` 的读数命令仍退出 0，与 `metrics_health.py` 一致） |
 | 记录一个 baseline 提案 | `python3 scripts/evolve.py experiment propose --target skill --component <组件> --summary <一句话>`（只写本地实验记录，不跑模型、不合入） |
-| GEPA 适配器 | 已注册，需 Python ≥3.10 的 `gepa`、`budget.gepa` 的 evaluator/task_lm/reflection_lm；CLI 不伪造实验配置 |
 | 查看本地实验记录 | `python3 scripts/evolve.py experiment records --limit 10` |
 | 记录 subagent 对照实验 | `/skill:self-evolve` 的 `references/experiment.md` 产 `result.json`，再 `experiment record --file result.json` |
-| agent-native GEPA | 同上，模式 B；状态机是 `scripts/agent_gepa.py`，不调 gepa 库 |
+| agent-native GEPA | 状态机 `scripts/agent_gepa.py`；不接官方 gepa 库，不依赖外部 endpoint |
 | 增量 trace 归因 | `python3 scripts/evolve.py traces sync`；`traces status` 看 snapshot/状态 |
 | RSI 多源计划 | `python3 scripts/evolve.py rsi plan`（trace/metrics/replay → 归因/region/实验 spec）；`--replay .s2-replay` 读 S2 result 失败；`rsi status` 读回 |
 | holdout 隔离 | issue/S2 导入与手工 sample 新建/复核/升格都按 `eval/holdout.yaml` 的 issue 号拒绝；不把封存样本吸进候选池 |
