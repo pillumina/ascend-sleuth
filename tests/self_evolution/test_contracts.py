@@ -120,6 +120,12 @@ class VersionRunConclusionTest(unittest.TestCase):
         with self.assertRaises(ContractError):
             Version.from_dict({**version.to_dict(), "extra": "x"})
 
+    def test_placeholder_answer_is_rejected_for_active_but_retireable(self):
+        active = make_sample(status="active", expected={"resolution": "（待补：维护者结论）"})
+        self.assertTrue(any("placeholder" in error for error in active.errors(require_answer=True)))
+        retired = make_sample(status="retired", expected={"resolution": "（待补：维护者结论）"})
+        self.assertFalse(any("placeholder" in error for error in retired.errors()))
+
     def test_version_carries_algorithm_identity(self):
         version = Version(
             protocol="p1", policy="policy-3", base_kb="a", candidate_kb="a",

@@ -142,7 +142,8 @@ class Sample:
                 if isinstance(value, str) and any(
                     marker in value.lower() for marker in ("待补", "todo", "tbd", "待定")
                 ):
-                    errs.append(f"expected.{key} is a placeholder, not an answer")
+                    if require_answer or self.status == "active":
+                        errs.append(f"expected.{key} is a placeholder, not an answer")
                     has_answer = False
                     break
         if self.status == "active" and not has_answer:
