@@ -90,15 +90,21 @@ class CandidateTest(unittest.TestCase):
             self.assertIn("strip", (root / "scripts/src_fetch.py").read_text(encoding="utf-8"))
 
     def test_catalog_candidate_can_use_src_fetch_self_test(self):
-        data = {
-            "candidate_id": "C-CAT", "target_kind": "tooling",
-            "target_component": "tooling.source_catalog",
-            "region": "tooling.source_catalog",
-            "file": "source-catalog.d/repos.yaml", "base_rev": "HEAD",
-            "old_text": "# repos\n", "new_text": "# repos\n- org/repo\n",
-            "checks": ["src_fetch_self_test"],
-        }
-        validate_candidate(data)
+        with tempfile.TemporaryDirectory() as td:
+            root = self._repo(td)
+            (root / "source-catalog.d").mkdir()
+            (root / "source-catalog.d" / "repos.yaml").write_text("# repos\n", encoding="utf-8")
+            data = {
+                "candidate_id": "C-CAT", "target_kind": "tooling",
+                "target_component": "tooling.source_catalog",
+                "region": "tooling.source_catalog",
+                "file": "source-catalog.d/repos.yaml", "base_rev": "HEAD",
+                "old_text": "# repos\n", "new_text": "# repos\n- org/repo\n",
+                "checks": ["src_fetch_self_test"],
+            }
+            apply_to_root(root, validate_candidate(data))
+            self.assertIn("org/repo", (root / "source-catalog.d" / "repos.yaml")
+                          .read_text(encoding="utf-8"))
 
     def test_py_compile_rejects_non_python_file_at_validate(self):
         data = tool_candidate(Path("."))
