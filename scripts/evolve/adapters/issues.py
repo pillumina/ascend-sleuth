@@ -357,6 +357,9 @@ def ingest_issues(
             continue
         quality_item = (quality or {}).get(str(item.get("number")))
         expected = None
+        if quality is not None and quality_item is None:
+            stats["skipped_quality"] += 1
+            continue
         if quality_item is not None:
             if not quality_item.get("accepted"):
                 stats["skipped_quality"] += 1
