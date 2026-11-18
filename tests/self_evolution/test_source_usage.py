@@ -116,6 +116,36 @@ class SourceUsageTest(unittest.TestCase):
         with self.assertRaises(SourceUsageError):
             compare([row("a")], [row("b")])
 
+    def test_paired_totals_ignore_samples_missing_on_one_arm(self):
+        base = [row("a", files=4), row("b", files=None)]
+        cand = [row("a", files=2), row("b", files=9)]
+        out = compare(base, cand)
+        self.assertEqual(out["paired"]["files_read"]["n"], 1)
+        self.assertEqual(out["paired"]["files_read"]["unknown"], 1)
+        self.assertEqual(out["baseline"]["files_read"], 4)
+        self.assertEqual(out["candidate"]["files_read"], 2)
+
+    def test_tiny_delta_is_not_a_change(self):
+        base = [row("a", elapsed=1000.0)]
+        cand = [row("a", elapsed=1000.0000000001)]
+        out = compare(base, cand)
+        self.assertNotIn("source_efficiency_regressed", out["reasons"])
+        self.assertEqual(out["decision"], "insufficient")
+
+    def test_partial_regression_is_insufficient(self):
+        base = [row("a", elapsed=1000), row("b", elapsed=None)]
+        cand = [row("a", elapsed=9000), row("b", elapsed=1000)]
+        out = compare(base, cand)
+        self.assertIn("source_efficiency_partial_unknown", out["reasons"])
+        self.assertEqual(out["decision"], "insufficient")
+
+    def test_partial_threshold_uses_the_same_epsilon(self):
+        base = [row("a", elapsed=1000.0), row("b", elapsed=None)]
+        tiny = [row("a", elapsed=1000.00000000005), row("b", elapsed=1000)]
+        self.assertNotIn("source_efficiency_partial_unknown", compare(base, tiny)["reasons"])
+        real = [row("a", elapsed=1000.001), row("b", elapsed=1000)]
+        self.assertIn("source_efficiency_partial_unknown", compare(base, real)["reasons"])
+
 
 if __name__ == "__main__":
     unittest.main()

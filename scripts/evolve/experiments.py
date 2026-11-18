@@ -19,6 +19,7 @@ class ExperimentError(ValueError):
 
 DECISIONS = ("accept", "reject", "insufficient", "unknown")
 EXECUTIONS = ("library", "subagent", "manual")
+EPSILON = 1e-9
 
 
 def _number(value: Any, name: str) -> float:
@@ -37,9 +38,11 @@ def _validate_usage_side(value: Any, name: str) -> Dict[str, Any]:
         raise ExperimentError(f"knowledge_usage.{name}.n must be a positive integer")
     hits = value.get("hits")
     wrong = value.get("wrong_cases")
-    for key, item in (("hits", hits), ("wrong_cases", wrong)):
-        if not isinstance(item, int) or isinstance(item, bool) or not 0 <= item <= n:
-            raise ExperimentError(f"knowledge_usage.{name}.{key} must be 0..n")
+    if not isinstance(hits, int) or isinstance(hits, bool) or not 0 <= hits <= n:
+        raise ExperimentError(f"knowledge_usage.{name}.hits must be 0..n")
+    if wrong is not None and (not isinstance(wrong, int) or isinstance(wrong, bool)
+                              or not 0 <= wrong <= n):
+        raise ExperimentError(f"knowledge_usage.{name}.wrong_cases must be 0..n or null")
     rate = value.get("hit_rate")
     if not isinstance(rate, (int, float)) or isinstance(rate, bool):
         raise ExperimentError(f"knowledge_usage.{name}.hit_rate must be a number")
@@ -80,10 +83,12 @@ def _validate_usage_evidence(usage: Dict[str, Any]) -> None:
     if usage.get("decision") == "accept":
         if usage.get("reasons"):
             raise ExperimentError("knowledge_usage accept must have no reasons")
+        if baseline["wrong_cases"] is None or candidate["wrong_cases"] is None:
+            raise ExperimentError("knowledge_usage accept requires known wrong_cases")
         if candidate["hits"] < baseline["hits"] or candidate["wrong_cases"] > baseline["wrong_cases"]:
             raise ExperimentError("knowledge_usage accept regresses accuracy/wrong_cases")
-        improved = any(item is not None and item < 0 for item in deltas.values())
-        worsened = any(item is not None and item > 0 for item in deltas.values())
+        improved = any(item is not None and item < -EPSILON for item in deltas.values())
+        worsened = any(item is not None and item > EPSILON for item in deltas.values())
         if not improved or worsened:
             raise ExperimentError("knowledge_usage accept requires improvement without regression")
 
@@ -140,8 +145,8 @@ def _validate_source_usage_evidence(usage: Dict[str, Any]) -> None:
             raise ExperimentError("source_usage accept regresses correctness")
         lower = ("files_read", "tool_calls", "fetch_calls", "grep_calls",
                  "followups", "elapsed_ms")
-        improved = any(deltas[f] is not None and deltas[f] < 0 for f in lower)
-        worsened = any(deltas[f] is not None and deltas[f] > 0 for f in lower)
+        improved = any(deltas[f] is not None and deltas[f] < -EPSILON for f in lower)
+        worsened = any(deltas[f] is not None and deltas[f] > EPSILON for f in lower)
         if not improved or worsened:
             raise ExperimentError("source_usage accept requires improvement without regression")
 
