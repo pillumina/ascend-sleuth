@@ -146,6 +146,54 @@ def build_plan(root: Path, trace_state: Optional[Path] = None,
     }
 
 
+def apply_attribution(plan: Dict[str, Any], payload: Any) -> Dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise ValueError("attribution must be an object")
+    regions = payload.get("regions")
+    if not isinstance(regions, list) or not regions:
+        raise ValueError("attribution.regions must be a non-empty list")
+    from .regions import REGIONS
+    normalized = []
+    for item in regions:
+        if not isinstance(item, dict):
+            raise ValueError("attribution.regions entries must be objects")
+        region = str(item.get("region") or "")
+        if region not in REGIONS:
+            raise ValueError(f"unknown region {region!r}")
+        evidence = str(item.get("evidence") or "").strip()
+        if not evidence:
+            raise ValueError("attribution evidence is required")
+        confidence = item.get("confidence", 0.0)
+        if not isinstance(confidence, (int, float)) or not 0 <= confidence <= 1:
+            raise ValueError("attribution confidence must be 0..1")
+        normalized.append({"region": region, "evidence": evidence, "confidence": confidence})
+    plan["agent_attribution"] = normalized
+    plan["stages"]["attribute"] = "attribute.agent"
+    plan["status"] = "actionable"
+    return plan
+
+
+def apply_selection(plan: Dict[str, Any], payload: Any) -> Dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise ValueError("selection must be an object")
+    region = str(payload.get("region") or "")
+    evidence = str(payload.get("evidence") or "").strip()
+    from .regions import REGIONS
+    if region not in REGIONS:
+        raise ValueError(f"unknown region {region!r}")
+    if not evidence:
+        raise ValueError("selection evidence is required")
+    spec = REGIONS[region]
+    plan["experiment"] = {
+        "target_skill": spec.skill, "mutable_region": region,
+        "hard": 0, "events": 0,
+    }
+    plan["stages"]["select"] = "select.agent"
+    plan["agent_selection"] = {"region": region, "evidence": evidence}
+    plan["status"] = "actionable"
+    return plan
+
+
 def save_plan(plan: Dict[str, Any], path: Path) -> Path:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

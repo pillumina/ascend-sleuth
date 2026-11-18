@@ -32,7 +32,7 @@ from .adapters.arena import counts_from_files
 from .adapters.metrics import load_metrics
 from .algorithms.registry import algorithm_ids, get_algorithm
 from .targets.registry import get_target, resolve_evaluator, resolve_optimizer, target_ids
-from .rsi import build_plan, save_plan
+from .rsi import apply_attribution, apply_selection, build_plan, save_plan
 from .trace_attribution import status as trace_status, sync as trace_sync
 from .adapters.replay import collect as replay_collect
 from .adapters.replay import prepare as replay_prepare
@@ -813,6 +813,41 @@ def cmd_rsi_plan(args: argparse.Namespace) -> int:
     return 0
 
 
+def _load_plan(path: Path) -> dict:
+    import json
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def cmd_rsi_attribute(args: argparse.Namespace) -> int:
+    try:
+        path = Path(args.state)
+        plan = _load_plan(path)
+        payload = _yaml_or_json_object(args.file, "--file")
+        plan = apply_attribution(plan, payload)
+        save_plan(plan, path)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"updated: {path}")
+    print("stage: attribute.agent")
+    return 0
+
+
+def cmd_rsi_select(args: argparse.Namespace) -> int:
+    try:
+        path = Path(args.state)
+        plan = _load_plan(path)
+        payload = _yaml_or_json_object(args.file, "--file")
+        plan = apply_selection(plan, payload)
+        save_plan(plan, path)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"updated: {path}")
+    print("stage: select.agent")
+    return 0
+
+
 def cmd_rsi_status(args: argparse.Namespace) -> int:
     path = Path(args.state)
     try:
@@ -1212,6 +1247,14 @@ def build_parser() -> argparse.ArgumentParser:
     rsi_plan.add_argument("--state", default=None)
     rsi_plan.add_argument("--json", action="store_true")
     rsi_plan.set_defaults(func=cmd_rsi_plan)
+    rsi_attr = rsi_sub.add_parser("attribute", help="写回 agent 归因证据")
+    rsi_attr.add_argument("--state", required=True)
+    rsi_attr.add_argument("--file", required=True)
+    rsi_attr.set_defaults(func=cmd_rsi_attribute)
+    rsi_select = rsi_sub.add_parser("select", help="写回 agent 选点")
+    rsi_select.add_argument("--state", required=True)
+    rsi_select.add_argument("--file", required=True)
+    rsi_select.set_defaults(func=cmd_rsi_select)
     rsi_status = rsi_sub.add_parser("status", help="读取已保存的 RSI 计划")
     rsi_status.add_argument("--state", required=True)
     rsi_status.set_defaults(func=cmd_rsi_status)
