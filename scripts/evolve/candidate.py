@@ -5,14 +5,16 @@
 - ``tooling``：工具实现/路由数据，只改 region 登记的 ``paths``（如
   ``scripts/src_fetch.py``、``source-catalog.d``）。
 
-tooling 补丁可以带 ``checks``（最多 5 条命令），在 worktree 内执行；任一
-失败即回滚，不把坏改动留在工作区。路径校验在解析后的真实路径上做，
+tooling 补丁可以带 ``checks``：固定枚举 ``py_compile`` / ``diff_check`` /
+``src_fetch_self_test``，按 argv 在 worktree 内执行，不走 shell；任一失败即
+回滚，不把坏改动留在工作区。路径校验在解析后的真实路径上做，
 ``..``、绝对路径、symlink 逃逸与同前缀目录都会被拒。
 """
 
 import hashlib
 import json
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any, Dict, List
@@ -27,6 +29,7 @@ FORBIDDEN_PREFIXES = (
 )
 MAX_CHECKS = 5
 CHECK_TIMEOUT = 120
+CHECK_KINDS = ("py_compile", "diff_check", "src_fetch_self_test")
 MAX_TEXT = {"skill": 8000, "tooling": 20000}
 TOOLING_SUFFIXES = (".py", ".yaml", ".yml", ".json")
 
@@ -64,16 +67,16 @@ def _checks(value: Any) -> List[str]:
     if value is None:
         return []
     if not isinstance(value, list):
-        raise CandidateError("checks must be a list of commands")
+        raise CandidateError(f"checks must be a list of {list(CHECK_KINDS)}")
     out: List[str] = []
     for item in value:
-        if not isinstance(item, str) or not item.strip():
-            raise CandidateError("each check must be a non-empty string")
-        if len(item) > 300:
-            raise CandidateError("check command is too long")
+        if item not in CHECK_KINDS:
+            raise CandidateError(f"unknown check {item!r}; expected one of {list(CHECK_KINDS)}")
+        if item in out:
+            raise CandidateError(f"duplicate check {item!r}")
         out.append(item)
     if len(out) > MAX_CHECKS:
-        raise CandidateError(f"checks supports at most {MAX_CHECKS} commands")
+        raise CandidateError(f"checks supports at most {MAX_CHECKS} entries")
     return out
 
 
@@ -138,19 +141,37 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _run_checks(root: Path, checks: List[str]) -> None:
-    for command in checks:
+def _check_commands(root: Path, candidate: Dict[str, Any]) -> List[List[str]]:
+    commands: List[List[str]] = []
+    for kind in candidate.get("checks") or []:
+        if kind == "py_compile":
+            if not candidate["file"].endswith(".py"):
+                raise CandidateError("py_compile check requires a .py file")
+            commands.append([sys.executable, "-m", "py_compile", candidate["file"]])
+        elif kind == "diff_check":
+            commands.append(["git", "-C", str(root), "diff", "--check"])
+        elif kind == "src_fetch_self_test":
+            if candidate["region"] != "tooling.source_fetch":
+                raise CandidateError("src_fetch_self_test is only valid for tooling.source_fetch")
+            commands.append([sys.executable, "scripts/src_fetch.py", "--self-test"])
+    return commands
+
+
+def _run_checks(root: Path, candidate: Dict[str, Any]) -> None:
+    for command in _check_commands(root, candidate):
         try:
             proc = subprocess.run(
-                command, shell=True, cwd=str(root), capture_output=True,
+                command, cwd=str(root), capture_output=True,
                 text=True, encoding="utf-8", errors="replace", timeout=CHECK_TIMEOUT,
             )
         except subprocess.TimeoutExpired as exc:
-            raise CandidateError(f"check timed out after {CHECK_TIMEOUT}s: {command}") from exc
+            raise CandidateError(
+                f"check timed out after {CHECK_TIMEOUT}s: {' '.join(command)}"
+            ) from exc
         if proc.returncode != 0:
             tail = (proc.stdout + proc.stderr)[-1200:]
             raise CandidateError(
-                f"check failed with exit {proc.returncode}: {command}\n{tail}"
+                f"check failed with exit {proc.returncode}: {' '.join(command)}\n{tail}"
             )
 
 
@@ -184,7 +205,7 @@ def apply_to_root(root: Path, candidate: Dict[str, Any]) -> Dict[str, Any]:
     before_sha = _sha(path)
     path.write_text(after, encoding="utf-8")
     try:
-        _run_checks(root, candidate.get("checks") or [])
+        _run_checks(root, candidate)
     except Exception:
         path.write_text(before, encoding="utf-8")
         raise

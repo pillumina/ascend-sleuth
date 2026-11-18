@@ -217,17 +217,31 @@ def from_trace(document: Any, source_ok: Optional[bool] = None) -> Dict[str, Any
     fetches = None
     greps = None
     followups = None
+    has_fetch = has_grep = False
     for e in events:
         for item in (e.get("files_read") or e.get("files") or []):
             files.append(str(item))
         tool_calls = e.get("tool_calls")
+        derived_fetch = derived_grep = 0
         if tool_calls:
             calls = (calls or 0) + len(tool_calls)
-            fetches = (fetches or 0) + sum(
+            derived_fetch = sum(
                 1 for call in tool_calls
                 if "src_fetch.py" in str(call) or "git fetch" in str(call)
             )
-            greps = (greps or 0) + sum(1 for call in tool_calls if "grep" in str(call))
+            derived_grep = sum(1 for call in tool_calls if "grep" in str(call))
+        if isinstance(e.get("fetch_calls"), int):
+            has_fetch = True
+            fetches = (fetches or 0) + e["fetch_calls"]
+        elif tool_calls:
+            has_fetch = True
+            fetches = (fetches or 0) + derived_fetch
+        if isinstance(e.get("grep_calls"), int):
+            has_grep = True
+            greps = (greps or 0) + e["grep_calls"]
+        elif tool_calls:
+            has_grep = True
+            greps = (greps or 0) + derived_grep
         if isinstance(e.get("followup"), list):
             followups = (followups or 0) + len(e["followup"])
     return validate_record({

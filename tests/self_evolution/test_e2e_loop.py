@@ -115,14 +115,13 @@ class E2ELoopTest(unittest.TestCase):
             {"region": "tooling.source_fetch", "file": "scripts/src_fetch.py",
              "old": "def fetch(ref):\n    return ref\n",
              "new": "def fetch(ref):\n    return ref.strip()\n",
-             "checks": ["python3 -c \"import ast; ast.parse(open('scripts/src_fetch.py').read())\""]},
+             "checks": ["py_compile"]},
             hits={"baseline": 0, "candidate": 0},
         )
         conclusion = result["conclusion"]
         self.assertEqual(conclusion["decision"], "accept")
         self.assertEqual((conclusion["b"], conclusion["c"], conclusion["n"]), (4, 0, 4))
         self.assertAlmostEqual(conclusion["p_value"], 0.0625)
-        self.assertEqual(conclusion["metrics"]["capacity"]["capacity_ok"], True)
         self.assertEqual(conclusion["versions"]["protocol"], "evolve-v1")
         self.assertEqual(conclusion["versions"]["candidate"], "C-E2E-001")
         self.assertEqual(result["runs"]["written"], 8)
@@ -146,7 +145,7 @@ class E2ELoopTest(unittest.TestCase):
         fourth = decide(output, judge_path, policy, reuse_index=1)
         self.assertFalse(fourth.get("duplicate"))
 
-    def test_small_pool_reports_capacity_short(self):
+    def test_small_pool_cannot_accept(self):
         root, output, collected, result, judge_path = self._run(
             "skill",
             {"region": "diagnose.knowledge_usage", "file": "skills/diagnose/SKILL.md",
@@ -157,11 +156,7 @@ class E2ELoopTest(unittest.TestCase):
         )
         conclusion = result["conclusion"]
         self.assertEqual(conclusion["decision"], "insufficient")
-        self.assertIn("判定容量不足", conclusion["reason"])
-        capacity = conclusion["metrics"]["capacity"]
-        self.assertEqual(capacity["flippable"], 2)
-        self.assertGreaterEqual(capacity["required_b"], 4)
-        self.assertFalse(capacity["capacity_ok"])
+        self.assertEqual((conclusion["b"], conclusion["c"], conclusion["n"]), (2, 0, 2))
 
 
 if __name__ == "__main__":

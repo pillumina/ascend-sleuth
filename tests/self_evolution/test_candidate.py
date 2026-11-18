@@ -84,7 +84,7 @@ class CandidateTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = self._repo(td)
             data = tool_candidate(root)
-            data["checks"] = ["python3 -c \"import ast; ast.parse(open('scripts/src_fetch.py').read())\""]
+            data["checks"] = ["py_compile", "diff_check"]
             validated = validate_candidate(data)
             apply_to_root(root, validated)
             self.assertIn("strip", (root / "scripts/src_fetch.py").read_text(encoding="utf-8"))
@@ -107,9 +107,12 @@ class CandidateTest(unittest.TestCase):
                 with self.assertRaises(CandidateError):
                     validate_candidate(data)
 
-    def test_too_many_checks_are_rejected(self):
+    def test_unknown_or_duplicate_check_is_rejected(self):
         data = tool_candidate(Path("."))
-        data["checks"] = ["true"] * 6
+        data["checks"] = ["rm -rf /"]
+        with self.assertRaises(CandidateError):
+            validate_candidate(data)
+        data["checks"] = ["py_compile", "py_compile"]
         with self.assertRaises(CandidateError):
             validate_candidate(data)
 
@@ -117,8 +120,9 @@ class CandidateTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = self._repo(td)
             before = (root / "scripts/src_fetch.py").read_text(encoding="utf-8")
-            data = tool_candidate(root)
-            data["checks"] = ["python3 -c \"raise SystemExit(3)\""]
+            data = tool_candidate(
+                root, new="def fetch(ref):\n    return (\n")
+            data["checks"] = ["py_compile"]
             with self.assertRaises(CandidateError):
                 apply_to_root(root, validate_candidate(data))
             self.assertEqual((root / "scripts/src_fetch.py").read_text(encoding="utf-8"), before)
@@ -127,8 +131,9 @@ class CandidateTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = self._repo(td)
             ws = Path(td) / "ws"
-            data = tool_candidate(root)
-            data["checks"] = ["python3 -c \"raise SystemExit(3)\""]
+            data = tool_candidate(
+                root, new="def fetch(ref):\n    return (\n")
+            data["checks"] = ["py_compile"]
             with self.assertRaises(CandidateError):
                 create_workspace(root, validate_candidate(data), ws)
             self.assertFalse(ws.exists())

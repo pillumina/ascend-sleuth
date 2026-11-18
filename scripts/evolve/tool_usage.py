@@ -8,8 +8,10 @@ grep），这一层看工具本身的运行情况（缓存命中、重试、工�
 trace 里猜。
 """
 
-from datetime import datetime
 from typing import Any, Dict, List, Optional
+
+from .source_usage import SourceUsageError
+from .source_usage import from_trace as source_from_trace
 
 GATE_FIELDS = ("tool_calls", "fetch_calls", "grep_calls", "retries",
                "cache_hits", "tool_ms")
@@ -166,32 +168,20 @@ def from_trace(document: Any, resolved: Optional[bool] = None) -> Dict[str, Any]
               if isinstance(e, dict) and e.get("action") == "source_analysis"]
     if not events:
         raise ToolUsageError("trace has no source_analysis events")
-    calls: List[str] = []
-    fetches = greps = retries = cache_hits = 0
+    try:
+        source = source_from_trace(document)
+    except SourceUsageError as exc:
+        raise ToolUsageError(str(exc)) from exc
+    retries = cache_hits = 0
     tool_ms = 0.0
     failures = 0
-    has_ms = has_calls = has_retries = has_cache = has_failures = False
-    has_fetch = has_grep = False
+    has_ms = has_retries = has_cache = has_failures = has_calls = False
     for event in events:
         current: List[str] = []
         if isinstance(event.get("tool_calls"), list):
             has_calls = True
             current = [str(call) for call in event["tool_calls"]]
-            calls.extend(current)
             retries += sum(1 for call in current if "retry" in call.lower())
-        if isinstance(event.get("fetch_calls"), int):
-            has_fetch = True
-            fetches += event["fetch_calls"]
-        elif current:
-            has_fetch = True
-            fetches += sum(1 for call in current
-                           if "src_fetch.py" in call or "git fetch" in call)
-        if isinstance(event.get("grep_calls"), int):
-            has_grep = True
-            greps += event["grep_calls"]
-        elif current:
-            has_grep = True
-            greps += sum(1 for call in current if "grep" in call)
         if isinstance(event.get("retries"), int):
             has_retries = True
             retries += event["retries"]
@@ -211,9 +201,9 @@ def from_trace(document: Any, resolved: Optional[bool] = None) -> Dict[str, Any]
                 failures += 1
     record = validate_record({
         "sample_id": str(document.get("session_id") or "unknown"),
-        "tool_calls": len(calls) if has_calls else None,
-        "fetch_calls": fetches if has_fetch else None,
-        "grep_calls": greps if has_grep else None,
+        "tool_calls": source["tool_calls"],
+        "fetch_calls": source["fetch_calls"],
+        "grep_calls": source["grep_calls"],
         "retries": retries if (has_retries or has_calls) else None,
         "cache_hits": cache_hits if has_cache else None,
         "tool_ms": tool_ms if has_ms else None,

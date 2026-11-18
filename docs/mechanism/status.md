@@ -66,7 +66,7 @@
 | 评估策略与判定器 | [evaluation.md](evaluation.md) 3.5 | 已落地 | `python3 scripts/evolve.py policy check`；`python3 scripts/evolve.py judge --help` |
 | 样本、执行、结论的 v1 契约与样本队列 | [records.md](records.md) 3.2、3.3 | 已落地 | `python3 scripts/evolve.py sample --help`；`python3 scripts/evolve.py brief` |
 | tooling 自演进：目标、可改区、候选补丁、评测与门禁 | [evaluation.md](evaluation.md) 3.10.1 | 已落地 | `python3 scripts/evolve.py tool-usage --help`；`grep -n "tooling.source_fetch" scripts/evolve/regions.py` |
-| 判定容量（`required_b` 与配对/池样本数） | [evaluation.md](evaluation.md) 3.9 | 已落地 | `grep -n "required_exclusive_wins" scripts/evolve/decision.py`；`python3 scripts/evolve.py brief` |
+| 判定容量（`required_b` 与池样本数） | [evaluation.md](evaluation.md) 3.9 | 已落地 | `grep -n "required_exclusive_wins" scripts/evolve/decision.py`；`python3 scripts/evolve.py brief` |
 | pilot 记录闭环：Run/Conclusion 与版本坐标 | [records.md](records.md) 3.2、3.3 | 已落地 | `grep -n "def decide" scripts/evolve/pilot.py` |
 | pilot 样本注册进本地队列 | [evaluation.md](evaluation.md) 3.9 | 已落地 | `python3 scripts/evolve.py sample import-pilot --help` |
 | 记录端口层 | [records.md](records.md) 3.6 | 已落地 | `grep -n "class .*Protocol" scripts/evolve/ports.py` |

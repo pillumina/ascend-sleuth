@@ -37,7 +37,6 @@ class KnowledgeUsageTest(unittest.TestCase):
         }
         out = from_trace(trace, expected_case="C-2")
         self.assertEqual(out["candidates_examined"], 2)
-        self.assertEqual(out["index_rows"], 5)
         self.assertEqual(out["full_body_reads"], 2)
         self.assertEqual(out["reference_lookups"], 1)
         self.assertEqual(out["first_hit_step"], 3)
@@ -151,7 +150,6 @@ class KnowledgeUsageTest(unittest.TestCase):
         ]}
         out = from_trace(trace)
         self.assertIsNone(out["candidates_examined"])
-        self.assertEqual(out["index_rows"], 2)
 
     def test_resolution_known_still_checks_hits(self):
         base = [dict(row("a"), resolution_ok=True)]
@@ -190,7 +188,6 @@ class KnowledgeUsageTest(unittest.TestCase):
         ]}
         out = from_trace(trace)
         self.assertEqual(out["candidates_examined"], 3)
-        self.assertEqual(out["index_rows"], 3)
         self.assertEqual(out["full_body_reads"], 2)
 
     @staticmethod

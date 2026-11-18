@@ -245,7 +245,7 @@ S2 未命中有三种解释：路由错、缺 case、内容错。它只看到没
 
 ```json
 {"sample_id":"S-1","hit":true,"first_hit_step":2,"candidates_examined":2,
- "index_rows":12,"full_body_reads":1,"reference_lookups":0,"wrong_cases":0,
+ "full_body_reads":1,"reference_lookups":0,"wrong_cases":0,
  "resolution_ok":true,"tokens":1200}
 ```
 
@@ -261,7 +261,7 @@ python3 scripts/evolve.py knowledge-usage compare --baseline base.json --candida
 
 演进评估的 trace 统一放 `.s2-replay/evolve/usage-traces/`（本地运行件，git-ignored），不得写入 `traces/`；真实诊断 trace 与演进评估 trace 分开。`from-trace` 从 `load_index`/`load_full`/`quickly_check`/`reference_lookup`/`hit` 推导，token 不在 trace 里时保持 null。
 
-`candidates_examined` 记筛出的短列：`load_full` 点名的候选与 `quickly_check` 点名的 case 取并集，不是索引视图行数。`index_rows` 记 `load_index.considered_candidates` 的长度，只作读数；旧 trace 有把短列写进这个字段的，跨臂比较不可靠。
+`candidates_examined` 记筛出的短列：`load_full` 点名的候选与 `quickly_check` 点名的 case 取并集；没有这两类事件时记 unknown，不拿索引视图行数顶替。
 
 `full_body_reads` 数 `load_full` 事件里点名的候选：`case` 或 `candidates` 列表，两者都写时取并集。没有带 `case` 或 `candidates` 的 `load_full` 事件时，退回 `quickly_check` 的 `case`。
 
@@ -275,9 +275,7 @@ python3 scripts/evolve.py knowledge-usage compare --baseline base.json --candida
 
 `compare` 只有在准确率不降、至少一个效率项改善、且没有效率项变差时给 `accept`；准确率或效率回退给 `reject`；没有改善或证据不全给 `insufficient`。实验记录的 `knowledge_usage.decision` 若存在，整体 `accept` 必须同时为 `accept`。每个效率项同时报配对差值的均值与置信区间（`ci`）。计数项用点估计与 1e-9 阈值；`elapsed_ms` 是连续项，方向只在区间排除 0 时成立，区间跨 0 且差值为正时记 `elapsed_inconclusive`，结论不能是 `accept`。
 
-判定容量单独算。同一评估池第 k 次判定时 `alpha_eff = alpha/(k+1)`；达成证据所需的最少独家命中数 `required_b` 是 `min{b: 2^-b <= alpha_eff}`。
-
-配对样本数少于 `required_b` 时，这个池在原理上给不出 `accept`；`pilot decide` 会写「判定容量不足」，作为提示，不改变结论。`brief` 的 `judgment_capacity` 另用池样本数（field 加待审候选）做入池前提示，两个数不是同一个量。
+判定容量在 `brief` 算：同一评估池第 k 次判定时 `alpha_eff = alpha/(k+1)`，达成证据所需的最少独家命中数 `required_b` 是 `min{b: 2^-b <= alpha_eff}`。池样本数（field 加待审候选）少于 `required_b` 时记 `judgment_capacity_short`；这是入池前提示，不改判定结论，判定记录里不重复算。
 
 `pilot collect` 之后跑 `pilot decide`。它把每条 rollout 写成一条执行记录（`Run`，见 records.md），把一次对照写成一条结论（`Conclusion`，同篇）。
 
@@ -317,7 +315,7 @@ python3 scripts/evolve.py tool-usage compare --baseline base.json --candidate ca
 
 `compare` 与另两处一样逐样本配对：`resolved` 不降，且至少一项工具指标改善、没有项变差才给 `accept`。`replay_trace` 的 `experiment gate` 直接读这两份 JSON。
 
-工具补丁走 `target_kind: tooling` 的 candidate：文件只能落在 region 登记的 `paths`（`tooling.source_fetch` 是 `scripts/src_fetch.py` 与 `source-catalog.d`），不能碰 `skills/`、`knowledge/`、`eval/`、`tests/`、`.github/`。补丁可带最多 5 条 `checks`，工作目录是隔离 worktree；任一失败回滚文件并删除 worktree。`checks` 能写 worktree 之外的路径，不构成沙箱，安全边界是路径白名单加 A1（每次人审）。
+工具补丁走 `target_kind: tooling` 的 candidate：文件只能落在 region 登记的 `paths`（`tooling.source_fetch` 是 `scripts/src_fetch.py` 与 `source-catalog.d`），不能碰 `skills/`、`knowledge/`、`eval/`、`tests/`、`.github/`。补丁可带最多 5 个 `checks`，取值是固定枚举：`py_compile`（编译补丁文件）、`diff_check`（`git diff --check`）、`src_fetch_self_test`（只对 `tooling.source_fetch`）。检查按 argv 在 worktree 内执行，不走 shell；任一失败回滚文件并删除 worktree。
 
 ### 3.11 算法适配器
 

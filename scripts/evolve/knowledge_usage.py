@@ -51,7 +51,6 @@ def validate_record(record: Any) -> Dict[str, Any]:
     first_step = _int(record.get("first_hit_step"), "first_hit_step", optional=True)
     tokens = _int(record.get("tokens"), "tokens", optional=True)
     elapsed = _num(record.get("elapsed_ms"), "elapsed_ms", optional=True)
-    index_rows = _int(record.get("index_rows"), "index_rows", optional=True)
     resolution = record.get("resolution_ok")
     if resolution is not None and not isinstance(resolution, bool):
         raise UsageError("resolution_ok must be boolean or null")
@@ -62,7 +61,7 @@ def validate_record(record: Any) -> Dict[str, Any]:
         "candidates_examined": candidate_examined,
         "full_body_reads": full_body, "reference_lookups": refs,
         "first_hit_step": first_step, "tokens": tokens, "elapsed_ms": elapsed,
-        "index_rows": index_rows, "resolution_ok": resolution,
+        "resolution_ok": resolution,
     }
 
 
@@ -90,8 +89,6 @@ def summarize(data: Any) -> Dict[str, Any]:
     for field in EFFICIENCY_FIELDS:
         values = [item[field] for item in records if item[field] is not None]
         result[field] = (sum(values) / len(values)) if values else None
-    index_values = [item["index_rows"] for item in records if item["index_rows"] is not None]
-    result["index_rows"] = (sum(index_values) / len(index_values)) if index_values else None
     resolutions = [item["resolution_ok"] for item in records]
     result["resolved"] = (sum(1 for item in resolutions if item)
                           if all(item is not None for item in resolutions) else None)
@@ -269,15 +266,6 @@ def from_trace(document: Any, expected_case: Optional[str] = None,
         if isinstance(listed, list):
             full_loads.update(str(item) for item in listed if item)
     shortlist = full_loads | checks
-    load_index_rows = None
-    for event in events:
-        if event.get("action") != "load_index":
-            continue
-        value = event.get("considered_candidates")
-        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
-            load_index_rows = value
-        elif isinstance(value, list):
-            load_index_rows = len(value)
     candidates = len(shortlist) if shortlist else None
     refs = sum(
         1 for event in events
@@ -302,7 +290,6 @@ def from_trace(document: Any, expected_case: Optional[str] = None,
         "first_hit_step": first_step,
         "candidates_examined": candidates,
         "full_body_reads": (len(full_loads) if full_loads else (len(checks) if checks else None)),
-        "index_rows": load_index_rows,
         "resolution_ok": resolution_ok,
         "reference_lookups": refs,
         "wrong_cases": wrong,

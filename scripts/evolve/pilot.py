@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from .candidate import create_workspace, validate_candidate
 from .contracts import PROTOCOL_VERSION, Conclusion, Run, Version, now_iso
-from .decision import decide_binary, required_exclusive_wins
+from .decision import decide_binary
 from .knowledge_usage import compare as compare_knowledge
 from .knowledge_usage import from_trace as knowledge_from_trace
 from .policy import policy_hash
@@ -230,10 +230,6 @@ def record_runs(output: Path, policy: Dict[str, Any], base: Optional[Path] = Non
     return {"written": written, "version": version}
 
 
-def _required_wins(alpha_eff: float) -> int:
-    return required_exclusive_wins(alpha_eff)
-
-
 def _usage_arms(collect: Dict[str, Any], key: str):
     arms = collect.get("arms") or {}
     baseline = {row["sample_id"]: row.get(key) for row in arms.get("baseline") or []}
@@ -289,8 +285,6 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
 
     alpha = float((policy.get("decision") or {}).get("alpha", 0.10))
     alpha_eff = alpha / (reuse_index + 1)
-    required = _required_wins(alpha_eff)
-    flippable = counts["n"]
 
     cost_cfg = policy.get("cost") or {}
     dimension = cost_cfg.get("primary_dimension", "tokens")
@@ -313,10 +307,6 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
     )
     result = decision.decision.value
     reason = decision.reason
-    capacity_ok = flippable >= required
-    if not capacity_ok:
-        reason = (f"判定容量不足：配对样本 {flippable} < 达成证据所需 {required}；"
-                  + reason)
     pool_rows = []
     for sample in tasks.get("samples") or []:
         sid = str(sample.get("short_id") or sample.get("id"))
@@ -348,8 +338,6 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
     conclusion = Conclusion(
         decision=result, reason=reason,
         metrics={
-            "capacity": {"flippable": flippable, "required_b": required,
-                         "required_b_at_reuse": required, "capacity_ok": capacity_ok},
             "constraints": constraints,
             "main_metric": "resolution",
         },
