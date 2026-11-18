@@ -258,9 +258,11 @@ python3 scripts/evolve.py knowledge-usage evaluate --file usage.json
 python3 scripts/evolve.py knowledge-usage compare --baseline base.json --candidate cand.json
 ```
 
-演进评估的 trace 统一放 `.s2-replay/evolve/usage-traces/`（本地运行件，git-ignored），不得写入 `traces/`；真实诊断 trace 与演进评估 trace 分开。`from-trace` 从 `load_index`/`quickly_check`/`reference_lookup`/`hit` 推导，token 不在 trace 里时保持 null。
+演进评估的 trace 统一放 `.s2-replay/evolve/usage-traces/`（本地运行件，git-ignored），不得写入 `traces/`；真实诊断 trace 与演进评估 trace 分开。`from-trace` 从 `load_index`/`load_full`/`quickly_check`/`reference_lookup`/`hit` 推导，token 不在 trace 里时保持 null。取全文的候选按事件里的 `case` 或 `candidates` 列表计，两者都写时取并集。
 
-`compare` 只有在准确率不降、`wrong_cases` 不增、至少一个效率项改善、且没有效率项变差时给 `accept`；准确率或效率回退给 `reject`；没有改善给 `insufficient`。实验记录的 `knowledge_usage.decision` 若存在，整体 `accept` 必须同时为 `accept`。
+`compare` 逐样本配对，只在两侧都有值的样本上算该效率项的均值。只在一侧有值的样本不进入均值，也不当改善或回退证据：两侧样本集不同时分别求均值，会把「一侧缺数据」算成「另一侧变好或变差」。某项只有部分样本可测时，差值照报，但不参与判定；该项若变差，记 `efficiency_partial_unknown`。
+
+`compare` 只有在准确率不降、`wrong_cases` 不增、至少一个效率项改善、且没有效率项变差时给 `accept`；准确率或效率回退给 `reject`；没有改善或证据不全给 `insufficient`。实验记录的 `knowledge_usage.decision` 若存在，整体 `accept` 必须同时为 `accept`。
 
 ### 3.10 源码访问效率
 
@@ -275,7 +277,9 @@ python3 scripts/evolve.py source-usage evaluate --file source-usage.json
 python3 scripts/evolve.py source-usage compare --baseline base.json --candidate cand.json
 ```
 
-记录 repo/ref、files_read、tool_calls、fetch_calls、grep_calls、followups、elapsed；cache/download/bytes 只做可选观测，不进门禁。`compare` 要求源码结论 correctness 不降，且 files/tool/fetch/grep/elapsed 至少一项改善、没有项变差；correctness 或效率 unknown 只能记 `insufficient`。
+记录 repo/ref、files_read、tool_calls、fetch_calls、grep_calls、followups、elapsed；cache/download/bytes 只做可选观测，不进门禁。`compare` 与知识使用效率同样逐样本配对：只在两侧都有值的样本上算该项总数，部分样本可测的项只报差值、不参与判定，变差时记 `source_efficiency_partial_unknown`。
+
+`compare` 要求源码结论 correctness 不降，且 files/tool/fetch/grep/elapsed 至少一项改善、没有项变差；correctness 或效率 unknown 只能记 `insufficient`。
 
 ### 3.11 算法适配器
 

@@ -12,10 +12,12 @@ from evolve.regions import REGIONS  # noqa: E402
 from evolve.experiments import ExperimentError, validate_experiment  # noqa: E402
 
 
-def row(sample, hit=True, step=1, candidates=1, body=1, refs=0, wrong=0, tokens=100):
+def row(sample, hit=True, step=1, candidates=1, body=1, refs=0, wrong=0, tokens=100,
+        elapsed=1000):
     return {"sample_id": sample, "hit": hit, "first_hit_step": step if hit else None,
             "candidates_examined": candidates, "full_body_reads": body,
-            "reference_lookups": refs, "wrong_cases": wrong, "tokens": tokens}
+            "reference_lookups": refs, "wrong_cases": wrong, "tokens": tokens,
+            "elapsed_ms": elapsed}
 
 
 class KnowledgeUsageTest(unittest.TestCase):
@@ -99,6 +101,41 @@ class KnowledgeUsageTest(unittest.TestCase):
     def test_missing_hit_step_is_unknown_not_zero(self):
         with self.assertRaises(UsageError):
             summarize([row("a", hit=False, step=None)] + [{"sample_id": "b", "hit": True}])
+
+    def test_unpaired_samples_do_not_create_regression(self):
+        # 基线在 b 上没记全文读取数；候选记了 5。两侧样本集不同，逐侧求均值
+        # 会把候选的 5 算成回退——配对比只该用两侧都有值的 a、c 两个样本。
+        base = [row("a", body=1), row("b", body=None), row("c", body=1)]
+        cand = [row("a", body=1), row("b", body=5), row("c", body=1)]
+        result = compare(base, cand)
+        self.assertEqual(result["paired"]["full_body_reads"]["n"], 2)
+        self.assertEqual(result["paired"]["full_body_reads"]["unknown"], 1)
+        self.assertNotIn("efficiency_regressed", result["reasons"])
+        self.assertEqual(result["decision"], "insufficient")
+
+    def test_partial_improvement_cannot_make_accept(self):
+        base = [row("a", candidates=3), row("b", candidates=None)]
+        cand = [row("a", candidates=1), row("b", candidates=1)]
+        result = compare(base, cand)
+        self.assertEqual(result["paired"]["candidates_examined"]["n"], 1)
+        self.assertNotEqual(result["decision"], "accept")
+
+    def test_partial_regression_is_insufficient(self):
+        base = [row("a", elapsed=1000), row("b", elapsed=None)]
+        cand = [row("a", elapsed=9000), row("b", elapsed=1000)]
+        result = compare(base, cand)
+        self.assertIn("efficiency_partial_unknown", result["reasons"])
+        self.assertEqual(result["decision"], "insufficient")
+
+    def test_from_trace_reads_candidates_list_on_load_full(self):
+        trace = {"session_id": "s3", "trace": [
+            {"action": "load_index", "considered_candidates": ["C-1", "C-2", "C-3"]},
+            {"action": "load_full", "candidates": ["C-1", "C-2"]},
+            {"action": "quickly_check", "case": "C-3"},
+        ]}
+        out = from_trace(trace)
+        self.assertEqual(out["candidates_examined"], 3)
+        self.assertEqual(out["full_body_reads"], 2)
 
 
 if __name__ == "__main__":

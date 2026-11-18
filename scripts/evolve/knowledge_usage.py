@@ -86,14 +86,37 @@ def summarize(data: Any) -> Dict[str, Any]:
     return result
 
 
+EPSILON = 1e-9
+
+
+def _paired_row(b: Dict[str, Dict[str, Any]], c: Dict[str, Dict[str, Any]],
+                ids: List[str], field: str) -> Dict[str, Any]:
+    """按样本配对：只用两侧都有值的样本算均值，缺失数单独报。"""
+    pairs = [(b[i][field], c[i][field]) for i in ids
+             if b[i][field] is not None and c[i][field] is not None]
+    if not pairs:
+        return {"n": 0, "unknown": len(ids), "baseline": None,
+                "candidate": None, "delta": None}
+    mean_b = sum(pair[0] for pair in pairs) / len(pairs)
+    mean_c = sum(pair[1] for pair in pairs) / len(pairs)
+    return {"n": len(pairs), "unknown": len(ids) - len(pairs),
+            "baseline": mean_b, "candidate": mean_c, "delta": mean_c - mean_b}
+
+
 def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
-    """准确率不降、wrong_case 不增，且至少一个效率项改善、没有效率项变差。"""
+    """准确率不降、wrong_case 不增，且至少一个效率项改善、没有效率项变差。
+
+    效率项逐样本配对：两侧都有值的样本才算这一项的均值。只在一侧有值的
+    样本不进入均值，也不当改善或回退证据——两侧样本集不同时，各自求均值
+    会把「一侧缺数据」算成「另一侧变好/变差」。
+    """
     b = {item["sample_id"]: item for item in _records(baseline)}
     c = {item["sample_id"]: item for item in _records(candidate)}
     if set(b) != set(c):
         raise UsageError("baseline/candidate sample_id sets must match")
-    b_sum = summarize(list(b.values()))
-    c_sum = summarize(list(c.values()))
+    ids = sorted(b)
+    b_sum = summarize([b[i] for i in ids])
+    c_sum = summarize([c[i] for i in ids])
     reasons = []
     if c_sum["hits"] < b_sum["hits"]:
         reasons.append("accuracy_regressed")
@@ -101,20 +124,25 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
         reasons.append("wrong_cases_unknown")
     elif c_sum["wrong_cases"] > b_sum["wrong_cases"]:
         reasons.append("wrong_cases_increased")
-    deltas = {}
+    paired = {field: _paired_row(b, c, ids, field) for field in EFFICIENCY_FIELDS}
+    deltas = {field: paired[field]["delta"] for field in EFFICIENCY_FIELDS}
     improved = 0
     worsened = 0
+    partial = []
     for field in EFFICIENCY_FIELDS:
-        bv, cv = b_sum[field], c_sum[field]
-        if bv is None or cv is None:
-            deltas[field] = None
+        row = paired[field]
+        if row["delta"] is None:
             continue
-        delta = cv - bv
-        deltas[field] = delta
-        if delta < 0:
+        if row["unknown"]:
+            partial.append(field)
+            continue
+        if row["delta"] < -EPSILON:
             improved += 1
-        elif delta > 0:
+        elif row["delta"] > EPSILON:
             worsened += 1
+    if any(paired[field]["delta"] is not None and paired[field]["delta"] > EPSILON
+           for field in partial):
+        reasons.append("efficiency_partial_unknown")
     if worsened:
         reasons.append("efficiency_regressed")
     if not improved:
@@ -125,10 +153,16 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
         decision = "insufficient"
     else:
         decision = "accept"
+    b_side = dict(b_sum)
+    c_side = dict(c_sum)
+    for field in EFFICIENCY_FIELDS:
+        b_side[field] = paired[field]["baseline"]
+        c_side[field] = paired[field]["candidate"]
     return {
         "decision": decision,
-        "baseline": b_sum, "candidate": c_sum, "deltas": deltas,
+        "baseline": b_side, "candidate": c_side, "deltas": deltas,
         "reasons": reasons,
+        "paired": paired,
     }
 
 
@@ -163,10 +197,15 @@ def from_trace(document: Any, expected_case: Optional[str] = None) -> Dict[str, 
         str(event.get("case")) for event in events
         if event.get("action") == "quickly_check" and event.get("case")
     }
-    full_loads = {
-        str(event.get("case")) for event in events
-        if event.get("action") == "load_full" and event.get("case")
-    }
+    full_loads = set()
+    for event in events:
+        if event.get("action") != "load_full":
+            continue
+        if event.get("case"):
+            full_loads.add(str(event["case"]))
+        listed = event.get("candidates")
+        if isinstance(listed, list):
+            full_loads.update(str(item) for item in listed if item)
     if not full_loads:
         full_loads = checks
     considered = None

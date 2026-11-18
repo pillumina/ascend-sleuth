@@ -116,6 +116,22 @@ class SourceUsageTest(unittest.TestCase):
         with self.assertRaises(SourceUsageError):
             compare([row("a")], [row("b")])
 
+    def test_paired_totals_ignore_samples_missing_on_one_arm(self):
+        base = [row("a", files=4), row("b", files=None)]
+        cand = [row("a", files=2), row("b", files=9)]
+        out = compare(base, cand)
+        self.assertEqual(out["paired"]["files_read"]["n"], 1)
+        self.assertEqual(out["paired"]["files_read"]["unknown"], 1)
+        self.assertEqual(out["baseline"]["files_read"], 4)
+        self.assertEqual(out["candidate"]["files_read"], 2)
+
+    def test_partial_regression_is_insufficient(self):
+        base = [row("a", elapsed=1000), row("b", elapsed=None)]
+        cand = [row("a", elapsed=9000), row("b", elapsed=1000)]
+        out = compare(base, cand)
+        self.assertIn("source_efficiency_partial_unknown", out["reasons"])
+        self.assertEqual(out["decision"], "insufficient")
+
 
 if __name__ == "__main__":
     unittest.main()

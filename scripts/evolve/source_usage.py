@@ -86,28 +86,60 @@ def summarize(data: Any) -> Dict[str, Any]:
 
 
 def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
+    """源码结论不降，且效率项至少一项改善、没有项变差。
+
+    效率项逐样本配对：两侧都有值的样本才算这一项的总数。只在一侧有值的
+    样本不进入总数——两侧样本集不同时，各自求和会把「一侧缺数据」算成
+    「另一侧变好/变差」。
+    """
     b = {item["sample_id"]: item for item in _records(baseline)}
     c = {item["sample_id"]: item for item in _records(candidate)}
     if set(b) != set(c):
         raise SourceUsageError("baseline/candidate sample_id sets must match")
-    bs, cs = summarize(list(b.values())), summarize(list(c.values()))
+    ids = sorted(b)
+    bs, cs = summarize([b[i] for i in ids]), summarize([c[i] for i in ids])
     reasons: List[str] = []
-    if bs["source_ok"] is None or cs["source_ok"] is None:
+    ok_pairs = [(b[i]["source_ok"], c[i]["source_ok"]) for i in ids
+                if b[i]["source_ok"] is not None and c[i]["source_ok"] is not None]
+    if len(ok_pairs) != len(ids):
         reasons.append("source_correctness_unknown")
-    elif cs["source_ok"] < bs["source_ok"]:
-        reasons.append("source_correctness_regressed")
+        bs["source_ok"] = cs["source_ok"] = None
+    else:
+        b_ok = sum(1 for pair in ok_pairs if pair[0])
+        c_ok = sum(1 for pair in ok_pairs if pair[1])
+        bs["source_ok"], cs["source_ok"] = b_ok, c_ok
+        if c_ok < b_ok:
+            reasons.append("source_correctness_regressed")
+    paired: Dict[str, Dict[str, Any]] = {}
     deltas = {}
     improved = worsened = 0
+    partial: List[str] = []
     for field in GATE_FIELDS:
-        bv, cv = bs[field], cs[field]
-        if bv is None or cv is None:
+        pairs = [(b[i][field], c[i][field]) for i in ids
+                 if b[i][field] is not None and c[i][field] is not None]
+        if not pairs:
+            paired[field] = {"n": 0, "unknown": len(ids), "baseline": None,
+                             "candidate": None, "delta": None}
             deltas[field] = None
             continue
-        delta = cv - bv
-        deltas[field] = delta
-        improved += 1 if delta < 0 else 0
-        worsened += 1 if delta > 0 else 0
+        total_b = sum(pair[0] for pair in pairs)
+        total_c = sum(pair[1] for pair in pairs)
+        paired[field] = {"n": len(pairs), "unknown": len(ids) - len(pairs),
+                         "baseline": total_b, "candidate": total_c,
+                         "delta": total_c - total_b}
+        bs[field], cs[field] = total_b, total_c
+        deltas[field] = total_c - total_b
+        if paired[field]["unknown"]:
+            partial.append(field)
+            continue
+        if deltas[field] < 0:
+            improved += 1
+        elif deltas[field] > 0:
+            worsened += 1
     deltas["cache_hits"] = None
+    if any(paired[field]["delta"] is not None and paired[field]["delta"] > 0
+           for field in partial):
+        reasons.append("source_efficiency_partial_unknown")
     if worsened:
         reasons.append("source_efficiency_regressed")
     if not improved:
@@ -119,7 +151,7 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
     else:
         decision = "accept"
     return {"decision": decision, "baseline": bs, "candidate": cs,
-            "deltas": deltas, "reasons": reasons}
+            "deltas": deltas, "reasons": reasons, "paired": paired}
 
 
 def _elapsed(document: Dict[str, Any], events: List[Dict[str, Any]]) -> Optional[float]:
