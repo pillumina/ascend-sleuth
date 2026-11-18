@@ -787,6 +787,7 @@ def cmd_rsi_plan(args: argparse.Namespace) -> int:
             trace_state=Path(args.trace_state) if args.trace_state else (_evolve_base(args) / "trace-state.json"),
             replay=Path(args.replay) if args.replay else None,
             metrics=metrics,
+            holdout_numbers=issue_numbers(root),
         )
         state = Path(args.state) if args.state else _evolve_base(args) / "rsi-plan.json"
         save_plan(plan, state)

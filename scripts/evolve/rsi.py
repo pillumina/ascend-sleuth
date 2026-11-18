@@ -61,9 +61,10 @@ def _metrics_signals(metrics: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _replay_signals(report_path: Optional[Path]) -> Dict[str, Any]:
+def _replay_signals(report_path: Optional[Path],
+                    holdout_numbers: Optional[set] = None) -> Dict[str, Any]:
     if report_path and Path(report_path).is_dir():
-        return scan_failures(Path(report_path).parent, Path(report_path))
+        return scan_failures(Path(report_path).parent, Path(report_path), holdout_numbers)
     if not report_path or not Path(report_path).exists():
         return {"available": False, "components": {}, "snapshot_id": None}
     try:
@@ -86,11 +87,12 @@ def _replay_signals(report_path: Optional[Path]) -> Dict[str, Any]:
 
 def build_plan(root: Path, trace_state: Optional[Path] = None,
                replay: Optional[Path] = None,
-               metrics: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+               metrics: Optional[Dict[str, Any]] = None,
+               holdout_numbers: Optional[set] = None) -> Dict[str, Any]:
     root = Path(root)
     trace = _trace_signals(trace_state or (root / ".s2-replay" / "evolve" / "trace-state.json"))
     metric = _metrics_signals(metrics or {})
-    replay_data = _replay_signals(replay)
+    replay_data = _replay_signals(replay, holdout_numbers)
     components: Dict[str, Dict[str, int]] = {}
     for source in (trace, metric, replay_data):
         for name, values in (source.get("components") or {}).items():
@@ -98,7 +100,13 @@ def build_plan(root: Path, trace_state: Optional[Path] = None,
             bucket["events"] += int(values.get("events", 0))
             bucket["hard"] += int(values.get("hard", 0))
     regions = recommend(components)
-    stages = {"attribute": "attribute.trace_rule", "select": "select.region_hardcount"}
+    stages = {
+        "attribute": "attribute.trace_rule",
+        "select": "select.region_hardcount",
+        "propose": "propose.agent",
+        "judge": "judge.subagent",
+        "gate": "gate.paired",
+    }
     status = "actionable" if regions else "no_action"
     if not trace.get("available") and not metric.get("available") and not replay_data.get("available"):
         status = "no_sources"

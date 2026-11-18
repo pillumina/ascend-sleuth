@@ -11,7 +11,8 @@ class ReplaySourceError(RuntimeError):
     pass
 
 
-def scan_failures(root: Path, results_dir: Path = None) -> Dict[str, Any]:
+def scan_failures(root: Path, results_dir: Path = None,
+                  holdout_numbers: set = None) -> Dict[str, Any]:
     directory = Path(results_dir) if results_dir else Path(root) / ".s2-replay"
     if not directory.exists():
         return {"available": False, "components": {}, "snapshot_id": None}
@@ -27,6 +28,8 @@ def scan_failures(root: Path, results_dir: Path = None) -> Dict[str, Any]:
             continue
         hashes.append(hashlib.sha256(raw).hexdigest())
         issue = path.name[:-len(".result.yaml")]
+        if holdout_numbers and str(issue) in holdout_numbers:
+            continue
         component = None
         if doc.get("routing_ok") is False:
             component = "routing"
