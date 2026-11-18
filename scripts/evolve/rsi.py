@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from .regions import recommend
+from .replay_source import scan_failures
 
 
 def _trace_signals(state_path: Optional[Path]) -> Dict[str, Any]:
@@ -57,6 +58,8 @@ def _metrics_signals(metrics: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _replay_signals(report_path: Optional[Path]) -> Dict[str, Any]:
+    if report_path and Path(report_path).is_dir():
+        return scan_failures(Path(report_path).parent, Path(report_path))
     if not report_path or not Path(report_path).exists():
         return {"available": False, "components": {}, "snapshot_id": None}
     try:

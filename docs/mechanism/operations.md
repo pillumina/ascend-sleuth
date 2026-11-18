@@ -116,7 +116,7 @@
 | 记录 subagent 对照实验 | `/skill:self-evolve` 的 `references/experiment.md` 产 `result.json`，再 `experiment record --file result.json` |
 | agent-native GEPA | 同上，模式 B；状态机是 `scripts/agent_gepa.py`，不调 gepa 库 |
 | 增量 trace 归因 | `python3 scripts/evolve.py traces sync`；`traces status` 看 snapshot/状态 |
-| RSI 多源计划 | `python3 scripts/evolve.py rsi plan`（trace/metrics/replay → 归因/region/实验 spec）；`rsi status` 读回 |
+| RSI 多源计划 | `python3 scripts/evolve.py rsi plan`（trace/metrics/replay → 归因/region/实验 spec）；`--replay .s2-replay` 读 S2 result 失败；`rsi status` 读回 |
 | holdout 隔离 | issue/S2 导入与手工 sample 新建/复核/升格都按 `eval/holdout.yaml` 的 issue 号拒绝；不把封存样本吸进候选池 |
 | 全库观测轮 | `/skill:self-evolve` |
 
