@@ -40,6 +40,8 @@ agent 归因只能给候选，不能写成 hard；agent 选点只能在注册区
 
 如果目标是 `diagnose.knowledge_usage`，记录命中、首命中步、候选数、全文读取、reference 查询、wrong_cases、token/时间；用 `knowledge-usage compare` 做准确率不降、效率不降的门禁，不能只看速度。
 
+如果目标是 `diagnose.source_usage`，记录 repo/ref、files_read、tool_calls、fetch/grep、elapsed；用 `source-usage compare` 要求源码结论 correctness 不降、访问效率不降。演进评估 trace 只写 `.s2-replay/evolve/usage-traces/`，不写真实 `traces/`。
+
 ## 停点
 
 - 预算用尽、种群满、没有未反射候选：停；

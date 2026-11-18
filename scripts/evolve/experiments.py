@@ -210,6 +210,22 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
                 )
             normalized_stages[point] = spec.id
         result["stages"] = normalized_stages
+    source_usage = record.get("source_usage")
+    if component == "diagnose.source_usage" and decision == "accept" and source_usage is None:
+        raise ExperimentError("source usage accept requires source_usage gate evidence")
+    if source_usage is not None:
+        if not isinstance(source_usage, dict):
+            raise ExperimentError("source_usage must be an object")
+        if source_usage.get("decision") not in ("accept", "reject", "insufficient"):
+            raise ExperimentError("source_usage.decision must be accept/reject/insufficient")
+        for key in ("baseline", "candidate", "deltas", "reasons"):
+            if key not in source_usage:
+                raise ExperimentError(f"source_usage.{key} is required")
+        if not isinstance(source_usage.get("reasons"), list):
+            raise ExperimentError("source_usage.reasons must be a list")
+        if decision == "accept" and (source_usage.get("decision") != "accept" or source_usage.get("reasons")):
+            raise ExperimentError("accept requires source_usage.decision=accept and no reasons")
+        result["source_usage"] = source_usage
     usage = record.get("knowledge_usage")
     if component == "diagnose.knowledge_usage" and decision == "accept" and usage is None:
         raise ExperimentError("knowledge usage accept requires knowledge_usage gate evidence")

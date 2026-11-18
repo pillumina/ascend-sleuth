@@ -44,6 +44,7 @@ from .decision import Decision, DecisionResult, decide
 from .experiments import ExperimentError, validate_experiment
 from .holdout_guard import is_holdout_source, issue_numbers
 from .knowledge_usage import UsageError, compare as compare_usage, evaluate as evaluate_usage, from_trace
+from .source_usage import SourceUsageError, compare as compare_source_usage, evaluate as evaluate_source_usage, from_trace as source_from_trace
 from .quality import QualityError, load_quality
 from .policy import PolicyError, load_policy, policy_hash
 from .records import ConclusionStore, ExperimentStore, RecordError
@@ -888,6 +889,42 @@ def cmd_knowledge_usage_evaluate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_source_usage_from_trace(args: argparse.Namespace) -> int:
+    try:
+        document = yaml.safe_load(Path(args.trace).read_text(encoding="utf-8"))
+        source_ok = None if args.source_ok is None else args.source_ok == "true"
+        result = source_from_trace(document, source_ok=source_ok)
+    except (OSError, ValueError, yaml.YAMLError, SourceUsageError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(f"sample_id: {result['sample_id']}")
+        print(f"files_read: {result['files_read']} tool_calls: {result['tool_calls']}")
+    return 0
+
+
+def cmd_source_usage_evaluate(args: argparse.Namespace) -> int:
+    try:
+        result = evaluate_source_usage(_read_json(args.file))
+    except (OSError, ValueError, SourceUsageError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_source_usage_compare(args: argparse.Namespace) -> int:
+    try:
+        result = compare_source_usage(_read_json(args.baseline), _read_json(args.candidate))
+    except (OSError, ValueError, SourceUsageError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
 def cmd_knowledge_usage_from_trace(args: argparse.Namespace) -> int:
     try:
         document = yaml.safe_load(Path(args.trace).read_text(encoding="utf-8"))
@@ -1333,6 +1370,21 @@ def build_parser() -> argparse.ArgumentParser:
     rsi_select.add_argument("--state", required=True)
     rsi_select.add_argument("--file", required=True)
     rsi_select.set_defaults(func=cmd_rsi_select)
+    source_usage = sub.add_parser("source-usage", help="源码访问效率观测/对照")
+    source_sub = source_usage.add_subparsers(dest="source_command", required=True)
+    source_trace = source_sub.add_parser("from-trace", help="从 diagnose trace 推导 source usage")
+    source_trace.add_argument("--trace", required=True)
+    source_trace.add_argument("--source-ok", choices=("true", "false"), default=None)
+    source_trace.add_argument("--json", action="store_true")
+    source_trace.set_defaults(func=cmd_source_usage_from_trace)
+    source_eval = source_sub.add_parser("evaluate", help="汇总 source usage")
+    source_eval.add_argument("--file", required=True)
+    source_eval.set_defaults(func=cmd_source_usage_evaluate)
+    source_cmp = source_sub.add_parser("compare", help="source usage 门禁")
+    source_cmp.add_argument("--baseline", required=True)
+    source_cmp.add_argument("--candidate", required=True)
+    source_cmp.set_defaults(func=cmd_source_usage_compare)
+
     usage = sub.add_parser("knowledge-usage", help="知识使用效率观测/对照")
     usage_sub = usage.add_subparsers(dest="usage_command", required=True)
     usage_trace = usage_sub.add_parser("from-trace", help="从 diagnose trace 推导 usage")

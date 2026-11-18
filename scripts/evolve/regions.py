@@ -32,6 +32,11 @@ REGIONS: Dict[str, RegionSpec] = {
         components=("skill:diagnose step<trace写作 evidence 落盘>", "trace_evidence"),
         description="trace 写作与 evidence 落盘步骤的说明；不改 trace schema",
     ),
+    "diagnose.source_usage": RegionSpec(
+        id="diagnose.source_usage", skill="diagnose",
+        components=("source_usage", "source_fetch", "source_query", "source_analysis"),
+        description="源码访问策略：缓存优先、固定 ref、限定路径与 grep 范围、失败停止；不改知识内容/schema",
+    ),
     "diagnose.knowledge_usage": RegionSpec(
         id="diagnose.knowledge_usage", skill="diagnose",
         components=("knowledge_usage", "case_retrieval", "case_loading", "reference_lookup"),

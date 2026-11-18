@@ -262,7 +262,22 @@ python3 scripts/evolve.py knowledge-usage compare --baseline base.json --candida
 
 `compare` 只有在准确率不降、`wrong_cases` 不增、至少一个效率项改善、且没有效率项变差时给 `accept`；准确率或效率回退给 `reject`；没有改善给 `insufficient`。实验记录的 `knowledge_usage.decision` 若存在，整体 `accept` 必须同时为 `accept`。
 
-### 3.10 算法适配器
+### 3.10 源码访问效率
+
+`diagnose.source_usage` 只改源码访问策略：缓存优先、固定 ref、限定路径与 grep 范围、失败停止；不改知识内容/schema。归因组件用 `source_usage`、`source_fetch`、`source_query`、`source_analysis`。
+
+真实 trace 的 `source_analysis` 可导出：
+
+```bash
+python3 scripts/evolve.py source-usage from-trace \
+  --trace .s2-replay/evolve/usage-traces/<session>.yaml
+python3 scripts/evolve.py source-usage evaluate --file source-usage.json
+python3 scripts/evolve.py source-usage compare --baseline base.json --candidate cand.json
+```
+
+记录 repo/ref、files_read、tool_calls、fetch_calls、grep_calls、followups、elapsed；cache/download/bytes 缺失时保持 null。`compare` 要求源码结论 correctness 不降，且至少一个访问效率项改善、没有项变差；correctness 或效率 unknown 只能记 `insufficient`。
+
+### 3.11 算法适配器
 
 算法只做提案者，不做判定、不直接写库、不合入。`scripts/evolve/ports.py` 定义 `Optimizer`，`scripts/evolve/algorithms/registry.py` 是静态注册表；当前只有 `baseline`。`policy.experiment.target`/`algorithm` 选目标与算法，`Version.algorithm`/`algorithm_version` 记身份，`budget`/`seed` 记实验条件。GEPA/AEL/SkillProx/EvolveMem 只在后续的实验适配器里接入，一次只接一个组件；没有动态插件加载。
 
