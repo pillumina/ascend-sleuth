@@ -7,6 +7,8 @@
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
 
+from .statistics import paired_diff_ci
+
 EFFICIENCY_FIELDS = (
     "first_hit_step", "candidates_examined", "full_body_reads",
     "reference_lookups", "tokens", "elapsed_ms",
@@ -49,6 +51,10 @@ def validate_record(record: Any) -> Dict[str, Any]:
     first_step = _int(record.get("first_hit_step"), "first_hit_step", optional=True)
     tokens = _int(record.get("tokens"), "tokens", optional=True)
     elapsed = _num(record.get("elapsed_ms"), "elapsed_ms", optional=True)
+    index_rows = _int(record.get("index_rows"), "index_rows", optional=True)
+    resolution = record.get("resolution_ok")
+    if resolution is not None and not isinstance(resolution, bool):
+        raise UsageError("resolution_ok must be boolean or null")
     if hit and first_step is None:
         raise UsageError("hit=true requires first_hit_step")
     return {
@@ -56,6 +62,7 @@ def validate_record(record: Any) -> Dict[str, Any]:
         "candidates_examined": candidate_examined,
         "full_body_reads": full_body, "reference_lookups": refs,
         "first_hit_step": first_step, "tokens": tokens, "elapsed_ms": elapsed,
+        "index_rows": index_rows, "resolution_ok": resolution,
     }
 
 
@@ -83,6 +90,11 @@ def summarize(data: Any) -> Dict[str, Any]:
     for field in EFFICIENCY_FIELDS:
         values = [item[field] for item in records if item[field] is not None]
         result[field] = (sum(values) / len(values)) if values else None
+    index_values = [item["index_rows"] for item in records if item["index_rows"] is not None]
+    result["index_rows"] = (sum(index_values) / len(index_values)) if index_values else None
+    resolutions = [item["resolution_ok"] for item in records]
+    result["resolved"] = (sum(1 for item in resolutions if item)
+                          if all(item is not None for item in resolutions) else None)
     return result
 
 
@@ -118,12 +130,23 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
     b_sum = summarize([b[i] for i in ids])
     c_sum = summarize([c[i] for i in ids])
     reasons = []
-    if c_sum["hits"] < b_sum["hits"]:
-        reasons.append("accuracy_regressed")
-    if b_sum["wrong_cases"] is None or c_sum["wrong_cases"] is None:
-        reasons.append("wrong_cases_unknown")
-    elif c_sum["wrong_cases"] > b_sum["wrong_cases"]:
-        reasons.append("wrong_cases_increased")
+    resolution_complete = all(
+        b[i]["resolution_ok"] is not None and c[i]["resolution_ok"] is not None
+        for i in ids
+    )
+    if resolution_complete:
+        resolved_b = sum(1 for i in ids if b[i]["resolution_ok"])
+        resolved_c = sum(1 for i in ids if c[i]["resolution_ok"])
+        b_sum["resolved"], c_sum["resolved"] = resolved_b, resolved_c
+        if resolved_c < resolved_b:
+            reasons.append("resolution_regressed")
+    else:
+        if c_sum["hits"] < b_sum["hits"]:
+            reasons.append("accuracy_regressed")
+        if b_sum["wrong_cases"] is None or c_sum["wrong_cases"] is None:
+            reasons.append("wrong_cases_unknown")
+        elif c_sum["wrong_cases"] > b_sum["wrong_cases"]:
+            reasons.append("wrong_cases_increased")
     paired = {field: _paired_row(b, c, ids, field) for field in EFFICIENCY_FIELDS}
     deltas = {field: paired[field]["delta"] for field in EFFICIENCY_FIELDS}
     improved = 0
@@ -147,12 +170,18 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
         reasons.append("efficiency_regressed")
     if not improved:
         reasons.append("no_efficiency_improvement")
-    if any(r in ("accuracy_regressed", "wrong_cases_increased", "efficiency_regressed") for r in reasons):
+    if any(r in ("accuracy_regressed", "wrong_cases_increased", "resolution_regressed",
+                 "efficiency_regressed") for r in reasons):
         decision = "reject"
     elif reasons:
         decision = "insufficient"
     else:
         decision = "accept"
+    ci = {}
+    for field in EFFICIENCY_FIELDS:
+        diffs = [c[i][field] - b[i][field] for i in ids
+                 if b[i][field] is not None and c[i][field] is not None]
+        ci[field] = paired_diff_ci(diffs)
     b_side = dict(b_sum)
     c_side = dict(c_sum)
     for field in EFFICIENCY_FIELDS:
@@ -163,6 +192,7 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
         "baseline": b_side, "candidate": c_side, "deltas": deltas,
         "reasons": reasons,
         "paired": paired,
+        "ci": ci,
     }
 
 
@@ -186,7 +216,8 @@ def _elapsed_ms(document: Dict[str, Any], events: List[Dict[str, Any]]) -> Optio
     return max(0.0, (max(stamps) - min(stamps)).total_seconds() * 1000)
 
 
-def from_trace(document: Any, expected_case: Optional[str] = None) -> Dict[str, Any]:
+def from_trace(document: Any, expected_case: Optional[str] = None,
+               resolution_ok: Optional[bool] = None) -> Dict[str, Any]:
     """从 diagnose trace 推导一条 usage 记录；缺失项不补 0。"""
     if not isinstance(document, dict):
         raise UsageError("trace must be an object")
@@ -206,17 +237,17 @@ def from_trace(document: Any, expected_case: Optional[str] = None) -> Dict[str, 
         listed = event.get("candidates")
         if isinstance(listed, list):
             full_loads.update(str(item) for item in listed if item)
-    if not full_loads:
-        full_loads = checks
-    considered = None
+    shortlist = full_loads | checks
+    load_index_rows = None
     for event in events:
-        if event.get("action") == "load_index":
-            value = event.get("considered_candidates")
-            if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
-                considered = value
-            elif isinstance(value, list):
-                considered = len(value)
-    candidates = considered if considered is not None else (len(checks) if checks else None)
+        if event.get("action") != "load_index":
+            continue
+        value = event.get("considered_candidates")
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            load_index_rows = value
+        elif isinstance(value, list):
+            load_index_rows = len(value)
+    candidates = len(shortlist) if shortlist else load_index_rows
     refs = sum(
         1 for event in events
         if event.get("action") == "reference_lookup" and event.get("outcome") != "skipped"
@@ -240,6 +271,8 @@ def from_trace(document: Any, expected_case: Optional[str] = None) -> Dict[str, 
         "first_hit_step": first_step,
         "candidates_examined": candidates,
         "full_body_reads": (len(full_loads) if full_loads else (len(checks) if checks else None)),
+        "index_rows": load_index_rows,
+        "resolution_ok": resolution_ok,
         "reference_lookups": refs,
         "wrong_cases": wrong,
         "tokens": None,

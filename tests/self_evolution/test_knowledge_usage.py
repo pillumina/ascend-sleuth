@@ -36,7 +36,8 @@ class KnowledgeUsageTest(unittest.TestCase):
             ],
         }
         out = from_trace(trace, expected_case="C-2")
-        self.assertEqual(out["candidates_examined"], 5)
+        self.assertEqual(out["candidates_examined"], 2)
+        self.assertEqual(out["index_rows"], 5)
         self.assertEqual(out["full_body_reads"], 2)
         self.assertEqual(out["reference_lookups"], 1)
         self.assertEqual(out["first_hit_step"], 3)
@@ -159,6 +160,7 @@ class KnowledgeUsageTest(unittest.TestCase):
         ]}
         out = from_trace(trace)
         self.assertEqual(out["candidates_examined"], 3)
+        self.assertEqual(out["index_rows"], 3)
         self.assertEqual(out["full_body_reads"], 2)
 
     @staticmethod
@@ -182,6 +184,23 @@ class KnowledgeUsageTest(unittest.TestCase):
                            "tokens": None, "elapsed_ms": 0.0},
             },
         }
+
+    def test_accept_record_may_use_resolved_instead_of_wrong_cases(self):
+        record = self._usage_record("accept", None)
+        record["knowledge_usage"]["reasons"] = []
+        record["paired"] = {"b": 4, "c": 0, "n": 4}
+        record["knowledge_usage"]["candidate"]["full_body_reads"] -= 1
+        record["knowledge_usage"]["deltas"]["full_body_reads"] = -1
+        for side in ("baseline", "candidate"):
+            record["knowledge_usage"][side]["resolved"] = 1
+        validate_experiment(record)
+
+    def test_resolution_regression_rejects(self):
+        base = [dict(row("a"), resolution_ok=True)]
+        cand = [dict(row("a"), resolution_ok=False)]
+        result = compare(base, cand)
+        self.assertIn("resolution_regressed", result["reasons"])
+        self.assertEqual(result["decision"], "reject")
 
     def test_reject_record_may_carry_unknown_wrong_cases(self):
         validate_experiment(self._usage_record("reject", None))

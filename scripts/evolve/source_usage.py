@@ -7,6 +7,8 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from .statistics import paired_diff_ci
+
 OBSERVED_FIELDS = ("files_read", "tool_calls", "fetch_calls", "grep_calls",
                   "followups", "downloads", "bytes", "elapsed_ms")
 GATE_FIELDS = ("files_read", "tool_calls", "fetch_calls", "grep_calls",
@@ -151,8 +153,13 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
         decision = "insufficient"
     else:
         decision = "accept"
+    ci = {}
+    for field in GATE_FIELDS:
+        diffs = [c[i][field] - b[i][field] for i in ids
+                 if b[i][field] is not None and c[i][field] is not None]
+        ci[field] = paired_diff_ci(diffs)
     return {"decision": decision, "baseline": bs, "candidate": cs,
-            "deltas": deltas, "reasons": reasons, "paired": paired}
+            "deltas": deltas, "reasons": reasons, "paired": paired, "ci": ci}
 
 
 def _elapsed(document: Dict[str, Any], events: List[Dict[str, Any]]) -> Optional[float]:

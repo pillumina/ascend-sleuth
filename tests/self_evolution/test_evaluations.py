@@ -22,7 +22,7 @@ class EvalProfileTest(unittest.TestCase):
         )
         self.assertTrue(EVAL_PROFILES["arena"].implemented)
         self.assertTrue(EVAL_PROFILES["rubric"].implemented)
-        self.assertFalse(EVAL_PROFILES["replay_trace"].implemented)
+        self.assertTrue(EVAL_PROFILES["replay_trace"].implemented)
         self.assertFalse(EVAL_PROFILES["subagent_judge"].implemented)
 
     def test_unknown_profile_is_an_error(self):

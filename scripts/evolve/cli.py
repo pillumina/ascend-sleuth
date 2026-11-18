@@ -46,10 +46,12 @@ from .decision import Decision, DecisionResult, decide
 from .experiments import ExperimentError, validate_experiment
 from .holdout_guard import is_holdout_source, issue_numbers
 from .knowledge_usage import UsageError, compare as compare_usage, evaluate as evaluate_usage, from_trace
-from .pilot import PilotError, collect as pilot_collect, prepare as pilot_prepare
+from .pilot import PilotError, collect as pilot_collect, decide as pilot_decide, prepare as pilot_prepare
 from .source_usage import SourceUsageError, compare as compare_source_usage, evaluate as evaluate_source_usage, from_trace as source_from_trace
+from .tool_usage import ToolUsageError, compare as compare_tool_usage, evaluate as evaluate_tool_usage, from_trace as tool_from_trace
 from .quality import QualityError, load_quality
 from .policy import PolicyError, load_policy, policy_hash
+from .samples import import_pilot
 from .records import ConclusionStore, ExperimentStore, RecordError
 from .runner import issue_plan, render_plan
 from .scoring import RubricError, score_rubric
@@ -185,6 +187,17 @@ def cmd_sample_new(args: argparse.Namespace) -> int:
     print(f"created: {sample.id}")
     print(f"status: {sample.status}")
     print(f"path: {_store(args).path_for(sample.id)}")
+    return 0
+
+
+def cmd_sample_import_pilot(args: argparse.Namespace) -> int:
+    try:
+        result = import_pilot(_store(args), Path(args.tasks))
+    except (OSError, ValueError, StoreError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"created: {len(result['created'])}")
+    print(f"skipped: {len(result['skipped'])}")
     return 0
 
 
@@ -731,10 +744,22 @@ def cmd_experiment_gate(args: argparse.Namespace) -> int:
             raise ValueError(
                 f"target {args.target!r} has no implemented evaluator ({profile.id})"
             )
+        if profile.id == "replay_trace":
+            if not args.baseline or not args.candidate:
+                raise ValueError("replay_trace gate requires --baseline and --candidate")
+            result = compare_tool_usage(_read_json(args.baseline), _read_json(args.candidate))
+            print(f"target: {spec.id}")
+            print(f"eval_profile: {profile.id}")
+            print(f"decision: {result['decision']}")
+            print(f"reasons: {', '.join(result['reasons']) or 'none'}")
+            print(json.dumps(result["deltas"], ensure_ascii=False, sort_keys=True))
+            return 0 if result["decision"] == "accept" else 1
         if profile.id != "rubric":
             raise ValueError(
-                f"target {args.target!r} uses {profile.id}; this command only gates rubric"
+                f"target {args.target!r} uses {profile.id}; no gate wired for it"
             )
+        if not args.sample or not args.scores:
+            raise ValueError("rubric gate requires --sample and --scores")
         sample = _store(args).require(args.sample)
         if sample.object_type not in profile.object_types:
             raise ValueError(
@@ -906,6 +931,55 @@ def cmd_pilot_collect(args: argparse.Namespace) -> int:
     try:
         result = pilot_collect(Path(args.output), judge=Path(args.judge) if args.judge else None)
     except (OSError, ValueError, PilotError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_pilot_decide(args: argparse.Namespace) -> int:
+    try:
+        policy = _policy_for(args)
+        result = pilot_decide(Path(args.output), Path(args.judge), policy,
+                              reuse_index=args.reuse_index, pool=args.pool)
+    except (OSError, ValueError, PilotError, PolicyError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_tool_usage_from_trace(args: argparse.Namespace) -> int:
+    try:
+        document = yaml.safe_load(Path(args.trace).read_text(encoding="utf-8"))
+        resolved = None if args.resolved is None else args.resolved == "true"
+        result = tool_from_trace(document, resolved=resolved)
+    except (OSError, ValueError, yaml.YAMLError, ToolUsageError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(f"sample_id: {result['sample_id']}")
+        print(f"tool_calls: {result['tool_calls']} fetch: {result['fetch_calls']} "
+              f"grep: {result['grep_calls']} retries: {result['retries']}")
+    return 0
+
+
+def cmd_tool_usage_evaluate(args: argparse.Namespace) -> int:
+    try:
+        result = evaluate_tool_usage(_read_json(args.file))
+    except (OSError, ValueError, ToolUsageError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_tool_usage_compare(args: argparse.Namespace) -> int:
+    try:
+        result = compare_tool_usage(_read_json(args.baseline), _read_json(args.candidate))
+    except (OSError, ValueError, ToolUsageError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -1174,6 +1248,10 @@ def cmd_brief(args: argparse.Namespace) -> int:
     print(f"field: {plan_counts['field']}")
     print(f"test: {plan_counts['test']}")
     print(f"conclusions: {len(conclusions)}")
+    capacity = plan.get("judgment_capacity") or {}
+    print(f"judgment_capacity: potential={capacity.get('potential', 0)} "
+          f"required_b={capacity.get('required_b', 0)} "
+          f"alpha={capacity.get('alpha', 0)}")
     for record in conclusions[-3:]:
         decision = record.get("decision", "unknown")
         reason = record.get("reason", "")
@@ -1218,6 +1296,10 @@ def build_parser() -> argparse.ArgumentParser:
     new.add_argument("--notes", default=None)
     new.set_defaults(func=cmd_sample_new)
 
+    import_pilot_p = sample_sub.add_parser("import-pilot", help="把一次 pilot 的样本注册进队列")
+    import_pilot_p.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    import_pilot_p.add_argument("--tasks", required=True)
+    import_pilot_p.set_defaults(func=cmd_sample_import_pilot)
     set_answer = sample_sub.add_parser("set-answer", help="给 candidate/active 补 expected/rubric")
     set_answer.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
     set_answer.add_argument("--id", required=True)
@@ -1397,8 +1479,10 @@ def build_parser() -> argparse.ArgumentParser:
     exp_gate = experiment_sub.add_parser("gate", help="按 target evaluator 判一个 rubric 样本")
     exp_gate.add_argument("--root", default=None)
     exp_gate.add_argument("--target", required=True)
-    exp_gate.add_argument("--sample", required=True)
-    exp_gate.add_argument("--scores", required=True, help="JSON 对象：维度 → 0/1/2")
+    exp_gate.add_argument("--sample", default=None)
+    exp_gate.add_argument("--scores", default=None, help="JSON 对象：维度 → 0/1/2")
+    exp_gate.add_argument("--baseline", default=None, help="tooling gate：基线 tool usage JSON")
+    exp_gate.add_argument("--candidate", default=None, help="tooling gate：候选 tool usage JSON")
     exp_gate.set_defaults(func=cmd_experiment_gate)
     exp_propose = experiment_sub.add_parser("propose", help="按 target 生成并记录一个 baseline Patch")
     exp_propose.add_argument("--root", default=None)
@@ -1445,6 +1529,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_collect.add_argument("--output", required=True)
     p_collect.add_argument("--judge", default=None, help="可选 judge JSON，用于给 source_ok 赋值")
     p_collect.set_defaults(func=cmd_pilot_collect)
+    p_decide = pilot_sub.add_parser("decide", help="配对判定并写 Run/Conclusion 记录")
+    p_decide.add_argument("--output", required=True)
+    p_decide.add_argument("--judge", required=True)
+    p_decide.add_argument("--policy", default=None)
+    p_decide.add_argument("--reuse-index", type=int, default=0)
+    p_decide.add_argument("--pool", default="pilot")
+    p_decide.set_defaults(func=cmd_pilot_decide)
 
     candidate = sub.add_parser("candidate", help="candidate Patch 校验/隔离 apply/rollback")
     candidate_sub = candidate.add_subparsers(dest="candidate_command", required=True)
@@ -1478,6 +1569,21 @@ def build_parser() -> argparse.ArgumentParser:
     source_cmp.add_argument("--baseline", required=True)
     source_cmp.add_argument("--candidate", required=True)
     source_cmp.set_defaults(func=cmd_source_usage_compare)
+
+    tool_usage = sub.add_parser("tool-usage", help="工具使用与工具性能观测/对照")
+    tool_sub = tool_usage.add_subparsers(dest="tool_command", required=True)
+    tool_trace = tool_sub.add_parser("from-trace", help="从 diagnose trace 推导 tool usage")
+    tool_trace.add_argument("--trace", required=True)
+    tool_trace.add_argument("--resolved", choices=("true", "false"), default=None)
+    tool_trace.add_argument("--json", action="store_true")
+    tool_trace.set_defaults(func=cmd_tool_usage_from_trace)
+    tool_eval = tool_sub.add_parser("evaluate", help="汇总 tool usage")
+    tool_eval.add_argument("--file", required=True)
+    tool_eval.set_defaults(func=cmd_tool_usage_evaluate)
+    tool_cmp = tool_sub.add_parser("compare", help="tool usage 门禁")
+    tool_cmp.add_argument("--baseline", required=True)
+    tool_cmp.add_argument("--candidate", required=True)
+    tool_cmp.set_defaults(func=cmd_tool_usage_compare)
 
     usage = sub.add_parser("knowledge-usage", help="知识使用效率观测/对照")
     usage_sub = usage.add_subparsers(dest="usage_command", required=True)

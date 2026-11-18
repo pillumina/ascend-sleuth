@@ -186,7 +186,7 @@ conclusion:
 | 判定池与回归池 | `.s2-replay/arena/pool-*.yaml` | 否 | `eval_arena.py --build-pool` |
 | 评估台影响记录 | `.s2-replay/arena/impact.yaml` | 否 | `eval_arena.py --gate` |
 | 内容流程执行记录 | `metrics/skill-exec-log.yaml` | 否 | `log_skill_exec.py` |
-| 结论与执行记录（v1） | `.s2-replay/evolve/conclusions.jsonl`、`runs.jsonl` | 否 | `evolve.py judge --record` |
+| 结论与执行记录（v1） | `.s2-replay/evolve/conclusions.jsonl`、`runs.jsonl` | 否 | `evolve.py judge --record`；`evolve.py pilot decide` |
 | 条目使用记录与本期读数（源） | `metrics/entry-activity.d/<周>.yaml`、`metrics/timeline.d/<期号>.yaml` | 是 | 汇总、结算与组装脚本 |
 | 记录生成物 | `metrics/entry-activity/<部署>.yaml`、`metrics/timeline.yaml` | 是，但不手改 | 主干 job 或本地重建 |
 | 会话与任务状态 | `proposals/sessions/`、`proposals/tasks/` | 否 | 会话脚本 |

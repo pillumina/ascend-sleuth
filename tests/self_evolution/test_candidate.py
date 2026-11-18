@@ -1,6 +1,7 @@
 """Candidate Patch：有界校验、隔离 worktree、apply/rollback。"""
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -14,6 +15,17 @@ from evolve.candidate import (  # noqa: E402
     CandidateError, apply_to_root, create_workspace, rollback_workspace,
     validate_candidate,
 )
+
+
+def tool_candidate(root: Path, old="def fetch(ref):\n    return ref\n",
+                   new="def fetch(ref):\n    return ref.strip()\n"):
+    return {
+        "candidate_id": "C-T1", "target_kind": "tooling",
+        "target_component": "tooling.source_fetch",
+        "region": "tooling.source_fetch",
+        "file": "scripts/src_fetch.py", "base_rev": "HEAD",
+        "old_text": old, "new_text": new,
+    }
 
 
 def candidate(root: Path, old="quickly_check old line", new="quickly_check new line"):
@@ -32,6 +44,8 @@ class CandidateTest(unittest.TestCase):
         root = Path(td) / "repo"
         (root / "skills/diagnose").mkdir(parents=True)
         (root / "skills/diagnose/SKILL.md").write_text("before\nquickly_check old line\nafter\n", encoding="utf-8")
+        (root / "scripts").mkdir()
+        (root / "scripts/src_fetch.py").write_text("def fetch(ref):\n    return ref\n", encoding="utf-8")
         subprocess.run(["git", "init", "-q"], cwd=root, check=True)
         subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=root, check=True)
         subprocess.run(["git", "config", "user.name", "t"], cwd=root, check=True)
@@ -65,6 +79,70 @@ class CandidateTest(unittest.TestCase):
             (root / "skills/diagnose/SKILL.md").write_text("quickly_check old line\nquickly_check old line\n", encoding="utf-8")
             with self.assertRaises(CandidateError):
                 apply_to_root(root, validate_candidate(candidate(root)))
+
+    def test_tooling_candidate_applies_with_checks(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._repo(td)
+            data = tool_candidate(root)
+            data["checks"] = ["python3 -c \"import ast; ast.parse(open('scripts/src_fetch.py').read())\""]
+            validated = validate_candidate(data)
+            apply_to_root(root, validated)
+            self.assertIn("strip", (root / "scripts/src_fetch.py").read_text(encoding="utf-8"))
+
+    def test_tooling_file_outside_region_is_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._repo(td)
+            (root / "scripts/other.py").write_text("x = 1\n", encoding="utf-8")
+            data = tool_candidate(root)
+            data["file"] = "scripts/other.py"
+            with self.assertRaises(CandidateError):
+                validate_candidate(data)
+
+    def test_tooling_cannot_touch_skill_or_ci(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._repo(td)
+            for file in ("skills/diagnose/SKILL.md", ".github/workflows/x.yml"):
+                data = tool_candidate(root)
+                data["file"] = file
+                with self.assertRaises(CandidateError):
+                    validate_candidate(data)
+
+    def test_too_many_checks_are_rejected(self):
+        data = tool_candidate(Path("."))
+        data["checks"] = ["true"] * 6
+        with self.assertRaises(CandidateError):
+            validate_candidate(data)
+
+    def test_failed_check_rolls_back_the_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._repo(td)
+            before = (root / "scripts/src_fetch.py").read_text(encoding="utf-8")
+            data = tool_candidate(root)
+            data["checks"] = ["python3 -c \"raise SystemExit(3)\""]
+            with self.assertRaises(CandidateError):
+                apply_to_root(root, validate_candidate(data))
+            self.assertEqual((root / "scripts/src_fetch.py").read_text(encoding="utf-8"), before)
+
+    def test_failed_check_removes_the_worktree(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._repo(td)
+            ws = Path(td) / "ws"
+            data = tool_candidate(root)
+            data["checks"] = ["python3 -c \"raise SystemExit(3)\""]
+            with self.assertRaises(CandidateError):
+                create_workspace(root, validate_candidate(data), ws)
+            self.assertFalse(ws.exists())
+
+    @unittest.skipUnless(hasattr(os, "symlink"), "symlink not available")
+    def test_symlink_escape_is_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._repo(td)
+            outside = Path(td) / "outside.py"
+            outside.write_text("def fetch(ref):\n    return ref\n", encoding="utf-8")
+            (root / "scripts/src_fetch.py").unlink()
+            os.symlink(outside, root / "scripts/src_fetch.py")
+            with self.assertRaises(CandidateError):
+                apply_to_root(root, validate_candidate(tool_candidate(root)))
 
     def test_worktree_apply_diff_rollback(self):
         with tempfile.TemporaryDirectory() as td:

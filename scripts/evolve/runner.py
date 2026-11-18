@@ -8,6 +8,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .decision import required_exclusive_wins
 from .pools import stratum_of
 from .policy import policy_hash
 from .records import ConclusionStore
@@ -135,6 +136,14 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
             f"core_regression_short: {core_regression}/{target_core_regression}; "
             "add core regression samples"
         )
+    alpha = float((policy.get("decision") or {}).get("alpha", 0.10))
+    required = required_exclusive_wins(alpha)
+    potential = field_eval + counts["candidate"]
+    if potential < required:
+        actions.append(
+            f"judgment_capacity_short: potential={potential} < required_b={required}; "
+            "this pool can only return insufficient"
+        )
     if missing_answer:
         warnings.append(
             "candidate(s) missing answer: " + ", ".join(sorted(missing_answer))
@@ -196,6 +205,8 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
         "algorithm": ((policy.get("experiment") or {}).get("algorithm") or "baseline"),
         "counts": counts,
         "metrics": metrics,
+        "judgment_capacity": {"potential": potential, "required_b": required,
+                              "alpha": alpha},
         "next_actions": actions,
         "warnings": warnings,
     }
