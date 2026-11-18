@@ -66,10 +66,11 @@ def collect(output: Path) -> Dict[str, Any]:
     for arm in ("baseline", "candidate"):
         rows = []
         for sample in tasks.get("samples") or []:
-            sid = sample["id"]
+            sample_id = sample["id"]
+            sid = sample_id.rsplit("-", 1)[-1] if sample_id.rsplit("-", 1)[-1].isdigit() else sample_id
             trace = output / arm / "traces" / f"{sid}.yaml"
             out = output / arm / "out" / f"{sid}.out.md"
-            row = {"sample_id": sid, "trace": str(trace), "output": str(out),
+            row = {"sample_id": sid, "source_id": sample_id, "trace": str(trace), "output": str(out),
                    "has_trace": trace.exists(), "has_output": out.exists()}
             if trace.exists():
                 try:
