@@ -231,6 +231,9 @@ class Sample:
 def _expected_has_answer(value: Any) -> bool:
     if not isinstance(value, dict):
         return bool(value)
+    if "resolution" in value or "fix" in value:
+        return any(str(value.get(key) or "").strip()
+                   for key in ("resolution", "fix", "fix_commit"))
     for item in value.values():
         if isinstance(item, str):
             if item.strip():
