@@ -42,6 +42,7 @@ from .adapters.s2 import import_s2_samples
 from .decision import Decision, DecisionResult, decide
 from .experiments import ExperimentError, validate_experiment
 from .holdout_guard import is_holdout_source, issue_numbers
+from .quality import QualityError, load_quality
 from .policy import PolicyError, load_policy, policy_hash
 from .records import ConclusionStore, ExperimentStore, RecordError
 from .runner import issue_plan, render_plan
@@ -208,6 +209,7 @@ def cmd_sample_ingest_issues(args: argparse.Namespace) -> int:
     root = Path(args.root) if args.root else Path.cwd()
     try:
         source = get_source(args.source, repo=args.repo, cache=args.cache)
+        quality = load_quality(Path(args.quality_file)) if args.quality_file else None
         stats = ingest_issues(
             root,
             args.repo,
@@ -221,6 +223,7 @@ def cmd_sample_ingest_issues(args: argparse.Namespace) -> int:
             source=source,
             state_key=f"{source.source_id}/evaluation",
             holdout_numbers=issue_numbers(root),
+            quality=quality,
         )
     except AdapterError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -1044,6 +1047,8 @@ def build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--limit", type=int, default=20, help="最多创建多少条候选")
     ingest.add_argument("--state", default="ingest-state.json", help="ingest-state.json 路径")
     ingest.add_argument("--dry-run", action="store_true", help="只打印候选，不写库/不更新 state")
+    ingest.add_argument("--quality-file", default=None,
+                        help="agent 产出的 issue 质量/答案 JSON；低于阈值直接跳过")
     ingest.set_defaults(func=cmd_sample_ingest_issues)
 
     listing = sample_sub.add_parser("list", help="列出样本")

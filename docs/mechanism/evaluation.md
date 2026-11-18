@@ -86,6 +86,7 @@ python3 scripts/evolve.py sample ingest-issues --repo vllm-project/vllm-ascend \
 - `--dry-run` 只打印候选，不写样本库、不更新 state。正式运行成功后把实际创建的编号原子追加到 state 的 `processed`；失败不标，重复运行不会重复导入。
 - 评测样本的 `processed` 写在 state 的 `<source_id>/evaluation` 命名空间，和 case 沉淀的 `<source_id>` 分开；同一条 issue 可同时用于 case 和评测，不互相吃掉。默认 state 跟随当前检出，样本库/`run`/`brief` 仍锚主检出；显式 `--root` 才把两者都落到本地运行件。这样 worktree 里产出的 state 能随分支提交，候选不会在 worktree 清理时丢。
 - 维护者用 `sample set-answer --id ... --expected '<json>'` 补答案，再走 `sample check`、`sample review`。ingest 不自动把候选转 active；非诊断或无答案的候选留给 review 拒收。
+- `--quality-file` 接受 agent 产出的 issue 质量/答案 JSON：分数低于 0.6 或答案占位直接跳过；通过时把 answer/namespace/category 写进 expected，仍不自动 active。
 ```mermaid
 flowchart TD
   A[用户：补评测集] --> B[问 repo / labels / limit / dry-run]

@@ -546,6 +546,44 @@ class IngestCliTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("* baseline", result.stdout)
 
+    def test_issue_ingest_uses_quality_answer(self):
+        cache = Path(tempfile.mkdtemp()) / "issues.json"
+        cache.write_text(json.dumps([{
+            "number": 9, "title": "T9", "body": "long local body for ingest " * 2,
+            "comments": 5, "state": "closed", "labels": ["triaged"],
+        }]), encoding="utf-8")
+        quality = Path(tempfile.mkdtemp()) / "quality.json"
+        quality.write_text(json.dumps({
+            "9": {"score": 0.9, "answer": "specific fix", "namespace": "inference/vllm-ascend",
+                  "category": "interrupt", "evidence": "comment"},
+        }), encoding="utf-8")
+        with tempfile.TemporaryDirectory() as td:
+            result = run_cli(
+                "sample", "ingest-issues", "--source", "local", "--cache", str(cache),
+                "--repo", "o/r", "--root", td, "--state", "ingest-state.json",
+                "--quality-file", str(quality),
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            sample = Path(td) / ".s2-replay" / "evolve" / "samples" / "LOCAL-O-R-9.yaml"
+            self.assertIn("specific fix", sample.read_text(encoding="utf-8"))
+
+    def test_issue_ingest_rejects_low_quality(self):
+        cache = Path(tempfile.mkdtemp()) / "issues.json"
+        cache.write_text(json.dumps([{
+            "number": 9, "title": "T9", "body": "long local body for ingest " * 2,
+            "comments": 5, "state": "closed", "labels": ["triaged"],
+        }]), encoding="utf-8")
+        quality = Path(tempfile.mkdtemp()) / "quality.json"
+        quality.write_text(json.dumps({"9": {"score": 0.2, "answer": "x"}}), encoding="utf-8")
+        with tempfile.TemporaryDirectory() as td:
+            result = run_cli(
+                "sample", "ingest-issues", "--source", "local", "--cache", str(cache),
+                "--repo", "o/r", "--root", td, "--state", "ingest-state.json",
+                "--quality-file", str(quality),
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("created: 0", result.stdout)
+
     def test_unknown_source_exits_2(self):
         with tempfile.TemporaryDirectory() as td:
             result = run_cli(
