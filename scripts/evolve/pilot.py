@@ -272,6 +272,7 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
     counts = _judge_counts(tasks, judge)
 
     constraints: Dict[str, Any] = {}
+    all_ids = sorted({row["sample_id"] for row in collect["arms"]["baseline"]})
     for name, key, comparator in (
         ("knowledge", "knowledge_usage", compare_knowledge),
         ("source", "source_usage", compare_source),
@@ -280,7 +281,10 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
         before, after = _usage_arms(collect, key)
         if before and after:
             result = comparator({"samples": before}, {"samples": after})
-            constraints[name] = {"decision": result["decision"], "reasons": result["reasons"]}
+            constraints[name] = {
+                "decision": result["decision"], "reasons": result["reasons"],
+                "paired": len(before), "missing": len(all_ids) - len(before),
+            }
     constraints_ok = all(item["decision"] != "reject" for item in constraints.values())
 
     alpha = float((policy.get("decision") or {}).get("alpha", 0.10))
@@ -313,8 +317,6 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
     if not capacity_ok:
         reason = (f"判定容量不足：配对样本 {flippable} < 达成证据所需 {required}；"
                   + reason)
-        if result == "accept":
-            result = "insufficient"
     pool_rows = []
     for sample in tasks.get("samples") or []:
         sid = str(sample.get("short_id") or sample.get("id"))
@@ -333,7 +335,12 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
             and record.get("c") == counts["c"]
             and record.get("n") == counts["n"]
             and record.get("decision") == result
+            and record.get("reuse_index") == reuse_index
+            and record.get("alpha_eff") == alpha_eff
             and (record.get("versions") or {}).get("candidate_kb") == version["candidate_kb"]
+            and (record.get("versions") or {}).get("candidate") == version["candidate"]
+            and (record.get("versions") or {}).get("policy") == version["policy"]
+            and (record.get("metrics") or {}).get("constraints") == constraints
         ):
             runs = record_runs(output, policy, base=base)
             return {"conclusion": record, "runs": runs,

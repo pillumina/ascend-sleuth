@@ -140,7 +140,10 @@ class CandidateTest(unittest.TestCase):
             outside = Path(td) / "outside.py"
             outside.write_text("def fetch(ref):\n    return ref\n", encoding="utf-8")
             (root / "scripts/src_fetch.py").unlink()
-            os.symlink(outside, root / "scripts/src_fetch.py")
+            try:
+                os.symlink(outside, root / "scripts/src_fetch.py")
+            except (OSError, NotImplementedError):
+                self.skipTest("symlink not permitted on this platform")
             with self.assertRaises(CandidateError):
                 apply_to_root(root, validate_candidate(tool_candidate(root)))
 

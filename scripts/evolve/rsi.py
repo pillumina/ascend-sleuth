@@ -205,7 +205,7 @@ def apply_selection(plan: Dict[str, Any], payload: Any) -> Dict[str, Any]:
     spec = REGIONS[region]
     plan["experiment"] = {
         "target_kind": spec.target_kind,
-        "target_skill": spec.skill if spec.target_kind == "skill" else "",
+        "target_skill": spec.skill,
         "mutable_region": region,
         "hard": 0, "events": 0,
     }

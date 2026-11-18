@@ -156,12 +156,20 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
     deltas["cache_hits"] = None
     elapsed_diffs = [c[i]["elapsed_ms"] - b[i]["elapsed_ms"] for i in ids
                      if b[i]["elapsed_ms"] is not None and c[i]["elapsed_ms"] is not None]
-    elapsed_state = _elapsed_state(paired["elapsed_ms"]["delta"], paired_diff_ci(elapsed_diffs))
+    elapsed_delta = paired["elapsed_ms"]["delta"]
+    if elapsed_delta is None or abs(elapsed_delta) <= EPSILON:
+        elapsed_state = "neutral"
+    elif paired["elapsed_ms"]["unknown"]:
+        elapsed_state = "unconfirmed"
+    else:
+        elapsed_state = _elapsed_state(elapsed_delta, paired_diff_ci(elapsed_diffs))
     if elapsed_state == "worse":
         worsened += 1
     elif elapsed_state == "better":
         improved += 1
-    elif elapsed_state == "unconfirmed" and paired["elapsed_ms"]["delta"] > 0:
+    elif (elapsed_state == "unconfirmed"
+          and paired["elapsed_ms"]["delta"] is not None
+          and paired["elapsed_ms"]["delta"] > 0):
         reasons.append("source_elapsed_inconclusive")
     if any(paired[field]["delta"] is not None and paired[field]["delta"] > EPSILON
            for field in partial):

@@ -38,6 +38,15 @@ class ToolUsageTest(unittest.TestCase):
         self.assertEqual(out["failures"], 2)
         self.assertTrue(out["resolved"])
 
+    def test_explicit_fetch_and_grep_counts_are_used(self):
+        trace = {"session_id": "s", "trace": [
+            {"action": "source_analysis", "fetch_calls": 2, "grep_calls": 3},
+        ]}
+        out = from_trace(trace)
+        self.assertEqual(out["fetch_calls"], 2)
+        self.assertEqual(out["grep_calls"], 3)
+        self.assertIsNone(out["tool_calls"])
+
     def test_missing_source_events_raise(self):
         with self.assertRaises(ToolUsageError):
             from_trace({"session_id": "s", "trace": []})

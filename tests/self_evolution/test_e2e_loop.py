@@ -138,6 +138,13 @@ class E2ELoopTest(unittest.TestCase):
         self.assertTrue(again.get("duplicate"))
         self.assertEqual(len((output.parent / "conclusions.jsonl")
                              .read_text(encoding="utf-8").splitlines()), 1)
+        changed = json.loads((output / "tasks.json").read_text(encoding="utf-8"))
+        changed["candidate_id"] = "C-OTHER"
+        (output / "tasks.json").write_text(json.dumps(changed), encoding="utf-8")
+        third = decide(output, judge_path, policy)
+        self.assertFalse(third.get("duplicate"))
+        fourth = decide(output, judge_path, policy, reuse_index=1)
+        self.assertFalse(fourth.get("duplicate"))
 
     def test_knowledge_candidate_capacity_downgrades_accept(self):
         root, output, collected, result, judge_path = self._run(

@@ -165,10 +165,10 @@ conclusion:
 |---|---|---|
 | 评估协议 | `protocol` | 样本分层、答案可见性、结论含义；改了它旧结论不可比 |
 | 可调策略 | `policy` | 主指标、阈值、样本量、成本预算、测试集划分 |
-| 基线知识库 | `base_kb` | 改动前 `knowledge/` 的内容哈希 |
-| 候选知识库 | `candidate_kb` | 改动后 `knowledge/` 的内容哈希 |
-| 候选改动 | `candidate` | 候选改动的提交；未提交或工作区不干净记 `dirty`，不出结论 |
-| 模型 | `model` | provider、model、思考等级 |
+| 基线知识库 | `base_kb` | 改动前检出的 HEAD 短 sha（`kb_rev` 同口径） |
+| 候选知识库 | `candidate_kb` | 候选 worktree 的 HEAD；有未提交补丁时写成 `<base>+patch:<补丁哈希>`，worktree 失效记 `unknown` |
+| 候选改动 | `candidate` | 候选 id；pilot 的补丁在隔离 worktree 内未提交，差异由 `candidate_kb` 的 patch 哈希标识 |
+| 模型 | `model` | provider、model、思考等级；pilot 的 trace 不记模型，当前写 `unknown` |
 
 判定时协议、策略、基线知识库与模型必须相同；候选知识与候选改动可以不同，但差异必须等于候选补丁（`git diff base..candidate`）。两个知识库哈希都要记：基线是改动前的知识库，候选是改动后的，后者正是被检验的差异。
 

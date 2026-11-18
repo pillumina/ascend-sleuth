@@ -145,6 +145,26 @@ class KnowledgeUsageTest(unittest.TestCase):
         }
         validate_experiment(record)
 
+    def test_no_shortlist_leaves_candidates_unknown(self):
+        trace = {"session_id": "s", "trace": [
+            {"action": "load_index", "considered_candidates": ["C-1", "C-2"]},
+        ]}
+        out = from_trace(trace)
+        self.assertIsNone(out["candidates_examined"])
+        self.assertEqual(out["index_rows"], 2)
+
+    def test_resolution_known_still_checks_hits(self):
+        base = [dict(row("a"), resolution_ok=True)]
+        cand = [dict(row("a", hit=False, step=None), resolution_ok=True)]
+        result = compare(base, cand)
+        self.assertIn("accuracy_regressed", result["reasons"])
+        self.assertEqual(result["decision"], "reject")
+
+    def test_partial_elapsed_improvement_is_not_accept(self):
+        base = [row("a", elapsed=1000), row("b", elapsed=None)]
+        cand = [row("a", elapsed=900), row("b", elapsed=800)]
+        self.assertNotEqual(compare(base, cand)["decision"], "accept")
+
     def test_confirmed_elapsed_change_uses_paired_interval(self):
         base = [row(f"s{i}", elapsed=1000) for i in range(5)]
         slower = [row(f"s{i}", elapsed=1200) for i in range(5)]

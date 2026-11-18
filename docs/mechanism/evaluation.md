@@ -261,11 +261,11 @@ python3 scripts/evolve.py knowledge-usage compare --baseline base.json --candida
 
 演进评估的 trace 统一放 `.s2-replay/evolve/usage-traces/`（本地运行件，git-ignored），不得写入 `traces/`；真实诊断 trace 与演进评估 trace 分开。`from-trace` 从 `load_index`/`load_full`/`quickly_check`/`reference_lookup`/`hit` 推导，token 不在 trace 里时保持 null。
 
-`candidates_examined` 记筛出的短列：`load_full` 点名的候选与 `quickly_check` 点名的 case 取并集，不是索引视图行数。索引视图另记 `index_rows`，只作读数。
+`candidates_examined` 记筛出的短列：`load_full` 点名的候选与 `quickly_check` 点名的 case 取并集，不是索引视图行数。`index_rows` 记 `load_index.considered_candidates` 的长度，只作读数；旧 trace 有把短列写进这个字段的，跨臂比较不可靠。
 
 `full_body_reads` 数 `load_full` 事件里点名的候选：`case` 或 `candidates` 列表，两者都写时取并集。没有带 `case` 或 `candidates` 的 `load_full` 事件时，退回 `quickly_check` 的 `case`。
 
-判定准确率优先用 judge 绑定的 `resolution_ok`：两侧每条都有值时比 resolved 数，缺失才退回 `hit`/`wrong_cases` 并记 `wrong_cases_unknown`。
+判定准确率看两处：judge 绑定的 `resolution_ok`（两侧齐全时比 resolved 数）与 `hits`；`hits` 下降一律算 `accuracy_regressed`。`resolution_ok` 缺失时退回 `wrong_cases`，再缺记 `wrong_cases_unknown`。
 
 `compare` 逐样本配对。同一效率项只在两侧都有值的样本上求均值，样本 id 集合仍要求两侧一致。同一字段在两侧可测的样本数不同时，各自求均值会把「一侧缺数据」算成「另一侧变好或变差」。
 
@@ -275,9 +275,15 @@ python3 scripts/evolve.py knowledge-usage compare --baseline base.json --candida
 
 判定容量单独算。同一评估池第 k 次判定时 `alpha_eff = alpha/(k+1)`；达成证据所需的最少独家命中数 `required_b` 是 `min{b: 2^-b <= alpha_eff}`。
 
-配对样本数少于 `required_b` 时，这个池在原理上给不出 `accept`；`pilot decide` 会写「判定容量不足」，结论降为 `insufficient`。
+配对样本数少于 `required_b` 时，这个池在原理上给不出 `accept`；`pilot decide` 会写「判定容量不足」。若结论本是 `accept`，会降为 `insufficient`；`reject` 只加前缀。
 
-`pilot collect` 之后跑 `pilot decide`：它把每条 rollout 写成一条执行记录（`Run`，见 records.md），把一次对照写成一条结论（`Conclusion`，同篇）。记录追加到 pilot 输出目录的父目录（常规位置是 `.s2-replay/evolve/`）下的 `runs.jsonl` 与 `conclusions.jsonl`；重复执行不会重复记 `Run` 或同一条 `Conclusion`。`candidate_kb` 在候选 worktree 有未提交补丁时写成 `<基础版本>+patch:<补丁哈希>`；worktree 已失效时记 `unknown`，不用基础版本冒充。pilot 的样本可以用 `sample import-pilot --tasks <tasks.json>` 注册进本地样本队列，重复导入跳过，不改已有状态。
+`pilot collect` 之后跑 `pilot decide`。它把每条 rollout 写成一条执行记录（`Run`，见 records.md），把一次对照写成一条结论（`Conclusion`，同篇）。
+
+记录写在 pilot 输出目录的父目录（常规位置是 `.s2-replay/evolve/`）：`runs.jsonl` 与 `conclusions.jsonl`。重复执行不会重复记 `Run`；同候选、同池、同参数、同约束的结论只写一次。
+
+`candidate_kb` 在候选 worktree 有未提交补丁时写成 `<基础版本>+patch:<补丁哈希>`；worktree 已失效时记 `unknown`，不用基础版本冒充。
+
+pilot 的样本可以用 `sample import-pilot --tasks <tasks.json>` 注册进本地样本队列；重复导入跳过，不改已有状态。
 
 ### 3.10 源码访问效率
 

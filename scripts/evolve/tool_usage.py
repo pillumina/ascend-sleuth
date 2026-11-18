@@ -168,9 +168,11 @@ def from_trace(document: Any, resolved: Optional[bool] = None) -> Dict[str, Any]
         raise ToolUsageError("trace has no source_analysis events")
     calls: List[str] = []
     fetches = greps = retries = cache_hits = 0
+    explicit_fetch = explicit_grep = 0
     tool_ms = 0.0
     failures = 0
     has_ms = has_calls = has_retries = has_cache = has_failures = False
+    has_fetch = has_grep = False
     for event in events:
         if isinstance(event.get("tool_calls"), list):
             has_calls = True
@@ -180,6 +182,12 @@ def from_trace(document: Any, resolved: Optional[bool] = None) -> Dict[str, Any]
                            if "src_fetch.py" in call or "git fetch" in call)
             greps += sum(1 for call in current if "grep" in call)
             retries += sum(1 for call in current if "retry" in call.lower())
+        if isinstance(event.get("fetch_calls"), int):
+            has_fetch = True
+            explicit_fetch += event["fetch_calls"]
+        if isinstance(event.get("grep_calls"), int):
+            has_grep = True
+            explicit_grep += event["grep_calls"]
         if isinstance(event.get("retries"), int):
             has_retries = True
             retries += event["retries"]
@@ -200,8 +208,10 @@ def from_trace(document: Any, resolved: Optional[bool] = None) -> Dict[str, Any]
     record = validate_record({
         "sample_id": str(document.get("session_id") or "unknown"),
         "tool_calls": len(calls) if has_calls else None,
-        "fetch_calls": fetches if has_calls else None,
-        "grep_calls": greps if has_calls else None,
+        "fetch_calls": (explicit_fetch if has_fetch
+                        else (fetches if has_calls else None)),
+        "grep_calls": (explicit_grep if has_grep
+                       else (greps if has_calls else None)),
         "retries": retries if (has_retries or has_calls) else None,
         "cache_hits": cache_hits if has_cache else None,
         "tool_ms": tool_ms if has_ms else None,
