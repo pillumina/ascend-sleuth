@@ -137,6 +137,37 @@ class KnowledgeUsageTest(unittest.TestCase):
         self.assertEqual(out["candidates_examined"], 3)
         self.assertEqual(out["full_body_reads"], 2)
 
+    @staticmethod
+    def _usage_record(decision, wrong):
+        side = {"n": 1, "hits": 0, "hit_rate": 0.0, "wrong_cases": wrong,
+                "first_hit_step": None, "candidates_examined": 3,
+                "full_body_reads": 2, "reference_lookups": 1,
+                "tokens": None, "elapsed_ms": 1000.0}
+        return {
+            "target_kind": "skill", "target_component": "diagnose.knowledge_usage",
+            "algorithm": "subagent-reflection", "algorithm_version": "1",
+            "execution": "subagent", "eval_profile_id": "subagent_judge",
+            "eval_ready": False, "decision": decision, "samples": ["S-1"],
+            "baseline": {"score": 0.5, "samples": ["S-1"]},
+            "candidate": {"score": 0.6, "samples": ["S-1"]},
+            "knowledge_usage": {
+                "decision": decision, "reasons": ["wrong_cases_unknown"],
+                "baseline": dict(side), "candidate": dict(side),
+                "deltas": {"first_hit_step": None, "candidates_examined": 0,
+                           "full_body_reads": 0, "reference_lookups": 0,
+                           "tokens": None, "elapsed_ms": 0.0},
+            },
+        }
+
+    def test_reject_record_may_carry_unknown_wrong_cases(self):
+        validate_experiment(self._usage_record("reject", None))
+
+    def test_accept_record_requires_known_wrong_cases(self):
+        record = self._usage_record("accept", None)
+        record["knowledge_usage"]["reasons"] = []
+        with self.assertRaises(ExperimentError):
+            validate_experiment(record)
+
 
 if __name__ == "__main__":
     unittest.main()
