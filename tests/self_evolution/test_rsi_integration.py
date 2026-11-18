@@ -60,6 +60,7 @@ class RsiIntegrationTest(unittest.TestCase):
                 "candidate": {"score": 1.0, "samples": ["S-1"]},
                 "eval_profile_id": "subagent_judge",
                 "eval_ready": False,
+                "paired": {"b": 1, "c": 0, "n": 1},
                 "stages": {"select": "select.pareto", "propose": "propose.agent"},
             })
             self.assertEqual(record["decision"], "accept")

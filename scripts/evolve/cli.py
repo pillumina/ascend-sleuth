@@ -265,7 +265,7 @@ def cmd_sample_import_s2(args: argparse.Namespace) -> int:
     except AdapterError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    except (StoreError, ContractError, OSError) as exc:
+    except (StoreError, ContractError, OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     print(f"created: {stats['created']}")

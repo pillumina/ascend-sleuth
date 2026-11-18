@@ -23,6 +23,10 @@ class HoldoutError(ValueError):
 def issue_numbers(root: Path) -> Set[str]:
     path = Path(root) / HOLDOUT_REL
     if not path.exists():
+        # 有 eval/ 但没有 holdout 清单 = 部署配置坏了，不能静默放行；
+        # 完全没有 eval/ 的临时目录按“未配置 holdout”处理。
+        if (Path(root) / ".git").exists() and (Path(root) / "eval").exists():
+            raise HoldoutError(f"missing {path}")
         return set()
     try:
         doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}

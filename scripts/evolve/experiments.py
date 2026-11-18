@@ -77,8 +77,22 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
         raise ExperimentError("baseline/candidate samples must be the same set")
     if set(samples) != set(baseline["samples"]):
         raise ExperimentError("top-level samples must match baseline/candidate")
-    if decision == "accept" and candidate["score"] <= baseline["score"]:
-        raise ExperimentError("accept requires candidate.score > baseline.score")
+    paired = record.get("paired")
+    if decision == "accept":
+        if paired is None:
+            raise ExperimentError("accept requires paired evidence {b,c,n}")
+        if not isinstance(paired, dict):
+            raise ExperimentError("paired must be an object")
+        b, c, n = paired.get("b"), paired.get("c"), paired.get("n")
+        for name, value in (("b", b), ("c", c), ("n", n)):
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ExperimentError(f"paired.{name} must be a non-negative integer")
+        if n < b + c:
+            raise ExperimentError("paired.n must be >= paired.b + paired.c")
+        if b <= c:
+            raise ExperimentError("accept requires paired.b > paired.c")
+        if candidate["score"] <= baseline["score"]:
+            raise ExperimentError("accept requires candidate.score > baseline.score")
     spec = get_target(target)
     if execution == "subagent":
         profile_id = record.get("eval_profile_id")
@@ -128,6 +142,8 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
                 )
             normalized_stages[point] = spec.id
         result["stages"] = normalized_stages
+    if paired is not None:
+        result["paired"] = {"b": paired.get("b"), "c": paired.get("c"), "n": paired.get("n")}
     for key in ("budget", "seed"):
         if key in record:
             result[key] = record[key]
