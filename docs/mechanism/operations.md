@@ -116,6 +116,7 @@
 | agent-native GEPA | 状态机 `scripts/agent_gepa.py`；不接官方 gepa 库，不依赖外部 endpoint |
 | 增量 trace 归因 | `python3 scripts/evolve.py traces sync`；`traces status` 看 snapshot/状态 |
 | 知识使用效率 | `python3 scripts/evolve.py knowledge-usage evaluate/compare`；只读 usage JSON，不改 case |
+| 真实 pilot 编排 | `pilot prepare/collect`；创建隔离 candidate worktree、写 baseline/candidate 任务清单、收集 trace/输出 |
 | candidate apply | `candidate validate/apply/rollback/diff`；在隔离 git worktree 应用单个 skill region Patch，不改主检出 |
 | 源码访问效率 | `python3 scripts/evolve.py source-usage from-trace/evaluate/compare`；只读 trace/usage，不下载源码 |
 | RSI 多源计划 | `python3 scripts/evolve.py rsi plan`（trace/metrics/replay → 归因/region/实验 spec）；`--replay .s2-replay` 读 S2 result 失败；`rsi status` 读回；agent 回写用 `rsi attribute/select --state <plan> --file <json>` |

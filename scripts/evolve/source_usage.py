@@ -7,8 +7,10 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-LOWER_FIELDS = ("files_read", "tool_calls", "fetch_calls", "grep_calls",
-                "followups", "downloads", "bytes", "elapsed_ms")
+OBSERVED_FIELDS = ("files_read", "tool_calls", "fetch_calls", "grep_calls",
+                  "followups", "downloads", "bytes", "elapsed_ms")
+GATE_FIELDS = ("files_read", "tool_calls", "fetch_calls", "grep_calls",
+               "followups", "elapsed_ms")
 
 
 class SourceUsageError(ValueError):
@@ -38,7 +40,7 @@ def validate_record(record: Any) -> Dict[str, Any]:
     if not isinstance(sample_id, str) or not sample_id.strip():
         raise SourceUsageError("sample_id is required")
     out = {"sample_id": sample_id}
-    for name in LOWER_FIELDS:
+    for name in OBSERVED_FIELDS:
         out[name] = _int(record.get(name), name, optional=True) if name != "elapsed_ms" else _num(record.get(name), name, optional=True)
     out["cache_hits"] = _int(record.get("cache_hits"), "cache_hits", optional=True)
     out["source_ok"] = record.get("source_ok")
@@ -74,7 +76,7 @@ def summarize(data: Any) -> Dict[str, Any]:
     records = _records(data)
     result = {"n": len(records), "repos": sorted({r for item in records for r in item["repos"]}),
               "refs": sorted({r for item in records for r in item["refs"]})}
-    for field in LOWER_FIELDS:
+    for field in OBSERVED_FIELDS:
         values = [item[field] for item in records]
         result[field] = _sum(values) if field != "elapsed_ms" else (sum(values) if all(v is not None for v in values) else None)
     result["cache_hits"] = _sum([item["cache_hits"] for item in records])
@@ -96,8 +98,7 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
         reasons.append("source_correctness_regressed")
     deltas = {}
     improved = worsened = 0
-    for field in ("files_read", "tool_calls", "fetch_calls", "grep_calls",
-                  "followups", "downloads", "bytes", "elapsed_ms"):
+    for field in GATE_FIELDS:
         bv, cv = bs[field], cs[field]
         if bv is None or cv is None:
             deltas[field] = None

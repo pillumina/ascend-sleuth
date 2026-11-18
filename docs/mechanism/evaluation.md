@@ -275,7 +275,7 @@ python3 scripts/evolve.py source-usage evaluate --file source-usage.json
 python3 scripts/evolve.py source-usage compare --baseline base.json --candidate cand.json
 ```
 
-记录 repo/ref、files_read、tool_calls、fetch_calls、grep_calls、followups、elapsed；cache/download/bytes 缺失时保持 null。`compare` 要求源码结论 correctness 不降，且至少一个访问效率项改善、没有项变差；correctness 或效率 unknown 只能记 `insufficient`。
+记录 repo/ref、files_read、tool_calls、fetch_calls、grep_calls、followups、elapsed；cache/download/bytes 只做可选观测，不进门禁。`compare` 要求源码结论 correctness 不降，且 files/tool/fetch/grep/elapsed 至少一项改善、没有项变差；correctness 或效率 unknown 只能记 `insufficient`。
 
 ### 3.11 算法适配器
 

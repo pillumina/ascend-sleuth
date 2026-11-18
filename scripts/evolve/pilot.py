@@ -1,0 +1,88 @@
+"""真实 diagnose pilot 编排：隔离 worktree + 任务清单 + 结果收集。
+
+本模块不调用模型、不 judge；task/judge 仍由 subagent 执行。它保证 baseline 与
+candidate 的样本、目录、trace 隔离，避免手工拼命令时写错路径或混用真实 traces。
+"""
+
+import json
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from .candidate import create_workspace, validate_candidate
+from .knowledge_usage import from_trace as knowledge_from_trace
+from .source_usage import from_trace as source_from_trace
+import yaml
+
+
+class PilotError(ValueError):
+    pass
+
+
+def _read_samples(paths: List[str]) -> List[Dict[str, Any]]:
+    out = []
+    for path in paths:
+        data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or not data.get("id"):
+            raise PilotError(f"invalid sample file: {path}")
+        out.append({"id": str(data["id"]), "path": str(Path(path).resolve()),
+                    "expected": data.get("expected")})
+    return out
+
+
+def prepare(root: Path, candidate_path: Path, samples: List[str],
+            output: Path) -> Dict[str, Any]:
+    root, output = Path(root), Path(output)
+    candidate = validate_candidate(json.loads(Path(candidate_path).read_text(encoding="utf-8")))
+    if output.exists():
+        raise PilotError(f"output already exists: {output}")
+    output.mkdir(parents=True)
+    workspace = output / "candidate-worktree"
+    info = create_workspace(root, candidate, workspace)
+    sample_rows = _read_samples(samples)
+    tasks = {"candidate_id": candidate["candidate_id"], "candidate": candidate,
+             "workspace": str(workspace), "apply": info,
+             "samples": sample_rows,
+             "arms": {
+                 "baseline": {"root": str(root), "trace_dir": str(output / "baseline" / "traces"),
+                              "out_dir": str(output / "baseline" / "out")},
+                 "candidate": {"root": str(workspace), "trace_dir": str(output / "candidate" / "traces"),
+                               "out_dir": str(output / "candidate" / "out")},
+             }}
+    (output / "tasks.json").write_text(json.dumps(tasks, ensure_ascii=False, indent=2) + "\n",
+                                      encoding="utf-8")
+    for arm in ("baseline", "candidate"):
+        (output / arm / "traces").mkdir(parents=True)
+        (output / arm / "out").mkdir(parents=True)
+    return tasks
+
+
+def collect(output: Path) -> Dict[str, Any]:
+    output = Path(output)
+    tasks_path = output / "tasks.json"
+    if not tasks_path.exists():
+        raise PilotError(f"missing {tasks_path}")
+    tasks = json.loads(tasks_path.read_text(encoding="utf-8"))
+    result = {"candidate_id": tasks.get("candidate_id"), "arms": {}}
+    for arm in ("baseline", "candidate"):
+        rows = []
+        for sample in tasks.get("samples") or []:
+            sid = sample["id"]
+            trace = output / arm / "traces" / f"{sid}.yaml"
+            out = output / arm / "out" / f"{sid}.out.md"
+            row = {"sample_id": sid, "trace": str(trace), "output": str(out),
+                   "has_trace": trace.exists(), "has_output": out.exists()}
+            if trace.exists():
+                try:
+                    doc = yaml.safe_load(trace.read_text(encoding="utf-8"))
+                    row["knowledge_usage"] = knowledge_from_trace(doc)
+                    row["source_usage"] = source_from_trace(doc)
+                except Exception as exc:  # trace may have no source events
+                    row["usage_error"] = str(exc)
+            rows.append(row)
+        result["arms"][arm] = rows
+    result["complete"] = all(
+        r["has_trace"] and r["has_output"] for rows in result["arms"].values() for r in rows
+    )
+    (output / "collect.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n",
+                                        encoding="utf-8")
+    return result

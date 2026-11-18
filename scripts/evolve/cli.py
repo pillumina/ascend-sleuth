@@ -46,6 +46,7 @@ from .decision import Decision, DecisionResult, decide
 from .experiments import ExperimentError, validate_experiment
 from .holdout_guard import is_holdout_source, issue_numbers
 from .knowledge_usage import UsageError, compare as compare_usage, evaluate as evaluate_usage, from_trace
+from .pilot import PilotError, collect as pilot_collect, prepare as pilot_prepare
 from .source_usage import SourceUsageError, compare as compare_source_usage, evaluate as evaluate_source_usage, from_trace as source_from_trace
 from .quality import QualityError, load_quality
 from .policy import PolicyError, load_policy, policy_hash
@@ -891,6 +892,26 @@ def cmd_knowledge_usage_evaluate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_pilot_prepare(args: argparse.Namespace) -> int:
+    try:
+        result = pilot_prepare(Path(args.root), Path(args.candidate), args.samples, Path(args.output))
+    except (OSError, ValueError, PilotError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_pilot_collect(args: argparse.Namespace) -> int:
+    try:
+        result = pilot_collect(Path(args.output))
+    except (OSError, ValueError, PilotError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
 def cmd_candidate_validate(args: argparse.Namespace) -> int:
     try:
         candidate = validate_candidate(_read_json(args.file))
@@ -1412,6 +1433,18 @@ def build_parser() -> argparse.ArgumentParser:
     rsi_select.add_argument("--state", required=True)
     rsi_select.add_argument("--file", required=True)
     rsi_select.set_defaults(func=cmd_rsi_select)
+    pilot = sub.add_parser("pilot", help="真实 baseline/candidate pilot 编排")
+    pilot_sub = pilot.add_subparsers(dest="pilot_command", required=True)
+    p_prepare = pilot_sub.add_parser("prepare")
+    p_prepare.add_argument("--root", required=True)
+    p_prepare.add_argument("--candidate", required=True)
+    p_prepare.add_argument("--samples", nargs="+", required=True)
+    p_prepare.add_argument("--output", required=True)
+    p_prepare.set_defaults(func=cmd_pilot_prepare)
+    p_collect = pilot_sub.add_parser("collect")
+    p_collect.add_argument("--output", required=True)
+    p_collect.set_defaults(func=cmd_pilot_collect)
+
     candidate = sub.add_parser("candidate", help="candidate Patch 校验/隔离 apply/rollback")
     candidate_sub = candidate.add_subparsers(dest="candidate_command", required=True)
     cand_validate = candidate_sub.add_parser("validate")
