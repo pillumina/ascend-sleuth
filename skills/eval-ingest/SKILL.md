@@ -53,7 +53,9 @@ python3 scripts/evolve.py sample new --from postmortem \
   --case <case.yaml> --dry-run --json
 ```
 
-状态只有七种：`ready`（可提交）、`needs_answer`（缺根因与修复）、`needs_sanitize`（未脱敏）、`needs_source`（缺来源）、`duplicate`（已存在同来源）、`absorbed`（已进知识库）。`stale` 表示 trace 已不在。
+确认后去掉 `--dry-run` 即写入本地队列；来源文件路径按主检出写，不写相对 worktree 的路径。
+
+状态有八种：`ready`（可提交）、`needs_answer`（缺根因与修复）、`needs_sanitize`（未脱敏）、`needs_source`（缺来源）、`non_diagnostic`（没有可判别现象）、`duplicate`（本地或评测集已有同来源）、`absorbed`（已进知识库）、`stale`（trace 已不在）。
 
 补答案只问两个问题：**根因和修复，与现场一致吗？这条能共享吗？**
 
@@ -68,7 +70,7 @@ python3 scripts/evolve.py sample status --id <id> --json
 - 诊断结束只产 feedback 候选，不直接产 evaluation；`proposed` 里的 agent 结论不是答案。
 - 没走 sleuth 的案例先用 `to-postmortem` 抽症状/根因/修复，本 skill 只补样本字段，不重抽。
 - 已进知识库的标 `absorbed`，转 regression，不进 evaluation。
-- `sanitized: false` 只能留本地 feedback，不能升 core；`promote --to core` 会拒绝。
+- `sanitized: false` 能留本地 feedback，但不能进 evaluation 或 core；`review` 与 `promote --to core` 都会拒绝。
 - 查重同时看本地队列、`eval/s2`、`eval/holdout.yaml` 与 `knowledge/`；重复只提示，不静默丢弃。
 
 ## 步骤

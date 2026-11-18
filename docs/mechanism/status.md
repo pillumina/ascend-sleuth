@@ -69,7 +69,7 @@
 | 判定容量（`required_b` 与池样本数） | [evaluation.md](evaluation.md) 3.9 | 已落地 | `grep -n "required_exclusive_wins" scripts/evolve/decision.py`；`python3 scripts/evolve.py brief` |
 | pilot 记录闭环：Run/Conclusion 与版本坐标 | [records.md](records.md) 3.2、3.3 | 已落地 | `grep -n "def decide" scripts/evolve/pilot.py` |
 | pilot 样本注册进本地队列 | [evaluation.md](evaluation.md) 3.9 | 已落地 | `python3 scripts/evolve.py sample import-pilot --help` |
-| 已闭环 case 回流样本（trace / postmortem，完整性与跨集查重） | [evaluation.md](evaluation.md) 6.7 | 已落地 | `python3 scripts/evolve.py sample new --from trace --help`；`python3 scripts/evolve.py sample status --help` |
+| 已闭环 case 回流样本（trace / postmortem，完整性与跨集查重） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/evolve.py sample new --from trace --help`；`python3 scripts/evolve.py sample status --help` |
 | 记录端口层 | [records.md](records.md) 3.6 | 已落地 | `grep -n "class .*Protocol" scripts/evolve/ports.py` |
 | 适配器层与旧脚本薄壳 | [records.md](records.md) 3.6 | 已落地 | `ls scripts/evolve/adapters`；`python3 scripts/evolve.py replay --help`；`python3 scripts/evolve.py sample import-s2 --help` |
 | core 样本与 `eval/core/` | [records.md](records.md) 5.2 | 蓝图 | `ls eval/core` |

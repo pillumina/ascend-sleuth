@@ -3779,27 +3779,27 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       })
       groups.push({ key: 'state', title: tr('group.state'), items: stateItems })
 
-      groups.push({
-        key: 'copy',
-        title: tr('group.copy'),
-        items: [{
-          key: 'summary',
-          label: tr('action.copySummary'),
-          onSelect: () => copyItem({ text: summaryText(row, data) }),
-        }, {
-          key: 'issue',
-          label: tr('copy.issue'),
-          onSelect: () => copyItem({ text: issueText(row), message: tr('hint.copiedIssue') }),
-        }, {
-          key: 'resume-copy',
-          label: tr('action.copyResume'),
-          onSelect: () => copyItem({ text: resumeDraft(row) }),
-        }, {
+      const copyItems = [{
+        key: 'summary',
+        label: tr('action.copySummary'),
+        onSelect: () => copyItem({ text: summaryText(row, data) }),
+      }, {
+        key: 'issue',
+        label: tr('copy.issue'),
+        onSelect: () => copyItem({ text: issueText(row), message: tr('hint.copiedIssue') }),
+      }, {
+        key: 'resume-copy',
+        label: tr('action.copyResume'),
+        onSelect: () => copyItem({ text: resumeDraft(row) }),
+      }]
+      if (row && (row.status === 'resolved' || row.status === 'ended')) {
+        copyItems.push({
           key: 'sample-copy',
           label: tr('action.copySample'),
           onSelect: () => copyItem({ text: sampleDraft(row) }),
-        }],
-      })
+        })
+      }
+      groups.push({ key: 'copy', title: tr('group.copy'), items: copyItems })
 
       const navItems = []
       const frequentItems = [{

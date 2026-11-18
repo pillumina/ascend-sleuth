@@ -164,9 +164,6 @@ class Sample:
         if self.limits is not None and self.purpose != "scale":
             errs.append("limits is only valid for purpose=scale")
         errs.extend(_provenance_errors(self.provenance))
-        if (self.purpose in ("evaluation", "test")
-                and (self.provenance or {}).get("sanitized") is False):
-            errs.append("purpose=evaluation/test requires sanitized provenance")
         return errs
 
     def validate(self, require_answer: bool = False) -> "Sample":

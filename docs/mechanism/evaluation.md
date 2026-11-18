@@ -134,7 +134,9 @@ $$
 
 补充样本按固定流程走，不让用户额外写提示词：诊断结束、case 沉淀、issue 关闭或导入、groom 改 case 四个触发点都调用 `python3 scripts/evolve.py sample new`，候选生成、脱敏提示、查重与状态转换在 `samples` 一处。候选可以缺答案，`review` 前必须补。候选与 field 样本放本地运行件，不进公开仓；core 样本放 tracked `eval/core/`，通过 PR 入库。
 
-已闭环案例也可以直接回流：走过 sleuth 的用 `sample new --from trace --trace <path>`，没走 sleuth 的先走 `to-postmortem` 产出 case YAML，再用 `sample new --from postmortem --case <path>`。先跑 `--dry-run` 看完整性：`ready`、`needs_answer`（缺根因与修复）、`needs_sanitize`、`needs_source`、`duplicate`、`absorbed`、`stale`。`provenance` 记触发点、trace/report 引用、时间、`kb_rev`、是否脱敏、脱敏项、置信度与抽取方式；`sample status` 现算完整性，`sample set-answer --resolution` 补根因与修复。查重同时看本地队列、`eval/s2`、`eval/holdout.yaml` 与 `knowledge/`；重复只提示，不静默丢弃。
+已闭环案例也可以直接回流：走过 sleuth 的用 `sample new --from trace --trace <path>`，没走 sleuth 的先走 `to-postmortem` 产出 case YAML，再用 `sample new --from postmortem --case <path>`。先跑 `--dry-run` 看完整性，状态有 `ready`、`needs_answer`（缺根因与修复）、`needs_sanitize`、`needs_source`、`non_diagnostic`、`duplicate`、`absorbed`、`stale`。
+
+来源信息（`provenance`）记触发点、trace/report 引用、时间、`kb_rev`、是否脱敏、脱敏项、置信度与抽取方式。`sample status` 现算完整性；`sample set-answer --resolution` 补根因与修复，`--sanitized true` 确认可共享，之后去掉 `--dry-run` 写入本地队列。查重同时看本地队列、`eval/s2`、`eval/holdout.yaml` 与 `knowledge/`（按来源 issue 号，不按 case 前缀）；重复只提示，不静默丢弃。
 
 复核清单固定为六项：来源可追、输入已脱敏、expected 或 rubric 完整、对象类型与 origin 正确、无重复、未吸收。任一项不过就退回。
 

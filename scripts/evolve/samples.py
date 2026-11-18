@@ -265,6 +265,11 @@ class SampleStore:
             errors.append("purpose=test only from active/core-evaluation")
         if sample.purpose == "feedback" and sample.origin == "core":
             errors.append("purpose=feedback must stay in origin=field")
+        if (sample.purpose in ("evaluation", "test")
+                and (sample.provenance or {}).get("sanitized") is False):
+            errors.append("purpose=evaluation/test requires sanitized provenance")
+        if sample.non_diagnostic and sample.purpose in ("evaluation", "test"):
+            errors.append("non_diagnostic sample cannot enter evaluation/test")
         if sample.object_type in OBJECT_TYPES:
             spec = OBJECT_TYPES[sample.object_type]
             if sample.purpose not in spec.allowed_purposes:

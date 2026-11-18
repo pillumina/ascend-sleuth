@@ -160,7 +160,8 @@ def _guard_holdout(args: argparse.Namespace, source: str) -> None:
 
 def cmd_sample_new(args: argparse.Namespace) -> int:
     if getattr(args, "from_source", None):
-        root = Path(args.root) if args.root else Path.cwd()
+        store = _store(args)
+        root = Path(args.root) if args.root else store.root
         try:
             if args.from_source == "trace":
                 if not args.trace:
@@ -171,8 +172,8 @@ def cmd_sample_new(args: argparse.Namespace) -> int:
                     raise CliError("--case is required with --from postmortem")
                 payload = extract_case(Path(args.case), root)
             _guard_holdout(args, payload["source"])
-            sample = make_sample(payload)
-            result = completeness(sample, store=_store(args), root=root)
+            sample = make_sample(payload).validate()
+            result = completeness(sample, store=store, root=root)
         except (CliError, OSError, ValueError, IntakeError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 2
@@ -187,13 +188,13 @@ def cmd_sample_new(args: argparse.Namespace) -> int:
                 print(f"duplicates: {', '.join(result['duplicates']) or 'none'}")
             return 0
         try:
-            created = _store(args).new(**payload)
+            created = store.new(**payload)
         except (StoreError, ContractError) as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 1
         print(f"created: {created.id}")
         print(f"state: {result['state']}")
-        print(f"path: {_store(args).path_for(created.id)}")
+        print(f"path: {store.path_for(created.id)}")
         return 0
     if not args.id or not args.object_type or not args.source:
         print("error: manual mode requires --id, --object-type and --source", file=sys.stderr)
@@ -234,7 +235,7 @@ def cmd_sample_status(args: argparse.Namespace) -> int:
     try:
         store = _store(args)
         sample = store.require(args.id)
-        root = Path(args.root) if args.root else Path.cwd()
+        root = Path(args.root) if args.root else store.root
         result = completeness(sample, store=store, root=root)
     except (StoreError, OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)

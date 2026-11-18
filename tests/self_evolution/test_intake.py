@@ -57,6 +57,66 @@ class IntakeTest(unittest.TestCase):
             self.assertEqual(payload["provenance"]["trigger"], "diagnosis_end")
             self.assertFalse(payload["provenance"]["sanitized"])
 
+    def test_continuous_summary_does_not_leak_answer(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            trace = root / "t.yaml"
+            trace.write_text(yaml.safe_dump({
+                "session_id": "2026-11-04-13976-demo",
+                "summary": "现象：启动崩。根因：绑定未刷新。处置：重绑 sys.modules。",
+                "trace": [{"role": "user", "content": "启动崩"}],
+            }), encoding="utf-8")
+            payload = extract_trace(trace, root)
+            self.assertEqual(payload["input"]["phenomenon"], "启动崩。")
+            self.assertNotIn("绑定未刷新", payload["input"]["phenomenon"])
+            self.assertIn("绑定未刷新", payload["proposed"]["resolution"])
+
+    def test_case_without_root_cause_is_needs_answer(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            case = root / "c.yaml"
+            case.write_text(yaml.safe_dump({"cases": [{
+                "id": "VLLM-ASC-1", "symptoms": ["崩"],
+            }]}), encoding="utf-8")
+            payload = extract_case(case, root)
+            self.assertIsNone(payload["expected"])
+            result = completeness(make_sample(payload), root=root)
+            self.assertEqual(result["state"], "needs_answer")
+
+    def test_holdout_number_requires_exact_match(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            holdout = root / "eval" / "holdout.yaml"
+            holdout.parent.mkdir()
+            holdout.write_text(yaml.safe_dump({"entries": [
+                {"fixture": "VLLM-ASC-12345.fixture.yaml"}]}), encoding="utf-8")
+            payload = {
+                "id": "S-1234", "object_type": "diagnosis",
+                "source": "https://github.com/x/y/issues/1234",
+                "purpose": "evaluation", "expected": {"resolution": "r"},
+                "expected_kind": "resolution",
+                "provenance": {"trigger": "postmortem", "sanitized": True,
+                               "redactions": [], "confidence": "maintainer-reviewed",
+                               "extraction": "auto"},
+            }
+            self.assertEqual(completeness(make_sample(payload), root=root)["state"], "ready")
+            payload["id"] = "S-12345"
+            payload["source"] = "https://github.com/x/y/issues/12345"
+            self.assertEqual(completeness(make_sample(payload), root=root)["state"], "duplicate")
+
+    def test_trace_session_number_matches_knowledge(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            traces = root / "traces"
+            traces.mkdir()
+            trace = traces / "2026-11-04-13976-demo.yaml"
+            _trace(trace)
+            knowledge = root / "knowledge" / "inference" / "vllm-ascend" / "interrupt"
+            knowledge.mkdir(parents=True)
+            (knowledge / "VLLM-ASC-13976.yaml").write_text("cases: []\n", encoding="utf-8")
+            sample = make_sample(extract_trace(trace, root))
+            self.assertEqual(completeness(sample, root=root)["state"], "absorbed")
+
     def test_trace_without_summary_is_needs_answer(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -127,6 +187,20 @@ class IntakeTest(unittest.TestCase):
             store.review(sample.id, approve=True)
             with self.assertRaises(Exception):
                 store.set_purpose(sample.id, "evaluation")
+
+    def test_unsanitized_evaluation_sample_cannot_review(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            store = SampleStore(root=root)
+            sample = store.new(
+                id="S-EVAL", object_type="diagnosis", source="https://x/issues/999",
+                purpose="evaluation", expected={"resolution": "r"},
+                provenance={"trigger": "manual_case", "sanitized": False,
+                            "redactions": [], "confidence": "maintainer-reviewed",
+                            "extraction": "manual"},
+            )
+            with self.assertRaises(Exception):
+                store.review(sample.id, approve=True)
 
     def test_unsanitized_cannot_promote_to_core(self):
         with tempfile.TemporaryDirectory() as td:

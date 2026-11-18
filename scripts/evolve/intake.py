@@ -20,9 +20,10 @@ SYMPTOM_LIMIT = 1200
 RESOLUTION_LIMIT = 4000
 
 STATE_ORDER = (
-    "needs_source", "needs_answer", "needs_sanitize",
-    "absorbed", "duplicate", "stale", "ready",
+    "missing_source", "absorbed", "missing_answer", "non_diagnostic",
+    "not_sanitized", "duplicate_sample", "missing_trace",
 )
+MARKER_RE = re.compile(r"(现象|根因|处置|排除链|结论|修复|已沉淀)[：:]")
 
 
 class IntakeError(ValueError):
@@ -39,34 +40,54 @@ def _text_block(text: Any, limit: int = TRACE_LIMIT) -> str:
     return value if len(value) <= limit else value[: max(limit - 1, 1)] + "…"
 
 
-def _section(text: str, label: str) -> str:
-    match = re.search(rf"{label}[：:]\s*(.+?)(?=\n\n\S+[：:]|\Z)", text or "", re.S)
-    return match.group(1).strip() if match else ""
+def _segments(text: str) -> Dict[str, str]:
+    """按中文标签切段，不要求空行；真实 summary 常是连续叙述。"""
+    matches = list(MARKER_RE.finditer(text or ""))
+    out: Dict[str, str] = {}
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(text or "")
+        value = (text or "")[match.end():end].strip()
+        if value and match.group(1) not in out:
+            out[match.group(1)] = value
+    return out
 
 
 def _phenomenon(summary: str) -> str:
-    section = _section(summary, "现象")
-    if section:
-        return section
-    return (summary or "").split("\n\n", 1)[0].strip()
+    parts = _segments(summary)
+    if parts.get("现象"):
+        return parts["现象"]
+    first = MARKER_RE.search(summary or "")
+    if first and first.start() > 0:
+        return (summary or "")[:first.start()].strip()
+    return (summary or "").strip()
 
 
 def _proposed_resolution(summary: str) -> str:
-    parts = [_section(summary, "根因"), _section(summary, "处置")]
-    value = "\n\n".join(part for part in parts if part)
-    return value or summary
+    parts = _segments(summary)
+    values = [parts[key] for key in ("根因", "处置", "修复") if parts.get(key)]
+    return "\n\n".join(values)
 
 
 def sample_id_for(prefix: str, stem: str) -> str:
-    safe = re.sub(r"[^A-Za-z0-9._:-]+", "-", stem).strip("-")
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", stem).strip("-")
     return f"{prefix}-{safe}"[:100].rstrip("-") or prefix
 
 
 def _issue_number(source: str) -> Optional[int]:
-    match = re.search(r"(?:issues?/|#)(\d{3,6})(?:\D|$)", source or "")
-    if not match:
-        match = re.search(r"-(\d{3,6})(?:$|[/?#])", source or "")
-    return int(match.group(1)) if match else None
+    text = str(source or "")
+    match = re.search(r"issues?/(\d{3,6})(?:\D|$)", text)
+    if match:
+        return int(match.group(1))
+    match = re.search(r"#(\d{3,6})(?:\D|$)", text)
+    if match:
+        return int(match.group(1))
+    if "/pull/" in text:
+        return None
+    for item in reversed(re.findall(r"-(\d{3,6})(?=[-._/]|$)", text)):
+        if re.fullmatch(r"(?:19|20)\d{2}", item):
+            continue
+        return int(item)
+    return None
 
 
 def _confidence_from_case(case: Dict[str, Any]) -> str:
@@ -150,7 +171,7 @@ def extract_case(case_path: Path, root: Path) -> Dict[str, Any]:
     resolution = "\n\n".join(
         part for part in (str(case.get("root_cause") or "").strip(),
                           str(case.get("fix") or "").strip()) if part
-    )
+    ).strip()
     try:
         rel = case_path.resolve().relative_to(Path(root).resolve()).as_posix()
     except ValueError:
@@ -165,11 +186,11 @@ def extract_case(case_path: Path, root: Path) -> Dict[str, Any]:
             "environment": _one_line(", ".join(str(p) for p in case.get("platforms") or [])),
             "evidence": {"case": case_id, "references": list(case.get("references") or [])},
         },
-        "expected": {
+        "expected": ({
             "resolution": _text_block(resolution, RESOLUTION_LIMIT),
             "case": case_id,
             "confidence": _confidence_from_case(case),
-        },
+        } if resolution else None),
         "expected_kind": "resolution",
         "non_diagnostic": not bool(phenomenon),
         "provenance": {
@@ -177,12 +198,12 @@ def extract_case(case_path: Path, root: Path) -> Dict[str, Any]:
             "report_ref": rel,
             "captured_at": now_iso(),
             "kb_rev": "unknown",
-            "sanitized": True,
+            "sanitized": False,
             "redactions": [],
             "confidence": _confidence_from_case(case),
             "extraction": "auto",
         },
-        "notes": f"extracted from {rel}",
+        "notes": f"extracted from {rel}; confirm sanitization before core",
     }
 
 
@@ -209,16 +230,21 @@ def _repo_index(root: Path) -> Dict[str, Any]:
         for row in (doc or {}).get("entries") or []:
             fixture = str((row or {}).get("fixture") or "")
             fixtures.add(fixture)
-            match = re.search(r"(\d{3,6})", fixture)
-            if match:
-                issues.add(int(match.group(1)))
+            number = _issue_number(fixture)
+            if number is not None:
+                issues.add(number)
     knowledge = root / "knowledge"
     if knowledge.exists():
-        for path in knowledge.rglob("VLLM-ASC-*.yaml"):
-            cases.add(path.stem)
-            match = re.search(r"(\d{3,6})", path.stem)
-            if match:
-                issues.add(int(match.group(1)))
+        for path in knowledge.rglob("*.yaml"):
+            if path.name.startswith("_"):
+                continue
+            stem = path.stem
+            if not re.search(r"-\d{3,6}$", stem):
+                continue
+            cases.add(stem)
+            number = _issue_number(stem)
+            if number is not None:
+                issues.add(number)
     return {"issues": issues, "cases": cases, "fixtures": fixtures}
 
 
@@ -230,8 +256,14 @@ def completeness(sample: Sample, *, store=None, root: Optional[Path] = None) -> 
     issue = _issue_number(source)
     if not source.strip():
         reasons.append("missing_source")
-    if not (sample.expected or sample.rubric):
+    answer_missing = not (sample.expected or sample.rubric)
+    if not answer_missing and isinstance(sample.expected, dict) and not sample.rubric:
+        if not str(sample.expected.get("resolution") or "").strip():
+            answer_missing = True
+    if answer_missing:
         reasons.append("missing_answer")
+    if sample.non_diagnostic:
+        reasons.append("non_diagnostic")
     sanitized = None
     if sample.provenance is not None:
         sanitized = sample.provenance.get("sanitized")
@@ -252,19 +284,23 @@ def completeness(sample: Sample, *, store=None, root: Optional[Path] = None) -> 
             duplicates.append(f"eval:{issue}")
         if sample.expected and str((sample.expected or {}).get("case") or "") in index["cases"]:
             duplicates.append(f"knowledge:{sample.expected['case']}")
-        if issue is not None and any(str(issue) in fixture for fixture in index["fixtures"]):
+        if issue is not None and any(_issue_number(fixture) == issue
+                                     for fixture in index["fixtures"]):
             duplicates.append(f"holdout:{issue}")
-        if issue is not None and f"VLLM-ASC-{issue}" in index["cases"]:
+        if issue is not None and any(
+                case.endswith(f"-{issue}") for case in index["cases"]):
             reasons.append("absorbed")
     if duplicates:
         reasons.append("duplicate_sample")
     reason_set = set(reasons)
-    if "absorbed" in reason_set:
-        state = "absorbed"
-    elif "missing_source" in reason_set:
+    if "missing_source" in reason_set:
         state = "needs_source"
+    elif "absorbed" in reason_set:
+        state = "absorbed"
     elif "missing_answer" in reason_set:
         state = "needs_answer"
+    elif "non_diagnostic" in reason_set:
+        state = "non_diagnostic"
     elif "not_sanitized" in reason_set:
         state = "needs_sanitize"
     elif "duplicate_sample" in reason_set:
@@ -273,11 +309,9 @@ def completeness(sample: Sample, *, store=None, root: Optional[Path] = None) -> 
         state = "stale"
     else:
         state = "ready"
-    ordered = ("missing_source", "missing_answer", "not_sanitized",
-               "absorbed", "duplicate_sample", "missing_trace")
     return {
         "state": state,
-        "reasons": [reason for reason in ordered if reason in reason_set],
+        "reasons": [reason for reason in STATE_ORDER if reason in reason_set],
         "duplicates": duplicates,
         "sanitized": sanitized,
     }
