@@ -461,14 +461,14 @@ class IngestCliTest(unittest.TestCase):
             self.assertEqual(record["eval_profile_id"], "arena")
             self.assertTrue(record["eval_ready"])
 
-    def test_experiment_propose_gepa_without_config_fails_cleanly(self):
+    def test_experiment_propose_official_gepa_is_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             result = run_cli(
                 "experiment", "propose", "--root", td, "--target", "skill",
                 "--algorithm", "gepa",
             )
             self.assertEqual(result.returncode, 2)
-            self.assertIn("budget.gepa", result.stderr)
+            self.assertIn("not allowed", result.stderr)
             self.assertNotIn("Traceback", result.stderr)
 
     def test_experiment_propose_rejects_invalid_patch_fields(self):
