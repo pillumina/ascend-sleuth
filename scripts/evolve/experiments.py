@@ -125,6 +125,12 @@ def _validate_source_usage_evidence(usage: Dict[str, Any]) -> None:
         item = deltas[field]
         if item is not None and (not isinstance(item, (int, float)) or isinstance(item, bool)):
             raise ExperimentError(f"source_usage.deltas.{field} must be numeric or null")
+        bv, cv = baseline.get(field), candidate.get(field)
+        if bv is not None and cv is not None:
+            if item is None or abs(float(item) - (float(cv) - float(bv))) > 1e-6:
+                raise ExperimentError(f"source_usage.deltas.{field} does not match sides")
+        elif item is not None:
+            raise ExperimentError(f"source_usage.deltas.{field} must be null when a side is unknown")
     if usage.get("decision") == "accept":
         if usage.get("reasons"):
             raise ExperimentError("source_usage accept must have no reasons")

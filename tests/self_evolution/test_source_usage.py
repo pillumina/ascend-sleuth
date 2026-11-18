@@ -59,6 +59,28 @@ class SourceUsageTest(unittest.TestCase):
         with self.assertRaises(ExperimentError):
             validate_experiment(record)
 
+    def test_fake_delta_is_rejected(self):
+        record = {
+            "target_kind": "skill", "target_component": "diagnose.source_usage",
+            "algorithm": "subagent-reflection", "algorithm_version": "1",
+            "execution": "subagent", "decision": "accept", "samples": ["S-1"],
+            "baseline": {"score": 0.5, "samples": ["S-1"]},
+            "candidate": {"score": 0.6, "samples": ["S-1"]},
+            "paired": {"b": 4, "c": 0, "n": 4},
+            "source_usage": {
+                "decision": "accept", "reasons": [],
+                "baseline": {"n": 1, "source_ok": 1, "files_read": 2,
+                             "tool_calls": 2, "fetch_calls": 1, "grep_calls": 1},
+                "candidate": {"n": 1, "source_ok": 1, "files_read": 2,
+                              "tool_calls": 2, "fetch_calls": 1, "grep_calls": 1},
+                "deltas": {"files_read": -1, "tool_calls": 0, "fetch_calls": 0,
+                           "grep_calls": 0, "followups": None, "downloads": None,
+                           "bytes": None, "elapsed_ms": None, "cache_hits": None},
+            },
+        }
+        with self.assertRaises(ExperimentError):
+            validate_experiment(record)
+
     def test_missing_values_are_unknown(self):
         out = summarize([row("a", files=None, calls=None, fetch=None, grep=None, elapsed=None)])
         self.assertIsNone(out["files_read"])
