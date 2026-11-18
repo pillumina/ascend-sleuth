@@ -1,8 +1,8 @@
 ---
 name: eval-ingest
 description: >
-  评测集补充：从 GitHub 或本地 issue 导出建诊断候选样本，跑 dry-run、确认导入、补 expected、复核入池。
-  用户说“补评测集/补 field 样本/从 issue 加评估样本”，或 self-evolve 的 run 显示 field 评估不足时使用。
+  评测集补充：从 GitHub/本地 issue、已闭环的 sleuth trace 或本地 case 建诊断候选样本，跑 dry-run、补根因与修复、复核入池。
+  用户说“补评测集/补 field 样本/从 issue 加评估样本/把已闭环案例回流成样本”，或 self-evolve 的 run 显示 field 评估不足时使用。
   只产 candidate，不自动 active、不改 case 知识、不自动合并；与 issue-ingest（case 沉淀）是两条出口。
 ---
 
@@ -12,7 +12,7 @@ description: >
 
 ## 触发
 
-- 用户说“补评测集”“从 issue 补些评估样本”“field 样本不够”；
+- 用户说“补评测集”“从 issue 补些评估样本”“field 样本不够”“把已闭环的案例回流成样本”；
 - `python3 scripts/evolve.py run` 的 `next_actions` 出现 `field_eval_short`；
 - 已有样本被吸收、test 失效或目标族缺口，需要补 field/core。
 
@@ -34,6 +34,42 @@ flowchart TD
 ```
 
 只问四类事：哪个 repo、哪些 label、取多少条、先 dry-run 还是直接导。其余由脚本做：元数据拉取、PR/已处理/label/评论/标题过滤、按需取 body、查重、state 幂等。
+
+## 已闭环 case 回流
+
+两类来源，走同一个入口，不新开 skill：
+
+| 来源 | 判断 | 入口 |
+|---|---|---|
+| 走过 sleuth | 有 `traces/<session>.yaml` 与报告 | `sample new --from trace --trace <path>` |
+| 没走 sleuth | 有日志/定位文档，先有 case YAML | 先 `/skill:to-postmortem` 产 case，再 `sample new --from postmortem --case <path>` |
+
+先跑 dry-run 看完整性与查重，不直接写队列：
+
+```bash
+python3 scripts/evolve.py sample new --from trace \
+  --trace traces/<session>.yaml --dry-run --json
+python3 scripts/evolve.py sample new --from postmortem \
+  --case <case.yaml> --dry-run --json
+```
+
+状态只有七种：`ready`（可提交）、`needs_answer`（缺根因与修复）、`needs_sanitize`（未脱敏）、`needs_source`（缺来源）、`duplicate`（已存在同来源）、`absorbed`（已进知识库）。`stale` 表示 trace 已不在。
+
+补答案只问两个问题：**根因和修复，与现场一致吗？这条能共享吗？**
+
+```bash
+python3 scripts/evolve.py sample set-answer --id <id> \
+  --resolution '<根因与修复>' --confidence maintainer-reviewed --sanitized true
+python3 scripts/evolve.py sample status --id <id> --json
+```
+
+规则：
+
+- 诊断结束只产 feedback 候选，不直接产 evaluation；`proposed` 里的 agent 结论不是答案。
+- 没走 sleuth 的案例先用 `to-postmortem` 抽症状/根因/修复，本 skill 只补样本字段，不重抽。
+- 已进知识库的标 `absorbed`，转 regression，不进 evaluation。
+- `sanitized: false` 只能留本地 feedback，不能升 core；`promote --to core` 会拒绝。
+- 查重同时看本地队列、`eval/s2`、`eval/holdout.yaml` 与 `knowledge/`；重复只提示，不静默丢弃。
 
 ## 步骤
 

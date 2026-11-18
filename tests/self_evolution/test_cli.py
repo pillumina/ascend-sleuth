@@ -1140,3 +1140,34 @@ class ToolingCliTest(unittest.TestCase):
             payload = json.loads(result.stdout)
             self.assertEqual(payload["tool_calls"], 2)
             self.assertEqual(payload["fetch_calls"], 1)
+
+
+class SampleIntakeCliTest(unittest.TestCase):
+    def test_trace_dry_run_create_answer_and_status(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            traces = root / "traces"
+            traces.mkdir()
+            trace = traces / "t.yaml"
+            trace.write_text(yaml.safe_dump({
+                "session_id": "2026-01-01-1001-demo",
+                "summary": "现象：启动崩。\n\n根因：模块绑定未刷新。\n\n处置：重绑。",
+                "incident_env": "A3",
+                "trace": [{"role": "user", "content": "启动崩"}],
+            }), encoding="utf-8")
+            dry = run_cli("sample", "new", "--from", "trace", "--trace", str(trace),
+                          "--root", td, "--dry-run", "--json")
+            self.assertEqual(dry.returncode, 0, dry.stderr)
+            payload = json.loads(dry.stdout)
+            self.assertEqual(payload["completeness"]["state"], "needs_answer")
+            created = run_cli("sample", "new", "--from", "trace", "--trace", str(trace),
+                              "--root", td)
+            self.assertEqual(created.returncode, 0, created.stderr)
+            sample_id = created.stdout.split("created: ", 1)[1].splitlines()[0].strip()
+            answered = run_cli("sample", "set-answer", "--id", sample_id,
+                               "--resolution", "模块绑定未刷新", "--confidence",
+                               "maintainer-reviewed", "--sanitized", "true", "--root", td)
+            self.assertEqual(answered.returncode, 0, answered.stderr)
+            status = run_cli("sample", "status", "--id", sample_id, "--root", td, "--json")
+            self.assertEqual(status.returncode, 0, status.stderr)
+            self.assertEqual(json.loads(status.stdout)["state"], "ready")

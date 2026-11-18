@@ -140,6 +140,7 @@ window.__ModuleLoader__.load({
       'action.copySediment': '复制沉淀指令',
       'action.copyPromote': '复制升格指令',
       'action.copyFeedback': '复制回报指令',
+      'action.copySample': '复制候选样本指令',
       'action.openSession': '切到该诊断的会话',
       'action.closeMenu': '关闭菜单',
       'waiting': '在等',
@@ -722,6 +723,7 @@ window.__ModuleLoader__.load({
       'action.copySediment': 'Copy sediment command',
       'action.copyPromote': 'Copy promote command',
       'action.copyFeedback': 'Copy outcome command',
+      'action.copySample': 'Copy sample intake command',
       'action.openSession': 'Open the diagnosis session',
       'action.closeMenu': 'Close menu',
       'waiting': 'Waiting for',
@@ -2564,6 +2566,11 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       return '用 /to-postmortem 沉淀 ' + row.sessionId + '（来源 ' + traceSource(row) + '）'
     }
 
+    function sampleDraft(row) {
+      return '用 /eval-ingest 从 ' + traceSource(row) + ' 生成候选样本，'
+        + '先跑 sample new --from trace --dry-run 看完整性与查重'
+    }
+
     // 能不能起沉淀：看「这单还没沉淀、有内容、不是已有 case 覆盖的单」，不看 agent 有没有
     // 写 case 候选。候选是建议不是入口前提；没有候选的单一样要能起草。
     function canStartSediment(row) {
@@ -3787,6 +3794,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           key: 'resume-copy',
           label: tr('action.copyResume'),
           onSelect: () => copyItem({ text: resumeDraft(row) }),
+        }, {
+          key: 'sample-copy',
+          label: tr('action.copySample'),
+          onSelect: () => copyItem({ text: sampleDraft(row) }),
         }],
       })
 

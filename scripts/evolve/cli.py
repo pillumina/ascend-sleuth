@@ -51,6 +51,7 @@ from .source_usage import SourceUsageError, compare as compare_source_usage, eva
 from .tool_usage import ToolUsageError, compare as compare_tool_usage, evaluate as evaluate_tool_usage, from_trace as tool_from_trace
 from .quality import QualityError, load_quality
 from .policy import PolicyError, load_policy, policy_hash
+from .intake import IntakeError, completeness, extract_case, extract_trace, make_sample
 from .samples import import_pilot
 from .records import ConclusionStore, ExperimentStore, RecordError
 from .runner import issue_plan, render_plan
@@ -158,6 +159,45 @@ def _guard_holdout(args: argparse.Namespace, source: str) -> None:
 
 
 def cmd_sample_new(args: argparse.Namespace) -> int:
+    if getattr(args, "from_source", None):
+        root = Path(args.root) if args.root else Path.cwd()
+        try:
+            if args.from_source == "trace":
+                if not args.trace:
+                    raise CliError("--trace is required with --from trace")
+                payload = extract_trace(Path(args.trace), root)
+            else:
+                if not args.case:
+                    raise CliError("--case is required with --from postmortem")
+                payload = extract_case(Path(args.case), root)
+            _guard_holdout(args, payload["source"])
+            sample = make_sample(payload)
+            result = completeness(sample, store=_store(args), root=root)
+        except (CliError, OSError, ValueError, IntakeError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        if args.dry_run:
+            if args.json:
+                print(json.dumps({"sample": payload, "completeness": result},
+                                 ensure_ascii=False, indent=2))
+            else:
+                print(f"would create: {payload['id']}")
+                print(f"state: {result['state']}")
+                print(f"reasons: {', '.join(result['reasons']) or 'none'}")
+                print(f"duplicates: {', '.join(result['duplicates']) or 'none'}")
+            return 0
+        try:
+            created = _store(args).new(**payload)
+        except (StoreError, ContractError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        print(f"created: {created.id}")
+        print(f"state: {result['state']}")
+        print(f"path: {_store(args).path_for(created.id)}")
+        return 0
+    if not args.id or not args.object_type or not args.source:
+        print("error: manual mode requires --id, --object-type and --source", file=sys.stderr)
+        return 2
     try:
         _guard_holdout(args, args.source)
     except (CliError, OSError, ValueError) as exc:
@@ -190,6 +230,24 @@ def cmd_sample_new(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sample_status(args: argparse.Namespace) -> int:
+    try:
+        store = _store(args)
+        sample = store.require(args.id)
+        root = Path(args.root) if args.root else Path.cwd()
+        result = completeness(sample, store=store, root=root)
+    except (StoreError, OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(f"state: {result['state']}")
+        print(f"reasons: {', '.join(result['reasons']) or 'none'}")
+        print(f"duplicates: {', '.join(result['duplicates']) or 'none'}")
+    return 0
+
+
 def cmd_sample_import_pilot(args: argparse.Namespace) -> int:
     try:
         result = import_pilot(_store(args), Path(args.tasks))
@@ -204,12 +262,23 @@ def cmd_sample_import_pilot(args: argparse.Namespace) -> int:
 def cmd_sample_set_answer(args: argparse.Namespace) -> int:
     expected = _json_object(args.expected, "--expected")
     rubric = _json_object(args.rubric, "--rubric")
+    if args.resolution:
+        expected = dict(expected or {})
+        expected["resolution"] = args.resolution
+    provenance = {}
+    if args.confidence:
+        provenance["confidence"] = args.confidence
+    if args.sanitized is not None:
+        provenance["sanitized"] = args.sanitized == "true"
+    if args.redaction:
+        provenance["redactions"] = list(args.redaction)
     try:
         sample = _store(args).set_answer(
             args.id,
             expected=expected,
             rubric=rubric,
             expected_kind=args.expected_kind,
+            provenance=provenance or None,
             actor=args.actor,
             reason=args.reason or "",
         )
@@ -1283,11 +1352,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     new = sample_sub.add_parser("new", help="创建候选样本")
     new.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
-    new.add_argument("--id", required=True)
-    new.add_argument("--object-type", required=True, choices=OBJECT_TYPE_VALUES)
+    new.add_argument("--from", dest="from_source", default=None,
+                     choices=("trace", "postmortem"),
+                     help="从已闭环的诊断 trace 或 case YAML 生成候选")
+    new.add_argument("--trace", default=None, help="--from trace 的 trace 路径")
+    new.add_argument("--case", default=None, help="--from postmortem 的 case YAML 路径")
+    new.add_argument("--dry-run", action="store_true", help="只打印完整性与查重，不写盘")
+    new.add_argument("--json", action="store_true", help="--dry-run 输出 JSON")
+    new.add_argument("--id", default=None)
+    new.add_argument("--object-type", default=None, choices=OBJECT_TYPE_VALUES)
     new.add_argument("--origin", default="field", choices=ORIGINS)
     new.add_argument("--purpose", default="evaluation", choices=PURPOSES)
-    new.add_argument("--source", required=True)
+    new.add_argument("--source", default=None)
     new.add_argument("--expected", default=None, help="JSON 对象")
     new.add_argument("--rubric", default=None, help="JSON 对象")
     new.add_argument("--input", default=None, help="JSON 对象")
@@ -1307,9 +1383,21 @@ def build_parser() -> argparse.ArgumentParser:
     set_answer.add_argument("--rubric", default=None, help="JSON 对象")
     set_answer.add_argument("--expected-kind", default=None,
                             choices=("resolution", "assertion", "rubric"))
+    set_answer.add_argument("--resolution", default=None,
+                            help="直接写根因与修复，免拼 JSON")
+    set_answer.add_argument("--confidence", default=None,
+                            choices=("issue-verified", "maintainer-reviewed", "agent-reviewed"))
+    set_answer.add_argument("--sanitized", default=None, choices=("true", "false"))
+    set_answer.add_argument("--redaction", action="append", default=None,
+                            help="脱敏项，可重复")
     set_answer.add_argument("--actor", default="maintainer")
     set_answer.add_argument("--reason", default="")
     set_answer.set_defaults(func=cmd_sample_set_answer)
+    status = sample_sub.add_parser("status", help="看一条候选样本的完整性与查重")
+    status.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    status.add_argument("--id", required=True)
+    status.add_argument("--json", action="store_true")
+    status.set_defaults(func=cmd_sample_status)
 
     import_s2 = sample_sub.add_parser(
         "import-s2", help="把 eval/s2 校准集导入候选队列（跳过非诊断/无症状/重复来源）"
