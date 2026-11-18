@@ -99,7 +99,7 @@ flowchart TD
   G -->|拒绝| I[rejected，不进入评测池]
 ```
 
-- 数据源由 `scripts/evolve/sources/base.py` 的 `IssueSource` 定义：`source_id`、`list_issues`、`fetch_issue`。GitHub 是默认实现；`local` 读本地 JSON/YAML 导出（含 body），用 `--source local --cache <path>`。新增 GitCode 等源只实现这个 Protocol 并登记进 `registry.py`，过滤、建候选、state 仍走同一条管线；`source_id` 是 state 分区键，也是候选 `source` 的前缀。
+- holdout 隔离是硬检查：`ingest-issues`、`import-s2`、`sample new/review/promote` 会按 `eval/holdout.yaml` 的 fixture issue 号拒绝或跳过；holdout 样本不进入候选池、不参与演进。`source_id`、`list_issues`、`fetch_issue`。GitHub 是默认实现；`local` 读本地 JSON/YAML 导出（含 body），用 `--source local --cache <path>`。新增 GitCode 等源只实现这个 Protocol 并登记进 `registry.py`，过滤、建候选、state 仍走同一条管线；`source_id` 是 state 分区键，也是候选 `source` 的前缀。
 
 诊断标注由 agent 预标、维护者抽检，抽检覆盖每周新增样本的两成或两条，取大。case 与 reference 先做 10–20 条双标与裁决，再定 rubric 阈值。trace 先全审 10 条，再抽检。自动标注只做提名，不能直接当答案。
 

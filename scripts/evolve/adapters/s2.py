@@ -10,7 +10,7 @@
 
 import re
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Set
 
 import yaml
 
@@ -126,6 +126,7 @@ def import_s2_samples(
     source: Any,
     store: Any,
     limit: Optional[int] = None,
+    holdout_numbers: Optional[Set[str]] = None,
 ) -> Dict[str, Any]:
     """把一份校准集导入候选队列，返回统计。
 
@@ -151,6 +152,7 @@ def import_s2_samples(
         "skipped_missing_issue": 0,
         "skipped_invalid": 0,
         "skipped_no_answer": 0,
+        "skipped_holdout": 0,
         "skipped_split": 0,
         "skipped_duplicate_source": 0,
         "skipped_duplicate_id": 0,
@@ -164,6 +166,9 @@ def import_s2_samples(
         issue = row.get("issue")
         if issue is None or str(issue).strip() == "":
             stats["skipped_missing_issue"] += 1
+            continue
+        if holdout_numbers and str(issue) in holdout_numbers:
+            stats["skipped_holdout"] += 1
             continue
         if row.get("non_diagnostic"):
             stats["skipped_non_diagnostic"] += 1

@@ -203,6 +203,21 @@ class SampleLifecycleCliTest(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("no implemented evaluator", result.stderr)
 
+    def test_sample_new_rejects_holdout_source(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "eval").mkdir()
+            (root / "eval" / "holdout.yaml").write_text(
+                "entries:\n- fixture: VLLM-ASC-13329.fixture.yaml\n", encoding="utf-8",
+            )
+            result = run_cli(
+                "sample", "new", "--root", td, "--id", "X-1",
+                "--object-type", "diagnosis",
+                "--source", "https://github.com/vllm-project/vllm-ascend/issues/13329",
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("holdout", result.stderr)
+
     def test_reject(self):
         self.create()
         result = self.cli("sample", "review", "--id", "S-1", "--reject")

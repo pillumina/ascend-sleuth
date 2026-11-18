@@ -7,6 +7,7 @@ maintainer 只调用 `/skill:self-evolve`；本文件是它的内部执行参考
 - 先跑 `python3 scripts/evolve.py traces sync`；它把本地 trace 归因映射到 `regions.py` 的可变异区，按硬归因数排序；
 - 从推荐 region、`self-evolve run` 的 next_actions、或评测失败中选一个组件；
 - 目标必须是具体 skill 的可变异区，例如 `diagnose` 的 `routing_hints`；
+- 先从 `traces sync` 的 `experiment` 推荐拿 target/region；holdout issue 不进候选池；
 - 不把整份 skill 当候选；骨架、phase、工具、schema、trace 字段、severity、halt 条件冻结；
 - 没有可变异区或归因不明确就停，记 `insufficient`，不让用户逐次手选。
 

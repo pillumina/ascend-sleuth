@@ -40,6 +40,7 @@ from .adapters.issues import ingest_issues
 from .adapters.s2 import import_s2_samples
 from .decision import Decision, DecisionResult, decide
 from .experiments import ExperimentError, validate_experiment
+from .holdout_guard import is_holdout_source, issue_numbers
 from .policy import PolicyError, load_policy, policy_hash
 from .records import ConclusionStore, ExperimentStore, RecordError
 from .runner import issue_plan, render_plan
@@ -140,7 +141,18 @@ def cmd_policy_show(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------- sample
+def _guard_holdout(args: argparse.Namespace, source: str) -> None:
+    numbers = issue_numbers(Path(args.root) if getattr(args, "root", None) else Path.cwd())
+    if numbers and is_holdout_source(source, numbers):
+        raise CliError(f"source {source!r} is in holdout; do not ingest it as an eval sample")
+
+
 def cmd_sample_new(args: argparse.Namespace) -> int:
+    try:
+        _guard_holdout(args, args.source)
+    except (CliError, OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     expected = _json_object(args.expected, "--expected")
     rubric = _json_object(args.rubric, "--rubric")
     payload = _json_object(args.input, "--input")
@@ -207,6 +219,7 @@ def cmd_sample_ingest_issues(args: argparse.Namespace) -> int:
             dry_run=args.dry_run,
             source=source,
             state_key=f"{source.source_id}/evaluation",
+            holdout_numbers=issue_numbers(root),
         )
     except AdapterError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -246,6 +259,7 @@ def cmd_sample_import_s2(args: argparse.Namespace) -> int:
     try:
         stats = import_s2_samples(
             root, args.source, _store(args), limit=args.limit,
+            holdout_numbers=issue_numbers(root),
         )
     except AdapterError as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -308,10 +322,12 @@ def cmd_sample_review(args: argparse.Namespace) -> int:
         print("error: one of --approve/--reject is required", file=sys.stderr)
         return 2
     try:
+        sample = _store(args).require(args.id)
+        _guard_holdout(args, sample.source)
         sample = _store(args).review(
             args.id, approve=approve, actor=args.actor, reason=args.reason or "",
         )
-    except StoreError as exc:
+    except (StoreError, ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     print(f"{sample.id}: {sample.status}")
@@ -320,10 +336,12 @@ def cmd_sample_review(args: argparse.Namespace) -> int:
 
 def cmd_sample_promote(args: argparse.Namespace) -> int:
     try:
+        current = _store(args).require(args.id)
+        _guard_holdout(args, current.source)
         sample = _store(args).promote(
             args.id, to=args.to, actor=args.actor, reason=args.reason or "",
         )
-    except StoreError as exc:
+    except (StoreError, ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     print(f"{sample.id}: {sample.status} ({sample.origin})")
@@ -335,7 +353,7 @@ def cmd_sample_retire(args: argparse.Namespace) -> int:
         sample = _store(args).retire(
             args.id, actor=args.actor, reason=args.reason or "",
         )
-    except StoreError as exc:
+    except (StoreError, ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     print(f"{sample.id}: {sample.status}")

@@ -16,7 +16,7 @@ import os
 import re
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
 from . import AdapterError, load_legacy
 from ..samples import SampleStore, StoreError
@@ -246,6 +246,7 @@ def ingest_issues(
     fetch_body_fn=None,
     source: Any = None,
     state_key: Optional[str] = None,
+    holdout_numbers: Optional[Set[str]] = None,
 ) -> Dict[str, Any]:
     """拉元数据 → 硬过滤 → 按需取 body → 建候选。
 
@@ -310,6 +311,7 @@ def ingest_issues(
         "skipped_empty_body": 0,
         "skipped_short_body": 0,
         "skipped_feature_title": 0,
+        "skipped_holdout": 0,
         "limit_reached": False,
         "dry_run": bool(dry_run),
         "state_updated": False,
@@ -322,6 +324,9 @@ def ingest_issues(
         if limit is not None and planned >= limit:
             stats["limit_reached"] = index < len(candidates)
             break
+        if holdout_numbers and str(item.get("number")) in holdout_numbers:
+            stats["skipped_holdout"] += 1
+            continue
         try:
             if fetch_body_fn is not None:
                 body = fetch_body_fn(repo, item)
