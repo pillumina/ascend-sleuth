@@ -185,7 +185,7 @@ def apply_to_root(root: Path, candidate: Dict[str, Any]) -> Dict[str, Any]:
     path.write_text(after, encoding="utf-8")
     try:
         _run_checks(root, candidate.get("checks") or [])
-    except CandidateError:
+    except Exception:
         path.write_text(before, encoding="utf-8")
         raise
     return {

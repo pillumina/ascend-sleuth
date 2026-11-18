@@ -88,6 +88,18 @@ def summarize(data: Any) -> Dict[str, Any]:
     return result
 
 
+def _elapsed_state(delta, ci):
+    """连续成本项只在置信区间排除 0 时才判方向。"""
+    if delta is None or abs(delta) <= EPSILON:
+        return "neutral"
+    low, high = ci.get("low"), ci.get("high")
+    if low is not None and low > 0:
+        return "worse"
+    if high is not None and high < 0:
+        return "better"
+    return "unconfirmed"
+
+
 def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
     """源码结论不降，且效率项至少一项改善、没有项变差。
 
@@ -132,6 +144,8 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
                          "delta": total_c - total_b}
         bs[field], cs[field] = total_b, total_c
         deltas[field] = total_c - total_b
+        if field == "elapsed_ms":
+            continue
         if paired[field]["unknown"]:
             partial.append(field)
             continue
@@ -140,6 +154,15 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
         elif deltas[field] > EPSILON:
             worsened += 1
     deltas["cache_hits"] = None
+    elapsed_diffs = [c[i]["elapsed_ms"] - b[i]["elapsed_ms"] for i in ids
+                     if b[i]["elapsed_ms"] is not None and c[i]["elapsed_ms"] is not None]
+    elapsed_state = _elapsed_state(paired["elapsed_ms"]["delta"], paired_diff_ci(elapsed_diffs))
+    if elapsed_state == "worse":
+        worsened += 1
+    elif elapsed_state == "better":
+        improved += 1
+    elif elapsed_state == "unconfirmed" and paired["elapsed_ms"]["delta"] > 0:
+        reasons.append("source_elapsed_inconclusive")
     if any(paired[field]["delta"] is not None and paired[field]["delta"] > EPSILON
            for field in partial):
         reasons.append("source_efficiency_partial_unknown")

@@ -65,7 +65,7 @@ class _Repo:
 
 
 class E2ELoopTest(unittest.TestCase):
-    def _run(self, target, patch, hits):
+    def _run(self, target, patch, hits, judge_ids=None):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         root = Path(tmp.name) / "repo"
@@ -97,19 +97,20 @@ class E2ELoopTest(unittest.TestCase):
                 (output / arm / "traces" / f"{sid}.yaml").write_text(
                     yaml.safe_dump(doc), encoding="utf-8")
                 (output / arm / "out" / f"{sid}.out.md").write_text("report", encoding="utf-8")
+        judged = tuple(judge_ids or short_ids)
         judge = {
-            "baseline": {sid: 0 for sid in short_ids},
-            "candidate": {sid: 1 for sid in short_ids},
+            "baseline": {sid: 0 for sid in judged},
+            "candidate": {sid: 1 for sid in judged},
         }
         judge_path = Path(tmp.name) / "judge.json"
         judge_path.write_text(json.dumps(judge), encoding="utf-8")
         collected = collect(output, judge=judge_path)
         result = decide(output, judge_path, yaml.safe_load(
             (root / "eval" / "policy.yaml").read_text(encoding="utf-8")))
-        return root, output, collected, result
+        return root, output, collected, result, judge_path
 
     def test_tooling_candidate_accepts_and_records(self):
-        root, output, collected, result = self._run(
+        root, output, collected, result, judge_path = self._run(
             "tooling",
             {"region": "tooling.source_fetch", "file": "scripts/src_fetch.py",
              "old": "def fetch(ref):\n    return ref\n",
@@ -132,14 +133,20 @@ class E2ELoopTest(unittest.TestCase):
         # 候选 worktree 里补丁生效，src_fetch 可解析。
         self.assertIn("strip", (output / "candidate-worktree" / "scripts" / "src_fetch.py")
                       .read_text(encoding="utf-8"))
+        policy = yaml.safe_load((root / "eval" / "policy.yaml").read_text(encoding="utf-8"))
+        again = decide(output, judge_path, policy)
+        self.assertTrue(again.get("duplicate"))
+        self.assertEqual(len((output.parent / "conclusions.jsonl")
+                             .read_text(encoding="utf-8").splitlines()), 1)
 
     def test_knowledge_candidate_capacity_downgrades_accept(self):
-        root, output, collected, result = self._run(
+        root, output, collected, result, judge_path = self._run(
             "skill",
             {"region": "diagnose.knowledge_usage", "file": "skills/diagnose/SKILL.md",
              "old": "阶段二载全文，按知识候选核对。",
              "new": "阶段二只载筛出的候选全文，按知识候选核对。"},
             hits={"baseline": 1, "candidate": 2},
+            judge_ids=("1001", "1002"),
         )
         conclusion = result["conclusion"]
         self.assertEqual(conclusion["decision"], "insufficient")

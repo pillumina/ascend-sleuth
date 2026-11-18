@@ -559,7 +559,10 @@ def import_pilot(store: "SampleStore", tasks_path: Path) -> Dict[str, List[str]]
         if store.load(sid) is not None:
             skipped.append(sid)
             continue
-        data = yaml.safe_load(Path(entry["path"]).read_text(encoding="utf-8"))
+        path = entry.get("path")
+        if not isinstance(path, str) or not path:
+            raise StoreError(f"pilot sample {sid!r} has no path")
+        data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
         if not isinstance(data, dict):
             raise StoreError(f"invalid sample file: {entry['path']}")
         store.new(

@@ -145,11 +145,18 @@ class KnowledgeUsageTest(unittest.TestCase):
         }
         validate_experiment(record)
 
-    def test_partial_regression_is_insufficient(self):
+    def test_confirmed_elapsed_change_uses_paired_interval(self):
+        base = [row(f"s{i}", elapsed=1000) for i in range(5)]
+        slower = [row(f"s{i}", elapsed=1200) for i in range(5)]
+        faster = [row(f"s{i}", elapsed=800) for i in range(5)]
+        self.assertEqual(compare(base, slower)["decision"], "reject")
+        self.assertEqual(compare(base, faster)["decision"], "accept")
+
+    def test_partial_elapsed_change_is_unconfirmed(self):
         base = [row("a", elapsed=1000), row("b", elapsed=None)]
         cand = [row("a", elapsed=9000), row("b", elapsed=1000)]
         result = compare(base, cand)
-        self.assertIn("efficiency_partial_unknown", result["reasons"])
+        self.assertIn("elapsed_inconclusive", result["reasons"])
         self.assertEqual(result["decision"], "insufficient")
 
     def test_from_trace_reads_candidates_list_on_load_full(self):

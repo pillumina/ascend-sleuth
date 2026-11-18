@@ -13,6 +13,8 @@ from typing import Any, Dict, List, Optional
 
 GATE_FIELDS = ("tool_calls", "fetch_calls", "grep_calls", "retries",
                "cache_hits", "tool_ms")
+LOWER_IS_BETTER = ("tool_calls", "fetch_calls", "grep_calls", "retries", "tool_ms")
+HIGHER_IS_BETTER = ("cache_hits",)
 OBSERVED_FIELDS = GATE_FIELDS + ("failures",)
 EPSILON = 1e-9
 
@@ -120,12 +122,24 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
         if row["unknown"]:
             partial.append(field)
             continue
-        if row["delta"] < -EPSILON:
-            improved += 1
-        elif row["delta"] > EPSILON:
-            worsened += 1
-    if any(paired[field]["delta"] is not None and paired[field]["delta"] > EPSILON
-           for field in partial):
+        delta = row["delta"]
+        if field in HIGHER_IS_BETTER:
+            if delta > EPSILON:
+                improved += 1
+            elif delta < -EPSILON:
+                worsened += 1
+        else:
+            if delta < -EPSILON:
+                improved += 1
+            elif delta > EPSILON:
+                worsened += 1
+    partial_regressed = any(
+        paired[field]["delta"] is not None and (
+            paired[field]["delta"] < -EPSILON if field in HIGHER_IS_BETTER
+            else paired[field]["delta"] > EPSILON)
+        for field in partial
+    )
+    if partial_regressed:
         reasons.append("tool_efficiency_partial_unknown")
     if worsened:
         reasons.append("tool_efficiency_regressed")
@@ -144,13 +158,6 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
             "deltas": deltas, "reasons": reasons, "paired": paired}
 
 
-def _calls(event: Dict[str, Any]) -> List[str]:
-    calls = event.get("tool_calls")
-    if isinstance(calls, list):
-        return [str(call) for call in calls]
-    return []
-
-
 def from_trace(document: Any, resolved: Optional[bool] = None) -> Dict[str, Any]:
     """从 trace 的 ``source_analysis`` 事件读工具指标；没有事件就报错。"""
     if not isinstance(document, dict):
@@ -162,34 +169,43 @@ def from_trace(document: Any, resolved: Optional[bool] = None) -> Dict[str, Any]
     calls: List[str] = []
     fetches = greps = retries = cache_hits = 0
     tool_ms = 0.0
-    has_ms = False
     failures = 0
+    has_ms = has_calls = has_retries = has_cache = has_failures = False
     for event in events:
-        current = _calls(event)
-        calls.extend(current)
-        fetches += sum(1 for call in current
-                       if "src_fetch.py" in call or "git fetch" in call)
-        greps += sum(1 for call in current if "grep" in call)
-        retries += int(event.get("retries") or 0)
-        retries += sum(1 for call in current if "retry" in call.lower())
-        cache_hits += int(event.get("cache_hits") or 0)
+        if isinstance(event.get("tool_calls"), list):
+            has_calls = True
+            current = [str(call) for call in event["tool_calls"]]
+            calls.extend(current)
+            fetches += sum(1 for call in current
+                           if "src_fetch.py" in call or "git fetch" in call)
+            greps += sum(1 for call in current if "grep" in call)
+            retries += sum(1 for call in current if "retry" in call.lower())
+        if isinstance(event.get("retries"), int):
+            has_retries = True
+            retries += event["retries"]
+        if isinstance(event.get("cache_hits"), int):
+            has_cache = True
+            cache_hits += event["cache_hits"]
         if isinstance(event.get("tool_ms"), (int, float)):
             tool_ms += float(event["tool_ms"])
             has_ms = True
-        exit_code = event.get("fetch_exit")
-        if isinstance(exit_code, int) and exit_code != 0:
-            failures += 1
-        if event.get("verify") == "miss":
-            failures += 1
+        if isinstance(event.get("fetch_exit"), int):
+            has_failures = True
+            if event["fetch_exit"] != 0:
+                failures += 1
+        if event.get("verify") in ("hit", "miss", "skipped"):
+            has_failures = True
+            if event.get("verify") == "miss":
+                failures += 1
     record = validate_record({
         "sample_id": str(document.get("session_id") or "unknown"),
-        "tool_calls": len(calls),
-        "fetch_calls": fetches,
-        "grep_calls": greps,
-        "retries": retries,
-        "cache_hits": cache_hits,
+        "tool_calls": len(calls) if has_calls else None,
+        "fetch_calls": fetches if has_calls else None,
+        "grep_calls": greps if has_calls else None,
+        "retries": retries if (has_retries or has_calls) else None,
+        "cache_hits": cache_hits if has_cache else None,
         "tool_ms": tool_ms if has_ms else None,
-        "failures": failures,
+        "failures": failures if has_failures else None,
         "resolved": resolved,
     })
     return record

@@ -55,6 +55,7 @@ def experiment_spec(stats: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
     region = regions[0]
     return {
+        "target_kind": region.get("target_kind", "skill"),
         "target_skill": region["skill"],
         "mutable_region": region["region"],
         "hard": region["hard"],

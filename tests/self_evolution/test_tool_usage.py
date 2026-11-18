@@ -47,6 +47,34 @@ class ToolUsageTest(unittest.TestCase):
         cand = [row("a", calls=3, fetch=1, retries=0, ms=100.0)]
         self.assertEqual(compare(base, cand)["decision"], "accept")
 
+    def test_cache_hits_are_higher_is_better(self):
+        base = [row("a", cache=2)]
+        better = [row("a", cache=5)]
+        worse = [row("a", cache=1)]
+        self.assertEqual(compare(base, better)["decision"], "accept")
+        self.assertEqual(compare(base, worse)["decision"], "reject")
+
+    def test_missing_fields_are_unknown_not_zero(self):
+        trace = {"session_id": "s", "trace": [
+            {"action": "source_analysis", "tool_calls": ["src_fetch.py r main"]},
+        ]}
+        out = from_trace(trace)
+        self.assertIsNone(out["cache_hits"])
+        self.assertIsNone(out["tool_ms"])
+        self.assertEqual(out["tool_calls"], 1)
+        # 基线缺 cache、候选有值：这一项不进配对，不能把「缺观测」当成回退。
+        base = [row("a", cache=None)]
+        cand = [row("a", cache=2)]
+        result = compare(base, cand)
+        self.assertEqual(result["paired"]["cache_hits"]["n"], 0)
+        self.assertNotIn("tool_efficiency_regressed", result["reasons"])
+
+    def test_dropping_tool_calls_is_not_an_improvement(self):
+        base = [row("a", calls=3)]
+        cand = [row("a", calls=None)]
+        result = compare(base, cand)
+        self.assertNotEqual(result["decision"], "accept")
+
     def test_resolution_regression_rejects(self):
         base = [row("a", resolved=True)]
         cand = [row("a", resolved=False)]

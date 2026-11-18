@@ -157,16 +157,36 @@ def _git_rev(root: Path) -> str:
         return "unknown"
 
 
+def _worktree_patch(root: Path) -> str:
+    """候选 worktree 未提交补丁的哈希；没有差异时返回空串。"""
+    try:
+        proc = subprocess.run(["git", "-C", str(root), "diff", "HEAD", "--", "."],
+                              check=True, capture_output=True, text=True)
+    except (OSError, subprocess.CalledProcessError):
+        return "unknown"
+    if not proc.stdout.strip():
+        return ""
+    return hashlib.sha256(proc.stdout.encode("utf-8")).hexdigest()[:12]
+
+
 def version_for(tasks: Dict[str, Any], policy: Dict[str, Any]) -> Dict[str, Any]:
     """一次 pilot 的版本坐标：协议、策略、两侧知识库、候选、模型。"""
     arms = tasks.get("arms") or {}
     base_root = (arms.get("baseline") or {}).get("root") or "."
     candidate_root = (arms.get("candidate") or {}).get("root") or "."
+    base_kb = _git_rev(Path(base_root))
+    patch = _worktree_patch(Path(candidate_root))
+    if patch == "unknown":
+        candidate_kb = "unknown"
+    elif patch == "":
+        candidate_kb = base_kb
+    else:
+        candidate_kb = f"{base_kb}+patch:{patch}"
     version = Version(
         protocol=PROTOCOL_VERSION,
         policy=policy_hash(policy),
-        base_kb=_git_rev(Path(base_root)),
-        candidate_kb=_git_rev(Path(candidate_root)),
+        base_kb=base_kb,
+        candidate_kb=candidate_kb,
         candidate=str(tasks.get("candidate_id") or "unknown"),
         model="unknown",
         algorithm="subagent-reflection",
@@ -266,18 +286,7 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
     alpha = float((policy.get("decision") or {}).get("alpha", 0.10))
     alpha_eff = alpha / (reuse_index + 1)
     required = _required_wins(alpha_eff)
-    target = str((tasks.get("candidate") or {}).get("target_component") or "")
-    if "knowledge_usage" in target:
-        baseline = {row["sample_id"]: row for row in collect["arms"]["baseline"]}
-        candidate = {row["sample_id"]: row for row in collect["arms"]["candidate"]}
-        flippable = 0
-        for sid in baseline:
-            before = (baseline[sid].get("knowledge_usage") or {}).get("hit")
-            after = ((candidate.get(sid) or {}).get("knowledge_usage") or {}).get("hit")
-            if before or after:
-                flippable += 1
-    else:
-        flippable = counts["n"]
+    flippable = counts["n"]
 
     cost_cfg = policy.get("cost") or {}
     dimension = cost_cfg.get("primary_dimension", "tokens")
@@ -301,10 +310,11 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
     result = decision.decision.value
     reason = decision.reason
     capacity_ok = flippable >= required
-    if result == "accept" and not capacity_ok:
-        result = "insufficient"
-        reason = (f"判定容量不足：可翻盘样本 {flippable} < 达成证据所需 {required}；"
+    if not capacity_ok:
+        reason = (f"判定容量不足：配对样本 {flippable} < 达成证据所需 {required}；"
                   + reason)
+        if result == "accept":
+            result = "insufficient"
     pool_rows = []
     for sample in tasks.get("samples") or []:
         sid = str(sample.get("short_id") or sample.get("id"))
@@ -314,6 +324,20 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
             digest = "unknown"
         pool_rows.append(f"{sid}:{digest}")
     pool_hash = hashlib.sha256("\n".join(sorted(pool_rows)).encode("utf-8")).hexdigest()[:12]
+    version = version_for(tasks, policy)
+    store = ConclusionStore.for_base(Path(base) if base else output.parent)
+    for record in store.read():
+        if (
+            record.get("pool_hash") == pool_hash
+            and record.get("b") == counts["b"]
+            and record.get("c") == counts["c"]
+            and record.get("n") == counts["n"]
+            and record.get("decision") == result
+            and (record.get("versions") or {}).get("candidate_kb") == version["candidate_kb"]
+        ):
+            runs = record_runs(output, policy, base=base)
+            return {"conclusion": record, "runs": runs,
+                    "constraints": constraints, "duplicate": True}
     conclusion = Conclusion(
         decision=result, reason=reason,
         metrics={
@@ -323,13 +347,13 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
             "main_metric": "resolution",
         },
         cost={"tokens": {"baseline": cost_b, "candidate": cost_c}} if cost_b is not None else None,
-        versions=Version.from_dict(version_for(tasks, policy)),
+        versions=Version.from_dict(version),
         pool_hash=pool_hash,
         reuse_index=reuse_index, alpha_eff=alpha_eff,
         b=counts["b"], c=counts["c"], n=counts["n"],
         p_value=decision.p_value, delta_q=decision.delta_q,
         cost_ratio=decision.cost_ratio, pool=pool, at=now_iso(),
     ).validate()
-    ConclusionStore.for_base(Path(base) if base else output.parent).append(conclusion.to_dict())
+    store.append(conclusion.to_dict())
     runs = record_runs(output, policy, base=base)
     return {"conclusion": conclusion.to_dict(), "runs": runs, "constraints": constraints}

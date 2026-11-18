@@ -115,6 +115,18 @@ def _paired_row(b: Dict[str, Dict[str, Any]], c: Dict[str, Dict[str, Any]],
             "baseline": mean_b, "candidate": mean_c, "delta": mean_c - mean_b}
 
 
+def _elapsed_state(delta, ci):
+    """连续成本项只在置信区间排除 0 时才判方向。"""
+    if delta is None or abs(delta) <= EPSILON:
+        return "neutral"
+    low, high = ci.get("low"), ci.get("high")
+    if low is not None and low > 0:
+        return "worse"
+    if high is not None and high < 0:
+        return "better"
+    return "unconfirmed"
+
+
 def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
     """准确率不降、wrong_case 不增，且至少一个效率项改善、没有效率项变差。
 
@@ -134,6 +146,8 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
         b[i]["resolution_ok"] is not None and c[i]["resolution_ok"] is not None
         for i in ids
     )
+    if c_sum["hits"] < b_sum["hits"]:
+        reasons.append("accuracy_regressed")
     if resolution_complete:
         resolved_b = sum(1 for i in ids if b[i]["resolution_ok"])
         resolved_c = sum(1 for i in ids if c[i]["resolution_ok"])
@@ -141,18 +155,21 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
         if resolved_c < resolved_b:
             reasons.append("resolution_regressed")
     else:
-        if c_sum["hits"] < b_sum["hits"]:
-            reasons.append("accuracy_regressed")
         if b_sum["wrong_cases"] is None or c_sum["wrong_cases"] is None:
             reasons.append("wrong_cases_unknown")
         elif c_sum["wrong_cases"] > b_sum["wrong_cases"]:
             reasons.append("wrong_cases_increased")
     paired = {field: _paired_row(b, c, ids, field) for field in EFFICIENCY_FIELDS}
     deltas = {field: paired[field]["delta"] for field in EFFICIENCY_FIELDS}
+    elapsed_diffs = [c[i]["elapsed_ms"] - b[i]["elapsed_ms"] for i in ids
+                     if b[i]["elapsed_ms"] is not None and c[i]["elapsed_ms"] is not None]
+    elapsed_state = _elapsed_state(paired["elapsed_ms"]["delta"], paired_diff_ci(elapsed_diffs))
     improved = 0
     worsened = 0
     partial = []
     for field in EFFICIENCY_FIELDS:
+        if field == "elapsed_ms":
+            continue
         row = paired[field]
         if row["delta"] is None:
             continue
@@ -163,6 +180,12 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
             improved += 1
         elif row["delta"] > EPSILON:
             worsened += 1
+    if elapsed_state == "worse":
+        worsened += 1
+    elif elapsed_state == "better":
+        improved += 1
+    elif elapsed_state == "unconfirmed" and paired["elapsed_ms"]["delta"] > 0:
+        reasons.append("elapsed_inconclusive")
     if any(paired[field]["delta"] is not None and paired[field]["delta"] > EPSILON
            for field in partial):
         reasons.append("efficiency_partial_unknown")
@@ -247,7 +270,7 @@ def from_trace(document: Any, expected_case: Optional[str] = None,
             load_index_rows = value
         elif isinstance(value, list):
             load_index_rows = len(value)
-    candidates = len(shortlist) if shortlist else load_index_rows
+    candidates = len(shortlist) if shortlist else None
     refs = sum(
         1 for event in events
         if event.get("action") == "reference_lookup" and event.get("outcome") != "skipped"
