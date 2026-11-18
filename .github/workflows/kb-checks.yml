@@ -566,8 +566,9 @@ jobs:
       - run: node scripts/build_panel_bundle.js --check
       - run: node scripts/check_panel_bundle.js
       - run: node scripts/check_panel_bundle.js --selftest-dsh
-      # RPC 探针自测：自带假服务器把五条判定各走一遍（正常 / 信封不合法 / 处理函数报错 /
-      # 面板侧降级 / 路由没在服务），不需要真 DSH；真机那一次要 DSH 在跑，不进 CI。
+      # RPC 探针自测：自带假服务器把九条判定各走一遍（正常 / 信封不合法 / 处理函数报错 /
+      # 面板侧降级 / 路由没在服务 / host 半在 / host 半没注册 / 没有 token 时从 DSH_WEB_URL 退到
+      # host 半 / 显式 --url 不带 token 时取命令行那一个），不需要真 DSH；真机那一次要 DSH 在跑，不进 CI。
       - run: node scripts/panel_rpc_probe.js --selftest
       # 装包脚本自测：自带假服务器把八条判定各走一遍（装好 / 已装改使能 / spec 被拒 / 安装失败 /
       # 查状态 / 卸载 / /api 没认领端点 / 拿不到地址），不需要真 DSH；真机那一次要 DSH 在跑，不进 CI。
