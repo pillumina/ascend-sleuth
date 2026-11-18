@@ -10,7 +10,7 @@ from .trace_state import TraceState, attribute_trace
 
 def sync(root: Path, state_path: Path, source: Optional[TraceSource] = None,
          source_id: str = "local") -> Dict[str, Any]:
-    source = source or LocalTraceSource(root, source_id=source_id)
+    source = source or LocalTraceSource(root, source_id=source_id, prefer_main=True)
     refs = source.list_traces()
     state = TraceState.load(Path(state_path), source_id)
     stats = {"source_id": source_id, "traces": len(refs), "new": 0,

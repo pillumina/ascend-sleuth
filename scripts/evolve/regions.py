@@ -24,7 +24,7 @@ REGIONS: Dict[str, RegionSpec] = {
     ),
     "diagnose.verification_checklist": RegionSpec(
         id="diagnose.verification_checklist", skill="diagnose",
-        components=("quickly_check", "verification", "case_hit"),
+        components=("quickly_check", "verification", "case_hit", "diagnosis"),
         description="候选验证与证据检查顺序；不改 case 内容与输出 schema",
     ),
     "diagnose.trace_evidence": RegionSpec(

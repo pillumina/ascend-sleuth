@@ -50,8 +50,12 @@ def _metrics_signals(metrics: Dict[str, Any]) -> Dict[str, Any]:
         item = freshness.get(key) or {}
         if item.get("available") and item.get("stale"):
             components[f"metrics_{key}_stale"] = {"events": 1, "hard": 0}
+    freshness_available = any(
+        isinstance(item, dict) and item.get("available")
+        for item in (freshness or {}).values()
+    )
     return {
-        "available": bool(timeline.get("available") or freshness),
+        "available": bool(timeline.get("available") or freshness_available),
         "components": components,
         "snapshot_id": (timeline.get("latest_period") or {}).get("period"),
     }
@@ -118,6 +122,9 @@ def build_plan(root: Path, trace_state: Optional[Path] = None,
         str(metric.get("snapshot_id") or ""),
         str(replay_data.get("snapshot_id") or ""),
         json.dumps(stages, sort_keys=True),
+        json.dumps(components, sort_keys=True),
+        json.dumps(regions, sort_keys=True),
+        json.dumps(spec, sort_keys=True),
     ]
     snapshot_id = hashlib.sha256("|".join(snapshot_parts).encode("utf-8")).hexdigest()[:12]
     return {

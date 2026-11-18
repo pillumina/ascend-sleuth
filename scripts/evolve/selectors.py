@@ -3,6 +3,13 @@
 from typing import Any, List, Optional
 
 
+class NoneSelector:
+    id = "select.none"
+
+    def choose(self, candidates, samples, reflected):
+        return None
+
+
 class BestSelector:
     id = "select.best"
 

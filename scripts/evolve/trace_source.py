@@ -41,12 +41,19 @@ class TraceSource(Protocol):
 class LocalTraceSource:
     """读当前检出的 ``traces/*.yaml``；不读 git，不删除原文件。"""
 
-    def __init__(self, root: Path, source_id: str = "local"):
+    def __init__(self, root: Path, source_id: str = "local", prefer_main: bool = False):
         self.root = Path(root)
         self.source_id = source_id
+        self.prefer_main = prefer_main
 
     def list_traces(self) -> List[TraceRef]:
         directory = self.root / "traces"
+        if self.prefer_main:
+            try:
+                from exec_log_path import resolve_traces
+                directory = resolve_traces(self.root)
+            except (ImportError, OSError):
+                pass
         if not directory.exists():
             return []
         refs = []

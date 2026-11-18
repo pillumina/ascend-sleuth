@@ -12,7 +12,7 @@ judge 看 rubric/expected；reflect 只看失败反馈。
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from .selectors import BestSelector, ParetoSelector
+from .selectors import BestSelector, NoneSelector, ParetoSelector
 from .stages import get_stage
 
 
@@ -91,7 +91,12 @@ class AgentRsiSession:
         if selector is None:
             if select_stage == "select.agent":
                 raise GepaError("select.agent requires an external selector")
-            selector = ParetoSelector() if select_stage == "select.pareto" else BestSelector()
+            if select_stage == "select.none":
+                selector = NoneSelector()
+            elif select_stage == "select.pareto":
+                selector = ParetoSelector()
+            else:
+                selector = BestSelector()
         self.selector = selector
         self.candidates: List[Candidate] = [Candidate(id="seed", skill=seed_skill)]
         self.reflected: List[str] = []
@@ -110,6 +115,8 @@ class AgentRsiSession:
                 "kind": "evaluate", "candidate_id": candidate.id,
                 "skill": candidate.skill, "sample_id": missing[0],
             }
+        if self.select_stage.id == "select.none" or self.propose_stage.id == "propose.none":
+            return {"kind": "stop", "reason": "baseline_control"}
         best = self.best()
         if best is not None and all(score >= 1.0 for score in best.scores.values()):
             return {"kind": "stop", "reason": "perfect_score"}

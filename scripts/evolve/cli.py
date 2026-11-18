@@ -784,11 +784,11 @@ def cmd_rsi_plan(args: argparse.Namespace) -> int:
         metrics = load_metrics(root)
         plan = build_plan(
             root,
-            trace_state=Path(args.trace_state) if args.trace_state else None,
+            trace_state=Path(args.trace_state) if args.trace_state else (_evolve_base(args) / "trace-state.json"),
             replay=Path(args.replay) if args.replay else None,
             metrics=metrics,
         )
-        state = Path(args.state) if args.state else root / ".s2-replay" / "evolve" / "rsi-plan.json"
+        state = Path(args.state) if args.state else _evolve_base(args) / "rsi-plan.json"
         save_plan(plan, state)
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -822,10 +822,10 @@ def cmd_rsi_status(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------- traces
 def cmd_traces_sync(args: argparse.Namespace) -> int:
     root = Path(args.root) if args.root else Path.cwd()
-    state = Path(args.state) if args.state else root / ".s2-replay" / "evolve" / "trace-state.json"
+    state = Path(args.state) if args.state else _evolve_base(args) / "trace-state.json"
     try:
         stats = trace_sync(root, state, source_id=args.source_id)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RuntimeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     if args.json:
@@ -846,7 +846,7 @@ def cmd_traces_sync(args: argparse.Namespace) -> int:
 
 def cmd_traces_status(args: argparse.Namespace) -> int:
     root = Path(args.root) if args.root else Path.cwd()
-    state = Path(args.state) if args.state else root / ".s2-replay" / "evolve" / "trace-state.json"
+    state = Path(args.state) if args.state else _evolve_base(args) / "trace-state.json"
     try:
         payload = trace_status(state)
     except (OSError, ValueError) as exc:
