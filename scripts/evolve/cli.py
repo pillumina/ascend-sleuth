@@ -38,6 +38,7 @@ from .adapters.replay import collect as replay_collect
 from .adapters.replay import prepare as replay_prepare
 from .adapters.health import metrics as health_metrics
 from .adapters.issues import ingest_issues
+from .adapters.ixn import import_ixn
 from .adapters.s2 import import_s2_samples
 from .decision import Decision, DecisionResult, decide
 from .experiments import ExperimentError, validate_experiment
@@ -285,6 +286,20 @@ def cmd_sample_import_s2(args: argparse.Namespace) -> int:
     if stats["limit_reached"]:
         print(f"limit reached: {args.limit}")
     print(f"source: {stats['source']}")
+    return 0
+
+
+def cmd_sample_import_ixn(args: argparse.Namespace) -> int:
+    root = Path(args.root) if args.root else Path.cwd()
+    try:
+        stats = import_ixn(
+            _store(args), root, root / args.source, limit=args.limit,
+        )
+    except (AdapterError, StoreError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"created: {stats['created']}")
+    print(f"skipped: held_out={stats['skipped_held_out']} duplicate={stats['skipped_duplicate']} missing={stats['skipped_missing']}")
     return 0
 
 
@@ -1085,6 +1100,12 @@ def build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--quality-file", default=None,
                         help="agent 产出的 issue 质量/答案 JSON；低于阈值直接跳过")
     ingest.set_defaults(func=cmd_sample_ingest_issues)
+
+    ixn = sample_sub.add_parser("import-ixn", help="导入 ixn-arena 非 held_out gold 样本")
+    ixn.add_argument("--root", default=None)
+    ixn.add_argument("--source", default="eval/ixn-arena")
+    ixn.add_argument("--limit", type=int, default=None)
+    ixn.set_defaults(func=cmd_sample_import_ixn)
 
     listing = sample_sub.add_parser("list", help="列出样本")
     listing.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
