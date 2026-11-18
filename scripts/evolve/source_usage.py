@@ -107,13 +107,7 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
         deltas[field] = delta
         improved += 1 if delta < 0 else 0
         worsened += 1 if delta > 0 else 0
-    if bs["cache_hits"] is not None and cs["cache_hits"] is not None:
-        delta = cs["cache_hits"] - bs["cache_hits"]
-        deltas["cache_hits"] = delta
-        improved += 1 if delta > 0 else 0
-        worsened += 1 if delta < 0 else 0
-    else:
-        deltas["cache_hits"] = None
+    deltas["cache_hits"] = None
     if worsened:
         reasons.append("source_efficiency_regressed")
     if not improved:

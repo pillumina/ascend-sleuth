@@ -65,12 +65,18 @@ def prepare(root: Path, candidate_path: Path, samples: List[str],
     return tasks
 
 
-def collect(output: Path) -> Dict[str, Any]:
+def collect(output: Path, judge: Optional[Path] = None) -> Dict[str, Any]:
     output = Path(output)
     tasks_path = output / "tasks.json"
     if not tasks_path.exists():
         raise PilotError(f"missing {tasks_path}")
     tasks = json.loads(tasks_path.read_text(encoding="utf-8"))
+    judge_data = {}
+    if judge is not None:
+        judge_path = Path(judge)
+        if not judge_path.exists():
+            raise PilotError(f"missing judge file: {judge_path}")
+        judge_data = json.loads(judge_path.read_text(encoding="utf-8"))
     result = {"candidate_id": tasks.get("candidate_id"), "arms": {}}
     for arm in ("baseline", "candidate"):
         rows = []
@@ -85,7 +91,9 @@ def collect(output: Path) -> Dict[str, Any]:
                 try:
                     doc = yaml.safe_load(trace.read_text(encoding="utf-8"))
                     row["knowledge_usage"] = knowledge_from_trace(doc)
-                    row["source_usage"] = source_from_trace(doc)
+                    score = (judge_data.get(arm) or {}).get(sid)
+                    source_ok = None if score is None else bool(score)
+                    row["source_usage"] = source_from_trace(doc, source_ok=source_ok)
                 except Exception as exc:  # trace may have no source events
                     row["usage_error"] = str(exc)
             rows.append(row)

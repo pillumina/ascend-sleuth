@@ -904,7 +904,7 @@ def cmd_pilot_prepare(args: argparse.Namespace) -> int:
 
 def cmd_pilot_collect(args: argparse.Namespace) -> int:
     try:
-        result = pilot_collect(Path(args.output))
+        result = pilot_collect(Path(args.output), judge=Path(args.judge) if args.judge else None)
     except (OSError, ValueError, PilotError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -1443,6 +1443,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_prepare.set_defaults(func=cmd_pilot_prepare)
     p_collect = pilot_sub.add_parser("collect")
     p_collect.add_argument("--output", required=True)
+    p_collect.add_argument("--judge", default=None, help="可选 judge JSON，用于给 source_ok 赋值")
     p_collect.set_defaults(func=cmd_pilot_collect)
 
     candidate = sub.add_parser("candidate", help="candidate Patch 校验/隔离 apply/rollback")
