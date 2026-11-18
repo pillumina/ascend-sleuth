@@ -111,14 +111,22 @@
 | 查看算法适配器 | `python3 scripts/evolve.py experiment list`；按 target 解析用 `experiment resolve --target skill` |
 | 看完整 metrics 体检 | `python3 scripts/evolve.py health --json`（只读；`--check` 有 fail 退出 1，broken 退出 2；不带 `--check` 的读数命令仍退出 0，与 `metrics_health.py` 一致） |
 | 记录一个 baseline 提案 | `python3 scripts/evolve.py experiment propose --target skill --component <组件> --summary <一句话>`（只写本地实验记录，不跑模型、不合入） |
-| GEPA 适配器 | 已注册，需 Python ≥3.10 的 `gepa`、`budget.gepa` 的 evaluator/task_lm/reflection_lm；CLI 不伪造实验配置 |
 | 查看本地实验记录 | `python3 scripts/evolve.py experiment records --limit 10` |
-| 记录 subagent 对照实验 | `/skill:evolve-experiment` 产 `result.json`，再 `experiment record --file result.json` |
+| 记录 subagent 对照实验 | `/skill:self-evolve` 的 `references/experiment.md` 产 `result.json`，再 `experiment record --file result.json` |
+| agent-native GEPA | 状态机 `scripts/agent_gepa.py`；不接官方 gepa 库，不依赖外部 endpoint |
+| 增量 trace 归因 | `python3 scripts/evolve.py traces sync`；`traces status` 看 snapshot/状态 |
+| 知识使用效率 | `python3 scripts/evolve.py knowledge-usage evaluate/compare`；只读 usage JSON，不改 case |
+| candidate apply | `candidate validate/apply/rollback/diff`；在隔离 git worktree 应用单个 skill region Patch，不改主检出 |
+| 源码访问效率 | `python3 scripts/evolve.py source-usage from-trace/evaluate/compare`；只读 trace/usage，不下载源码 |
+| RSI 多源计划 | `python3 scripts/evolve.py rsi plan`（trace/metrics/replay → 归因/region/实验 spec）；`--replay .s2-replay` 读 S2 result 失败；`rsi status` 读回；agent 回写用 `rsi attribute/select --state <plan> --file <json>` |
+| holdout 隔离 | issue/S2 导入与手工 sample 新建/复核/升格都按 `eval/holdout.yaml` 的 issue 号拒绝；不把封存样本吸进候选池 |
 | 全库观测轮 | `/skill:self-evolve` |
 
 只跑新增样本，不每周跑全量；判定那一次才跑全量。读数包含六项：可评样本数、最近一次全量回放的命中率、单次回放成本、距上次收尾检查的天数、未执行的检查命令数、内容体检的越界项。没测过的项写「未测」，不补零。
 
 维护者每周只看一个入口：`python3 scripts/evolve.py run`（面板或脚本用 `--json`）。它不跑模型、不写库，只根据样本队列、结论、`eval/policy.yaml` 和 metrics 给出 `next_actions`：候选待审、field 评估样本不足、test 不足或未抽、尚无结论、core 回归不足；同时给出 candidate/field/test 计数、按 `stratum` 的分层计数与 warnings（例如候选缺答案、某层 test 不足）。`samples.strata` 配每层目标；`draw-test` 按目标层补齐。
+
+trace 归因的幂等状态在 `.s2-replay/evolve/trace-state.json`：键是 `(source_id, trace_id, content_sha256, attribution_schema)`；同内容同 schema 跳过，trace 内容变化或 schema 升级才重算。`snapshot_id` 由当前活跃 trace 集合再哈希，用来判断状态是否对应当前 trace 集。`traces sync` 会把归因组件映射到 `regions.py` 的可变异区；没有匹配就空，不猜。未来 collector 实现 `TraceSource` 并换 `source_id`，不复制归因/状态机。
 
 metrics 的消费分两跳：诊断只写本地 trace；`trace_entry_activity.py --apply` 把现场使用折成 `metrics/entry-activity.d/<周>.yaml` 并更新共享游标，`metrics_snapshot.py --kind live` 在周界组装 `metrics/timeline.d/<期号>.yaml`；groom/PR 提交这些 tracked 源和生成物，原始 trace 与 `metrics/entry-activity.local/` 不上仓。`evolve run/brief` 只读 `metrics/timeline.yaml`、`gates.yaml`、`skill-exec-log.yaml` 和 `entry-activity/<部署>.yaml`，缺文件标 unavailable，不补零，也不把本地明细当中心数据。读 `gates.yaml` 的 `freshness` 判 live/structural 是否过期；过期或不可用会进 `next_actions`，提醒先跑 `trace_entry_activity --apply`/`metrics_snapshot`，不把旧读数当现状。
 

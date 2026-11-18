@@ -13,7 +13,7 @@ from evolve.contracts import Patch  # noqa: E402
 
 class AlgorithmRegistryTest(unittest.TestCase):
     def test_baseline_is_registered(self):
-        self.assertEqual(algorithm_ids(), ["baseline", "gepa"])
+        self.assertEqual(algorithm_ids(), ["baseline"])
         algorithm = get_algorithm("baseline")
         self.assertEqual((algorithm.id, algorithm.version, algorithm.scope),
                          ("baseline", "manual", "all"))

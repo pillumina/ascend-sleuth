@@ -86,6 +86,7 @@ python3 scripts/evolve.py sample ingest-issues --repo vllm-project/vllm-ascend \
 - `--dry-run` 只打印候选，不写样本库、不更新 state。正式运行成功后把实际创建的编号原子追加到 state 的 `processed`；失败不标，重复运行不会重复导入。
 - 评测样本的 `processed` 写在 state 的 `<source_id>/evaluation` 命名空间，和 case 沉淀的 `<source_id>` 分开；同一条 issue 可同时用于 case 和评测，不互相吃掉。默认 state 跟随当前检出，样本库/`run`/`brief` 仍锚主检出；显式 `--root` 才把两者都落到本地运行件。这样 worktree 里产出的 state 能随分支提交，候选不会在 worktree 清理时丢。
 - 维护者用 `sample set-answer --id ... --expected '<json>'` 补答案，再走 `sample check`、`sample review`。ingest 不自动把候选转 active；非诊断或无答案的候选留给 review 拒收。
+- `--quality-file` 接受 agent 产出的 issue 质量/答案 JSON：分数低于 0.6 或答案占位直接跳过；通过时把 answer/namespace/category 写进 expected，仍不自动 active。
 ```mermaid
 flowchart TD
   A[用户：补评测集] --> B[问 repo / labels / limit / dry-run]
@@ -99,7 +100,7 @@ flowchart TD
   G -->|拒绝| I[rejected，不进入评测池]
 ```
 
-- 数据源由 `scripts/evolve/sources/base.py` 的 `IssueSource` 定义：`source_id`、`list_issues`、`fetch_issue`。GitHub 是默认实现；`local` 读本地 JSON/YAML 导出（含 body），用 `--source local --cache <path>`。新增 GitCode 等源只实现这个 Protocol 并登记进 `registry.py`，过滤、建候选、state 仍走同一条管线；`source_id` 是 state 分区键，也是候选 `source` 的前缀。
+- holdout 隔离是硬检查：`ingest-issues`、`import-s2`、`sample new/review/promote` 会按 `eval/holdout.yaml` 的 fixture issue 号拒绝或跳过；holdout 样本不进入候选池、不参与演进。`source_id`、`list_issues`、`fetch_issue`。GitHub 是默认实现；`local` 读本地 JSON/YAML 导出（含 body），用 `--source local --cache <path>`。新增 GitCode 等源只实现这个 Protocol 并登记进 `registry.py`，过滤、建候选、state 仍走同一条管线；`source_id` 是 state 分区键，也是候选 `source` 的前缀。
 
 诊断标注由 agent 预标、维护者抽检，抽检覆盖每周新增样本的两成或两条，取大。case 与 reference 先做 10–20 条双标与裁决，再定 rubric 阈值。trace 先全审 10 条，再抽检。自动标注只做提名，不能直接当答案。
 
@@ -232,7 +233,51 @@ S2 未命中有三种解释：路由错、缺 case、内容错。它只看到没
 
 `--self-test` 用合成样本复现三种结论，CI 跑它（`kb-checks` 的 `arena-gate-rule`）；判据写坏、只会判 `accept` 时 CI 就红。
 
-### 3.8 算法适配器
+### 3.8 算法适配器与 RSI stage
+
+自演进实验按六个节点固定算法：`attribute`、`select_region`、`select_candidate`、`propose`、`judge`、`gate`。当前注册：`attribute.trace_rule`/`attribute.agent`、`select.region_hardcount`/`select.region_agent`、`select.none`/`select.best`/`select.pareto`、`propose.none`/`propose.agent`/`propose.reflection`（兼容别名）、`judge.subagent`、`gate.paired`。默认 agent heuristic 是 `select_candidate.best` + `propose.agent`；GEPA 是 `select_candidate.pareto` + `propose.agent` 的组合。归因/选 region 先规则，规则不确定才让 agent 补证据；agent 不能把推断写成 hard，也不做最终 gate。`policy.experiment.stages` 是可覆盖的默认组合；实验记录保存解析后的 stages，禁止把算法写错节点。
+
+### 3.9 知识使用效率
+
+知识使用的可变异区是 `diagnose.knowledge_usage`，只改检索顺序、读索引/全文时机、候选数、reference 查询与停止条件；不改 case/reference 内容，也不改 trace schema。归因组件用 `knowledge_usage`、`case_retrieval`、`case_loading`、`reference_lookup`。
+
+每个 rollout 记录一行：
+
+```json
+{"sample_id":"S-1","hit":true,"first_hit_step":2,"candidates_examined":2,
+ "full_body_reads":1,"reference_lookups":0,"wrong_cases":0,"tokens":1200}
+```
+
+`hit=true` 必须有 `first_hit_step`；缺失字段记 unknown，不补 0。入口：
+
+```bash
+# 现有 diagnose trace 直接导出 usage；trace 放在演进评估目录，不写真实 traces/
+python3 scripts/evolve.py knowledge-usage from-trace \
+  --trace .s2-replay/evolve/usage-traces/<session>.yaml --expected-case <case-id>
+python3 scripts/evolve.py knowledge-usage evaluate --file usage.json
+python3 scripts/evolve.py knowledge-usage compare --baseline base.json --candidate cand.json
+```
+
+演进评估的 trace 统一放 `.s2-replay/evolve/usage-traces/`（本地运行件，git-ignored），不得写入 `traces/`；真实诊断 trace 与演进评估 trace 分开。`from-trace` 从 `load_index`/`quickly_check`/`reference_lookup`/`hit` 推导，token 不在 trace 里时保持 null。
+
+`compare` 只有在准确率不降、`wrong_cases` 不增、至少一个效率项改善、且没有效率项变差时给 `accept`；准确率或效率回退给 `reject`；没有改善给 `insufficient`。实验记录的 `knowledge_usage.decision` 若存在，整体 `accept` 必须同时为 `accept`。
+
+### 3.10 源码访问效率
+
+`diagnose.source_usage` 只改源码访问策略：缓存优先、固定 ref、限定路径与 grep 范围、失败停止；不改知识内容/schema。归因组件用 `source_usage`、`source_fetch`、`source_query`、`source_analysis`。
+
+真实 trace 的 `source_analysis` 可导出：
+
+```bash
+python3 scripts/evolve.py source-usage from-trace \
+  --trace .s2-replay/evolve/usage-traces/<session>.yaml
+python3 scripts/evolve.py source-usage evaluate --file source-usage.json
+python3 scripts/evolve.py source-usage compare --baseline base.json --candidate cand.json
+```
+
+记录 repo/ref、files_read、tool_calls、fetch_calls、grep_calls、followups、elapsed；cache/download/bytes 缺失时保持 null。`compare` 要求源码结论 correctness 不降，且至少一个访问效率项改善、没有项变差；correctness 或效率 unknown 只能记 `insufficient`。
+
+### 3.11 算法适配器
 
 算法只做提案者，不做判定、不直接写库、不合入。`scripts/evolve/ports.py` 定义 `Optimizer`，`scripts/evolve/algorithms/registry.py` 是静态注册表；当前只有 `baseline`。`policy.experiment.target`/`algorithm` 选目标与算法，`Version.algorithm`/`algorithm_version` 记身份，`budget`/`seed` 记实验条件。GEPA/AEL/SkillProx/EvolveMem 只在后续的实验适配器里接入，一次只接一个组件；没有动态插件加载。
 
@@ -256,7 +301,7 @@ python3 scripts/evolve.py experiment gate --target knowledge --sample K-1 \
 
 通过退出 0，拒绝退出 1，输入或 evaluator 未接退出 2。该命令只判一个已有 rubric 的样本，不替代双标、不生成 rubric。
 
-`targets/registry.py` 只允许 target 白名单内的算法；未注册的算法不会静默回退。GEPA 适配器已注册在 `algorithms/gepa.py`，只接 `skill` target；它不在 CLI 里伪造 evaluator/model，调用方必须在 `budget.gepa` 提供 `seed_candidate`、`trainset`、`evaluator`、`task_lm`、`reflection_lm`，并安装 `gepa`（Python ≥3.10）。未安装或配置缺失会报可照做的错误，不产生 Patch。加一个 target 或算法各改一个静态注册表，主循环、评测协议和记录格式不动。`experiment propose --target skill --component <组件>` 会调用当前 optimizer 生成一个 Patch 并写本地 `experiments.jsonl`；`experiment records` 读取最近记录。baseline 仍是人工提案，不会自动改文件或合入。
+`targets/registry.py` 只允许 target 白名单内的算法；未注册的算法不会静默回退。官方 GEPA 库没有注册：它需要外部 endpoint 和同步 `task_lm`/`reflection_lm`，不属于本框架的自包含路径。GEPA 效果由 agent-native 实现承担：`select_candidate.pareto` + `propose.agent`，由 subagent 执行 task/judge/reflection，不调用官方库。`experiment propose --target skill --component <组件>` 会调用当前 optimizer 生成一个 Patch 并写本地 `experiments.jsonl`；`experiment records` 读取最近记录。baseline 仍是人工提案，不会自动改文件或合入。
 
 ## 4 边界与失败模式
 

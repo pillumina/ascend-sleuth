@@ -84,6 +84,20 @@ class HealthCliTest(unittest.TestCase):
             readout = run_cli("health", "--root", td)
             self.assertEqual(readout.returncode, 0, readout.stdout + readout.stderr)
 
+    def test_traces_sync_is_idempotent(self):
+        with tempfile.TemporaryDirectory() as td:
+            trace = Path(td) / "traces" / "t1.yaml"
+            trace.parent.mkdir()
+            trace.write_text("trace:\n- {action: attribution, attribution_kind: execution, component: diagnose}\n", encoding="utf-8")
+            first = run_cli("traces", "sync", "--root", td, "--state", str(Path(td) / "state.json"))
+            self.assertEqual(first.returncode, 0, first.stderr)
+            self.assertIn("new=1", first.stdout)
+            second = run_cli("traces", "sync", "--root", td, "--state", str(Path(td) / "state.json"))
+            self.assertIn("reused=1", second.stdout)
+            status = run_cli("traces", "status", "--root", td, "--state", str(Path(td) / "state.json"))
+            self.assertEqual(status.returncode, 0, status.stderr)
+            self.assertIn("snapshot_id", status.stdout)
+
     def test_health_json_is_machine_readable(self):
         result = run_cli("health", "--json")
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -188,6 +202,21 @@ class SampleLifecycleCliTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 2)
         self.assertIn("no implemented evaluator", result.stderr)
+
+    def test_sample_new_rejects_holdout_source(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "eval").mkdir()
+            (root / "eval" / "holdout.yaml").write_text(
+                "entries:\n- fixture: VLLM-ASC-13329.fixture.yaml\n", encoding="utf-8",
+            )
+            result = run_cli(
+                "sample", "new", "--root", td, "--id", "X-1",
+                "--object-type", "diagnosis",
+                "--source", "https://github.com/vllm-project/vllm-ascend/issues/13329",
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("holdout", result.stderr)
 
     def test_reject(self):
         self.create()
@@ -432,14 +461,14 @@ class IngestCliTest(unittest.TestCase):
             self.assertEqual(record["eval_profile_id"], "arena")
             self.assertTrue(record["eval_ready"])
 
-    def test_experiment_propose_gepa_without_config_fails_cleanly(self):
+    def test_experiment_propose_official_gepa_is_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             result = run_cli(
                 "experiment", "propose", "--root", td, "--target", "skill",
                 "--algorithm", "gepa",
             )
             self.assertEqual(result.returncode, 2)
-            self.assertIn("budget.gepa", result.stderr)
+            self.assertIn("not allowed", result.stderr)
             self.assertNotIn("Traceback", result.stderr)
 
     def test_experiment_propose_rejects_invalid_patch_fields(self):
@@ -487,6 +516,41 @@ class IngestCliTest(unittest.TestCase):
             self.assertEqual(created.returncode, 2)
             self.assertIn("subagent_judge", created.stderr)
 
+    def test_knowledge_usage_compare_cli(self):
+        with tempfile.TemporaryDirectory() as td:
+            base = Path(td) / "base.json"
+            cand = Path(td) / "cand.json"
+            base.write_text(json.dumps([
+                {"sample_id": "a", "hit": True, "first_hit_step": 4,
+                 "candidates_examined": 3, "full_body_reads": 3,
+                 "reference_lookups": 1, "wrong_cases": 0, "tokens": 100},
+            ]), encoding="utf-8")
+            cand.write_text(json.dumps([
+                {"sample_id": "a", "hit": True, "first_hit_step": 2,
+                 "candidates_examined": 1, "full_body_reads": 1,
+                 "reference_lookups": 0, "wrong_cases": 0, "tokens": 50},
+            ]), encoding="utf-8")
+            result = run_cli("knowledge-usage", "compare",
+                             "--baseline", str(base), "--candidate", str(cand), "--json")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('"decision": "accept"', result.stdout)
+
+    def test_experiment_record_rejects_fake_p_value(self):
+        result = {
+            "target_kind": "skill", "target_component": "x",
+            "algorithm": "subagent-reflection", "algorithm_version": "1",
+            "execution": "subagent", "decision": "accept", "samples": ["S-1"],
+            "baseline": {"score": 0, "samples": ["S-1"]},
+            "candidate": {"score": 1, "samples": ["S-1"]},
+            "paired": {"b": 1, "c": 0, "n": 1, "p_value": 0, "alpha_eff": 0.1},
+        }
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "bad.json"
+            path.write_text(json.dumps(result), encoding="utf-8")
+            created = run_cli("experiment", "record", "--root", td, "--file", str(path))
+            self.assertEqual(created.returncode, 2)
+            self.assertIn("exact paired p", created.stderr)
+
     def test_experiment_record_rejects_mismatched_samples(self):
         result = {
             "target_kind": "skill", "target_component": "x",
@@ -516,6 +580,73 @@ class IngestCliTest(unittest.TestCase):
             result = run_cli("experiment", "list", "--root", td)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("* baseline", result.stdout)
+
+    def test_issue_ingest_uses_quality_answer(self):
+        cache = Path(tempfile.mkdtemp()) / "issues.json"
+        cache.write_text(json.dumps([{
+            "number": 9, "title": "T9", "body": "long local body for ingest " * 2,
+            "comments": 5, "state": "closed", "labels": ["triaged"],
+        }]), encoding="utf-8")
+        quality = Path(tempfile.mkdtemp()) / "quality.json"
+        quality.write_text(json.dumps({
+            "9": {"score": 0.9, "answer": "specific fix", "namespace": "inference/vllm-ascend",
+                  "category": "interrupt", "evidence": "comment"},
+        }), encoding="utf-8")
+        with tempfile.TemporaryDirectory() as td:
+            result = run_cli(
+                "sample", "ingest-issues", "--source", "local", "--cache", str(cache),
+                "--repo", "o/r", "--root", td, "--state", "ingest-state.json",
+                "--quality-file", str(quality),
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            sample = Path(td) / ".s2-replay" / "evolve" / "samples" / "LOCAL-O-R-9.yaml"
+            self.assertIn("specific fix", sample.read_text(encoding="utf-8"))
+
+    def test_issue_ingest_skips_issue_missing_from_quality_file(self):
+        cache = Path(tempfile.mkdtemp()) / "issues.json"
+        cache.write_text(json.dumps([{
+            "number": 10, "title": "T10", "body": "long local body for ingest " * 2,
+            "comments": 5, "state": "closed", "labels": ["triaged"],
+        }]), encoding="utf-8")
+        quality = Path(tempfile.mkdtemp()) / "quality.json"
+        quality.write_text(json.dumps({}), encoding="utf-8")
+        with tempfile.TemporaryDirectory() as td:
+            result = run_cli(
+                "sample", "ingest-issues", "--source", "local", "--cache", str(cache),
+                "--repo", "o/r", "--root", td, "--state", "ingest-state.json",
+                "--quality-file", str(quality),
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("created: 0", result.stdout)
+
+    def test_issue_ingest_malformed_quality_file_fails_cleanly(self):
+        with tempfile.TemporaryDirectory() as td:
+            quality = Path(td) / "quality.json"
+            quality.write_text("{bad", encoding="utf-8")
+            result = run_cli(
+                "sample", "ingest-issues", "--source", "local", "--cache", "/tmp/none.json",
+                "--repo", "o/r", "--root", td, "--state", "ingest-state.json",
+                "--quality-file", str(quality),
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertNotIn("Traceback", result.stderr)
+
+    def test_issue_ingest_rejects_low_quality(self):
+        cache = Path(tempfile.mkdtemp()) / "issues.json"
+        cache.write_text(json.dumps([{
+            "number": 9, "title": "T9", "body": "long local body for ingest " * 2,
+            "comments": 5, "state": "closed", "labels": ["triaged"],
+        }]), encoding="utf-8")
+        quality = Path(tempfile.mkdtemp()) / "quality.json"
+        quality.write_text(json.dumps({"9": {"score": 0.2, "answer": "x"}}), encoding="utf-8")
+        with tempfile.TemporaryDirectory() as td:
+            result = run_cli(
+                "sample", "ingest-issues", "--source", "local", "--cache", str(cache),
+                "--repo", "o/r", "--root", td, "--state", "ingest-state.json",
+                "--quality-file", str(quality),
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("created: 0", result.stdout)
 
     def test_unknown_source_exits_2(self):
         with tempfile.TemporaryDirectory() as td:

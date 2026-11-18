@@ -19,7 +19,8 @@ def _purpose_count(samples: List[Any], purpose: str) -> int:
 
 
 def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
-               metrics: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+               metrics: Optional[Dict[str, Any]] = None,
+               trace_state: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """返回计划字典；``root`` 用于 metrics 读取与无 ``base`` 时的默认落点。"""
     root_path = Path(root) if root is not None else Path(".")
     base_path = Path(base) if base is not None else None
@@ -144,6 +145,8 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
         )
     freshness = metrics.get("freshness") or {}
     timeline = metrics.get("timeline") or {}
+    if not trace_state or not trace_state.get("available"):
+        actions.append("traces_unattributed: run traces sync before attribution-driven evolution")
     if timeline.get("available") is False:
         actions.append(
             "metrics_unavailable: run trace_entry_activity --apply / metrics_snapshot "
@@ -187,6 +190,8 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
         metrics = {"available": False, "reason": "metrics not loaded by caller"}
     return {
         "policy_hash": policy_hash(policy),
+        "trace_snapshot": (trace_state or {}).get("snapshot_id"),
+        "trace_state": trace_state or {"available": False},
         "target": ((policy.get("experiment") or {}).get("target") or "skill"),
         "algorithm": ((policy.get("experiment") or {}).get("algorithm") or "baseline"),
         "counts": counts,
@@ -203,6 +208,7 @@ def render_plan(plan: Dict[str, Any]) -> str:
         f"policy_hash: {plan.get('policy_hash', '')}",
         f"target: {plan.get('target', 'skill')}",
         f"algorithm: {plan.get('algorithm', 'baseline')}",
+        f"trace_snapshot: {plan.get('trace_snapshot') or 'unavailable'}",
         (
             "samples: {total} (candidate={candidate} active={active} "
             "field={field} core={core} test={test})"

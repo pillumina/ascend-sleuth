@@ -61,6 +61,10 @@ skill 可以被所有人调用；它只做流程与建议，不授予写权限�
 
 补评测集不塞进本 skill。用户说“补评测集/补 field 样本”时，转 `/skill:eval-ingest`：它负责 repo/labels/limit、dry-run、ingest、set-answer、review、draw-test。本 skill 只在 `run` 的 `next_actions` 出现 field 不足时提示转过去，不重复 issue 过滤与答辩流程。
 
+## 执行实验（本 skill 的内部参考）
+
+自演进实验不单独开 skill。single reflection 与 agent-native GEPA 都按 [references/experiment.md](references/experiment.md) 执行：先由 trace 归因选目标 skill 的可变异区，再跑 baseline/candidate 或 GEPA 状态机；只 patch 该区，不替换整份 skill。记录后停，不自动合入。
+
 ## 一、入口分流（先分清用户要什么，再决定跑不跑本 skill）
 
 | 用户说 | 路由 | 演进如何发生 |

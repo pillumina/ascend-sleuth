@@ -20,6 +20,7 @@ from evolve.pools import (  # noqa: E402
     pool_hash,
     purpose_transition_errors,
     select_pool,
+    source_group,
     split_test,
     stratum_of,
     transition_errors,
@@ -113,6 +114,11 @@ class SplitTestTest(unittest.TestCase):
         ]
         chosen = {item.id for item in split_test(samples, size=4)}
         self.assertEqual(chosen, {"core-1", "core-2"})
+
+    def test_issue_source_group_normalizes_s2_and_github(self):
+        s2 = sample("S2-1", source="eval/s2/vllm-ascend.yaml#10097")
+        gh = sample("GH-1", source="github/vllm-project/vllm-ascend#10097")
+        self.assertEqual(source_group(s2), source_group(gh))
 
     def test_strata_quota_selects_each_type(self):
         samples = [

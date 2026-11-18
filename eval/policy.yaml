@@ -41,6 +41,13 @@ cost:
 experiment:
   target: skill
   algorithm: baseline
+  stages:
+    attribute: attribute.trace_rule
+    select_region: select.region_hardcount
+    select_candidate: select.best
+    propose: propose.agent
+    judge: judge.subagent
+    gate: gate.paired
   budget: {}
   seed: 0
 

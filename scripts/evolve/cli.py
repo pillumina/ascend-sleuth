@@ -10,6 +10,7 @@
 
 import argparse
 import json
+import subprocess
 from dataclasses import asdict
 import sys
 from pathlib import Path
@@ -17,6 +18,7 @@ from typing import Any, Dict, Optional, Sequence
 
 import yaml
 
+from .candidate import CandidateError, create_workspace, diff_workspace, rollback_workspace, validate_candidate
 from .contracts import (
     OBJECT_TYPE_VALUES,
     ORIGINS,
@@ -32,13 +34,20 @@ from .adapters.arena import counts_from_files
 from .adapters.metrics import load_metrics
 from .algorithms.registry import algorithm_ids, get_algorithm
 from .targets.registry import get_target, resolve_evaluator, resolve_optimizer, target_ids
+from .rsi import apply_attribution, apply_selection, build_plan, save_plan
+from .trace_attribution import status as trace_status, sync as trace_sync
 from .adapters.replay import collect as replay_collect
 from .adapters.replay import prepare as replay_prepare
 from .adapters.health import metrics as health_metrics
 from .adapters.issues import ingest_issues
+from .adapters.ixn import import_ixn
 from .adapters.s2 import import_s2_samples
 from .decision import Decision, DecisionResult, decide
 from .experiments import ExperimentError, validate_experiment
+from .holdout_guard import is_holdout_source, issue_numbers
+from .knowledge_usage import UsageError, compare as compare_usage, evaluate as evaluate_usage, from_trace
+from .source_usage import SourceUsageError, compare as compare_source_usage, evaluate as evaluate_source_usage, from_trace as source_from_trace
+from .quality import QualityError, load_quality
 from .policy import PolicyError, load_policy, policy_hash
 from .records import ConclusionStore, ExperimentStore, RecordError
 from .runner import issue_plan, render_plan
@@ -139,7 +148,18 @@ def cmd_policy_show(args: argparse.Namespace) -> int:
 
 
 # ---------------------------------------------------------------- sample
+def _guard_holdout(args: argparse.Namespace, source: str) -> None:
+    numbers = issue_numbers(Path(args.root) if getattr(args, "root", None) else Path.cwd())
+    if numbers and is_holdout_source(source, numbers):
+        raise CliError(f"source {source!r} is in holdout; do not ingest it as an eval sample")
+
+
 def cmd_sample_new(args: argparse.Namespace) -> int:
+    try:
+        _guard_holdout(args, args.source)
+    except (CliError, OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     expected = _json_object(args.expected, "--expected")
     rubric = _json_object(args.rubric, "--rubric")
     payload = _json_object(args.input, "--input")
@@ -194,6 +214,7 @@ def cmd_sample_ingest_issues(args: argparse.Namespace) -> int:
     root = Path(args.root) if args.root else Path.cwd()
     try:
         source = get_source(args.source, repo=args.repo, cache=args.cache)
+        quality = load_quality(Path(args.quality_file)) if args.quality_file else None
         stats = ingest_issues(
             root,
             args.repo,
@@ -206,8 +227,10 @@ def cmd_sample_ingest_issues(args: argparse.Namespace) -> int:
             dry_run=args.dry_run,
             source=source,
             state_key=f"{source.source_id}/evaluation",
+            holdout_numbers=issue_numbers(root),
+            quality=quality,
         )
-    except AdapterError as exc:
+    except (AdapterError, QualityError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     except (StoreError, OSError) as exc:
@@ -245,11 +268,12 @@ def cmd_sample_import_s2(args: argparse.Namespace) -> int:
     try:
         stats = import_s2_samples(
             root, args.source, _store(args), limit=args.limit,
+            holdout_numbers=issue_numbers(root),
         )
     except AdapterError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    except (StoreError, ContractError, OSError) as exc:
+    except (StoreError, ContractError, OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     print(f"created: {stats['created']}")
@@ -266,6 +290,21 @@ def cmd_sample_import_s2(args: argparse.Namespace) -> int:
     if stats["limit_reached"]:
         print(f"limit reached: {args.limit}")
     print(f"source: {stats['source']}")
+    return 0
+
+
+def cmd_sample_import_ixn(args: argparse.Namespace) -> int:
+    root = Path(args.root) if args.root else Path.cwd()
+    try:
+        stats = import_ixn(
+            _store(args), root, root / args.source, limit=args.limit,
+            holdout_numbers=issue_numbers(root),
+        )
+    except (AdapterError, StoreError, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"created: {stats['created']}")
+    print(f"skipped: held_out={stats['skipped_held_out']} duplicate={stats['skipped_duplicate']} missing={stats['skipped_missing']}")
     return 0
 
 
@@ -307,10 +346,12 @@ def cmd_sample_review(args: argparse.Namespace) -> int:
         print("error: one of --approve/--reject is required", file=sys.stderr)
         return 2
     try:
+        sample = _store(args).require(args.id)
+        _guard_holdout(args, sample.source)
         sample = _store(args).review(
             args.id, approve=approve, actor=args.actor, reason=args.reason or "",
         )
-    except StoreError as exc:
+    except (StoreError, ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     print(f"{sample.id}: {sample.status}")
@@ -319,10 +360,12 @@ def cmd_sample_review(args: argparse.Namespace) -> int:
 
 def cmd_sample_promote(args: argparse.Namespace) -> int:
     try:
+        current = _store(args).require(args.id)
+        _guard_holdout(args, current.source)
         sample = _store(args).promote(
             args.id, to=args.to, actor=args.actor, reason=args.reason or "",
         )
-    except StoreError as exc:
+    except (StoreError, ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     print(f"{sample.id}: {sample.status} ({sample.origin})")
@@ -334,7 +377,7 @@ def cmd_sample_retire(args: argparse.Namespace) -> int:
         sample = _store(args).retire(
             args.id, actor=args.actor, reason=args.reason or "",
         )
-    except StoreError as exc:
+    except (StoreError, ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     print(f"{sample.id}: {sample.status}")
@@ -745,7 +788,8 @@ def cmd_run(args: argparse.Namespace) -> int:
     base = _evolve_base(args)
     try:
         policy = _policy_for(args)
-        plan = issue_plan(root, base, policy, metrics=load_metrics(root))
+        trace = trace_status(base / "trace-state.json")
+        plan = issue_plan(root, base, policy, metrics=load_metrics(root), trace_state=trace)
     except (PolicyError, StoreError, RecordError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -753,6 +797,252 @@ def cmd_run(args: argparse.Namespace) -> int:
         print(json.dumps(plan, ensure_ascii=False, indent=2, sort_keys=True))
     else:
         print(render_plan(plan))
+    return 0
+
+
+# ---------------------------------------------------------------- rsi
+def cmd_rsi_plan(args: argparse.Namespace) -> int:
+    root = Path(args.root) if args.root else Path.cwd()
+    try:
+        metrics = load_metrics(root)
+        policy = _policy_for(args)
+        plan = build_plan(
+            root,
+            trace_state=Path(args.trace_state) if args.trace_state else (_evolve_base(args) / "trace-state.json"),
+            replay=Path(args.replay) if args.replay else None,
+            metrics=metrics,
+            holdout_numbers=issue_numbers(root),
+            stages_config=(policy.get("experiment") or {}).get("stages"),
+        )
+        state = Path(args.state) if args.state else _evolve_base(args) / "rsi-plan.json"
+        save_plan(plan, state)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps(plan, ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        print(f"rsi_status: {plan['status']}")
+        print(f"snapshot_id: {plan['snapshot_id']}")
+        for name, source in plan["sources"].items():
+            print(f"source {name}: available={source.get('available')} snapshot={source.get('snapshot_id')}")
+        for region in plan.get("regions") or []:
+            print(f"region: {region['region']} hard={region['hard']} events={region['events']}")
+        if plan.get("experiment"):
+            spec = plan["experiment"]
+            print(f"experiment: target={spec['target_skill']} region={spec['mutable_region']}")
+        print(f"stages: {plan['stages']}")
+    return 0
+
+
+def _load_plan(path: Path) -> dict:
+    import json
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def cmd_rsi_attribute(args: argparse.Namespace) -> int:
+    try:
+        path = Path(args.state)
+        plan = _load_plan(path)
+        payload = _yaml_or_json_object(args.file, "--file")
+        plan = apply_attribution(plan, payload)
+        save_plan(plan, path)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"updated: {path}")
+    print("stage: attribute.agent")
+    return 0
+
+
+def cmd_rsi_select(args: argparse.Namespace) -> int:
+    try:
+        path = Path(args.state)
+        plan = _load_plan(path)
+        payload = _yaml_or_json_object(args.file, "--file")
+        plan = apply_selection(plan, payload)
+        save_plan(plan, path)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"updated: {path}")
+    print("stage: select.region_agent")
+    return 0
+
+
+def _read_json(path: str) -> Any:
+    import json
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def cmd_knowledge_usage_evaluate(args: argparse.Namespace) -> int:
+    try:
+        result = evaluate_usage(_read_json(args.file))
+    except (OSError, ValueError, UsageError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        import json
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(f"samples: {result['n']}")
+        print(f"hit_rate: {result['hit_rate']:.3f}")
+        print(f"wrong_cases: {result['wrong_cases']}")
+    return 0
+
+
+def cmd_candidate_validate(args: argparse.Namespace) -> int:
+    try:
+        candidate = validate_candidate(_read_json(args.file))
+    except (OSError, ValueError, CandidateError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(candidate, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_candidate_apply(args: argparse.Namespace) -> int:
+    try:
+        candidate = validate_candidate(_read_json(args.candidate))
+        result = create_workspace(Path(args.root), candidate, Path(args.workspace))
+    except (OSError, ValueError, subprocess.CalledProcessError, CandidateError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_candidate_rollback(args: argparse.Namespace) -> int:
+    try:
+        rollback_workspace(Path(args.root), Path(args.workspace))
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"removed: {args.workspace}")
+    return 0
+
+
+def cmd_candidate_diff(args: argparse.Namespace) -> int:
+    try:
+        print(diff_workspace(Path(args.workspace)))
+    except (OSError, subprocess.CalledProcessError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    return 0
+
+
+def cmd_source_usage_from_trace(args: argparse.Namespace) -> int:
+    try:
+        document = yaml.safe_load(Path(args.trace).read_text(encoding="utf-8"))
+        source_ok = None if args.source_ok is None else args.source_ok == "true"
+        result = source_from_trace(document, source_ok=source_ok)
+    except (OSError, ValueError, yaml.YAMLError, SourceUsageError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(f"sample_id: {result['sample_id']}")
+        print(f"files_read: {result['files_read']} tool_calls: {result['tool_calls']}")
+    return 0
+
+
+def cmd_source_usage_evaluate(args: argparse.Namespace) -> int:
+    try:
+        result = evaluate_source_usage(_read_json(args.file))
+    except (OSError, ValueError, SourceUsageError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_source_usage_compare(args: argparse.Namespace) -> int:
+    try:
+        result = compare_source_usage(_read_json(args.baseline), _read_json(args.candidate))
+    except (OSError, ValueError, SourceUsageError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
+def cmd_knowledge_usage_from_trace(args: argparse.Namespace) -> int:
+    try:
+        document = yaml.safe_load(Path(args.trace).read_text(encoding="utf-8"))
+        result = from_trace(document, expected_case=args.expected_case)
+    except (OSError, ValueError, yaml.YAMLError, UsageError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(f"sample_id: {result['sample_id']}")
+        print(f"hit: {result['hit']} first_hit_step={result['first_hit_step']}")
+    return 0
+
+
+def cmd_knowledge_usage_compare(args: argparse.Namespace) -> int:
+    try:
+        result = compare_usage(_read_json(args.baseline), _read_json(args.candidate))
+    except (OSError, ValueError, UsageError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        import json
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(f"decision: {result['decision']}")
+        print(f"reasons: {', '.join(result['reasons']) or 'none'}")
+        print(f"baseline hit_rate: {result['baseline']['hit_rate']:.3f}")
+        print(f"candidate hit_rate: {result['candidate']['hit_rate']:.3f}")
+    return 0
+
+
+def cmd_rsi_status(args: argparse.Namespace) -> int:
+    path = Path(args.state)
+    try:
+        print(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+# ---------------------------------------------------------------- traces
+def cmd_traces_sync(args: argparse.Namespace) -> int:
+    root = Path(args.root) if args.root else Path.cwd()
+    state = Path(args.state) if args.state else _evolve_base(args) / "trace-state.json"
+    try:
+        stats = trace_sync(root, state, source_id=args.source_id)
+    except (OSError, ValueError, RuntimeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if args.json:
+        print(json.dumps({k: v for k, v in stats.items() if k != "attributions"},
+                         ensure_ascii=False, indent=2, sort_keys=True))
+    else:
+        print(f"traces: {stats['traces']} new={stats['new']} changed={stats['changed']} reused={stats['reused']}")
+        print(f"events: {stats['events']}")
+        for region in stats.get("regions") or []:
+            print(f"region: {region['region']} hard={region['hard']} events={region['events']}")
+        if stats.get("experiment"):
+            spec = stats["experiment"]
+            print(f"experiment: target={spec['target_skill']} region={spec['mutable_region']}")
+        print(f"snapshot_id: {stats['snapshot_id']}")
+        print(f"state: {stats['state_path']}")
+    return 0
+
+
+def cmd_traces_status(args: argparse.Namespace) -> int:
+    root = Path(args.root) if args.root else Path.cwd()
+    state = Path(args.state) if args.state else _evolve_base(args) / "trace-state.json"
+    try:
+        payload = trace_status(state)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True))
     return 0
 
 
@@ -806,6 +1096,7 @@ def cmd_brief(args: argparse.Namespace) -> int:
         plan = issue_plan(
             Path(args.root) if args.root else Path.cwd(), base, policy,
             metrics=load_metrics(Path(args.root) if args.root else Path.cwd()),
+            trace_state=trace_status(base / "trace-state.json"),
         )
     except (StoreError, RecordError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -853,6 +1144,7 @@ def cmd_brief(args: argparse.Namespace) -> int:
         )
     else:
         print("entry_usage: unavailable")
+    print(f"trace_snapshot: {plan.get('trace_snapshot') or 'unavailable'}")
     print(f"samples: {counts['total']}")
     print(f"by_status: {_format_counts(counts['status'])}")
     print(f"by_origin: {_format_counts(counts['origin'])}")
@@ -941,7 +1233,15 @@ def build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--limit", type=int, default=20, help="最多创建多少条候选")
     ingest.add_argument("--state", default="ingest-state.json", help="ingest-state.json 路径")
     ingest.add_argument("--dry-run", action="store_true", help="只打印候选，不写库/不更新 state")
+    ingest.add_argument("--quality-file", default=None,
+                        help="agent 产出的 issue 质量/答案 JSON；低于阈值直接跳过")
     ingest.set_defaults(func=cmd_sample_ingest_issues)
+
+    ixn = sample_sub.add_parser("import-ixn", help="导入 ixn-arena 非 held_out gold 样本")
+    ixn.add_argument("--root", default=None)
+    ixn.add_argument("--source", default="eval/ixn-arena")
+    ixn.add_argument("--limit", type=int, default=None)
+    ixn.set_defaults(func=cmd_sample_import_ixn)
 
     listing = sample_sub.add_parser("list", help="列出样本")
     listing.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
@@ -1094,6 +1394,89 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
     run.add_argument("--json", action="store_true", help="输出机器可读 JSON")
     run.set_defaults(func=cmd_run)
+
+    rsi = sub.add_parser("rsi", help="RSI 多源归因与实验计划")
+    rsi_sub = rsi.add_subparsers(dest="rsi_command", required=True)
+    rsi_plan = rsi_sub.add_parser("plan", help="trace/metrics/replay -> 实验计划")
+    rsi_plan.add_argument("--root", default=None)
+    rsi_plan.add_argument("--trace-state", default=None)
+    rsi_plan.add_argument("--replay", default=None)
+    rsi_plan.add_argument("--state", default=None)
+    rsi_plan.add_argument("--json", action="store_true")
+    rsi_plan.set_defaults(func=cmd_rsi_plan)
+    rsi_attr = rsi_sub.add_parser("attribute", help="写回 agent 归因证据")
+    rsi_attr.add_argument("--state", required=True)
+    rsi_attr.add_argument("--file", required=True)
+    rsi_attr.set_defaults(func=cmd_rsi_attribute)
+    rsi_select = rsi_sub.add_parser("select", help="写回 agent 选点")
+    rsi_select.add_argument("--state", required=True)
+    rsi_select.add_argument("--file", required=True)
+    rsi_select.set_defaults(func=cmd_rsi_select)
+    candidate = sub.add_parser("candidate", help="candidate Patch 校验/隔离 apply/rollback")
+    candidate_sub = candidate.add_subparsers(dest="candidate_command", required=True)
+    cand_validate = candidate_sub.add_parser("validate")
+    cand_validate.add_argument("--file", required=True)
+    cand_validate.set_defaults(func=cmd_candidate_validate)
+    cand_apply = candidate_sub.add_parser("apply")
+    cand_apply.add_argument("--root", required=True)
+    cand_apply.add_argument("--candidate", required=True)
+    cand_apply.add_argument("--workspace", required=True)
+    cand_apply.set_defaults(func=cmd_candidate_apply)
+    cand_rollback = candidate_sub.add_parser("rollback")
+    cand_rollback.add_argument("--root", required=True)
+    cand_rollback.add_argument("--workspace", required=True)
+    cand_rollback.set_defaults(func=cmd_candidate_rollback)
+    cand_diff = candidate_sub.add_parser("diff")
+    cand_diff.add_argument("--workspace", required=True)
+    cand_diff.set_defaults(func=cmd_candidate_diff)
+
+    source_usage = sub.add_parser("source-usage", help="源码访问效率观测/对照")
+    source_sub = source_usage.add_subparsers(dest="source_command", required=True)
+    source_trace = source_sub.add_parser("from-trace", help="从 diagnose trace 推导 source usage")
+    source_trace.add_argument("--trace", required=True)
+    source_trace.add_argument("--source-ok", choices=("true", "false"), default=None)
+    source_trace.add_argument("--json", action="store_true")
+    source_trace.set_defaults(func=cmd_source_usage_from_trace)
+    source_eval = source_sub.add_parser("evaluate", help="汇总 source usage")
+    source_eval.add_argument("--file", required=True)
+    source_eval.set_defaults(func=cmd_source_usage_evaluate)
+    source_cmp = source_sub.add_parser("compare", help="source usage 门禁")
+    source_cmp.add_argument("--baseline", required=True)
+    source_cmp.add_argument("--candidate", required=True)
+    source_cmp.set_defaults(func=cmd_source_usage_compare)
+
+    usage = sub.add_parser("knowledge-usage", help="知识使用效率观测/对照")
+    usage_sub = usage.add_subparsers(dest="usage_command", required=True)
+    usage_trace = usage_sub.add_parser("from-trace", help="从 diagnose trace 推导 usage")
+    usage_trace.add_argument("--trace", required=True)
+    usage_trace.add_argument("--expected-case", default=None)
+    usage_trace.add_argument("--json", action="store_true")
+    usage_trace.set_defaults(func=cmd_knowledge_usage_from_trace)
+    usage_eval = usage_sub.add_parser("evaluate", help="汇总一份 usage 记录")
+    usage_eval.add_argument("--file", required=True)
+    usage_eval.add_argument("--json", action="store_true")
+    usage_eval.set_defaults(func=cmd_knowledge_usage_evaluate)
+    usage_cmp = usage_sub.add_parser("compare", help="baseline/candidate 使用效率门禁")
+    usage_cmp.add_argument("--baseline", required=True)
+    usage_cmp.add_argument("--candidate", required=True)
+    usage_cmp.add_argument("--json", action="store_true")
+    usage_cmp.set_defaults(func=cmd_knowledge_usage_compare)
+    rsi_status = rsi_sub.add_parser("status", help="读取已保存的 RSI 计划")
+    rsi_status.add_argument("--state", required=True)
+    rsi_status.set_defaults(func=cmd_rsi_status)
+
+    traces = sub.add_parser("traces", help="本地 trace 归因状态")
+    traces_sub = traces.add_subparsers(dest="traces_command", required=True)
+    traces_sync = traces_sub.add_parser("sync", help="增量归因本地 traces")
+    traces_sync.add_argument("--root", default=None)
+    traces_sync.add_argument("--state", default=None)
+    traces_sync.add_argument("--source-id", default="local")
+    traces_sync.add_argument("--json", action="store_true")
+    traces_sync.set_defaults(func=cmd_traces_sync)
+    traces_status = traces_sub.add_parser("status", help="查看 trace 状态/快照")
+    traces_status.add_argument("--root", default=None)
+    traces_status.add_argument("--state", default=None)
+    traces_status.set_defaults(func=cmd_traces_status)
 
     health = sub.add_parser("health", help="metrics 体检只读摘要")
     health.add_argument("--root", default=None)

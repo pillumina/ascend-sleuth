@@ -16,7 +16,7 @@ import os
 import re
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
 from . import AdapterError, load_legacy
 from ..samples import SampleStore, StoreError
@@ -159,7 +159,9 @@ def candidate_id(repo: str, issue: Any, source_id: str = "github") -> str:
 
 
 def issue_to_candidate(item: Dict[str, Any], body: Any, repo: str,
-                       source_id: Optional[str] = None) -> Dict[str, Any]:
+                       source_id: Optional[str] = None,
+                       expected: Optional[Dict[str, Any]] = None,
+                       quality: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """一条 issue 的 ``SampleStore.new`` 参数；纯函数，expected 留空给 review 补。
 
     ``body`` 可以是 ``fetch_body`` 的字典，也可以是正文字符串；只取 title/body，
@@ -188,7 +190,7 @@ def issue_to_candidate(item: Dict[str, Any], body: Any, repo: str,
         "purpose": "evaluation",
         "source": f"{source_id}#{number_text}",
         "input": {"title": str(title), "body": str(body_text)},
-        "expected": None,
+        "expected": expected,
         "expected_kind": "resolution",
         "proposed": {
             "repo": repo,
@@ -196,6 +198,7 @@ def issue_to_candidate(item: Dict[str, Any], body: Any, repo: str,
             "labels": labels,
             "closed_at": closed_at,
             "url": item.get("url") or f"https://github.com/{repo}/issues/{number_text}",
+            **({"quality": quality} if quality else {}),
         },
     }
 
@@ -246,6 +249,8 @@ def ingest_issues(
     fetch_body_fn=None,
     source: Any = None,
     state_key: Optional[str] = None,
+    holdout_numbers: Optional[Set[str]] = None,
+    quality: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """拉元数据 → 硬过滤 → 按需取 body → 建候选。
 
@@ -310,6 +315,8 @@ def ingest_issues(
         "skipped_empty_body": 0,
         "skipped_short_body": 0,
         "skipped_feature_title": 0,
+        "skipped_holdout": 0,
+        "skipped_quality": 0,
         "limit_reached": False,
         "dry_run": bool(dry_run),
         "state_updated": False,
@@ -322,6 +329,9 @@ def ingest_issues(
         if limit is not None and planned >= limit:
             stats["limit_reached"] = index < len(candidates)
             break
+        if holdout_numbers and str(item.get("number")) in holdout_numbers:
+            stats["skipped_holdout"] += 1
+            continue
         try:
             if fetch_body_fn is not None:
                 body = fetch_body_fn(repo, item)
@@ -345,7 +355,25 @@ def ingest_issues(
         if module.title_skippable(title):
             stats["skipped_feature_title"] += 1
             continue
-        candidate = issue_to_candidate(item, body, repo, source_id=source_id)
+        quality_item = (quality or {}).get(str(item.get("number")))
+        expected = None
+        if quality is not None and quality_item is None:
+            stats["skipped_quality"] += 1
+            continue
+        if quality_item is not None:
+            if not quality_item.get("accepted"):
+                stats["skipped_quality"] += 1
+                continue
+            expected = {
+                "resolution": quality_item["answer"],
+                "namespace": quality_item.get("namespace"),
+                "category": quality_item.get("category"),
+                "confidence": "agent-reviewed",
+            }
+        candidate = issue_to_candidate(
+            item, body, repo, source_id=source_id,
+            expected=expected, quality=quality_item,
+        )
         sample_id = candidate["id"]
         sample_source = candidate["source"]
         if sample_source in seen_sources or store.find_by_source(sample_source):

@@ -15,6 +15,7 @@ import yaml
 
 from .algorithms.registry import ALGORITHMS
 from .targets.registry import TARGETS, get_target
+from .stages import get_stage
 from .decision import DECISION_METHODS
 from .metrics import DEFAULT_METRICS
 
@@ -66,6 +67,14 @@ DEFAULTS: Dict[str, Any] = {
     "experiment": {
         "target": "skill",
         "algorithm": "baseline",
+        "stages": {
+            "attribute": "attribute.trace_rule",
+            "select_region": "select.region_hardcount",
+            "select_candidate": "select.best",
+            "propose": "propose.agent",
+            "judge": "judge.subagent",
+            "gate": "gate.paired",
+        },
         "budget": {},
         "seed": 0,
     },
@@ -238,6 +247,21 @@ def validate_policy(policy: Dict[str, Any]) -> None:
                 f"experiment.algorithm must be one of {sorted(ALGORITHMS)}, "
                 f"got {experiment.get('algorithm')!r}"
             )
+        stages = experiment.get("stages")
+        if not isinstance(stages, dict):
+            errors.append("experiment.stages must be an object")
+        else:
+            for point, stage_id in stages.items():
+                try:
+                    spec = get_stage(str(stage_id))
+                except ValueError as exc:
+                    errors.append(f"experiment.stages.{point}: {exc}")
+                    continue
+                if spec.point != point:
+                    errors.append(
+                        f"experiment.stages.{point} must be a {point} stage, "
+                        f"got {spec.id!r}"
+                    )
         if not isinstance(experiment.get("budget"), dict):
             errors.append("experiment.budget must be an object")
         _validate_int(experiment.get("seed"), "experiment.seed", errors, minimum=0)
