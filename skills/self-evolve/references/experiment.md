@@ -23,6 +23,8 @@ maintainer 只调用 `/skill:self-evolve`；本文件是内部执行参考，不
 - gate 确定性/人工，不交给 agent；
 - baseline 只评估 seed，不产生候选。
 
+candidate 只能作为单个 region 的 Patch，在隔离 worktree 应用；apply/rollback/diff 走 `candidate` 命令，不改主检出，不写真实 traces。
+
 执行顺序：
 
 ```text
