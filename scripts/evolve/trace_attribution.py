@@ -44,8 +44,24 @@ def sync(root: Path, state_path: Path, source: Optional[TraceSource] = None,
     state.save()
     stats["state_path"] = str(state_path)
     stats["regions"] = recommend(stats["components"])
+    stats["experiment"] = experiment_spec(stats)
     stats["attributions"] = attributions
     return stats
+
+
+def experiment_spec(stats: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    regions = stats.get("regions") or []
+    if not regions:
+        return None
+    region = regions[0]
+    return {
+        "target_skill": region["skill"],
+        "mutable_region": region["region"],
+        "hard": region["hard"],
+        "events": region["events"],
+        "snapshot_id": stats.get("snapshot_id"),
+        "source_id": stats.get("source_id"),
+    }
 
 
 def status(state_path: Path) -> Dict[str, Any]:

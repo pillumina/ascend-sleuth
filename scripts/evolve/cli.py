@@ -775,6 +775,9 @@ def cmd_traces_sync(args: argparse.Namespace) -> int:
         print(f"events: {stats['events']}")
         for region in stats.get("regions") or []:
             print(f"region: {region['region']} hard={region['hard']} events={region['events']}")
+        if stats.get("experiment"):
+            spec = stats["experiment"]
+            print(f"experiment: target={spec['target_skill']} region={spec['mutable_region']}")
         print(f"snapshot_id: {stats['snapshot_id']}")
         print(f"state: {stats['state_path']}")
     return 0

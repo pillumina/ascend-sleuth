@@ -27,6 +27,11 @@ REGIONS: Dict[str, RegionSpec] = {
         components=("quickly_check", "verification", "case_hit"),
         description="候选验证与证据检查顺序；不改 case 内容与输出 schema",
     ),
+    "diagnose.trace_evidence": RegionSpec(
+        id="diagnose.trace_evidence", skill="diagnose",
+        components=("skill:diagnose step<trace写作 evidence 落盘>", "trace_evidence"),
+        description="trace 写作与 evidence 落盘步骤的说明；不改 trace schema",
+    ),
     "knowledge.case_content": RegionSpec(
         id="knowledge.case_content", skill="knowledge",
         components=("case_content", "case_miss", "wrong_case"),

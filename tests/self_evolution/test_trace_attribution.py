@@ -50,6 +50,7 @@ class TraceAttributionTest(unittest.TestCase):
             self.assertEqual(second["changed"], 1)
             self.assertNotEqual(first["snapshot_id"], second["snapshot_id"])
             self.assertIn("routing", second["components"])
+            self.assertEqual(second["experiment"]["mutable_region"], "diagnose.routing_hints")
 
     def test_new_trace_changes_snapshot(self):
         with tempfile.TemporaryDirectory() as td:
