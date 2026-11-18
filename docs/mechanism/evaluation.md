@@ -232,7 +232,11 @@ S2 未命中有三种解释：路由错、缺 case、内容错。它只看到没
 
 `--self-test` 用合成样本复现三种结论，CI 跑它（`kb-checks` 的 `arena-gate-rule`）；判据写坏、只会判 `accept` 时 CI 就红。
 
-### 3.8 算法适配器
+### 3.8 算法适配器与 RSI stage
+
+自演进实验按五个节点固定算法：`attribute`、`select`、`propose`、`judge`、`gate`。当前注册：`attribute.trace_rule`、`select.region_hardcount`、`select.pareto`、`propose.reflection`、`judge.subagent`、`gate.paired`。GEPA 是 `select.pareto` + `propose.reflection` 的组合，不是独立循环；实验记录可带 `stages` 映射，禁止把 stage 的算法写错节点。
+
+### 3.9 算法适配器
 
 算法只做提案者，不做判定、不直接写库、不合入。`scripts/evolve/ports.py` 定义 `Optimizer`，`scripts/evolve/algorithms/registry.py` 是静态注册表；当前只有 `baseline`。`policy.experiment.target`/`algorithm` 选目标与算法，`Version.algorithm`/`algorithm_version` 记身份，`budget`/`seed` 记实验条件。GEPA/AEL/SkillProx/EvolveMem 只在后续的实验适配器里接入，一次只接一个组件；没有动态插件加载。
 

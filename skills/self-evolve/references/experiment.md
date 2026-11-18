@@ -26,6 +26,20 @@ task 只看样本输入；judge 看 expected/rubric；reflection 不写仓库；
 
 结果至少写 `target_kind`、`target_component`、`algorithm`、`algorithm_version`、`execution`、`decision`、`samples`、baseline/candidate 分数；subagent 模式写 `execution=subagent`、`eval_profile_id=subagent_judge`、`eval_ready=false`。
 
+## RSI stage
+
+实验固定这五个节点的算法，记录在实验里：
+
+| stage | 当前实现 |
+|---|---|
+| attribute | `attribute.trace_rule` |
+| select | `select.region_hardcount`（选点）/ `select.pareto`（候选） |
+| propose | `propose.reflection` |
+| judge | `judge.subagent` |
+| gate | `gate.paired` |
+
+GEPA 不是整条循环，而是 `select.pareto` + `propose.reflection` 的组合；其他 stage 可替换，但一次实验固定一组。
+
 ## 模式 B：agent-native GEPA
 
 适合候选池/Pareto/预算：

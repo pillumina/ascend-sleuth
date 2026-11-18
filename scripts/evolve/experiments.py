@@ -8,6 +8,7 @@ reflection；记录必须写清算法/版本、样本、两侧分数和判定。
 from typing import Any, Dict, List
 
 from .evaluations.registry import get_eval_profile
+from .stages import get_stage
 from .targets.registry import TARGETS, get_target
 
 
@@ -114,6 +115,19 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
         "eval_ready": eval_ready,
         "summary": str(record.get("summary") or ""),
     }
+    stages = record.get("stages")
+    if stages is not None:
+        if not isinstance(stages, dict):
+            raise ExperimentError("stages must be an object")
+        normalized_stages = {}
+        for point, stage_id in stages.items():
+            spec = get_stage(str(stage_id))
+            if spec.point != point:
+                raise ExperimentError(
+                    f"stage {stage_id!r} is {spec.point}, not {point!r}"
+                )
+            normalized_stages[point] = spec.id
+        result["stages"] = normalized_stages
     for key in ("budget", "seed"):
         if key in record:
             result[key] = record[key]

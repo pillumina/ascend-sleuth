@@ -12,6 +12,9 @@ judge 看 rubric/expected；reflect 只看失败反馈。
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
+from .selectors import ParetoSelector
+from .stages import get_stage
+
 
 GEPA_STATE_SCHEMA = "agent-gepa-v1"
 
@@ -52,13 +55,16 @@ class Candidate:
         )
 
 
-class GepaSession:
-    """可序列化的 GEPA 搜索状态。"""
+class AgentRsiSession:
+    """RSI 状态机：propose/select stage 可替换；GEPA 是默认组合。"""
 
     def __init__(self, seed_skill: str, samples: List[str],
                  max_metric_calls: int = 12, population: int = 4,
                  seed: int = 0, min_score: float = 0.0,
-                 target_skill: str = "", mutable_region: str = ""):
+                 target_skill: str = "", mutable_region: str = "",
+                 select_stage: str = "select.pareto",
+                 propose_stage: str = "propose.reflection",
+                 selector: Any = None):
         if not isinstance(seed_skill, str) or not seed_skill.strip():
             raise GepaError("seed_skill is required")
         if not samples or not all(isinstance(s, str) and s.strip() for s in samples):
@@ -76,6 +82,13 @@ class GepaSession:
         self.min_score = min_score
         self.target_skill = str(target_skill or "")
         self.mutable_region = str(mutable_region or "")
+        self.select_stage = get_stage(select_stage)
+        self.propose_stage = get_stage(propose_stage)
+        if self.select_stage.point != "select":
+            raise GepaError("select_stage must be an attribute/select stage")
+        if self.propose_stage.point not in ("propose",):
+            raise GepaError("propose_stage must be a propose stage")
+        self.selector = selector or ParetoSelector()
         self.candidates: List[Candidate] = [Candidate(id="seed", skill=seed_skill)]
         self.reflected: List[str] = []
         self.pending_reflect: Optional[str] = None
@@ -160,14 +173,7 @@ class GepaSession:
         return front
 
     def _select_parent(self) -> Optional[Candidate]:
-        front = set(self.pareto_ids())
-        eligible = [c for c in self.candidates if c.id in front and c.id not in self.reflected]
-        if not eligible:
-            return None
-        return sorted(
-            eligible,
-            key=lambda c: (-(sum(c.scores.values()) / len(self.samples)), len(c.skill), c.id),
-        )[0]
+        return self.selector.choose(self.candidates, self.samples, self.reflected)
 
     def best(self) -> Optional[Candidate]:
         complete = [c for c in self.candidates if len(c.scores) == len(self.samples)]
@@ -183,6 +189,10 @@ class GepaSession:
         return {
             "target_skill": self.target_skill,
             "mutable_region": self.mutable_region,
+            "select_stage": self.select_stage.id,
+            "propose_stage": self.propose_stage.id,
+            "stages": {"select": self.select_stage.id,
+                       "propose": self.propose_stage.id},
             "best_id": best.id if best else None,
             "best_skill": best.skill if best else None,
             "best_score": (sum(best.scores.values()) / len(self.samples)) if best else None,
@@ -204,6 +214,8 @@ class GepaSession:
             "min_score": self.min_score,
             "target_skill": self.target_skill,
             "mutable_region": self.mutable_region,
+            "select_stage": self.select_stage.id,
+            "propose_stage": self.propose_stage.id,
             "candidates": [c.to_dict() for c in self.candidates],
             "reflected": list(self.reflected),
             "pending_reflect": self.pending_reflect,
@@ -233,6 +245,8 @@ class GepaSession:
             min_score=float(data.get("min_score", 0.0)),
             target_skill=str(data.get("target_skill") or ""),
             mutable_region=str(data.get("mutable_region") or ""),
+            select_stage=str(data.get("select_stage") or "select.pareto"),
+            propose_stage=str(data.get("propose_stage") or "propose.reflection"),
         )
         session.candidates = candidates
         session.reflected = list(data.get("reflected") or [])
@@ -245,3 +259,12 @@ class GepaSession:
             if candidate.id == candidate_id:
                 return candidate
         raise GepaError(f"unknown candidate {candidate_id!r}")
+
+
+class GepaSession(AgentRsiSession):
+    """GEPA = ParetoSelector + ReflectiveProposer 的默认组合。"""
+
+    def __init__(self, *args, **kwargs):
+        kwargs.setdefault("select_stage", "select.pareto")
+        kwargs.setdefault("propose_stage", "propose.reflection")
+        super().__init__(*args, **kwargs)
