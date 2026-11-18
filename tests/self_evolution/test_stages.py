@@ -20,9 +20,9 @@ class StageRegistryTest(unittest.TestCase):
         self.assertIn("gate.paired", stage_ids("gate"))
         session = GepaSession("seed", ["S-1"])
         self.assertEqual(session.select_stage.id, "select.pareto")
-        self.assertEqual(session.propose_stage.id, "propose.reflection")
+        self.assertEqual(session.propose_stage.id, "propose.agent")
         self.assertEqual(session.result()["stages"],
-                         {"select": "select.pareto", "propose": "propose.reflection"})
+                         {"select": "select.pareto", "propose": "propose.agent"})
 
     def test_unknown_stage_is_an_error(self):
         with self.assertRaises(ValueError):

@@ -35,13 +35,29 @@ STAGES: Dict[str, StageSpec] = {
         "select.region_hardcount", "select", "v1", "manual",
         "按硬归因数把组件映射到可变异区",
     ),
+    "select.none": StageSpec(
+        "select.none", "select", "v1", "manual",
+        "baseline 控制臂：不选新父候选，只评估当前 skill",
+    ),
+    "select.best": StageSpec(
+        "select.best", "select", "v1", "manual",
+        "只选平均分最高的未反射候选；单候选/agent heuristic 默认",
+    ),
     "select.pareto": StageSpec(
         "select.pareto", "select", "v1", "manual",
         "候选分数 Pareto 支配 + 未反射选择；GEPA 的选择层",
     ),
+    "propose.none": StageSpec(
+        "propose.none", "propose", "v1", "manual",
+        "baseline 控制臂：不产候选，只评估 seed",
+    ),
+    "propose.agent": StageSpec(
+        "propose.agent", "propose", "v1", "subagent",
+        "agent 根据归因/失败反馈直接写候选区文本；不依赖 GEPA 库",
+    ),
     "propose.reflection": StageSpec(
         "propose.reflection", "propose", "v1", "subagent",
-        "reflection subagent 看失败反馈产候选区文本",
+        "propose.agent 的兼容别名，历史实验仍可读",
     ),
     "judge.subagent": StageSpec(
         "judge.subagent", "judge", "v1", "subagent",

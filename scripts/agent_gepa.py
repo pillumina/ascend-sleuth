@@ -47,8 +47,8 @@ def cmd_init(args) -> int:
         seed, samples, max_metric_calls=args.max_metric_calls,
         population=args.population, seed=args.seed_value,
         target_skill=args.target_skill or "", mutable_region=args.region or "",
-        select_stage=args.select or "select.pareto",
-        propose_stage=args.propose or "propose.reflection",
+        select_stage=args.select or "select.best",
+        propose_stage=args.propose or "propose.agent",
     )
     _save(session, Path(args.state))
     print(f"initialized: {len(samples)} sample(s), budget={args.max_metric_calls}")
@@ -98,8 +98,8 @@ def main(argv=None) -> int:
     init.add_argument("--seed-value", type=int, default=0)
     init.add_argument("--target-skill", default="")
     init.add_argument("--region", default="")
-    init.add_argument("--select", default="select.pareto")
-    init.add_argument("--propose", default="propose.reflection")
+    init.add_argument("--select", default="select.best")
+    init.add_argument("--propose", default="propose.agent")
     init.set_defaults(func=cmd_init)
     nxt = sub.add_parser("next")
     nxt.add_argument("--state", required=True)

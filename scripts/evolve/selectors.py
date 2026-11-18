@@ -3,6 +3,20 @@
 from typing import Any, List, Optional
 
 
+class BestSelector:
+    id = "select.best"
+
+    def choose(self, candidates, samples, reflected):
+        complete = [c for c in candidates if len(c.scores) == len(samples)]
+        eligible = [c for c in complete if c.id not in reflected]
+        if not eligible:
+            return None
+        return sorted(
+            eligible,
+            key=lambda c: (-(sum(c.scores.values()) / len(samples)), len(c.skill), c.id),
+        )[0]
+
+
 class ParetoSelector:
     id = "select.pareto"
 

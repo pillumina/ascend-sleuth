@@ -12,7 +12,7 @@ judge 看 rubric/expected；reflect 只看失败反馈。
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
-from .selectors import ParetoSelector
+from .selectors import BestSelector, ParetoSelector
 from .stages import get_stage
 
 
@@ -62,8 +62,8 @@ class AgentRsiSession:
                  max_metric_calls: int = 12, population: int = 4,
                  seed: int = 0, min_score: float = 0.0,
                  target_skill: str = "", mutable_region: str = "",
-                 select_stage: str = "select.pareto",
-                 propose_stage: str = "propose.reflection",
+                 select_stage: str = "select.best",
+                 propose_stage: str = "propose.agent",
                  selector: Any = None):
         if not isinstance(seed_skill, str) or not seed_skill.strip():
             raise GepaError("seed_skill is required")
@@ -88,7 +88,9 @@ class AgentRsiSession:
             raise GepaError("select_stage must be an attribute/select stage")
         if self.propose_stage.point not in ("propose",):
             raise GepaError("propose_stage must be a propose stage")
-        self.selector = selector or ParetoSelector()
+        if selector is None:
+            selector = ParetoSelector() if select_stage == "select.pareto" else BestSelector()
+        self.selector = selector
         self.candidates: List[Candidate] = [Candidate(id="seed", skill=seed_skill)]
         self.reflected: List[str] = []
         self.pending_reflect: Optional[str] = None
@@ -245,8 +247,8 @@ class AgentRsiSession:
             min_score=float(data.get("min_score", 0.0)),
             target_skill=str(data.get("target_skill") or ""),
             mutable_region=str(data.get("mutable_region") or ""),
-            select_stage=str(data.get("select_stage") or "select.pareto"),
-            propose_stage=str(data.get("propose_stage") or "propose.reflection"),
+            select_stage=str(data.get("select_stage") or "select.best"),
+            propose_stage=str(data.get("propose_stage") or "propose.agent"),
         )
         session.candidates = candidates
         session.reflected = list(data.get("reflected") or [])
@@ -266,5 +268,5 @@ class GepaSession(AgentRsiSession):
 
     def __init__(self, *args, **kwargs):
         kwargs.setdefault("select_stage", "select.pareto")
-        kwargs.setdefault("propose_stage", "propose.reflection")
+        kwargs.setdefault("propose_stage", "propose.agent")
         super().__init__(*args, **kwargs)

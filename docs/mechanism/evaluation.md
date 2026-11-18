@@ -234,7 +234,7 @@ S2 未命中有三种解释：路由错、缺 case、内容错。它只看到没
 
 ### 3.8 算法适配器与 RSI stage
 
-自演进实验按五个节点固定算法：`attribute`、`select`、`propose`、`judge`、`gate`。当前注册：`attribute.trace_rule`、`select.region_hardcount`、`select.pareto`、`propose.reflection`、`judge.subagent`、`gate.paired`。GEPA 是 `select.pareto` + `propose.reflection` 的组合，不是独立循环；实验记录可带 `stages` 映射，禁止把 stage 的算法写错节点。
+自演进实验按五个节点固定算法：`attribute`、`select`、`propose`、`judge`、`gate`。当前注册：`attribute.trace_rule`、`select.region_hardcount`、`select.none`、`select.best`、`select.pareto`、`propose.none`、`propose.agent`、`propose.reflection`（兼容别名）、`judge.subagent`、`gate.paired`。默认 agent heuristic 是 `select.best` + `propose.agent`；GEPA 是 `select.pareto` + `propose.agent` 的组合，不是独立循环。实验记录可带 `stages` 映射，禁止把 stage 的算法写错节点。
 
 ### 3.9 算法适配器
 
