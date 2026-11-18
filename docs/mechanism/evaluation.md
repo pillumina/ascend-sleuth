@@ -245,7 +245,8 @@ S2 未命中有三种解释：路由错、缺 case、内容错。它只看到没
 
 ```json
 {"sample_id":"S-1","hit":true,"first_hit_step":2,"candidates_examined":2,
- "full_body_reads":1,"reference_lookups":0,"wrong_cases":0,"tokens":1200}
+ "full_body_reads":1,"reference_lookups":0,"wrong_cases":0,
+ "resolution_ok":true,"tokens":1200}
 ```
 
 `hit=true` 必须有 `first_hit_step`；缺失字段记 unknown，不补 0。入口：
@@ -258,13 +259,29 @@ python3 scripts/evolve.py knowledge-usage evaluate --file usage.json
 python3 scripts/evolve.py knowledge-usage compare --baseline base.json --candidate cand.json
 ```
 
-演进评估的 trace 统一放 `.s2-replay/evolve/usage-traces/`（本地运行件，git-ignored），不得写入 `traces/`；真实诊断 trace 与演进评估 trace 分开。`from-trace` 从 `load_index`/`load_full`/`quickly_check`/`reference_lookup`/`hit` 推导，token 不在 trace 里时保持 null。`full_body_reads` 数 `load_full` 事件里点名的候选：`case` 或 `candidates` 列表，两者都写时取并集。没有带 `case` 或 `candidates` 的 `load_full` 事件时，退回 `quickly_check` 的 `case`。
+演进评估的 trace 统一放 `.s2-replay/evolve/usage-traces/`（本地运行件，git-ignored），不得写入 `traces/`；真实诊断 trace 与演进评估 trace 分开。`from-trace` 从 `load_index`/`load_full`/`quickly_check`/`reference_lookup`/`hit` 推导，token 不在 trace 里时保持 null。
+
+`candidates_examined` 记筛出的短列：`load_full` 点名的候选与 `quickly_check` 点名的 case 取并集；没有这两类事件时记 unknown，不拿索引视图行数顶替。
+
+`full_body_reads` 数 `load_full` 事件里点名的候选：`case` 或 `candidates` 列表，两者都写时取并集。没有带 `case` 或 `candidates` 的 `load_full` 事件时，退回 `quickly_check` 的 `case`。
+
+判定准确率看两处：judge 绑定的 `resolution_ok`（两侧齐全时比 resolved 数）与 `hits`；`hits` 下降一律算 `accuracy_regressed`。`resolution_ok` 缺失时退回 `wrong_cases`，再缺记 `wrong_cases_unknown`。
 
 `compare` 逐样本配对。同一效率项只在两侧都有值的样本上求均值，样本 id 集合仍要求两侧一致。同一字段在两侧可测的样本数不同时，各自求均值会把「一侧缺数据」算成「另一侧变好或变差」。
 
-某项只有部分样本可测时，差值照报，但不算改善或回退。它的差值仍超过判定阈值（1e-9）时记 `efficiency_partial_unknown`，结论不能是 `accept`。改善/回退方向与实验记录校验用同一个阈值。
+某项只有部分样本可测时，差值照报，但不算改善或回退；超过 1e-9 时记 `efficiency_partial_unknown`，结论不能是 `accept`。`elapsed_ms` 例外：部分覆盖时方向记未知，正差值记 `elapsed_inconclusive` 并阻断 `accept`，负差值不算改善。
 
-`compare` 只有在准确率不降、`wrong_cases` 不增、至少一个效率项改善、且没有效率项变差时给 `accept`；准确率或效率回退给 `reject`；没有改善或证据不全给 `insufficient`。实验记录的 `knowledge_usage.decision` 若存在，整体 `accept` 必须同时为 `accept`。
+`compare` 只有在准确率不降、至少一个效率项改善、且没有效率项变差时给 `accept`；准确率或效率回退给 `reject`；没有改善或证据不全给 `insufficient`。实验记录的 `knowledge_usage.decision` 若存在，整体 `accept` 必须同时为 `accept`。每个效率项同时报配对差值的均值与置信区间（`ci`）。计数项用点估计与 1e-9 阈值；`elapsed_ms` 是连续项，方向只在区间排除 0 时成立，区间跨 0 且差值为正时记 `elapsed_inconclusive`，结论不能是 `accept`。
+
+判定容量在 `brief` 算：同一评估池第 k 次判定时 `alpha_eff = alpha/(k+1)`，达成证据所需的最少独家命中数 `required_b` 是 `min{b: 2^-b <= alpha_eff}`。池样本数（field 加待审候选）少于 `required_b` 时记 `judgment_capacity_short`；这是入池前提示，不改判定结论，判定记录里不重复算。预检按 k=0 算，因为不知道下一次会复用哪个池。
+
+`pilot collect` 之后跑 `pilot decide`。它把每条 rollout 写成一条执行记录（`Run`，见 records.md），把一次对照写成一条结论（`Conclusion`，同篇）。
+
+记录写在 pilot 输出目录的父目录（常规位置是 `.s2-replay/evolve/`）：`runs.jsonl` 与 `conclusions.jsonl`。重复执行不会重复记 `Run`；同候选、同池、同参数、同约束的结论只写一次。
+
+`candidate_kb` 在候选 worktree 有未提交补丁时写成 `<基础版本>+patch:<补丁哈希>`；worktree 已失效时记 `unknown`，不用基础版本冒充。
+
+pilot 的样本可以用 `sample import-pilot --tasks <tasks.json>` 注册进本地样本队列；重复导入跳过，不改已有状态。
 
 ### 3.10 源码访问效率
 
@@ -281,7 +298,22 @@ python3 scripts/evolve.py source-usage compare --baseline base.json --candidate 
 
 记录 repo/ref、files_read、tool_calls、fetch_calls、grep_calls、followups、elapsed；cache/download/bytes 只做可选观测，不进门禁。`compare` 与知识使用效率一样逐样本配对：只在两侧都有值的样本上算该项总数。某项只有部分样本可测时，差值照报，但不算改善或回退。它的差值仍超过判定阈值（1e-9）时记 `source_efficiency_partial_unknown`。
 
-`compare` 要求源码结论 correctness 不降，且 files/tool/fetch/grep/elapsed 至少一项改善、没有项变差；correctness 或效率 unknown 只能记 `insufficient`。
+`compare` 要求源码结论 correctness 不降，且 files/tool/fetch/grep/elapsed 至少一项改善、没有项变差；correctness 或效率 unknown 只能记 `insufficient`。`elapsed` 的方向与知识使用效率一样按配对区间判，跨 0 的正差值记 `source_elapsed_inconclusive`。
+
+### 3.10.1 工具使用与工具性能
+
+`tooling` 改的是工具本身（`scripts/src_fetch.py` 的缓存/重试/ref 解析、`source-catalog.d/` 的路由数据），不是使用工具的提示文本。归因组件用 `source_fetch`、`source_cache`、`source_retry`、`source_catalog`。
+
+`scripts/evolve/tool_usage.py` 从 trace 的 `source_analysis` 事件读每个样本的工具指标：`tool_calls`、`fetch_calls`、`grep_calls`、`retries`、`cache_hits`、`tool_ms`、`failures`，结论正确性由 judge 绑定成 `resolved`。入口：
+
+```bash
+python3 scripts/evolve.py tool-usage from-trace --trace <trace.yaml> --resolved true
+python3 scripts/evolve.py tool-usage compare --baseline base.json --candidate cand.json
+```
+
+`compare` 与另两处一样逐样本配对：`resolved` 不降，且至少一项工具指标改善、没有项变差才给 `accept`。`replay_trace` 的 `experiment gate` 直接读这两份 JSON。
+
+工具补丁走 `target_kind: tooling` 的 candidate：文件只能落在 region 登记的 `paths`（`tooling.source_fetch` 是 `scripts/src_fetch.py` 与 `source-catalog.d`），不能碰 `skills/`、`knowledge/`、`eval/`、`tests/`、`.github/`。补丁可带 `checks`，取值是固定枚举：`py_compile`（编译补丁文件）、`diff_check`（`git diff --check`）、`src_fetch_self_test`（只对 `tooling.source_fetch` 与 `tooling.source_catalog`）。检查按 argv 在 worktree 内执行，不走 shell；任一失败回滚文件并删除 worktree。
 
 ### 3.11 算法适配器
 
@@ -293,7 +325,7 @@ python3 scripts/evolve.py source-usage compare --baseline base.json --candidate 
 |---|---|---|---|---|---|
 | skill | skill 文本、步骤、流程 | arena 配对门禁（golden/S2 旁路） | 已接（`arena`） | A2 | baseline |
 | knowledge | case/reference 内容 | rubric + 效用审计 | 已接（`rubric` 评分） | A2 | baseline |
-| tooling | 工具路由、分支、重试 | replay + trace 工具使用 | 未接（`replay_trace`） | A2 | baseline |
+| tooling | 工具路由、缓存、重试、目录数据 | replay + trace 工具使用 | 已接（`replay_trace`） | A1 | baseline |
 | harness | 调度与控制流 | 端到端回放 + 回归 | 未接（`end_to_end`） | A1 | baseline |
 
 `evaluations/registry.py` 把 target 映射到 `EvalProfile`，`implemented` 只表示当前有没有端到端 scorer/gate，不表示有真实数据。未接的 target 仍可记录 baseline Patch，但 `experiment propose` 会打印 `eval_ready: false` 并警告“记录但不 gate-ready”；不把目标分发误当评测完成。
@@ -305,7 +337,12 @@ python3 scripts/evolve.py experiment gate --target knowledge --sample K-1 \
   --scores '{"来源可追": 2, "根因完整": 2, "可复用": 1}'
 ```
 
-通过退出 0，拒绝退出 1，输入或 evaluator 未接退出 2。该命令只判一个已有 rubric 的样本，不替代双标、不生成 rubric。
+通过退出 0，拒绝退出 1，输入或 evaluator 未接退出 2。rubric 分支只判一个已有 rubric 的样本，不替代双标、不生成 rubric；tooling 分支读两份 tool usage JSON：
+
+```bash
+python3 scripts/evolve.py experiment gate --target tooling \
+  --baseline base-tool.json --candidate cand-tool.json
+```
 
 `targets/registry.py` 只允许 target 白名单内的算法；未注册的算法不会静默回退。官方 GEPA 库没有注册：它需要外部 endpoint 和同步 `task_lm`/`reflection_lm`，不属于本框架的自包含路径。GEPA 效果由 agent-native 实现承担：`select_candidate.pareto` + `propose.agent`，由 subagent 执行 task/judge/reflection，不调用官方库。`experiment propose --target skill --component <组件>` 会调用当前 optimizer 生成一个 Patch 并写本地 `experiments.jsonl`；`experiment records` 读取最近记录。baseline 仍是人工提案，不会自动改文件或合入。
 

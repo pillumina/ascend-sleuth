@@ -126,7 +126,7 @@ sample:
 ```yaml
 run:
   sample: VLLM-ASC-14871
-  versions: {protocol: p1, policy: policy-3, base_kb: 9f2c1a, candidate_kb: 9f2c1a, candidate: 4d8e0b, model: deepseek-flash, algorithm: baseline, algorithm_version: manual, budget: {}, seed: 0}
+  versions: {protocol: p1, policy: policy-3, base_kb: 9f2c1a, candidate_kb: 9f2c1a, candidate: C-14871-001, model: deepseek-flash, algorithm: baseline, algorithm_version: manual, budget: {}, seed: 0}
   metrics: {routing: true, case_hit: false, root_cause: null, fix: null, safety: pass}
   cost:
     source: provider_billed     # provider_billed / normalized / estimate
@@ -165,12 +165,12 @@ conclusion:
 |---|---|---|
 | 评估协议 | `protocol` | 样本分层、答案可见性、结论含义；改了它旧结论不可比 |
 | 可调策略 | `policy` | 主指标、阈值、样本量、成本预算、测试集划分 |
-| 基线知识库 | `base_kb` | 改动前 `knowledge/` 的内容哈希 |
-| 候选知识库 | `candidate_kb` | 改动后 `knowledge/` 的内容哈希 |
-| 候选改动 | `candidate` | 候选改动的提交；未提交或工作区不干净记 `dirty`，不出结论 |
-| 模型 | `model` | provider、model、思考等级 |
+| 基线知识库 | `base_kb` | 改动前检出的 HEAD 短 sha（`kb_rev` 同口径） |
+| 候选知识库 | `candidate_kb` | 候选 worktree 的 HEAD；有未提交补丁时写成 `<base>+patch:<补丁哈希>`，worktree 失效记 `unknown` |
+| 候选改动 | `candidate` | 候选 id；pilot 的补丁在隔离 worktree 内未提交，差异由 `candidate_kb` 的 patch 哈希标识 |
+| 模型 | `model` | provider、model、思考等级；pilot 的 trace 不记模型，当前写 `unknown` |
 
-判定时协议、策略、基线知识库与模型必须相同；候选知识与候选改动可以不同，但差异必须等于候选补丁（`git diff base..candidate`）。两个知识库哈希都要记：基线是改动前的知识库，候选是改动后的，后者正是被检验的差异。
+判定时协议、策略、基线知识库与模型必须相同；候选知识与候选改动可以不同，但差异必须等于候选补丁。两个知识库版本都要记：基线是 HEAD 短 sha；候选是 HEAD，或候选 worktree 有未提交补丁时的 `<base>+patch:<补丁哈希>`；worktree 已失效记 `unknown`。
 
 两项记录的变更方式不同：改协议要单独走一次评审并升版本，旧结论标上当时的版本；改策略写在 `eval/policy.yaml`，加载时校验未知键、非法枚举与缺失字段，哈希写进 `versions.policy`。改过的策略与旧结论不可直接比较。
 
@@ -186,7 +186,7 @@ conclusion:
 | 判定池与回归池 | `.s2-replay/arena/pool-*.yaml` | 否 | `eval_arena.py --build-pool` |
 | 评估台影响记录 | `.s2-replay/arena/impact.yaml` | 否 | `eval_arena.py --gate` |
 | 内容流程执行记录 | `metrics/skill-exec-log.yaml` | 否 | `log_skill_exec.py` |
-| 结论与执行记录（v1） | `.s2-replay/evolve/conclusions.jsonl`、`runs.jsonl` | 否 | `evolve.py judge --record` |
+| 结论与执行记录（v1） | `.s2-replay/evolve/conclusions.jsonl`、`runs.jsonl` | 否 | `evolve.py judge --record`；`evolve.py pilot decide` |
 | 条目使用记录与本期读数（源） | `metrics/entry-activity.d/<周>.yaml`、`metrics/timeline.d/<期号>.yaml` | 是 | 汇总、结算与组装脚本 |
 | 记录生成物 | `metrics/entry-activity/<部署>.yaml`、`metrics/timeline.yaml` | 是，但不手改 | 主干 job 或本地重建 |
 | 会话与任务状态 | `proposals/sessions/`、`proposals/tasks/` | 否 | 会话脚本 |

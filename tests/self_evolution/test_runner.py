@@ -59,6 +59,13 @@ class IssuePlanTest(unittest.TestCase):
         self.assertIn("next_actions:", text)
         self.assertIn("samples: 0", text)
 
+    def test_pool_capacity_short_is_reported(self):
+        plan = self.plan()
+        self.assertTrue(any(action.startswith("judgment_capacity_short")
+                            for action in plan["next_actions"]))
+        self.assertEqual(plan["judgment_capacity"]["required_b"], 4)
+        self.assertEqual(plan["judgment_capacity"]["potential"], 0)
+
     def test_candidates_need_review_and_missing_answer_warns(self):
         self.create("S-1", expected=None)
         plan = self.plan()
@@ -153,7 +160,7 @@ class IssuePlanTest(unittest.TestCase):
     def test_json_plan_has_policy_hash(self):
         plan = self.plan()
         self.assertEqual(len(plan["policy_hash"]), 64)
-        self.assertEqual(set(plan), {"policy_hash", "target", "algorithm", "trace_snapshot", "trace_state", "counts", "metrics", "next_actions", "warnings"})
+        self.assertEqual(set(plan), {"policy_hash", "target", "algorithm", "trace_snapshot", "trace_state", "counts", "metrics", "judgment_capacity", "next_actions", "warnings"})
 
 
 class RunCliTest(unittest.TestCase):

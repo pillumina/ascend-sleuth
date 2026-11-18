@@ -37,6 +37,15 @@ class SourceUsageTest(unittest.TestCase):
         self.assertEqual(out["grep_calls"], 2)
         self.assertIsNone(out["source_ok"])
 
+    def test_empty_tool_calls_is_zero_not_unknown(self):
+        trace = {"session_id": "s", "trace": [
+            {"action": "source_analysis", "tool_calls": []},
+        ]}
+        out = from_trace(trace)
+        self.assertEqual(out["tool_calls"], 0)
+        self.assertEqual(out["fetch_calls"], 0)
+        self.assertEqual(out["grep_calls"], 0)
+
     def test_files_field_and_missing_tools(self):
         trace = {"session_id": "s", "trace": [
             {"action": "source_analysis", "repo": "r", "files": ["a.py"]},
@@ -132,19 +141,19 @@ class SourceUsageTest(unittest.TestCase):
         self.assertNotIn("source_efficiency_regressed", out["reasons"])
         self.assertEqual(out["decision"], "insufficient")
 
-    def test_partial_regression_is_insufficient(self):
+    def test_partial_elapsed_change_is_unconfirmed(self):
         base = [row("a", elapsed=1000), row("b", elapsed=None)]
         cand = [row("a", elapsed=9000), row("b", elapsed=1000)]
         out = compare(base, cand)
-        self.assertIn("source_efficiency_partial_unknown", out["reasons"])
+        self.assertIn("source_elapsed_inconclusive", out["reasons"])
         self.assertEqual(out["decision"], "insufficient")
 
     def test_partial_threshold_uses_the_same_epsilon(self):
         base = [row("a", elapsed=1000.0), row("b", elapsed=None)]
         tiny = [row("a", elapsed=1000.00000000005), row("b", elapsed=1000)]
-        self.assertNotIn("source_efficiency_partial_unknown", compare(base, tiny)["reasons"])
+        self.assertNotIn("source_elapsed_inconclusive", compare(base, tiny)["reasons"])
         real = [row("a", elapsed=1000.001), row("b", elapsed=1000)]
-        self.assertIn("source_efficiency_partial_unknown", compare(base, real)["reasons"])
+        self.assertIn("source_elapsed_inconclusive", compare(base, real)["reasons"])
 
 
 if __name__ == "__main__":

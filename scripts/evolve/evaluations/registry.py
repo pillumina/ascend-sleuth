@@ -15,7 +15,7 @@ EVAL_PROFILES: Dict[str, EvalProfile] = {
     ),
     "replay_trace": EvalProfile(
         id="replay_trace", label="回放工具调用与 trace",
-        object_types=("trace",), gate="replay-trace", implemented=False,
+        object_types=("diagnosis", "trace"), gate="replay-trace", implemented=True,
     ),
     "subagent_judge": EvalProfile(
         id="subagent_judge", label="子 agent 对照评审",

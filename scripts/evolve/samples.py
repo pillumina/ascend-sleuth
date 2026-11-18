@@ -545,3 +545,36 @@ class SampleStore:
 def can_transition(status: str, new_status: str) -> bool:
     """对外暴露状态机检查，避免调用方各自判断。"""
     return check_transition(status, new_status)
+
+
+def import_pilot(store: "SampleStore", tasks_path: Path) -> Dict[str, List[str]]:
+    """把一次 pilot 的 samples 注册进样本队列；已存在的跳过，不改状态。"""
+    import json
+
+    tasks = json.loads(Path(tasks_path).read_text(encoding="utf-8"))
+    created: List[str] = []
+    skipped: List[str] = []
+    for entry in tasks.get("samples") or []:
+        sid = str(entry.get("short_id") or entry.get("id"))
+        if store.load(sid) is not None:
+            skipped.append(sid)
+            continue
+        path = entry.get("path")
+        if not isinstance(path, str) or not path:
+            raise StoreError(f"pilot sample {sid!r} has no path")
+        data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            raise StoreError(f"invalid sample file: {entry['path']}")
+        store.new(
+            id=sid,
+            object_type="diagnosis",
+            source=str(data.get("source") or entry.get("id")),
+            origin="field",
+            purpose="evaluation",
+            input=data.get("input") or {},
+            expected=data.get("expected"),
+            expected_kind=data.get("expected_kind") or "resolution",
+            notes=f"imported from pilot {tasks.get('candidate_id', '')}".strip(),
+        )
+        created.append(sid)
+    return {"created": created, "skipped": skipped}

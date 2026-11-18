@@ -344,3 +344,15 @@ def decide(method: str, **kwargs: Any) -> DecisionResult:
             f"expected one of {list(DECISION_METHODS)}"
         ) from exc
     return fn(**kwargs)
+
+
+def required_exclusive_wins(alpha_eff: float) -> int:
+    """c=0 时达到 p<=alpha_eff 所需的最少独家命中数。"""
+    if not isinstance(alpha_eff, (int, float)) or isinstance(alpha_eff, bool):
+        raise ValueError("alpha_eff must be a number")
+    if not 0 < alpha_eff < 1:
+        raise ValueError("alpha_eff must be between 0 and 1")
+    wins = 1
+    while 2 ** (-wins) > alpha_eff:
+        wins += 1
+    return wins

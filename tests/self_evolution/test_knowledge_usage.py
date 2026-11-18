@@ -36,7 +36,7 @@ class KnowledgeUsageTest(unittest.TestCase):
             ],
         }
         out = from_trace(trace, expected_case="C-2")
-        self.assertEqual(out["candidates_examined"], 5)
+        self.assertEqual(out["candidates_examined"], 2)
         self.assertEqual(out["full_body_reads"], 2)
         self.assertEqual(out["reference_lookups"], 1)
         self.assertEqual(out["first_hit_step"], 3)
@@ -144,11 +144,40 @@ class KnowledgeUsageTest(unittest.TestCase):
         }
         validate_experiment(record)
 
-    def test_partial_regression_is_insufficient(self):
+    def test_no_shortlist_leaves_candidates_unknown(self):
+        trace = {"session_id": "s", "trace": [
+            {"action": "load_index", "considered_candidates": ["C-1", "C-2"]},
+        ]}
+        out = from_trace(trace)
+        self.assertIsNone(out["candidates_examined"])
+
+    def test_resolution_known_still_checks_hits(self):
+        base = [dict(row("a"), resolution_ok=True)]
+        cand = [dict(row("a", hit=False, step=None), resolution_ok=True)]
+        result = compare(base, cand)
+        self.assertIn("accuracy_regressed", result["reasons"])
+        self.assertEqual(result["decision"], "reject")
+
+    def test_partial_elapsed_improvement_is_not_accept(self):
+        base = [row("a", elapsed=1000), row("b", elapsed=1000), row("c", elapsed=None)]
+        cand = [row("a", elapsed=900), row("b", elapsed=900), row("c", elapsed=800)]
+        result = compare(base, cand)
+        self.assertEqual(result["paired"]["elapsed_ms"]["n"], 2)
+        self.assertEqual(result["paired"]["elapsed_ms"]["unknown"], 1)
+        self.assertNotEqual(result["decision"], "accept")
+
+    def test_confirmed_elapsed_change_uses_paired_interval(self):
+        base = [row(f"s{i}", elapsed=1000) for i in range(5)]
+        slower = [row(f"s{i}", elapsed=1200) for i in range(5)]
+        faster = [row(f"s{i}", elapsed=800) for i in range(5)]
+        self.assertEqual(compare(base, slower)["decision"], "reject")
+        self.assertEqual(compare(base, faster)["decision"], "accept")
+
+    def test_partial_elapsed_change_is_unconfirmed(self):
         base = [row("a", elapsed=1000), row("b", elapsed=None)]
         cand = [row("a", elapsed=9000), row("b", elapsed=1000)]
         result = compare(base, cand)
-        self.assertIn("efficiency_partial_unknown", result["reasons"])
+        self.assertIn("elapsed_inconclusive", result["reasons"])
         self.assertEqual(result["decision"], "insufficient")
 
     def test_from_trace_reads_candidates_list_on_load_full(self):
@@ -182,6 +211,23 @@ class KnowledgeUsageTest(unittest.TestCase):
                            "tokens": None, "elapsed_ms": 0.0},
             },
         }
+
+    def test_accept_record_may_use_resolved_instead_of_wrong_cases(self):
+        record = self._usage_record("accept", None)
+        record["knowledge_usage"]["reasons"] = []
+        record["paired"] = {"b": 4, "c": 0, "n": 4}
+        record["knowledge_usage"]["candidate"]["full_body_reads"] -= 1
+        record["knowledge_usage"]["deltas"]["full_body_reads"] = -1
+        for side in ("baseline", "candidate"):
+            record["knowledge_usage"][side]["resolved"] = 1
+        validate_experiment(record)
+
+    def test_resolution_regression_rejects(self):
+        base = [dict(row("a"), resolution_ok=True)]
+        cand = [dict(row("a"), resolution_ok=False)]
+        result = compare(base, cand)
+        self.assertIn("resolution_regressed", result["reasons"])
+        self.assertEqual(result["decision"], "reject")
 
     def test_reject_record_may_carry_unknown_wrong_cases(self):
         validate_experiment(self._usage_record("reject", None))

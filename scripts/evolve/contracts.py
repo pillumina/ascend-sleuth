@@ -24,6 +24,7 @@ PURPOSES = ("evaluation", "feedback", "test", "regression", "cross", "scale")
 OBJECT_TYPE_VALUES = ("diagnosis", "case", "reference", "trace")
 EXPECTED_KINDS = ("resolution", "assertion", "rubric")
 DECISIONS = ("accept", "insufficient", "reject", "unknown")
+PROTOCOL_VERSION = "evolve-v1"
 
 
 class ContractError(ValueError):

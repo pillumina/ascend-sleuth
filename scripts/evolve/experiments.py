@@ -43,6 +43,10 @@ def _validate_usage_side(value: Any, name: str) -> Dict[str, Any]:
     if wrong is not None and (not isinstance(wrong, int) or isinstance(wrong, bool)
                               or not 0 <= wrong <= n):
         raise ExperimentError(f"knowledge_usage.{name}.wrong_cases must be 0..n or null")
+    resolved = value.get("resolved")
+    if resolved is not None and (not isinstance(resolved, int) or isinstance(resolved, bool)
+                                 or not 0 <= resolved <= n):
+        raise ExperimentError(f"knowledge_usage.{name}.resolved must be 0..n or null")
     rate = value.get("hit_rate")
     if not isinstance(rate, (int, float)) or isinstance(rate, bool):
         raise ExperimentError(f"knowledge_usage.{name}.hit_rate must be a number")
@@ -83,10 +87,14 @@ def _validate_usage_evidence(usage: Dict[str, Any]) -> None:
     if usage.get("decision") == "accept":
         if usage.get("reasons"):
             raise ExperimentError("knowledge_usage accept must have no reasons")
-        if baseline["wrong_cases"] is None or candidate["wrong_cases"] is None:
-            raise ExperimentError("knowledge_usage accept requires known wrong_cases")
-        if candidate["hits"] < baseline["hits"] or candidate["wrong_cases"] > baseline["wrong_cases"]:
-            raise ExperimentError("knowledge_usage accept regresses accuracy/wrong_cases")
+        if baseline.get("resolved") is not None and candidate.get("resolved") is not None:
+            if candidate["resolved"] < baseline["resolved"]:
+                raise ExperimentError("knowledge_usage accept regresses resolved count")
+        elif baseline["wrong_cases"] is not None and candidate["wrong_cases"] is not None:
+            if candidate["hits"] < baseline["hits"] or candidate["wrong_cases"] > baseline["wrong_cases"]:
+                raise ExperimentError("knowledge_usage accept regresses accuracy/wrong_cases")
+        else:
+            raise ExperimentError("knowledge_usage accept requires known wrong_cases or resolved")
         improved = any(item is not None and item < -EPSILON for item in deltas.values())
         worsened = any(item is not None and item > EPSILON for item in deltas.values())
         if not improved or worsened:

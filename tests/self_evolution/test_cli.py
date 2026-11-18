@@ -197,7 +197,7 @@ class SampleLifecycleCliTest(unittest.TestCase):
         )
         self.assertEqual(created.returncode, 0, created.stderr)
         result = self.cli(
-            "experiment", "gate", "--target", "tooling", "--sample", "K-2",
+            "experiment", "gate", "--target", "harness", "--sample", "K-2",
             "--scores", json.dumps({"来源可追": 2}),
         )
         self.assertEqual(result.returncode, 2)
@@ -1099,3 +1099,44 @@ class PolicyWiringCliTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ToolingCliTest(unittest.TestCase):
+    @staticmethod
+    def _row(sample, calls=2, resolved=True):
+        return {"sample_id": sample, "tool_calls": calls, "fetch_calls": 1,
+                "grep_calls": 1, "retries": 0, "cache_hits": 0,
+                "tool_ms": 10.0, "failures": 0, "resolved": resolved}
+
+    def test_tooling_gate_accepts_and_rejects(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = root / "base.json"
+            cand = root / "cand.json"
+            base.write_text(json.dumps({"samples": [self._row("a", calls=4)]}), encoding="utf-8")
+            cand.write_text(json.dumps({"samples": [self._row("a", calls=2)]}), encoding="utf-8")
+            result = run_cli("experiment", "gate", "--target", "tooling",
+                             "--baseline", str(base), "--candidate", str(cand))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("decision: accept", result.stdout)
+            cand.write_text(json.dumps({"samples": [self._row("a", calls=2, resolved=False)]}),
+                            encoding="utf-8")
+            result = run_cli("experiment", "gate", "--target", "tooling",
+                             "--baseline", str(base), "--candidate", str(cand))
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("decision: reject", result.stdout)
+
+    def test_tool_usage_from_trace_cli(self):
+        with tempfile.TemporaryDirectory() as td:
+            trace = Path(td) / "t.yaml"
+            trace.write_text(yaml.safe_dump({
+                "session_id": "s1",
+                "trace": [{"action": "source_analysis", "files_read": ["a.py"],
+                           "tool_calls": ["src_fetch.py r main", "grep a.py"],
+                           "tool_ms": 5.0}],
+            }), encoding="utf-8")
+            result = run_cli("tool-usage", "from-trace", "--trace", str(trace), "--json")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["tool_calls"], 2)
+            self.assertEqual(payload["fetch_calls"], 1)

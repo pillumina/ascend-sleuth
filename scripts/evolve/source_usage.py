@@ -7,6 +7,8 @@
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
+from .statistics import paired_diff_ci
+
 OBSERVED_FIELDS = ("files_read", "tool_calls", "fetch_calls", "grep_calls",
                   "followups", "downloads", "bytes", "elapsed_ms")
 GATE_FIELDS = ("files_read", "tool_calls", "fetch_calls", "grep_calls",
@@ -86,6 +88,18 @@ def summarize(data: Any) -> Dict[str, Any]:
     return result
 
 
+def _elapsed_state(delta, ci):
+    """连续成本项只在置信区间排除 0 时才判方向。"""
+    if delta is None or abs(delta) <= EPSILON:
+        return "neutral"
+    low, high = ci.get("low"), ci.get("high")
+    if low is not None and low > 0:
+        return "worse"
+    if high is not None and high < 0:
+        return "better"
+    return "unconfirmed"
+
+
 def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
     """源码结论不降，且效率项至少一项改善、没有项变差。
 
@@ -130,6 +144,8 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
                          "delta": total_c - total_b}
         bs[field], cs[field] = total_b, total_c
         deltas[field] = total_c - total_b
+        if field == "elapsed_ms":
+            continue
         if paired[field]["unknown"]:
             partial.append(field)
             continue
@@ -138,6 +154,23 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
         elif deltas[field] > EPSILON:
             worsened += 1
     deltas["cache_hits"] = None
+    elapsed_diffs = [c[i]["elapsed_ms"] - b[i]["elapsed_ms"] for i in ids
+                     if b[i]["elapsed_ms"] is not None and c[i]["elapsed_ms"] is not None]
+    elapsed_delta = paired["elapsed_ms"]["delta"]
+    if elapsed_delta is None or abs(elapsed_delta) <= EPSILON:
+        elapsed_state = "neutral"
+    elif paired["elapsed_ms"]["unknown"]:
+        elapsed_state = "unconfirmed"
+    else:
+        elapsed_state = _elapsed_state(elapsed_delta, paired_diff_ci(elapsed_diffs))
+    if elapsed_state == "worse":
+        worsened += 1
+    elif elapsed_state == "better":
+        improved += 1
+    elif (elapsed_state == "unconfirmed"
+          and paired["elapsed_ms"]["delta"] is not None
+          and paired["elapsed_ms"]["delta"] > 0):
+        reasons.append("source_elapsed_inconclusive")
     if any(paired[field]["delta"] is not None and paired[field]["delta"] > EPSILON
            for field in partial):
         reasons.append("source_efficiency_partial_unknown")
@@ -151,8 +184,13 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
         decision = "insufficient"
     else:
         decision = "accept"
+    ci = {}
+    for field in GATE_FIELDS:
+        diffs = [c[i][field] - b[i][field] for i in ids
+                 if b[i][field] is not None and c[i][field] is not None]
+        ci[field] = paired_diff_ci(diffs)
     return {"decision": decision, "baseline": bs, "candidate": cs,
-            "deltas": deltas, "reasons": reasons, "paired": paired}
+            "deltas": deltas, "reasons": reasons, "paired": paired, "ci": ci}
 
 
 def _elapsed(document: Dict[str, Any], events: List[Dict[str, Any]]) -> Optional[float]:
@@ -183,13 +221,22 @@ def from_trace(document: Any, source_ok: Optional[bool] = None) -> Dict[str, Any
         for item in (e.get("files_read") or e.get("files") or []):
             files.append(str(item))
         tool_calls = e.get("tool_calls")
-        if tool_calls:
+        derived_fetch = derived_grep = 0
+        if isinstance(tool_calls, list):
             calls = (calls or 0) + len(tool_calls)
-            fetches = (fetches or 0) + sum(
+            derived_fetch = sum(
                 1 for call in tool_calls
                 if "src_fetch.py" in str(call) or "git fetch" in str(call)
             )
-            greps = (greps or 0) + sum(1 for call in tool_calls if "grep" in str(call))
+            derived_grep = sum(1 for call in tool_calls if "grep" in str(call))
+        if isinstance(e.get("fetch_calls"), int):
+            fetches = (fetches or 0) + e["fetch_calls"]
+        elif isinstance(tool_calls, list):
+            fetches = (fetches or 0) + derived_fetch
+        if isinstance(e.get("grep_calls"), int):
+            greps = (greps or 0) + e["grep_calls"]
+        elif isinstance(tool_calls, list):
+            greps = (greps or 0) + derived_grep
         if isinstance(e.get("followup"), list):
             followups = (followups or 0) + len(e["followup"])
     return validate_record({

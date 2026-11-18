@@ -138,6 +138,7 @@ def build_plan(root: Path, trace_state: Optional[Path] = None,
     spec = None
     if region:
         spec = {
+            "target_kind": region.get("target_kind", "skill"),
             "target_skill": region["skill"],
             "mutable_region": region["region"],
             "hard": region["hard"],
@@ -203,7 +204,9 @@ def apply_selection(plan: Dict[str, Any], payload: Any) -> Dict[str, Any]:
         raise ValueError("selection evidence is required")
     spec = REGIONS[region]
     plan["experiment"] = {
-        "target_skill": spec.skill, "mutable_region": region,
+        "target_kind": spec.target_kind,
+        "target_skill": spec.skill,
+        "mutable_region": region,
         "hard": 0, "events": 0,
     }
     plan["stages"]["select_region"] = "select.region_agent"

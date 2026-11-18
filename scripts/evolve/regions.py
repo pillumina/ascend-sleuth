@@ -14,6 +14,8 @@ class RegionSpec:
     skill: str
     components: tuple
     description: str
+    target_kind: str = "skill"
+    paths: tuple = ()
 
 
 REGIONS: Dict[str, RegionSpec] = {
@@ -52,6 +54,19 @@ REGIONS: Dict[str, RegionSpec] = {
         components=("reference_content", "reference_miss"),
         description="reference 词条的事实/范围；走 rubric 与人工审",
     ),
+    # tooling 区改的是工具本身，不是使用工具的提示文本。
+    "tooling.source_fetch": RegionSpec(
+        id="tooling.source_fetch", skill="tooling", target_kind="tooling",
+        components=("source_fetch", "source_cache", "source_retry"),
+        description="源码获取工具的缓存、重试、ref 解析与失败停止；不改诊断 skill 的指示",
+        paths=("scripts/src_fetch.py", "source-catalog.d"),
+    ),
+    "tooling.source_catalog": RegionSpec(
+        id="tooling.source_catalog", skill="tooling", target_kind="tooling",
+        components=("source_catalog", "source_catalog_miss"),
+        description="源码仓与签名候选表（数据，不改解析代码）",
+        paths=("source-catalog.d",),
+    ),
 }
 
 
@@ -70,6 +85,7 @@ def recommend(components: Dict[str, Dict[str, int]]) -> List[Dict[str, object]]:
         if hard or events:
             scored.append({
                 "region": region.id, "skill": region.skill,
+                "target_kind": region.target_kind,
                 "hard": hard, "events": events,
                 "description": region.description,
             })
