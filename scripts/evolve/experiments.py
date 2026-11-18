@@ -141,11 +141,7 @@ def _validate_source_usage_evidence(usage: Dict[str, Any]) -> None:
         lower = ("files_read", "tool_calls", "fetch_calls", "grep_calls",
                  "followups", "elapsed_ms")
         improved = any(deltas[f] is not None and deltas[f] < 0 for f in lower)
-        if deltas.get("cache_hits") is not None and deltas["cache_hits"] > 0:
-            improved = True
         worsened = any(deltas[f] is not None and deltas[f] > 0 for f in lower)
-        if deltas.get("cache_hits") is not None and deltas["cache_hits"] < 0:
-            worsened = True
         if not improved or worsened:
             raise ExperimentError("source_usage accept requires improvement without regression")
 

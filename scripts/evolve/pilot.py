@@ -5,6 +5,7 @@ candidate 的样本、目录、trace 隔离，避免手工拼命令时写错路�
 """
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -18,14 +19,22 @@ class PilotError(ValueError):
     pass
 
 
+def _short_id(sample_id: str) -> str:
+    matches = re.findall(r"(?:^|[-_])(\d{3,6})(?=$|[-_])", sample_id)
+    return matches[-1] if matches else sample_id
+
+
 def _read_samples(paths: List[str]) -> List[Dict[str, Any]]:
     out = []
     for path in paths:
         data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
         if not isinstance(data, dict) or not data.get("id"):
             raise PilotError(f"invalid sample file: {path}")
-        out.append({"id": str(data["id"]), "path": str(Path(path).resolve()),
-                    "expected": data.get("expected")})
+        out.append({"id": str(data["id"]), "short_id": _short_id(str(data["id"])),
+                    "path": str(Path(path).resolve()), "expected": data.get("expected")})
+    short_ids = [item["short_id"] for item in out]
+    if len(set(short_ids)) != len(short_ids):
+        raise PilotError("sample short_id collision; use unique issue ids")
     return out
 
 
@@ -67,7 +76,7 @@ def collect(output: Path) -> Dict[str, Any]:
         rows = []
         for sample in tasks.get("samples") or []:
             sample_id = sample["id"]
-            sid = sample_id.rsplit("-", 1)[-1] if sample_id.rsplit("-", 1)[-1].isdigit() else sample_id
+            sid = sample.get("short_id") or _short_id(sample_id)
             trace = output / arm / "traces" / f"{sid}.yaml"
             out = output / arm / "out" / f"{sid}.out.md"
             row = {"sample_id": sid, "source_id": sample_id, "trace": str(trace), "output": str(out),
