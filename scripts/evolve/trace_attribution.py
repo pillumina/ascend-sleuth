@@ -62,7 +62,7 @@ def experiment_spec(stats: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         "snapshot_id": stats.get("snapshot_id"),
         "source_id": stats.get("source_id"),
         "stages": {"attribute": "attribute.trace_rule",
-                   "select": "select.region_hardcount"},
+                   "select_region": "select.region_hardcount"},
     }
 
 

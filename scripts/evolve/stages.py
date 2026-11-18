@@ -1,13 +1,13 @@
 """RSI 各节点的算法注册表：归因、选择、提案、judge、gate。
 
 算法不直接改文件；每个 stage 记录 id/version/execution，实验时固定组合。
-GEPA 不是整条循环，而是 select=pareto + propose=agent 的一个组合。
+GEPA 不是整条循环，而是 select_candidate=pareto + propose=agent 的一个组合。
 """
 
 from dataclasses import dataclass
 from typing import Dict, List
 
-POINTS = ("attribute", "select", "propose", "judge", "gate")
+POINTS = ("attribute", "select_region", "select_candidate", "propose", "judge", "gate")
 
 
 @dataclass(frozen=True)
@@ -32,27 +32,27 @@ STAGES: Dict[str, StageSpec] = {
         "从 trace attribution 事件抽组件证据；不判定修复",
     ),
     "select.region_hardcount": StageSpec(
-        "select.region_hardcount", "select", "v1", "manual",
+        "select.region_hardcount", "select_region", "v1", "manual",
         "按硬归因数把组件映射到可变异区",
     ),
     "attribute.agent": StageSpec(
         "attribute.agent", "attribute", "v1", "subagent",
         "规则归因不确定/冲突时，由 agent 读 trace/metrics/replay 信号补证据；只能给候选归因",
     ),
-    "select.agent": StageSpec(
-        "select.agent", "select", "v1", "subagent",
+    "select.region_agent": StageSpec(
+        "select.region_agent", "select_region", "v1", "subagent",
         "多个注册 region 接近时，由 agent 按证据选一个；不能发明 region",
     ),
     "select.none": StageSpec(
-        "select.none", "select", "v1", "manual",
+        "select.none", "select_candidate", "v1", "manual",
         "baseline 控制臂：不选新父候选，只评估当前 skill",
     ),
     "select.best": StageSpec(
-        "select.best", "select", "v1", "manual",
+        "select.best", "select_candidate", "v1", "manual",
         "只选平均分最高的未反射候选；单候选/agent heuristic 默认",
     ),
     "select.pareto": StageSpec(
-        "select.pareto", "select", "v1", "manual",
+        "select.pareto", "select_candidate", "v1", "manual",
         "候选分数 Pareto 支配 + 未反射选择；GEPA 的选择层",
     ),
     "propose.none": StageSpec(

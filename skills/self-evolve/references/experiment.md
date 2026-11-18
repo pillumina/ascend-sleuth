@@ -31,11 +31,11 @@ task 只看样本输入；judge 看 expected/rubric；reflection 不写仓库；
 
 不要手选或写死 stage id；以 `rsi plan` 输出的 `stages` 为准，注册表与当前实现见机制文档。默认组合是：
 
-- 归因、选点先走规则；规则不确定时才让 agent 补证据/在注册区中选；
+- 归因、选 region 先走规则；规则不确定时才让 agent 补证据/在注册区中选；
 - 提案默认由 agent 从失败反馈写可变异区；
 - judge 独立于 proposer；
 - gate 确定性/人工，不交给 agent；
-- baseline 只评估 seed，不产生候选；GEPA 是“Pareto 选择 + agent 提案”的可选组合。
+- baseline 只评估 seed，不产生候选；GEPA 是“select_candidate=pareto + propose=agent”的可选组合。
 
 agent 归因只能给候选，不能写成 hard；agent 选点只能在注册区里选。
 

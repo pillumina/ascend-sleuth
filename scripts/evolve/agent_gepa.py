@@ -84,13 +84,11 @@ class AgentRsiSession:
         self.mutable_region = str(mutable_region or "")
         self.select_stage = get_stage(select_stage)
         self.propose_stage = get_stage(propose_stage)
-        if self.select_stage.point != "select":
-            raise GepaError("select_stage must be an attribute/select stage")
+        if self.select_stage.point != "select_candidate":
+            raise GepaError("select_stage must be a select_candidate stage")
         if self.propose_stage.point not in ("propose",):
             raise GepaError("propose_stage must be a propose stage")
         if selector is None:
-            if select_stage == "select.agent":
-                raise GepaError("select.agent requires an external selector")
             if select_stage == "select.none":
                 selector = NoneSelector()
             elif select_stage == "select.pareto":
@@ -202,7 +200,7 @@ class AgentRsiSession:
             "mutable_region": self.mutable_region,
             "select_stage": self.select_stage.id,
             "propose_stage": self.propose_stage.id,
-            "stages": {"select": self.select_stage.id,
+            "stages": {"select_candidate": self.select_stage.id,
                        "propose": self.propose_stage.id},
             "best_id": best.id if best else None,
             "best_skill": best.skill if best else None,

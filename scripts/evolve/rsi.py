@@ -85,10 +85,34 @@ def _replay_signals(report_path: Optional[Path],
     }
 
 
+DEFAULT_STAGES = {
+    "attribute": "attribute.trace_rule",
+    "select_region": "select.region_hardcount",
+    "select_candidate": "select.best",
+    "propose": "propose.agent",
+    "judge": "judge.subagent",
+    "gate": "gate.paired",
+}
+
+
+def _stages(config: Optional[Dict[str, str]]) -> Dict[str, str]:
+    from .stages import get_stage
+    resolved = dict(DEFAULT_STAGES)
+    for point, stage_id in (config or {}).items():
+        spec = get_stage(str(stage_id))
+        if spec.point != point:
+            raise ValueError(f"stage {stage_id!r} is {spec.point}, not {point!r}")
+        resolved[point] = spec.id
+    if set(resolved) != set(DEFAULT_STAGES):
+        raise ValueError("experiment.stages must cover all RSI points")
+    return resolved
+
+
 def build_plan(root: Path, trace_state: Optional[Path] = None,
                replay: Optional[Path] = None,
                metrics: Optional[Dict[str, Any]] = None,
-               holdout_numbers: Optional[set] = None) -> Dict[str, Any]:
+               holdout_numbers: Optional[set] = None,
+               stages_config: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     root = Path(root)
     trace = _trace_signals(trace_state or (root / ".s2-replay" / "evolve" / "trace-state.json"))
     metric = _metrics_signals(metrics or {})
@@ -100,18 +124,12 @@ def build_plan(root: Path, trace_state: Optional[Path] = None,
             bucket["events"] += int(values.get("events", 0))
             bucket["hard"] += int(values.get("hard", 0))
     regions = recommend(components)
-    stages = {
-        "attribute": "attribute.trace_rule",
-        "select": "select.region_hardcount",
-        "propose": "propose.agent",
-        "judge": "judge.subagent",
-        "gate": "gate.paired",
-    }
+    stages = _stages(stages_config)
     status = "actionable" if regions else "no_action"
     if not trace.get("available") and not metric.get("available") and not replay_data.get("available"):
         status = "no_sources"
     elif regions and len(regions) > 1 and regions[0]["hard"] == regions[1]["hard"]:
-        stages["select"] = "select.agent"
+        stages["select_region"] = "select.region_agent"
         status = "needs_agent_selection"
     if not regions and components:
         stages["attribute"] = "attribute.agent"
@@ -188,7 +206,7 @@ def apply_selection(plan: Dict[str, Any], payload: Any) -> Dict[str, Any]:
         "target_skill": spec.skill, "mutable_region": region,
         "hard": 0, "events": 0,
     }
-    plan["stages"]["select"] = "select.agent"
+    plan["stages"]["select_region"] = "select.region_agent"
     plan["agent_selection"] = {"region": region, "evidence": evidence}
     plan["status"] = "actionable"
     return plan

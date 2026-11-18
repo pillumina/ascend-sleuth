@@ -801,12 +801,14 @@ def cmd_rsi_plan(args: argparse.Namespace) -> int:
     root = Path(args.root) if args.root else Path.cwd()
     try:
         metrics = load_metrics(root)
+        policy = _policy_for(args)
         plan = build_plan(
             root,
             trace_state=Path(args.trace_state) if args.trace_state else (_evolve_base(args) / "trace-state.json"),
             replay=Path(args.replay) if args.replay else None,
             metrics=metrics,
             holdout_numbers=issue_numbers(root),
+            stages_config=(policy.get("experiment") or {}).get("stages"),
         )
         state = Path(args.state) if args.state else _evolve_base(args) / "rsi-plan.json"
         save_plan(plan, state)
@@ -860,7 +862,7 @@ def cmd_rsi_select(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     print(f"updated: {path}")
-    print("stage: select.agent")
+    print("stage: select.region_agent")
     return 0
 
 

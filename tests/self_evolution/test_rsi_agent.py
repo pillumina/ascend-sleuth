@@ -12,7 +12,7 @@ from evolve.rsi import apply_attribution, apply_selection  # noqa: E402
 
 
 PLAN = {"status": "needs_agent_attribution", "stages": {"attribute": "attribute.trace_rule",
-        "select": "select.region_hardcount"}, "experiment": None}
+        "select_region": "select.region_hardcount"}, "experiment": None}
 
 
 class RsiAgentWritebackTest(unittest.TestCase):
@@ -32,7 +32,7 @@ class RsiAgentWritebackTest(unittest.TestCase):
     def test_selection_sets_experiment(self):
         plan = apply_selection(dict(PLAN), {"region": "diagnose.trace_evidence", "evidence": "x"})
         self.assertEqual(plan["experiment"]["mutable_region"], "diagnose.trace_evidence")
-        self.assertEqual(plan["stages"]["select"], "select.agent")
+        self.assertEqual(plan["stages"]["select_region"], "select.region_agent")
 
 
 if __name__ == "__main__":
