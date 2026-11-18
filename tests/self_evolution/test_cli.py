@@ -522,11 +522,13 @@ class IngestCliTest(unittest.TestCase):
             cand = Path(td) / "cand.json"
             base.write_text(json.dumps([
                 {"sample_id": "a", "hit": True, "first_hit_step": 4,
-                 "candidates_examined": 3, "full_body_reads": 3, "tokens": 100},
+                 "candidates_examined": 3, "full_body_reads": 3,
+                 "reference_lookups": 1, "wrong_cases": 0, "tokens": 100},
             ]), encoding="utf-8")
             cand.write_text(json.dumps([
                 {"sample_id": "a", "hit": True, "first_hit_step": 2,
-                 "candidates_examined": 1, "full_body_reads": 1, "tokens": 50},
+                 "candidates_examined": 1, "full_body_reads": 1,
+                 "reference_lookups": 0, "wrong_cases": 0, "tokens": 50},
             ]), encoding="utf-8")
             result = run_cli("knowledge-usage", "compare",
                              "--baseline", str(base), "--candidate", str(cand), "--json")

@@ -9,6 +9,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from evolve.knowledge_usage import UsageError, compare, summarize  # noqa: E402
 from evolve.regions import REGIONS  # noqa: E402
+from evolve.experiments import ExperimentError, validate_experiment  # noqa: E402
 
 
 def row(sample, hit=True, step=1, candidates=1, body=1, refs=0, wrong=0, tokens=100):
@@ -42,6 +43,27 @@ class KnowledgeUsageTest(unittest.TestCase):
     def test_insufficient_when_no_efficiency_gain(self):
         base = [row("a")]
         self.assertEqual(compare(base, [row("a")])["decision"], "insufficient")
+
+    def test_missing_efficiency_field_is_an_error(self):
+        with self.assertRaises(UsageError):
+            summarize([{"sample_id": "a", "hit": False, "first_hit_step": None,
+                        "candidates_examined": 1, "full_body_reads": 1,
+                        "reference_lookups": 1}])
+
+    def test_knowledge_usage_accept_requires_usage_evidence(self):
+        record = {
+            "target_kind": "skill", "target_component": "diagnose.knowledge_usage",
+            "algorithm": "subagent-reflection", "algorithm_version": "1",
+            "execution": "subagent", "decision": "accept", "samples": ["S-1"],
+            "baseline": {"score": 0.5, "samples": ["S-1"]},
+            "candidate": {"score": 0.6, "samples": ["S-1"]},
+            "paired": {"b": 4, "c": 0, "n": 4},
+        }
+        with self.assertRaises(ExperimentError):
+            validate_experiment(record)
+        record["knowledge_usage"] = {"decision": "accept"}
+        with self.assertRaises(ExperimentError):
+            validate_experiment(record)
 
     def test_missing_hit_step_is_unknown_not_zero(self):
         with self.assertRaises(UsageError):
