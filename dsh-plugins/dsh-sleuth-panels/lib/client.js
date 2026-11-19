@@ -1,8 +1,8 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:9fabca236447)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:03ddb679787f)
 //   dsh-plugins/ev-panel/panel-client.js  (sha256:2faf50d5daad)
-//   dsh-plugins/sleuth-console/console-client.js  (sha256:36dab229fc03)
+//   dsh-plugins/sleuth-console/console-client.js  (sha256:a2571798e7ee)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
 // 面板源码是动态插件方言（靠沙箱提供的 host 通信）；这里原文嵌入页面产物，并补一层适配：
@@ -70,7 +70,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:9fabca236447) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:03ddb679787f) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -474,7 +474,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.10.3'
+    const PANEL_VERSION = '0.11.2'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -5094,6 +5094,455 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     }
 
 
+    // 自动收尾 tab：只读台账与 sweep-log，展示待收尾项与最近运行。
+    // 定时器与开关在独立插件 dsh-sleuth-autoclose 里，这里不改它的状态。
+    function AutoCloseView(props) {
+      const sessionId = props && props.sessionId
+      const [state, setState] = React.useState({ loading: true, data: null })
+      const [config, setConfig] = React.useState(null)
+      const [configError, setConfigError] = React.useState('')
+      const [configNote, setConfigNote] = React.useState('')
+      const [saving, setSaving] = React.useState(false)
+      const [refreshing, setRefreshing] = React.useState(false)
+      const [refreshToken, setRefreshToken] = React.useState(0)
+      const [copied, setCopied] = React.useState('')
+      React.useEffect(() => {
+        let alive = true
+        let pollDispose = null
+        const schedule = () => {
+          // 动态客户端包没有全局定时器；轮询走注入的 timer 服务，缺席就只保留手动刷新。
+          if (!alive || !timer || typeof timer.timeout !== 'function') return
+          if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+          pollDispose = timer.timeout(() => { load() }, 30_000)
+        }
+        function load() {
+          if (!alive) return
+          setRefreshing(true)
+          host.call('ascend-autoclose-state', { sessionId: sessionId || null })
+            .then(r => {
+              if (!alive) return
+              setState({ loading: false, data: r })
+              if (r && r.config) setConfig(r.config)
+              setRefreshing(false)
+              schedule()
+            })
+            .catch(() => {
+              if (!alive) return
+              setState({ loading: false, data: { ok: false, error: 'Host RPC 失败' } })
+              setRefreshing(false)
+              schedule()
+            })
+        }
+        load()
+        return () => {
+          alive = false
+          if (pollDispose) pollDispose()
+        }
+      }, [sessionId, refreshToken])
+      const base = { fontFamily: 'var(--font-sans)', fontSize: 'var(--t-base)', color: T.text }
+      if (state.loading) {
+        return React.createElement('div', { className: 'sleu', style: { ...base, padding: 20 } },
+          React.createElement('div', { style: { fontSize: 'var(--t-2xl)', fontWeight: 700, marginBottom: 12 } }, '自动收尾'),
+          [0, 1, 2].map(i => React.createElement('div', { key: i, className: 'sleu-skel', style: { height: 40, marginBottom: 8 } })))
+      }
+      const data = state.data || {}
+      const merged = Array.isArray(data.merged) ? data.merged : []
+      const pending = Array.isArray(data.pending) ? data.pending : []
+      const noDraft = Array.isArray(data.noDraft) ? data.noDraft : []
+      const closed = Array.isArray(data.closed) ? data.closed : []
+      const log = Array.isArray(data.log) ? data.log : []
+      const manualErrors = Array.isArray(data.manualErrors) ? data.manualErrors : []
+      const last = data.last || null
+      const note = data.error ? data.error : null
+      const plugin = data.plugin || null
+      const cfg = config || data.config || { enabled: true, intervalMinutes: 1440 }
+      const counts = data.counts && typeof data.counts === 'object' ? data.counts : {}
+      const mergedCount = Number.isFinite(Number(counts.merged)) ? Number(counts.merged) : merged.length
+      const pendingCount = Number.isFinite(Number(counts.pending)) ? Number(counts.pending) : pending.length
+      const closedCount = Number.isFinite(Number(counts.closed)) ? Number(counts.closed) : closed.length
+      const noDraftCount = Number.isFinite(Number(counts.noDraft)) ? Number(counts.noDraft) : noDraft.length
+      const cleanupPending = Number.isFinite(Number(counts.cleanupPending)) ? Number(counts.cleanupPending) : 0
+      const doneOnly = Number.isFinite(Number(counts.doneOnly)) ? Number(counts.doneOnly) : 0
+      const cleanupItems = closed.filter(item => item.cleanupComplete === false)
+      const lastCleanup = data.lastCleanup && typeof data.lastCleanup === 'object'
+        ? data.lastCleanup : null
+      const firstRunPending = !!(plugin && plugin.firstRunPending
+        && plugin.firstRunConfirmed !== true)
+      const preview = plugin && plugin.preview && typeof plugin.preview === 'object'
+        ? plugin.preview : null
+      // 与上方 select 的选项文案对齐：整小时显示小时，其余显示分钟。
+      const intervalText = minutes => {
+        const value = Number(minutes)
+        if (!Number.isFinite(value) || value <= 0) return ''
+        return value % 60 === 0 ? (value / 60) + ' 小时' : value + ' 分钟'
+      }
+      const formatTime = value => {
+        const text = String(value || '')
+        const at = Date.parse(text)
+        if (!Number.isFinite(at)) return text || '—'
+        try { return new Date(at).toLocaleString('zh-CN', { hour12: false }) } catch { return text }
+      }
+      const formatCount = value => {
+        const number = Number(value)
+        if (!Number.isFinite(number) || number < 0) return '0'
+        if (number < 10000) return number.toLocaleString('zh-CN')
+        const wan = number / 10000
+        return (wan >= 100 ? String(Math.round(wan)) : wan.toFixed(1).replace(/\.0$/, '')) + ' 万'
+      }
+      const exactCount = value => {
+        const number = Number(value)
+        return Number.isFinite(number) ? number.toLocaleString('zh-CN') : '0'
+      }
+      const SOURCE_LABELS = { plugin: '插件', manual: '手动', session: '会话', plugin_self: '插件', config: '配置', cwd: '进程' }
+      const sourceLabel = value => SOURCE_LABELS[String(value || '')] || String(value || '未知')
+      const pluginInterval = plugin ? intervalText(plugin.intervalMinutes) : ''
+      const intervalOptions = [[1, '1 分钟'], [720, '12 小时'], [1440, '24 小时'], [4320, '72 小时']]
+      const currentMinutes = Number(cfg.intervalMinutes)
+      const intervalMenu = intervalOptions.some(([value]) => value === currentMinutes)
+        ? intervalOptions
+        : [[currentMinutes, intervalText(currentMinutes) + '（当前）'], ...intervalOptions]
+      // 待本地处理项的状态文案：失败原因由 host 从 sweep-log 或插件 lastFailure 带过来。
+      const FAILURE_LABELS = {
+        failed: '收尾失败',
+        error: '收尾失败',
+        'cleanup-failed': '清理未完成',
+        'missing-evidence': '缺合入信息',
+        'git-suspected': '疑似合入，平台未确认',
+        'identity-mismatch': '身份不一致',
+        'skipped-not-merged': '同 PR 有未合入结论',
+        'no-repo': '未找到检出',
+        'no-python': '未找到 Python',
+        'shell-error': '运行失败',
+      }
+      const statusText = item => {
+        const status = String(item.lastStatus || '')
+        const reason = String(item.lastReason || '').trim()
+        const label = FAILURE_LABELS[status] || ''
+        if (status === 'missing-evidence' && !reason) {
+          return ' · 缺合入信息：最近一次检查没拿到合入提交'
+        }
+        if (!label && !reason) return ''
+        return ' · ' + (label || status) + (reason ? '：' + reason.slice(0, 200) : '')
+      }
+      const closeCommand = item => {
+        const repo = (plugin && plugin.repo) || '<主检出>'
+        const merge = item.mergeCommit || '<合入提交>'
+        return 'python scripts/groom_close_after_merge.py --repo "' + repo + '" --merge '
+          + merge + ' --draft-key ' + item.draft + ' --apply'
+      }
+      const copyText = (text, key) => {
+        try {
+          if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text)
+            setCopied(key)
+            if (timer && typeof timer.timeout === 'function') timer.timeout(() => setCopied(''), 1500)
+          }
+        } catch (e) { /* 剪贴板不可用：不报错 */ }
+      }
+      const saveConfig = patch => {
+        if (saving) return
+        setSaving(true)
+        setConfigError('')
+        setConfigNote('')
+        host.call('ascend-autoclose-config', {
+          sessionId: sessionId || null, action: 'save', ...patch,
+        })
+          .then(r => {
+            setSaving(false)
+            if (r && r.ok) {
+              setConfig({ enabled: r.enabled, intervalMinutes: r.intervalMinutes })
+              setConfigNote('已保存，最多 30 秒生效')
+              setRefreshToken(token => token + 1)
+            } else {
+              setConfigError((r && r.error) || '保存失败')
+            }
+          })
+          .catch(() => {
+            setSaving(false)
+            setConfigError('保存失败')
+          })
+      }
+      const resumePlugin = () => {
+        if (saving) return
+        setSaving(true)
+        setConfigError('')
+        setConfigNote('')
+        host.call('ascend-autoclose-config', {
+          sessionId: sessionId || null, action: 'save', resume: true,
+        })
+          .then(r => {
+            setSaving(false)
+            if (r && r.ok) {
+              setConfigNote('已请求恢复，最多 30 秒生效')
+              setRefreshToken(token => token + 1)
+            } else {
+              setConfigError((r && r.error) || '恢复失败')
+            }
+          })
+          .catch(() => {
+            setSaving(false)
+            setConfigError('恢复失败')
+          })
+      }
+      const runNowPlugin = () => {
+        if (saving) return
+        setSaving(true)
+        setConfigError('')
+        setConfigNote('')
+        host.call('ascend-autoclose-config', {
+          sessionId: sessionId || null, action: 'save', runNow: true,
+        })
+          .then(r => {
+            setSaving(false)
+            if (r && r.ok) {
+              setConfigNote(plugin && plugin.paused
+                ? '已请求立即运行；暂停状态下只跑这一轮，恢复调度请用「恢复调度」'
+                : '已请求立即运行，最多 30 秒生效')
+              setRefreshToken(token => token + 1)
+            } else {
+              setConfigError((r && r.error) || '运行请求失败')
+            }
+          })
+          .catch(() => {
+            setSaving(false)
+            setConfigError('运行请求失败')
+          })
+      }
+      const confirmFirstRun = () => {
+        if (saving) return
+        setSaving(true)
+        setConfigError('')
+        setConfigNote('')
+        host.call('ascend-autoclose-config', {
+          sessionId: sessionId || null, action: 'save', confirmFirstRun: true,
+        })
+          .then(r => {
+            setSaving(false)
+            if (r && r.ok) {
+              setConfigNote('已确认，最多 30 秒开始执行')
+              setRefreshToken(token => token + 1)
+            } else {
+              setConfigError((r && r.error) || '确认失败')
+            }
+          })
+          .catch(() => {
+            setSaving(false)
+            setConfigError('确认失败')
+          })
+      }
+      const hint = { color: T.text2, fontSize: 'var(--t-tiny)', lineHeight: 1.6 }
+      const card = { marginTop: 14, padding: '16px 18px', border: '1px solid ' + T.border,
+                     borderRadius: 'var(--r-md)', background: T.bg, boxShadow: 'var(--elev-1)' }
+      const statCard = { padding: '14px 16px', border: '1px solid ' + T.border,
+                         borderRadius: 'var(--r-md)', background: T.bg, boxShadow: 'var(--elev-1)' }
+      const statValue = { marginTop: 6, fontFamily: 'var(--font-mono)', fontSize: 'var(--t-xl)',
+                          fontWeight: 650, fontVariantNumeric: 'tabular-nums',
+                          maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
+      const statLabel = { fontSize: 'var(--t-tiny)', color: T.text2 }
+      const accentLabel = { ...statLabel, color: 'var(--acc-blue)', fontWeight: 600 }
+      const accentValue = { ...statValue, color: 'var(--acc-blue)' }
+      const rowStyle = { padding: '10px 0', borderTop: '1px solid var(--hair)' }
+      const linkStyle = { color: 'var(--acc-blue)', textDecoration: 'underline', wordBreak: 'break-all' }
+      const historyEntry = (entry, index) => {
+        const results = Array.isArray(entry && entry.results) ? entry.results : []
+        return React.createElement('div', { key: 'history-' + index,
+          style: { padding: '6px 0', borderTop: '1px solid var(--hair)', fontSize: 'var(--t-sm)', color: T.text2 } },
+          React.createElement('div', { style: { color: T.text } },
+            formatTime(entry && entry.at) + ' · ' + sourceLabel(entry && entry.source)
+            + ' · ' + (entry && entry.ok ? '成功' : '失败')
+            + (entry && entry.merged !== undefined ? ' · 合入 ' + entry.merged : '')),
+          results.slice(0, 5).map((result, index) => {
+            const drafts = Array.isArray(result && result.drafts) && result.drafts.length
+              ? result.drafts : [result && result.draft]
+            return React.createElement('div', { key: String(index) },
+              drafts.filter(Boolean).join('、') + ' · ' + String(result && result.status || '')
+              + (result && result.reason ? '：' + String(result.reason).slice(0, 160) : ''))
+          }),
+          entry && entry.note ? React.createElement('div', null, String(entry.note)) : null)
+      }
+      return React.createElement('div', { className: 'sleu',
+        style: { ...base, padding: '24px 20px 40px', maxWidth: 1180, margin: '0 auto' } },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' } },
+          React.createElement('span', { style: { fontSize: 'var(--t-2xl)', fontWeight: 700 } }, '自动收尾'),
+          React.createElement('span', { style: { color: T.text2, fontSize: 'var(--t-sm)' } },
+            '定时检查合入，确认后才出队草稿'),
+          React.createElement('button', { type: 'button', onClick: () => setRefreshToken(token => token + 1),
+            disabled: refreshing, style: { ...btnGhost, marginLeft: 'auto',
+              border: '2px solid var(--acc-blue)', color: 'var(--acc-blue)',
+              fontWeight: 600, background: T.bg2 } },
+          refreshing ? '刷新中…' : '刷新'),
+          React.createElement('button', { type: 'button', onClick: runNowPlugin, disabled: saving,
+            style: { ...btnGhost, border: '1px solid var(--acc-blue)',
+              color: 'var(--acc-blue)', fontWeight: 600 } }, '立即运行一次')),
+        React.createElement('div', { style: { marginTop: 12, padding: '12px 14px', border: '1px solid ' + T.border,
+          borderRadius: 'var(--r-sm)', background: T.bg2, fontSize: 'var(--t-sm)', lineHeight: 1.6, color: T.text2 } },
+          '插件按下面的间隔检查已合入的 PR；合入和本地评估核对通过后，把草稿移入已收尾区，并删除评估与快照。',
+          '这个页面只读运行结果；自动收尾开关和收尾间隔改的是插件配置，最多 30 秒生效。'),
+        React.createElement('details', { style: { marginTop: 8, fontSize: 'var(--t-sm)', color: T.text2 } },
+          React.createElement('summary', { style: { cursor: 'pointer' } }, '技术说明'),
+          React.createElement('div', { style: { marginTop: 4, lineHeight: 1.6 } },
+            '内部流程：groom_sweep 检查 PR 记录（.groom/pr-state.json）；收尾后草稿进入 postmortems/inbox/.done；',
+            'cleanup 删除评估与快照，运行记录写 .groom/sweep-log.jsonl 与 cleanup-log.jsonl。')),
+        note ? React.createElement('div', { style: { marginTop: 10, padding: '10px 12px',
+          border: '1px solid ' + T.error, borderRadius: 'var(--r-sm)', color: T.error, fontSize: 'var(--t-sm)' } },
+          note + '（点右上角「刷新」重试）') : null,
+        firstRunPending ? React.createElement('div', { style: { ...card, marginTop: 12,
+          borderColor: 'var(--acc-blue)' } },
+          React.createElement('div', { style: { fontSize: 'var(--t-lg)', fontWeight: 700 } }, '首次运行尚未执行'),
+          React.createElement('div', { style: { marginTop: 6, fontSize: 'var(--t-sm)', color: T.text2, lineHeight: 1.6 } },
+            '插件已经做过预览：将处理 ' + formatCount(preview && preview.total) + ' 项。',
+            '确认后才会把草稿移入已收尾区、删除评估与快照；不确认就只保留预览。'),
+          preview && Array.isArray(preview.ready) && preview.ready.length
+            ? React.createElement('div', { style: { marginTop: 4, fontSize: 'var(--t-sm)', color: T.text2 } },
+                '将处理：' + preview.ready.slice(0, 5).map(item => item.draft).filter(Boolean).join('、')
+                + (preview.ready.length > 5 ? ' 等' : ''))
+            : React.createElement('div', { style: { marginTop: 4, fontSize: 'var(--t-sm)', color: T.text2 } },
+                '这次预览没有待处理项，确认后只启用自动收尾。'),
+          React.createElement('div', { style: { marginTop: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
+            React.createElement('button', { type: 'button', disabled: saving, onClick: confirmFirstRun,
+              style: { ...btnGhost, border: '1px solid var(--acc-blue)', color: 'var(--acc-blue)', fontWeight: 600 } },
+            '确认并执行'),
+            React.createElement('span', { style: { fontSize: 'var(--t-sm)', color: T.text2 } },
+              '确认后最多 30 秒开始；不会先删除再给你看。'))) : null,
+        React.createElement('div', { style: card },
+          React.createElement('div', { style: { fontSize: 'var(--t-lg)', fontWeight: 700 } }, '自动收尾'),
+          React.createElement('div', { style: { marginTop: 2, fontSize: 'var(--t-sm)', color: T.text2 } },
+            '自动收尾与收尾间隔改的是插件配置；1 分钟用于测试，其余按小时。关闭只停下一轮，不撤销已完成的删除。'),
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' } },
+            React.createElement('span', { style: { color: T.text2 } }, '自动收尾'),
+            React.createElement('button', {
+              type: 'button',
+              role: 'switch',
+              'aria-checked': cfg.enabled,
+              disabled: saving,
+              onClick: () => saveConfig({ enabled: !cfg.enabled }),
+              style: { position: 'relative', width: 44, height: 24, borderRadius: 999,
+                       border: 0, padding: 0, cursor: saving ? 'default' : 'pointer',
+                       background: cfg.enabled
+                         ? 'var(--acc-blue)' : 'var(--dsw-alias-bg-layer-2)',
+                       transition: 'background .16s ease', opacity: saving ? 0.6 : 1 },
+            }, React.createElement('span', { style: {
+              position: 'absolute', top: 3, left: cfg.enabled ? 23 : 3,
+              width: 18, height: 18, borderRadius: '50%', background: '#fff',
+              boxShadow: '0 1px 2px rgba(0,0,0,.25)', transition: 'left .16s ease',
+            } })),
+            React.createElement('span', { style: { color: T.text2 } }, cfg.enabled ? '开' : '关'),
+            React.createElement('span', { style: { color: T.text2 } }, '收尾间隔'),
+            React.createElement('select', {
+              value: String(currentMinutes),
+              disabled: saving,
+              onChange: event => saveConfig({ intervalMinutes: Number(event.target.value) }),
+              style: { ...btnGhost, padding: '4px 8px' },
+            }, intervalMenu.map(([value, label]) => React.createElement('option', { key: value, value }, label))),
+            saving ? React.createElement('span', { style: { color: T.text2 } }, '保存中…')
+              : (configNote ? React.createElement('span', { style: { color: T.text2 } }, configNote) : null),
+            configError ? React.createElement('span', { style: { color: T.error } }, configError) : null)),
+        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))',
+          gap: 12, marginTop: 14 } },
+          React.createElement('div', { style: statCard },
+            React.createElement('div', { style: accentLabel }, '待本地处理'),
+            React.createElement('div', { style: accentValue, title: exactCount(pendingCount) }, formatCount(pendingCount)),
+            React.createElement('div', { style: { ...statLabel, marginTop: 4 } },
+              '有本地草稿、未出队；下一次自动检查会尝试收尾')),
+          React.createElement('div', { style: statCard },
+            React.createElement('div', { style: statLabel }, '累计合入'),
+            React.createElement('div', { style: statValue, title: exactCount(mergedCount) }, formatCount(mergedCount)),
+            React.createElement('div', { style: { ...statLabel, marginTop: 4 } },
+              'PR 记录里已合入的总数（含已出队、无本地草稿）')),
+          React.createElement('div', { style: statCard },
+            React.createElement('div', { style: statLabel }, '累计出队'),
+            React.createElement('div', { style: statValue, title: exactCount(closedCount) }, formatCount(closedCount)),
+            React.createElement('div', { style: { ...statLabel, marginTop: 4 } },
+              '本地已收尾区数' + (doneOnly ? '（其中记录外 ' + formatCount(doneOnly) + '）' : '')
+              + (cleanupPending ? ' · 清理未完成 ' + formatCount(cleanupPending) : '')))),
+        React.createElement('div', { style: { marginTop: 8, fontSize: 'var(--t-sm)', color: T.text2, lineHeight: 1.6 } },
+          '待本地处理 = 有本地草稿且未出队；累计合入 = PR 记录已合入；累计出队 = 本地已收尾区；',
+          '无本地草稿不计入待处理，也不会自动收尾。'),
+        React.createElement('div', { style: { marginTop: 6, fontSize: 'var(--t-sm)', color: T.text2, lineHeight: 1.6 } },
+          '数据来源：PR 记录 + 本地收件箱 + 自动检查/清理日志。待本地处理是其中「有本地草稿」的子集；',
+          'Copilot 的「已合入 · 待收尾」来自同一份 PR 记录，出队以本地已收尾区为准。'),
+        noDraftCount ? React.createElement('div', { style: { marginTop: 6, fontSize: 'var(--t-sm)', color: T.text2 } },
+          '无本地草稿 ' + formatCount(noDraftCount) + '：'
+          + noDraft.slice(0, 5).map(item => item.draft).filter(Boolean).join('、')
+          + (noDraftCount > 5 ? ' 等' : '') + '（这些不会自动收尾）') : null,
+        cleanupPending ? React.createElement('div', { style: { marginTop: 6, fontSize: 'var(--t-sm)', color: T.warn || '#b45309' } },
+          '清理未完成 ' + formatCount(cleanupPending) + '：'
+          + cleanupItems.slice(0, 5).map(item => item.draft).filter(Boolean).join('、')
+          + (cleanupItems.length > 5 ? ' 等' : '') + '（评估/快照没删干净，下一次自动检查会补清）') : null,
+        lastCleanup ? React.createElement('details', { style: { ...card, marginTop: 10, padding: '12px 16px' } },
+          React.createElement('summary', { style: { cursor: 'pointer', fontSize: 'var(--t-sm)', color: T.text2 } },
+            '最近一次清理（删除清单）'),
+          React.createElement('div', { style: { marginTop: 6, fontSize: 'var(--t-sm)', color: T.text2, lineHeight: 1.8 } },
+            '时间：' + formatTime(lastCleanup.at)
+            + ' · 结果：' + (lastCleanup.complete ? '完成' : '未完成')
+            + (lastCleanup.pr ? ' · PR ' + lastCleanup.pr : ''),
+            React.createElement('div', null,
+              '删除评估：' + (((lastCleanup.deleted && lastCleanup.deleted.assessments) || []).join('、') || '无')),
+            React.createElement('div', null,
+              '删除快照：' + (((lastCleanup.deleted && lastCleanup.deleted.snapshots) || []).join('、') || '无')),
+            React.createElement('div', null,
+              '保留：' + (((lastCleanup.deleted && lastCleanup.deleted.kept) || []).map(item =>
+                item + (lastCleanup.kept_reasons && lastCleanup.kept_reasons[item]
+                  ? '（' + lastCleanup.kept_reasons[item] + '）' : '')).join('、') || '无')))) : null,
+        React.createElement('div', { style: card },
+          React.createElement('div', { style: { fontSize: 'var(--t-lg)', fontWeight: 700 } }, '待本地处理'),
+          pendingCount === 0
+            ? React.createElement('div', { style: { marginTop: 6, fontSize: 'var(--t-sm)', color: T.text2 } },
+                '没有待本地处理的已合入 PR。自动任务会重试；手动收尾入口在 Copilot 的「已合入 · 待收尾」。')
+            : React.createElement('div', null,
+                pending.map(item => React.createElement('div', { key: item.draft, style: rowStyle },
+                  React.createElement('div', { style: { fontWeight: 600 } }, item.draft),
+                  React.createElement('div', { style: { marginTop: 2, fontSize: 'var(--t-sm)', color: T.text2 } },
+                    (/^https?:\/\//i.test(String(item.url || ''))
+                      ? React.createElement('a', { href: item.url, target: '_blank', rel: 'noreferrer', style: linkStyle }, item.url)
+                      : (item.url || '（缺 PR 链接）')) + statusText(item)),
+                  React.createElement('div', { style: { marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+                    React.createElement('button', { type: 'button', style: { ...btnGhost, fontSize: 'var(--t-tiny)' },
+                      onClick: () => copyText(closeCommand(item), item.draft) }, '复制收尾指令'),
+                    React.createElement('button', { type: 'button', disabled: saving,
+                      style: { ...btnGhost, fontSize: 'var(--t-tiny)' }, onClick: runNowPlugin }, '重试'),
+                    copied === item.draft ? React.createElement('span', { style: { fontSize: 'var(--t-tiny)', color: T.text2 } }, '已复制') : null))),
+                pendingCount > pending.length
+                  ? React.createElement('div', { style: { marginTop: 6, fontSize: 'var(--t-sm)', color: T.text2 } },
+                      '显示前 ' + pending.length + ' 条，共 ' + formatCount(pendingCount) + ' 条。')
+                  : null)),
+        React.createElement('div', { style: card },
+          React.createElement('div', { style: { fontSize: 'var(--t-lg)', fontWeight: 700 } }, '运行状态'),
+          React.createElement('div', { style: { marginTop: 6, fontSize: 'var(--t-sm)', color: T.text2, lineHeight: 1.6 } },
+            note ? note
+              : last ? '最近运行：' + sourceLabel(last.source) + ' · ' + (last.ok ? '成功' : '失败')
+                + ' · ' + formatTime(last.at)
+                : '还没有运行记录。'),
+          plugin
+            ? React.createElement('div', { style: { marginTop: 4, fontSize: 'var(--t-sm)', color: T.text2, lineHeight: 1.6 } },
+                '当前检出：' + (plugin.repo || '未解析') + '（' + sourceLabel(plugin.repoSource) + '）'
+                + ' · 解释器：' + (plugin.python || '未探测'))
+            : React.createElement('div', { style: { marginTop: 4, fontSize: 'var(--t-sm)', color: T.warn || '#b45309', lineHeight: 1.6 } },
+                '还没有插件状态（autoclose-state.json 不存在）：自动收尾可能未安装或未加载；下面的数字来自已有记录；首次运行会先预览，确认后才删除。'),
+          plugin ? React.createElement('div', { style: { marginTop: 4, fontSize: 'var(--t-sm)', color: T.text2, lineHeight: 1.6 } },
+            '插件：' + (plugin.enabled ? '开' : '关')
+            + (plugin.paused ? ' · 已暂停' : '')
+            + (pluginInterval ? ' · 间隔 ' + pluginInterval : '')
+            + ' · 下次运行：' + (plugin.nextRun ? formatTime(plugin.nextRun) : '—')) : null,
+          plugin && plugin.lastSummary ? React.createElement('div', { style: { marginTop: 4, fontSize: 'var(--t-sm)',
+            color: plugin.lastOk === false ? T.error : T.text2, lineHeight: 1.6 } },
+            '最近一次结果：' + plugin.lastSummary) : null,
+          data.failures ? React.createElement('div', { style: { marginTop: 8, fontSize: 'var(--t-sm)', color: T.warn || '#b45309' } },
+            '连续失败 ' + data.failures + '/3 次' + (plugin && plugin.paused ? '，自动任务已暂停' : '')) : null,
+          plugin && plugin.paused ? React.createElement('div', { style: { marginTop: 8 } },
+            React.createElement('button', { type: 'button', disabled: saving, onClick: resumePlugin,
+              style: { ...btnGhost, borderColor: 'var(--acc-blue)' } }, '恢复调度'),
+            React.createElement('span', { style: { marginLeft: 8, fontSize: 'var(--t-sm)', color: T.text2 } },
+              '恢复后最多 30 秒重新开始调度，并跑一轮；「立即运行一次」只跑这一轮，不改暂停状态。')) : null,
+          manualErrors.length ? React.createElement('div', { style: { marginTop: 8, fontSize: 'var(--t-sm)', color: T.warn || '#b45309' } },
+            '最近手动收尾失败：' + manualErrors.slice(-1).map(item =>
+              (item.draft || '（未知草稿）') + '：' + (item.reason || item.status)).join('')) : null,
+          log.length ? React.createElement('details', { style: { marginTop: 10 } },
+            React.createElement('summary', { style: { cursor: 'pointer', fontSize: 'var(--t-sm)', color: T.text2 } },
+              '最近运行（' + log.length + '）'),
+            React.createElement('div', { style: { marginTop: 6 } }, log.slice().reverse().map(historyEntry))) : null))
+    }
+
     slots.inject('conversation.view', () => slots.register(
       { name: 'conversation.view', id: 'ascend-diagnose', order: 20, label: '诊断' },
       (props) => React.createElement(TraceView, props),
@@ -5103,12 +5552,16 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 动态热加载路径没有整页容器（SLEUTH_VIEWS 不存在），退回原来的 conversation.view tab。
     if (typeof SLEUTH_VIEWS !== 'undefined' && SLEUTH_VIEWS !== null) {
       SLEUTH_VIEWS.metrics = (props) => React.createElement(MetricsView, props)
+      // 整页的第四个 tab：自动收尾（指标 / 自演进 / 知识库之后）。
+      SLEUTH_VIEWS.autoclose = (props) => React.createElement(AutoCloseView, props)
     } else {
       slots.inject('conversation.view', () => slots.register(
         { name: 'conversation.view', id: 'ascend-metrics', order: 21, label: '指标' },
         (props) => React.createElement(MetricsView, props),
       ))
     }
+
+    // 自动收尾是整页「Ascend Sleuth」的子页，不挂在会话的 conversation.view 上。
 
     // 侧栏两个座位：行首小点（只在空闲已读的行出现）与悬停卡一行。都只读。
     slots.inject('sidebar.session.row.leading', () => slots.register(
@@ -6368,7 +6821,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       id: 'sleuth-console',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/sleuth-console/console-client.js (sha256:36dab229fc03) 原文开始 ----
+// ---- dsh-plugins/sleuth-console/console-client.js (sha256:a2571798e7ee) 原文开始 ----
 // sleuth-console/console-client.js —— 常驻包里的整页「Ascend Sleuth」（client-only）
 //
 // 为什么单有这一页：指标与自演进读的是**全库**（`metrics/`、`proposals/`、`knowledge/`），
@@ -6396,6 +6849,7 @@ return {
       { id: 'knowledge', label: '知识库' },
       { id: 'metrics', label: '指标' },
       { id: 'evolve', label: '自演进' },
+      { id: 'autoclose', label: '自动收尾' },
     ]
 
     const styleHost = typeof styles !== 'undefined' && styles !== null ? styles : ctx.get('styles')
@@ -7220,7 +7674,7 @@ return {
           React.createElement('div', { className: 'sleu-console-head' },
             React.createElement('div', null,
               React.createElement('div', { className: 'sleu-console-title' }, PANEL_LABEL),
-              React.createElement('div', { className: 'sleu-console-sub' }, '知识库同步 · 全库读数与判据判决 · 自演进'),
+              React.createElement('div', { className: 'sleu-console-sub' }, '知识库同步 · 全库读数与判据判决 · 自演进 · 自动收尾'),
             ),
           ),
           React.createElement('div', { className: 'sleu-console-tabs', role: 'tablist' },

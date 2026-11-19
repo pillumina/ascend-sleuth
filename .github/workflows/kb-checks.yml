@@ -590,6 +590,9 @@ jobs:
       - run: node dsh-plugins/dsh-sleuth-panels/test/knowledge-tab-smoke.mjs
       - run: node dsh-plugins/dsh-sleuth-copilot/test/render-smoke.mjs
       - run: node dsh-plugins/dsh-sleuth-copilot/test/host-smoke.mjs
+      # 自动收尾：插件失败摘要 + 面板失败项读模型（sweep-log 缺失时走插件状态兜底）。
+      - run: node dsh-plugins/dsh-sleuth-autoclose/test/host-smoke.mjs
+      - run: node dsh-plugins/dsh-sleuth-panels/test/autoclose-failure-smoke.mjs
       # 独立整页包 canvas：client 半是 `build.mjs` 从 client-src 拼出的生成物，先判产物与源一致；
       # 四条测试覆盖 host 读 traces（YAML 解析、路径穿越拒绝、RPC 信封）、布局引擎、页面渲染
       # 与注册面（main 的 key `sleuth-canvas` + sidebar.panellist 同 id）。不需要 DSH。

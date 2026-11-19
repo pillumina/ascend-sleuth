@@ -1,10 +1,13 @@
 {
   "name": "dsh-sleuth-panels",
-  "version": "0.10.3",
+  "version": "0.11.2",
   "private": true,
   "description": "ascend-sleuth panels for DSH: diagnose traces, metrics verdict, self-evolution board, knowledge sync",
   "type": "module",
   "main": "./lib/index.js",
+  "dependencies": {
+    "dsh-sleuth-autoclose": "link:../dsh-sleuth-autoclose"
+  },
   "exports": {
     ".": "./lib/index.js",
     "./client": "./lib/client.js",

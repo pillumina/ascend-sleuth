@@ -71,6 +71,10 @@ DSH_HOME 位置、profile 名、命令行是否随包、token 是否落日志、
 `add`；路由五在插件页粘贴四次；路由四用 `--all` 一次装齐；路由二用 `install_bundle` 装四次。四个包
 分开登记：装面板不会带上另外三个。状态条与诊断画布都是独立包，卸掉它们不影响面板。
 
+面板包 `dsh-sleuth-panels` 依赖 `dsh-sleuth-autoclose`；装面板会同时启用自动收尾。面板页的开关只启停后台任务，不需要单独装第五个包或卸载 autoclose。
+
+面板包 `dsh-sleuth-panels` 依赖 `dsh-sleuth-autoclose`；装面板会同时启用自动收尾。面板页的开关只启停后台任务，不需要单独装第五个包或卸载 autoclose。
+
 桌面版落在第一行，原因有两条：发行版把插件管理器那条模型工具标成 `disabled: true`
 （`@deepseek-ai/dsh-base/cordis.patch.yml`、`@deepseek-ai/dsh-web-app/cordis.patch.yml` 各一处），
 模型侧没有 `plugin_manager`；较新的版本又从模型侧撤掉了 `cordis_define` / `cordis_run`。

@@ -156,7 +156,8 @@ async function renderAsync(clientSrc, slotProps, hostImpl, { settle = 8, views, 
   // React 的 hook 槽是同一份全局数组，附加组件的 state 会被别的视图读成自己的（CI 上实测：
   // 浮层的 `open` 被指标视图读成展开开关，「收起态不摊开动作正文」无理由变红）。
   // 附加席位的"渲染不抛"由 `check_panel_bundle.js` 逐个注册渲染来守。
-  const rendered = registrations.filter(r => r.opts && r.opts.name === 'conversation.view')
+  const rendered = registrations.filter(r => r.opts && r.opts.name === 'conversation.view'
+    && r.opts.id !== 'ascend-autoclose')
   let out = []
   for (let round = 0; round < settle; round++) {
     effectQueue = []
@@ -847,6 +848,7 @@ async function main() {
   const ascSrc = fs.readFileSync(path.join(repo, 'dsh-plugins/ascend-panel/panel-client.js'), 'utf8')
   const ascHost = (method) => {
     if (method === 'ascend-traces-list') return { ok: true, sessions: [] }
+    if (method === 'ascend-autoclose-state') return { ok: true, merged: [], last: null, failures: 0, log: [] }
     if (method === 'ascend-metrics-load') return { ok: true, periods }
     if (method === 'ascend-kb-health') return { ok: true, cases: { total: 52, lowConfidence: 12, byCategory: { interrupt: 30, performance: 10, precision: 12 }, byNamespace: { 'inference/vllm-ascend': { total: 46 } } }, references: { total: 95, draftCount: 0, staleCount: 2, byType: { tool: 20, fact: 30 } } }
     if (method === 'ascend-process-health') return { ok: true, total: 11, submitted: 5, promoted: 3, inProgress: 2, resumed: 1, refSessions: 4 }
@@ -4415,8 +4417,8 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
         'ascend-metrics-load', 'ascend-read-report', 'ascend-kb-health', 'ascend-process-health', 'ascend-session-marks']
       const noFsRpcs = ['ascend-open-evidence', 'ascend-metrics-verdict', 'ascend-export-trace',
         'ascend-rebuild-local']
-      expect('ascend-panel：fs 缺失时仍注册全部 13 个 RPC（含状态转移与侧栏待回报标记）',
-        Object.keys(d.regs).length === 13, Object.keys(d.regs).join(','))
+      expect('ascend-panel：fs 缺失时仍注册全部 15 个 RPC（含状态转移与侧栏待回报标记）',
+        Object.keys(d.regs).length === 15, Object.keys(d.regs).join(','))
       expect('ascend-panel：返回可用的 disposer', typeof d.disposer === 'function')
       expect('ascend-panel：导出交接包的 RPC 已注册（fs 缺失不影响它）', !!d.regs['ascend-export-trace'])
       for (const rpc of needFsRpcs) {
@@ -4431,7 +4433,7 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
           !(r && r.ok === false && /需要 fs 服务/.test(r.error)), String(r && r.error).slice(0, 110))
       }
       const guarded = (ascHostSrc.match(/if \(!fs\) return needFs\(\)/g) || []).length
-      expect('ascend-panel：恰好 9 个 handler 带 fs 守卫（放错位置即被这条抓住）', guarded === 9, 'guarded=' + guarded)
+      expect('ascend-panel：恰好 11 个 handler 带 fs 守卫（放错位置即被这条抓住）', guarded === 11, 'guarded=' + guarded)
       // 状态写入口的两条硬要求：没有内容指纹就拒绝（否则 CAS 退化成按状态比较），
       // 写子进程必须显式 workspace-write + 主检出 root（否则沙箱把写拒成一句 EPERM）。
       expect('状态写入口：缺内容指纹时 host 直接拒绝', /缺内容指纹/.test(ascHostSrc) && /--expect-sha256/.test(ascHostSrc))
@@ -4751,6 +4753,7 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       if (method === 'ev-health-load') return { ok: true, data: health }
       if (method === 'ascend-metrics-load') return { ok: true, periods: periods }
       if (method === 'ascend-traces-list') return { ok: true, sessions: [] }
+      if (method === 'ascend-autoclose-state') return { ok: true, merged: [], last: null, failures: 0, log: [] }
       if (method === 'ascend-kb-health') {
         return { ok: true, cases: { total: 1, lowConfidence: 0, byCategory: {}, byNamespace: {} }, references: { total: 0, draftCount: 0, staleCount: 0, byType: {} } }
       }
@@ -4763,7 +4766,8 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
     await renderAsync(evSrc, { sessionId: 'sess-1' }, pageHost, { views, requireSlots: false })
     await renderAsync(ascSrc, { sessionId: 'sess-1' }, pageHost, { views, requireSlots: false })
     expect('两个面板都把视图登记进了整页',
-      typeof views.metrics === 'function' && typeof views.evolve === 'function')
+      typeof views.metrics === 'function' && typeof views.evolve === 'function'
+      && typeof views.autoclose === 'function')
 
     const page = await renderAsync(consoleSrc, { sessionId: 'sess-1' }, pageHost, { views })
     expect('注册整页与侧栏图标各一个',
@@ -4779,12 +4783,20 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
     // «cls:…»，tab 按钮的下一行就是标签文字。
     const tabLabels = (page.text.match(/«cls:sleu-console-tab»\n([^\n]+)/g) || [])
       .map(s => s.split('\n')[1].trim())
-    expect('子页顺序 知识库 / 指标 / 自演进',
-      tabLabels.join(' / ') === '知识库 / 指标 / 自演进', tabLabels.join(' / ') || '没取到 tab')
+    expect('子页顺序 知识库 / 指标 / 自演进 / 自动收尾',
+      tabLabels.join(' / ') === '知识库 / 指标 / 自演进 / 自动收尾', tabLabels.join(' / ') || '没取到 tab')
     expect('默认落在第一个 tab「知识库」子页（渲染出知识库首屏）',
       page.text.includes('同步源'), page.text.slice(0, 160))
     const evo = await renderAsync(consoleSrc, { sessionId: 'sess-1', view: 'evolve' }, pageHost, { views })
     expect('切到「自演进」子页渲染看板', evo.text.includes('自演进 · 体检'), evo.text.slice(0, 160))
+    expect('四个子页的入口都在', page.text.includes('指标') && page.text.includes('自演进')
+      && page.text.includes('知识库') && page.text.includes('自动收尾'))
+    const ac = await renderAsync(consoleSrc, { sessionId: 'sess-1', view: 'autoclose' }, pageHost, { views })
+    expect('切到「自动收尾」子页', ac.text.includes('自动收尾'), ac.text.slice(0, 160))
+    expect('自动收尾失败项有状态文案', /FAILURE_LABELS/.test(ascSrc) && /statusText\(item\)/.test(ascSrc))
+    expect('自动收尾有首跑确认/立即运行/删除清单/数据来源',
+      /confirmFirstRun/.test(ascSrc) && /runNowPlugin/.test(ascSrc)
+      && /lastCleanup/.test(ascSrc) && /数据来源/.test(ascSrc))
 
     // 缺视图的那一页要显式点名：默认子页由整页自己登记，拿它验不出「没接上」。
     const empty = await renderAsync(consoleSrc, { sessionId: 'sess-1', view: 'metrics' }, pageHost, { views: {} })

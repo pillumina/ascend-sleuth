@@ -229,21 +229,18 @@ python3 scripts/groom_recheck.py --pr-body-file <pr-body.md> \
 - 升格时 final Case ID 与草稿建议 id 不同，`groom_record.py --pr-marker --submitted-case-id <final-id>`
   把最终 id 写进 marker；不要事后手改。
 
-### 6. 合入后收尾清理：复核通过后，只删这份 PR 覆盖到的产物
+### 6. 合入后统一收尾：核对证据、出队并清理
 
-marker 已进 PR body、本轮记录与决定都落好、**PR 已合入**之后，再跑（默认执行，不向人确认）：
+提 PR 时不移草稿、不删评估记录，trace 停在 `submitted`。等 PR 合入后跑（默认执行，不向人确认）：
 
 ```bash
 MERGE=$(gh pr view <n> --json mergeCommit --jq .mergeCommit.oid)   # GitHub
-python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --post-merge \
-  --base "$(git rev-parse "$MERGE^1")" --head "$MERGE"
+python3 scripts/groom_close_after_merge.py --pr-body-file <pr-body.md> --merge "$MERGE" --apply
 ```
 
-`<merge>` 是合入提交，base 取它的第一个父提交（`git rev-parse <merge>^1`）。不要用
-`baseRefOid`：它是 PR 头更新时的 base 分支头，合并队列前进后可能已经变过。合入后
-无法再对旧 base 重跑 groom，`--post-merge` 跳过过期判定，marker、内容绑定与索引检查仍照跑。
+它核对 PR body 的 marker 与本地评估（评估 id、内容指纹、人决定）、从合入提交读取产物并比对内容；通过后写 trace（`knowledge` / `archived`）、移草稿进 `.done/`、写成功 close-log，最后调用 `groom_cleanup.py --post-merge`。证据不足时保留待收尾并报原因。
 
-**由 agent 决定跑不跑**，判据就是脚本自己会核的三条：复核无 error、marker 与本地评估绑定一致、快照没有别的 sidecar 引用。想先看计划加 `--dry-run`（只看不删）。
+**由脚本核对，不靠 agent 判断**，判据是：marker 与本地评估绑定一致、合入提交里的内容指纹一致、快照没有别的 sidecar 引用。想先看计划加 `--dry-run`（只看不写）。
 
 它做的事：按 PR body 里的 marker 取 `draft`，**先核对 marker 与本地评估是不是同一次评估**（`assessment_id`、内容哈希、人决定三项都要对上，旧 PR 正文删不掉重评后的新记录）；对得上的 sidecar 在 `log_lock` 内**直接删除**（不留回收区；锁文件是互斥原语、不随 sidecar 删）；快照只在「没有任何 sidecar 再引用这个 commit」时才删，读不出评估就视为引用未知、不删快照。非终态决定（`pending` / `defer` / `reject`）与 `approval_stale: true` 一律保留。每次清理追加一行单行 JSON 到 `.groom/cleanup-log.jsonl`（含评估 id、内容哈希与实际结果）。
 

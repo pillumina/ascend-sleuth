@@ -105,7 +105,8 @@ class CloseDraftTest(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
 
     def close(self, *args):
-        return run_py(self.repo, "scripts/groom_close_draft.py", *args)
+        # 这些用例是本地沉淀部署：台账没有 PR，按新语义要显式 --no-pr。
+        return run_py(self.repo, "scripts/groom_close_draft.py", "--no-pr", *args)
 
     def trace_doc(self, sid=None):
         return yaml.safe_load((self.repo / "traces" / f"{sid or self.sid}.yaml")
@@ -274,7 +275,8 @@ class CloseDraftTest(unittest.TestCase):
         self.assertIn("PR 还没合入（unknown）", p.stdout)
         self.assertTrue((self.inbox / f"{key}.case.yaml").exists())
 
-    def test_allow_open_pr_lets_close_through(self):
+    def test_allow_open_pr_is_rejected(self):
+        """旧旁路已废弃：合入前不收尾，参数保留但报错。"""
         key = self.make_draft()
         self.assess(key, "new_pattern")
         self.decide(key, "new_pattern")
@@ -288,8 +290,10 @@ class CloseDraftTest(unittest.TestCase):
         pr_status.save_ledger(self.repo, ledger)
 
         p = self.close("--draft-key", key, "--apply", "--allow-open-pr")
-        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
-        self.assertFalse((self.inbox / f"{key}.case.yaml").exists())
+        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+        self.assertIn("--allow-open-pr 已不支持", p.stderr)
+        self.assertTrue((self.inbox / f"{key}.case.yaml").exists())
+        self.assertEqual(self.trace_doc()["sedimented"]["state"], "submitted")
 
     def test_mixed_closed_and_active_keys_continue(self):
         key = self.make_draft("draft-a")

@@ -633,23 +633,19 @@ def _prompt_check(root: Path, inbox: Path, adapters: list, rows: list) -> str:
 def _prompt_close(rows: list) -> str:
     if not rows:
         return ""
-    lines = [f"以下 {len(rows)} 份 PR 已合入，做收尾：", ""]
+    lines = [f"以下 {len(rows)} 份 PR 已合入，按合入提交收尾：", ""]
     for row in rows:
         pr = row["pr"] or {}
         lines.append(f"- {row['key']}：{pr.get('url') or '（台账缺 URL）'}")
-    to_close = [row for row in rows if not row.get("closedDraft")]
-    lines += ["", "先取每份 PR 的合并提交，再取它的第一个父提交：",
-              "  MERGE=$(gh pr view <n> --json mergeCommit --jq .mergeCommit.oid)  # GitHub",
-              '  BASE=$(git rev-parse "$MERGE^1")',
-              "base 不要用 `baseRefOid`：它是 PR 头更新时的 base 分支头，不是合并前的 base。"]
-    if to_close:
-        keys = " ".join(f"--draft-key {_q(row['key'])}" for row in to_close)
-        lines += ["草稿还在 inbox 的，先跑：",
-                  f"  python3 scripts/groom_close_draft.py {keys} --apply"]
-    lines += ["再对每份 PR 的 body 各跑一次：",
-              "  python3 scripts/groom_cleanup.py --pr-body-file <该 PR 的 body 文件> "
-              '--post-merge --base "$BASE" --head "$MERGE"',
-              "body 用已合入 PR 的原文（含 groom marker）；证据不在就停。"]
+    lines += [
+        "",
+        "先取合入提交（GitHub）：",
+        "  MERGE=$(gh pr view <n> --json mergeCommit --jq .mergeCommit.oid)",
+        "对每份 PR 的 body 跑一次（核对 marker、从合入提交读内容、写 trace、出队并清理）：",
+        "  python3 scripts/groom_close_after_merge.py --pr-body-file <该 PR 的 body 文件> "
+        '--merge "$MERGE" --apply',
+        "证据不足时保留待收尾并报告缺失项；不要手改 trace 或手删草稿。",
+    ]
     return "\n".join(lines)
 
 
@@ -796,9 +792,8 @@ def _pr_detail(root: Path, target_info: dict, adapters: list, rows: list) -> str
                  + _q(base_ref) + " --head <head>")
     lines.append("按目标平台创建 PR：")
     lines.append("  " + _create_hint(root, target_info, adapters))
-    lines.append("开完 PR 后写台账（每份一条，不要手编 JSON）：")
-    lines.append("  python3 scripts/pr_status.py --root . --set --draft <key> --platform <platform> "
-                 "--repo <owner/repo> --number <n> --url <url> --remote <remote>")
+    lines.append("开完 PR 后写台账（每份一条，只给链接即可，平台/仓库/编号自动解析）：")
+    lines.append("  python3 scripts/pr_status.py --root . --set --draft <key> --url <url>")
     return "\n".join(lines)
 
 
@@ -832,16 +827,13 @@ def _check_detail(adapters: list, rows: list) -> str:
 def _close_detail(target_info: dict, rows: list) -> str:
     if not rows:
         return ""
-    lines = []
-    if any(not row.get("closedDraft") for row in rows):
-        lines.append("python3 scripts/groom_close_draft.py --all --apply")
     target = _target_target(target_info)
     base_ref = f"{target.get('remote') or 'origin'}/{target.get('base') or 'main'}"
-    lines += [
-        "python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --post-merge "
-        '--base "$(git rev-parse "$MERGE^1")" --head "$MERGE"',
+    lines = [
+        "python3 scripts/groom_close_after_merge.py --pr-body-file <pr-body.md> "
+        "--merge <合入提交> --apply",
         "合入提交取法：GitHub 用 `gh pr view <n> --json mergeCommit --jq .mergeCommit.oid`；"
-        "其他平台按平台文档取。base 用 `git rev-parse <merge>^1`，不要用 baseRefOid。",
+        "其他平台按平台文档取。",
         f"合并前 base 的引用（没取到 merge 提交时用）：{base_ref}",
     ]
     return "\n".join(lines)

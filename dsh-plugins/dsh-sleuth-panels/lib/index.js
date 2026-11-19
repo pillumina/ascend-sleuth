@@ -1,6 +1,6 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:f4370ba16031)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:9d990eb74a09)
 //   dsh-plugins/ev-panel/panel-host.js  (sha256:27f2d4423c8d)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
@@ -105,7 +105,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:f4370ba16031) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:9d990eb74a09) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -117,7 +117,7 @@ return {
 
     // 本插件加载时的那一版面板包版本。构建常驻包时生成器把占位符换成 package.json 的 version；
     // 热加载路直接读源文件，占位符不会被替换，这时按"版本未知"处理，不据此判新旧。
-    const PANEL_VERSION = '0.10.3'
+    const PANEL_VERSION = '0.11.2'
     const PANEL_VERSION_KNOWN = /^\d+\.\d+/.test(PANEL_VERSION)
 
     // fs 缺失时**只降级依赖它的功能**，不再让整个插件静默不注册。
@@ -962,6 +962,298 @@ return {
       } catch (e) {
         return { values: Object.assign({}, HEALTH_DEFAULTS), from: 'builtin' }
       }
+    }
+
+    // 自动收尾：只读共享 inbox 的 PR 台账与 sweep-log，不起 Python。
+    async function readRawAutoCloseConfig(cwd) {
+      try {
+        const target = await fs.resolve('postmortems/inbox/.groom/autoclose-config.json', { cwd })
+        const doc = JSON.parse(await fs.readText(target))
+        return doc && typeof doc === 'object' ? doc : {}
+      } catch (e) {
+        return {}
+      }
+    }
+
+    async function readAutoCloseState(cwd) {
+      try {
+        const target = await fs.resolve('postmortems/inbox/.groom/autoclose-state.json', { cwd })
+        const st = JSON.parse(await fs.readText(target))
+        return st && typeof st === 'object' ? st : {}
+      } catch (e) {
+        return {}
+      }
+    }
+
+    async function loadAutoCloseConfig(cwd) {
+      const file = await readRawAutoCloseConfig(cwd)
+      const status = await readAutoCloseState(cwd)
+      const fileMinutes = Number(file.intervalMinutes)
+      const fileHours = Number(file.intervalHours)
+      const fileValue = Number.isFinite(fileMinutes) && fileMinutes > 0
+        ? fileMinutes
+        : (Number.isFinite(fileHours) && fileHours > 0 ? fileHours * 60 : NaN)
+      const statusMinutes = Number.isFinite(Number(status.intervalMinutes)) && Number(status.intervalMinutes) > 0
+        ? Number(status.intervalMinutes)
+        : (Number.isFinite(Number(status.intervalHours)) && Number(status.intervalHours) > 0
+          ? Number(status.intervalHours) * 60
+          : NaN)
+      return {
+        enabled: typeof file.enabled === 'boolean'
+          ? file.enabled : status.enabled !== false,
+        intervalMinutes: Math.max(1, Math.min(10080,
+          Number.isFinite(fileValue) ? fileValue
+            : (Number.isFinite(statusMinutes) ? statusMinutes : 1440))),
+      }
+    }
+
+    async function saveAutoCloseConfig(cwd, args, sessionId) {
+      const caps = await writeCaps(sessionId)
+      if (!caps.canWrite) {
+        return { ok: false, error: caps.reasonCode === 'E_PERM'
+          ? '当前会话是只读档，不能保存设置；切到「工作区写」或「完全权限」后重试'
+          : '解析不到主检出，无法确定写根' }
+      }
+      const root = caps.writeRoot || cwd
+      const raw = await readRawAutoCloseConfig(root)
+      // 只改传入的字段：文件里没有的开关保持缺失，插件继续用 profile 配置。
+      if (typeof args.enabled === 'boolean') raw.enabled = args.enabled
+      if (args.resume === true) raw.resume = true
+      if (args.runNow === true) raw.runNow = true
+      if (args.confirmFirstRun === true) raw.confirmFirstRun = true
+      const rawMinutes = Number(args.intervalMinutes)
+      if (Number.isFinite(rawMinutes)) {
+        raw.intervalMinutes = Math.max(1, Math.min(10080, Math.round(rawMinutes)))
+      }
+      const dirTarget = await fs.resolve('postmortems/inbox/.groom', { cwd: root })
+      try {
+        await fs.listDir(dirTarget)
+      } catch (e) {
+        if (typeof fs.mkdir === 'function') await fs.mkdir(dirTarget)
+        else throw new Error('配置目录不存在，先让插件跑一次或手动创建 postmortems/inbox/.groom')
+      }
+      const target = await fs.resolve('postmortems/inbox/.groom/autoclose-config.json', { cwd: root })
+      await fs.writeText(target, JSON.stringify(raw, null, 2) + '\n',
+        undefined, undefined,
+        { mode: 'workspace-write', workspaceRoot: caps.writeRoot })
+      const shown = await loadAutoCloseConfig(root)
+      return { ok: true, ...shown }
+    }
+
+    async function loadAutoClose(cwd) {
+      const LIMIT = 100
+      const out = { ok: true, merged: [], pending: [], noDraft: [], closed: [],
+                    last: null, failures: 0, log: [], counts: {}, manualErrors: [],
+                    lastCleanup: null, cleanupEntries: [] }
+      let doneKeys = new Set()
+      try {
+        const doneTarget = await fs.resolve('postmortems/inbox/.done', { cwd })
+        const entries = (await fs.listDir(doneTarget)) || []
+        doneKeys = new Set(entries.map(entry => String(entry && entry.name || '')).filter(Boolean))
+      } catch (e) { /* 没有 .done：全部算未出队 */ }
+      let draftKeys = new Set()
+      try {
+        const inboxTarget = await fs.resolve('postmortems/inbox', { cwd })
+        const entries = (await fs.listDir(inboxTarget)) || []
+        draftKeys = new Set(entries
+          .map(entry => String(entry && entry.name || ''))
+          .filter(name => name.endsWith('.case.yaml'))
+          .map(name => name.slice(0, -'.case.yaml'.length)))
+      } catch (e) { /* inbox 读不到：按没有本地草稿处理 */ }
+      const mergedItems = []
+      try {
+        const ledgerTarget = await fs.resolve('postmortems/inbox/.groom/pr-state.json', { cwd })
+        const ledger = JSON.parse(await fs.readText(ledgerTarget))
+        const prs = ledger && ledger.prs && typeof ledger.prs === 'object' ? ledger.prs : {}
+        for (const key of Object.keys(prs).sort()) {
+          const entry = prs[key]
+          if (!entry || String(entry.state || '').toLowerCase() !== 'merged') continue
+          mergedItems.push({
+            draft: key,
+            url: String(entry.url || ''),
+            hasBody: !!(entry.body || entry.body_path),
+            hasMerge: !!entry.merge_commit,
+            mergeCommit: String(entry.merge_commit || ''),
+            hasDraft: draftKeys.has(key),
+            inDone: doneKeys.has(key),
+            checkedAt: String(entry.checked_at || ''),
+            mergedAt: String(entry.merged_at || entry.checked_at || ''),
+          })
+        }
+      } catch (e) { /* 台账不存在：按空处理 */ }
+      // 最近的排前面：待本地处理展示的应该是最近合入的，不是字母序。
+      mergedItems.sort((a, b) => {
+        const at = Date.parse(b.mergedAt || b.checkedAt) || 0
+        const bt = Date.parse(a.mergedAt || a.checkedAt) || 0
+        return at - bt || a.draft.localeCompare(b.draft)
+      })
+      const pendingItems = mergedItems.filter(item => !item.inDone && item.hasDraft)
+      const noDraftItems = mergedItems.filter(item => !item.inDone && !item.hasDraft)
+      const closedMerged = mergedItems.filter(item => item.inDone)
+      const merged = mergedItems.slice(0, LIMIT)
+      const pending = pendingItems.slice(0, LIMIT)
+      const noDraft = noDraftItems.slice(0, LIMIT)
+      try {
+        const logTarget = await fs.resolve('postmortems/inbox/.groom/sweep-log.jsonl', { cwd })
+        const lines = (await fs.readText(logTarget)).split(/\r?\n/).filter(Boolean).slice(-20)
+        for (const line of lines) {
+          try { out.log.push(JSON.parse(line)) } catch (e) { /* 坏行跳过 */ }
+        }
+        out.last = out.log.length ? out.log[out.log.length - 1] : null
+        for (let index = out.log.length - 1; index >= 0; index -= 1) {
+          if (out.log[index].ok === false) out.failures += 1
+          else break
+        }
+      } catch (e) { /* 日志不存在：按空处理 */ }
+      const statusByDraft = {}
+      const reasonByDraft = {}
+      for (const entry of out.log) {
+        for (const result of (entry && entry.results) || []) {
+          if (!result) continue
+          // 同一 PR 的多份草稿共享一条结果；旧日志没有 drafts 时回退到 draft。
+          const drafts = Array.isArray(result.drafts) && result.drafts.length
+            ? result.drafts : [result.draft]
+          for (const draft of drafts) {
+            if (!draft) continue
+            statusByDraft[draft] = String(result.status || '')
+            if (result.reason) reasonByDraft[draft] = String(result.reason)
+          }
+        }
+      }
+      let pluginState = null
+      try {
+        const stateTarget = await fs.resolve('postmortems/inbox/.groom/autoclose-state.json', { cwd })
+        const st = JSON.parse(await fs.readText(stateTarget))
+        pluginState = st
+        out.plugin = {
+          enabled: st.enabled !== false,
+          paused: st.paused === true,
+          lastRun: String(st.lastRun || ''),
+          lastOk: st.lastOk === true ? true : (st.lastOk === false ? false : null),
+          lastSummary: String(st.lastSummary || ''),
+          lastFailure: st.lastFailure && typeof st.lastFailure === 'object' ? st.lastFailure : null,
+          failures: Number(st.failures) || 0,
+          nextRun: String(st.nextRun || ''),
+          repo: String(st.repo || ''),
+          repoSource: String(st.repoSource || ''),
+          python: String(st.python || ''),
+          needsRun: st.needsRun === true,
+          firstRunConfirmed: st.firstRunConfirmed === true,
+          firstRunPending: st.firstRunPending === true,
+          preview: st.preview && typeof st.preview === 'object' ? st.preview : null,
+          // 1 分钟不是 0 小时：状态文件里的 intervalHours 只作展示/回退，
+          // 面板优先用 intervalMinutes，避免出现「选 1 分钟、旁边写 24 小时」。
+          intervalMinutes: Number.isFinite(Number(st.intervalMinutes)) && Number(st.intervalMinutes) > 0
+            ? Number(st.intervalMinutes) : 0,
+          intervalHours: Number.isFinite(Number(st.intervalHours)) && Number(st.intervalHours) > 0
+            ? Number(st.intervalHours) : null,
+        }
+      } catch (e) { /* 插件还没运行过：没有状态文件 */ }
+      const failure = pluginState && pluginState.lastFailure
+        && typeof pluginState.lastFailure === 'object' ? pluginState.lastFailure : null
+      for (const item of mergedItems) {
+        item.lastStatus = statusByDraft[item.draft]
+          || (failure && failure.draft === item.draft ? String(failure.status || '') : '')
+        item.lastReason = reasonByDraft[item.draft]
+          || (failure && failure.draft === item.draft ? String(failure.reason || '') : '')
+      }
+      const cleanupByDraft = {}
+      const cleanupEntries = []
+      try {
+        const cleanupTarget = await fs.resolve('postmortems/inbox/.groom/cleanup-log.jsonl', { cwd })
+        const lines = (await fs.readText(cleanupTarget)).split(/\r?\n/).filter(Boolean).slice(-50)
+        for (const line of lines) {
+          try {
+            const entry = JSON.parse(line)
+            const deleted = entry && entry.deleted && Array.isArray(entry.deleted.assessments)
+              ? entry.deleted.assessments : []
+            const snapshots = entry && entry.deleted && Array.isArray(entry.deleted.snapshots)
+              ? entry.deleted.snapshots : []
+            const kept = entry && entry.deleted && Array.isArray(entry.deleted.kept)
+              ? entry.deleted.kept : []
+            const decided = entry && Array.isArray(entry.decisions)
+              ? entry.decisions.map(item => String(item && item.draft || '')) : []
+            const drafts = new Set([...deleted, ...decided].filter(Boolean))
+            const complete = entry && entry.complete === true
+              ? true : (entry && entry.complete === false
+                ? false : (entry && entry.ok === true ? true : false))
+            for (const draft of drafts) {
+              cleanupByDraft[draft] = { complete, at: String(entry && entry.at || '') }
+            }
+            cleanupEntries.push({
+              at: String(entry && entry.at || ''),
+              pr: entry && entry.pr !== undefined ? entry.pr : null,
+              complete,
+              ok: entry && entry.ok === true,
+              deleted: { assessments: deleted, snapshots, kept },
+              kept_reasons: entry && entry.kept_reasons && typeof entry.kept_reasons === 'object'
+                ? entry.kept_reasons : {},
+            })
+          } catch (e) { /* 坏行跳过 */ }
+        }
+      } catch (e) { /* 没有 cleanup-log：清理状态未知 */ }
+      let cleanupPending = 0
+      for (const key of doneKeys) {
+        const record = cleanupByDraft[key]
+        if (record && record.complete === false) cleanupPending += 1
+      }
+      // 已出队按本地 .done 数：台账外但已进 .done 的草稿也要能看到清理状态。
+      const closed = [...doneKeys].sort().slice(0, LIMIT).map(draft => {
+        const record = cleanupByDraft[draft]
+        return { draft, url: '', cleanupComplete: record ? record.complete !== false : null }
+      })
+      const manualErrors = []
+      try {
+        const closeTarget = await fs.resolve('postmortems/inbox/.groom/close-log.jsonl', { cwd })
+        const lines = (await fs.readText(closeTarget)).split(/\r?\n/).filter(Boolean).slice(-20)
+        for (const line of lines) {
+          try {
+            const entry = JSON.parse(line)
+            if (!entry || String(entry.status || '') === 'closed') continue
+            if (!entry.status && !entry.reason) continue
+            manualErrors.push({
+              draft: String(entry.draft || ''),
+              status: String(entry.status || 'error'),
+              reason: String(entry.reason || ''),
+              at: String(entry.at || ''),
+            })
+          } catch (e) { /* 坏行跳过 */ }
+        }
+      } catch (e) { /* 没有 close-log：没有手动失败 */ }
+      // 状态文件里的 failures 是当前连续失败次数；sweep-log 只覆盖写成了日志的那些轮次。
+      // 有插件状态就以状态为准（缺字段按 0），不要再从日志另一套计数，避免和暂停计数分叉。
+      if (pluginState) {
+        out.failures = Number.isFinite(Number(pluginState.failures))
+          ? Number(pluginState.failures) : 0
+      }
+      // 最近运行以插件状态为准：lastRun 是最后一次尝试，失败发生在写 sweep-log 之前也会覆盖。
+      // 没有插件状态时才退回 sweep-log 的最后一行。
+      if (pluginState && pluginState.lastRun) {
+        out.last = {
+          at: String(pluginState.lastRun),
+          source: 'plugin',
+          ok: pluginState.lastOk === true,
+          results: [],
+          note: null,
+        }
+      }
+      out.merged = merged
+      out.pending = pending
+      out.noDraft = noDraft
+      out.closed = closed
+      out.manualErrors = manualErrors.slice(-5)
+      out.lastCleanup = cleanupEntries.length ? cleanupEntries[cleanupEntries.length - 1] : null
+      out.cleanupEntries = cleanupEntries.slice(-5)
+      out.counts = {
+        merged: mergedItems.length,
+        pending: pendingItems.length,
+        noDraft: noDraftItems.length,
+        closed: doneKeys.size,
+        doneOnly: Math.max(0, doneKeys.size - closedMerged.length),
+        cleanupPending,
+      }
+      out.config = await loadAutoCloseConfig(cwd)
+      return out
     }
 
     async function loadHealth(cwd) {
@@ -2892,6 +3184,30 @@ return {
       return Object.assign({}, tl, { entryActivity: ea })
     })
 
+    const autocloseDisposer = harness.handle('ascend-autoclose-state', async (args) => {
+      if (!fs) return needFs()
+      const sessionId = args && args.sessionId ? String(args.sessionId) : null
+      // 读与写用同一个根：主检出，不按会话 cwd（worktree 会指向另一份）。
+      const caps = await writeCaps(sessionId)
+      const cwd = caps.writeRoot || await resolveRepoCwd(sessionId)
+      return loadAutoClose(cwd)
+    })
+
+    const autocloseConfigDisposer = harness.handle('ascend-autoclose-config', async (args) => {
+      if (!fs) return needFs()
+      const sessionId = args && args.sessionId ? String(args.sessionId) : null
+      const caps = await writeCaps(sessionId)
+      const cwd = caps.writeRoot || await resolveRepoCwd(sessionId)
+      if (args && args.action === 'save') {
+        try {
+          return await saveAutoCloseConfig(cwd, args, sessionId)
+        } catch (e) {
+          return { ok: false, error: '写配置失败：' + String(e && e.message || e) }
+        }
+      }
+      return { ok: true, ...(await loadAutoCloseConfig(cwd)) }
+    })
+
     // 报告正文（只读）。面板不给"写入报告"的入口——报告归 diagnose 产，见其 report-template。
     const reportDisposer = harness.handle('ascend-read-report', async (args) => {
       if (!fs) return needFs()
@@ -3038,6 +3354,8 @@ return {
       if (openDisposer) openDisposer()
       if (sedDisposer) sedDisposer()
       if (metricsDisposer) metricsDisposer()
+      if (autocloseDisposer) autocloseDisposer()
+      if (autocloseConfigDisposer) autocloseConfigDisposer()
       if (reportDisposer) reportDisposer()
       if (healthDisposer) healthDisposer()
       if (processDisposer) processDisposer()

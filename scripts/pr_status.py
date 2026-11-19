@@ -1200,6 +1200,28 @@ def cmd_set_target(root, args) -> int:
                 "settings_sha256": settings_digest})
 
 
+def _repo_from_url(url: str) -> str:
+    """从 PR/MR 链接取 owner/repo；路径里去掉只属于网页地址的后缀。"""
+    parsed = parse_remote_url(url)
+    repo = str(parsed.get("repo") or "")
+    for marker in ("/-/merge_requests/", "/merge_requests/", "/pulls/", "/pull/"):
+        if marker in repo:
+            repo = repo.split(marker, 1)[0]
+            break
+    return repo.strip("/")
+
+
+def _number_from_url(url: str):
+    """从 PR/MR 链接路径取编号；查询参数不算。"""
+    text = str(url or "").split("?", 1)[0].split("#", 1)[0]
+    for marker in ("/-/merge_requests/", "/merge_requests/", "/pulls/", "/pull/"):
+        if marker in text:
+            digits = re.match(r"(\d+)", text.split(marker, 1)[1])
+            if digits:
+                return int(digits.group(1))
+    return None
+
+
 def _validate_pr_args(args):
     draft = str(args.draft or "").strip()
     platform = str(args.platform or "").strip()
@@ -1207,18 +1229,29 @@ def _validate_pr_args(args):
     url = str(args.url or "").strip()
     if not draft:
         return None, "--set 需要 --draft"
-    if not platform:
-        return None, "--set 需要 --platform"
-    if "/" not in repo:
-        return None, "--set 的 --repo 需要 owner/repo 形式"
-    try:
-        number = int(args.number)
-    except (TypeError, ValueError):
-        return None, "--set 的 --number 必须是正整数"
-    if number <= 0:
-        return None, "--set 的 --number 必须是正整数"
+    if not url:
+        return None, "--set 需要 --url"
     if urllib.parse.urlsplit(url).scheme.lower() not in ("http", "https"):
         return None, "--set 的 --url 需要 http/https 地址"
+    parsed = parse_remote_url(url)
+    if not platform:
+        adapter = adapter_for_host(load_adapters(), parsed.get("host"))
+        platform = str(adapter.get("id") or "") if adapter else ""
+        if not platform:
+            return None, f"--set 无法从链接识别平台（host {parsed.get('host') or '空'}）"
+    if not repo:
+        repo = _repo_from_url(url)
+    if "/" not in repo:
+        return None, "--set 的 --repo 需要 owner/repo 形式"
+    raw_number = getattr(args, "number", None)
+    if raw_number in (None, ""):
+        raw_number = _number_from_url(url)
+    try:
+        number = int(raw_number)
+    except (TypeError, ValueError):
+        return None, "--set 的 --number 必须是正整数（或给带编号的链接）"
+    if number <= 0:
+        return None, "--set 的 --number 必须是正整数（或给带编号的链接）"
     state = str(args.state or "unknown").strip().lower()
     if state not in STATES:
         return None, f"--state 只能是 {'/'.join(STATES)}"

@@ -296,28 +296,29 @@ def plan_one(doc: dict, draft, root: Path, knowledge: dict, override: str | None
 
 
 def blocked_reason(state: str) -> str:
+    if state == "no-ledger":
+        return ("PR 台账里没有该草稿的记录；先登记 PR，或加 --no-pr 声明无 PR 的本地沉淀部署")
     if state == "closed":
-        return ("PR 已关闭、没有合入；从 .done 恢复草稿后重新开 PR，不要收尾。"
-                "确实要提前收尾时加 --allow-open-pr。")
-    return (f"PR 还没合入（{state}）；先查合入状态，合入后再收尾。"
-            f"确实要提前收尾时加 --allow-open-pr。")
+        return ("PR 已关闭、没有合入；从 .done 恢复草稿后重新开 PR，不要收尾。")
+    return f"PR 还没合入（{state}）；先查合入状态，合入后再收尾。"
 
 
 def unmerged_prs(root: Path, keys) -> tuple:
-    """台账里没有合入的 PR。返回 (key→state, 错误)。
+    """台账里没有合入的 PR。返回 (key→state, 台账无记录的 key, 错误)。
 
     closed 在平台语义里也是「没有合入」；缺 state 与未知值按 unknown 处理。
-    只有 merged 才放行。收尾会删掉本地评估证据，合入前收尾等于把「待合入」
-    提前写成「已升格」。除非显式 --allow-open-pr，否则这里拦下。
+    只有 merged 才放行。台账里没有记录的 key 单独返回：那是无 PR 的本地沉淀部署，
+    要显式 `--no-pr` 才收尾，不能把漏登记当成没有 PR。
     """
     try:
         ledger = pr_status.load_ledger(root)
     except Exception as exc:
-        return {}, f"PR 台账读不出：{exc}"
-    out = {}
+        return {}, [], f"PR 台账读不出：{exc}"
+    out, missing = {}, []
     prs = ledger.get("prs") if isinstance(ledger.get("prs"), dict) else {}
     for key in keys:
         if key not in prs:
+            missing.append(key)
             continue
         entry = prs.get(key)
         if not isinstance(entry, dict):
@@ -326,10 +327,14 @@ def unmerged_prs(root: Path, keys) -> tuple:
         state = str(entry.get("state") or "").strip().lower()
         if state != "merged":
             out[key] = state or "unknown"
-    return out, None
+    return out, missing, None
 
 
 def run(args) -> int:
+    if args.allow_open_pr:
+        print("--allow-open-pr 已不支持：合入前不写知识终态。"
+              "先查合入状态，合入后再收尾。", file=sys.stderr)
+        return 2
     root = repo_root(Path(args.repo).resolve() if args.repo else Path.cwd())
     inbox = shared_inbox(root)
     if not inbox.is_dir():
@@ -356,9 +361,9 @@ def run(args) -> int:
                                                   "reason": "已出队"} for key in closed]}))
                 return 0
     selected = list(drafts.values()) if not args.draft_key else [drafts[k] for k in args.draft_key if k in drafts]
-    blocked = {}
-    if selected and not args.allow_open_pr:
-        blocked, ledger_error = unmerged_prs(root, [d.key for d in selected])
+    blocked, missing = {}, []
+    if selected:
+        blocked, missing, ledger_error = unmerged_prs(root, [d.key for d in selected])
         if ledger_error:
             if args.json:
                 print(dump_json({"ok": False, "code": "E_LEDGER",
@@ -366,6 +371,9 @@ def run(args) -> int:
             else:
                 print(ledger_error, file=sys.stderr)
             return 2
+        if missing and not args.no_pr:
+            for key in missing:
+                blocked[key] = "no-ledger"
         if blocked:
             selected = [d for d in selected if d.key not in blocked]
     if not selected:
@@ -492,8 +500,10 @@ def main(argv=None) -> int:
     ap.add_argument("--repo", default=None, help="仓库根（默认当前目录）")
     ap.add_argument("--traces", default=None, help="traces 目录（默认主检出那一份）")
     ap.add_argument("--apply", action="store_true", help="真正执行；不给只打印计划")
+    ap.add_argument("--no-pr", action="store_true",
+                    help="台账里没有该草稿的 PR 时，按无 PR 的本地沉淀部署收尾")
     ap.add_argument("--allow-open-pr", action="store_true",
-                    help="PR 台账里不是 merged（含 open/unknown/closed）时也允许收尾（默认拦下）")
+                    help="已废弃：合入前不允许收尾，传了会报错")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
     if not args.draft_key and not args.all:
