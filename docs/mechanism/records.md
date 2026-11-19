@@ -168,7 +168,7 @@ conclusion:
 | 基线知识库 | `base_kb` | 改动前检出的 HEAD 短 sha（`kb_rev` 同口径） |
 | 候选知识库 | `candidate_kb` | 候选 worktree 的 HEAD；有未提交补丁时写成 `<base>+patch:<补丁哈希>`，worktree 失效记 `unknown` |
 | 候选改动 | `candidate` | 候选 id；pilot 的补丁在隔离 worktree 内未提交，差异由 `candidate_kb` 的 patch 哈希标识 |
-| 模型 | `model` | provider、model、思考等级；trace 的 `model` 或 `harness_session` 对应的 DSH 会话记录读，取不到写 `unknown` |
+| 模型 | `model` | provider、model、思考等级；trace 的 `model`、非 DSH agent 写入的显式值，或 `harness_session` 对应的 DSH 会话记录；取不到写 `unknown` |
 
 判定时协议、策略、基线知识库与模型必须相同；候选知识与候选改动可以不同，但差异必须等于候选补丁。两个知识库版本都要记：基线是 HEAD 短 sha；候选是 HEAD，或候选 worktree 有未提交补丁时的 `<base>+patch:<补丁哈希>`；worktree 已失效记 `unknown`。
 

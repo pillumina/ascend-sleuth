@@ -2,7 +2,9 @@
 
 trace 由 agent 写，模型名和 token 计数不在 trace 里；这两项在 DSH 的会话
 存储里（`modelSelection` 与 `tokenUsage`）。本模块只读，不写；没有 DSH
-或没有对应会话时返回 None，不补零、不猜模型。
+或没有对应会话时返回 None，不补零、不猜模型。非 DSH agent 由
+`trace_begin.py --model/--tokens-start` 与 `trace_usage.py --tokens` 写 trace
+显式字段，本模块只是 DSH 的自动填充适配器。
 """
 
 from __future__ import annotations
