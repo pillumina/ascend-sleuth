@@ -27,7 +27,7 @@ decision:
 samples:
   core_regression: 30
   field_eval: 9
-  test: 6
+  test: 4
   split: hash
   strata: {}
 
