@@ -51,7 +51,7 @@ from .pilot import PilotError, collect as pilot_collect, decide as pilot_decide,
 from .source_usage import SourceUsageError, compare as compare_source_usage, evaluate as evaluate_source_usage, from_trace as source_from_trace
 from .tool_usage import ToolUsageError, compare as compare_tool_usage, evaluate as evaluate_tool_usage, from_trace as tool_from_trace
 from .quality import QualityError, load_quality
-from .policy import PolicyError, load_policy, policy_hash
+from .policy import PolicyError, load_policy, policy_hash, resolve_autonomy
 from .intake import IntakeError, completeness, extract_case, extract_trace, make_sample
 from .samples import import_pilot
 from .records import ConclusionStore, ExperimentStore, RecordError
@@ -126,6 +126,18 @@ def _store(args: argparse.Namespace) -> SampleStore:
 
 
 # ---------------------------------------------------------------- policy
+def cmd_policy_autonomy(args: argparse.Namespace) -> int:
+    try:
+        policy = _policy_for(args)
+        level = resolve_autonomy(policy, args.component)
+    except PolicyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(f"component: {args.component}")
+    print(f"autonomy: {level}")
+    return 0
+
+
 def cmd_policy_check(args: argparse.Namespace) -> int:
     path = _root(args) / "eval" / "policy.yaml"
     try:
@@ -774,6 +786,7 @@ def cmd_experiment_propose(args: argparse.Namespace) -> int:
         record["eval_profile_id"] = profile.id
         record["eval_gate"] = profile.gate
         record["eval_ready"] = profile.implemented
+        record["autonomy"] = resolve_autonomy(policy, patch.target_component)
         record["at"] = now_iso()
         ExperimentStore.for_base(_evolve_base(args)).append(record)
     except (PolicyError, AdapterError, StoreError, RecordError, ContractError, ValueError, TypeError, RuntimeError) as exc:
@@ -784,6 +797,7 @@ def cmd_experiment_propose(args: argparse.Namespace) -> int:
         return 1
     print(f"target: {patch.target_kind}")
     print(f"component: {patch.target_component}")
+    print(f"autonomy: {record['autonomy']}")
     print(f"algorithm: {patch.algorithm}")
     print(f"summary: {patch.summary}")
     eval_ready = resolve_evaluator(patch.target_kind)[1].implemented
@@ -1386,6 +1400,11 @@ def build_parser() -> argparse.ArgumentParser:
     show = policy_sub.add_parser("show", help="打印合并默认值后的策略")
     show.add_argument("--root", default=".", help="检出根目录（默认 .）")
     show.set_defaults(func=cmd_policy_show)
+    autonomy = policy_sub.add_parser("autonomy", help="按 target_component 解析自动档位")
+    autonomy.add_argument("--root", default=".", help="检出根目录（默认 .）")
+    autonomy.add_argument("--component", required=True)
+    autonomy.add_argument("--policy", default=None, help="策略路径（默认 eval/policy.yaml）")
+    autonomy.set_defaults(func=cmd_policy_autonomy)
     sample = sub.add_parser("sample", help="样本队列与生命周期")
     sample_sub = sample.add_subparsers(dest="sample_command", required=True)
 

@@ -64,6 +64,7 @@
 | arena 分数进 timeline | [evaluation.md](evaluation.md) 5.2 | 蓝图 | 样本规模达标（带分母） |
 | arena 判定池扩容 | [evaluation.md](evaluation.md) 5.2 | 蓝图 | 规模或数据触发 |
 | 评估策略与判定器 | [evaluation.md](evaluation.md) 3.5 | 已落地 | `python3 scripts/evolve.py policy check`；`python3 scripts/evolve.py judge --help` |
+| A0-A5 自动档位解析（按 target_component；A3 无 auto-merge 降 A2） | [evaluation.md](evaluation.md) 3.8 | 已落地 | `python3 scripts/evolve.py policy autonomy --component docs.non_normative` |
 | judge 双标校准（一致率与 κ 门槛） | [evaluation.md](evaluation.md) 3.5 | 已落地 | `python3 scripts/evolve.py judge-calibration --help` |
 | 样本、执行、结论的 v1 契约与样本队列 | [records.md](records.md) 3.2、3.3 | 已落地 | `python3 scripts/evolve.py sample --help`；`python3 scripts/evolve.py brief` |
 | tooling 自演进：目标、可改区、候选补丁、评测与门禁 | [evaluation.md](evaluation.md) 3.10.1 | 已落地 | `python3 scripts/evolve.py tool-usage --help`；`grep -n "tooling.source_fetch" scripts/evolve/regions.py` |

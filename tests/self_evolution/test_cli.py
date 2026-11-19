@@ -54,6 +54,14 @@ class HelpAndPolicyCliTest(unittest.TestCase):
         self.assertIn("paired_binary", result.stdout)
         self.assertIn("# policy_hash:", result.stdout)
 
+    def test_policy_autonomy_resolves_component(self):
+        normal = run_cli("policy", "autonomy", "--component", "docs.normative")
+        self.assertEqual(normal.returncode, 0, normal.stderr)
+        self.assertIn("autonomy: A1", normal.stdout)
+        non_norm = run_cli("policy", "autonomy", "--component", "docs.non_normative")
+        self.assertEqual(non_norm.returncode, 0, non_norm.stderr)
+        self.assertIn("autonomy: A2", non_norm.stdout)
+
     def test_policy_check_unknown_key_fails(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
