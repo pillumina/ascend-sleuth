@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -43,6 +44,10 @@ class HarnessUsageTest(unittest.TestCase):
             self.assertIsNone(read_session("../etc/passwd", root))
             (root / "bad.json").write_text("{", encoding="utf-8")
             self.assertIsNone(read_session("bad", root))
+
+    def test_no_home_directory_returns_none(self):
+        with patch("pathlib.Path.home", side_effect=RuntimeError("no home")):
+            self.assertIsNone(read_session("abc"))
 
     def test_session_without_usage_returns_none(self):
         with tempfile.TemporaryDirectory() as td:

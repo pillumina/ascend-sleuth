@@ -21,8 +21,16 @@ _SESSION_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*")
 def _sessions_root(root: Optional[Path] = None) -> Path:
     if root is not None:
         return Path(root)
-    home = Path(os.environ.get("DSH_HOME", str(Path.home() / ".dsh")))
-    return home / "storages" / "session_projcache" / "sessions"
+    home = os.environ.get("DSH_HOME")
+    if home:
+        base = Path(home)
+    else:
+        try:
+            base = Path.home() / ".dsh"
+        except (RuntimeError, OSError):
+            # 无 home 的 CI/容器：没有会话库可读，返回一个不存在的路径。
+            return Path(".dsh-sessions-unavailable")
+    return base / "storages" / "session_projcache" / "sessions"
 
 
 def _session_file(session_id: str, root: Path) -> Optional[Path]:
