@@ -1,7 +1,7 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
 //   dsh-plugins/ascend-panel/panel-client.js  (sha256:ddd85e79a637)
-//   dsh-plugins/ev-panel/panel-client.js  (sha256:2faf50d5daad)
+//   dsh-plugins/ev-panel/panel-client.js  (sha256:6cd100cd8f70)
 //   dsh-plugins/sleuth-console/console-client.js  (sha256:2405b5ea8495)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -5158,7 +5158,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       id: 'ev-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ev-panel/panel-client.js (sha256:2faf50d5daad) 原文开始 ----
+// ---- dsh-plugins/ev-panel/panel-client.js (sha256:6cd100cd8f70) 原文开始 ----
 // ev-panel client —— 自演进看板（conversation.view 第三个 tab「自演进」）
 // 数据经 host.call('ev-board-load') 从 scripts/ev_board_data.py 汇总；
 // 单卡全文经 host.call('ev-idea-detail') 点开时才拉（列表页只带摘要）。
@@ -5196,7 +5196,7 @@ return {
     }
     const METHOD_LABELS = {
       golden_replay: 'golden 回放', metrics_compare: '指标对照',
-      issue_replay: 'S2 issue 回放', scan_review: '扫描 + 人审',
+      issue_replay: 'issue 回放', scan_review: '扫描 + 人审',
     }
     const DEC_TYPE = {
       proposal: { label: '提案', color: 'var(--c-purple)', acc: 'var(--acc-purple)' },
@@ -6014,7 +6014,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       if (!hasTally && !hasS2) {
         return React.createElement(Section, { title: '流程演进信号' },
           React.createElement('div', { className: 'ev-empty' },
-            '尚无归因事件（需 S1 反馈归因或 S2 replay 路由未命中累积后产生）。'),
+            '尚无归因事件（需现场反馈归因或 issue 回放路由未命中累积后产生）。'),
         )
       }
       return React.createElement(Section, { title: '流程演进信号' },
@@ -6026,7 +6026,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
             React.createElement('span', { className: 'k', style: { marginLeft: 'auto' } }, (c.traces || c.source_traces || []).length + ' 来源'),
           ))) : null,
         hasS2 ? React.createElement('div', null,
-          React.createElement(SectionLabel, null, 'S2 replay 路由归因'),
+          React.createElement(SectionLabel, null, 'issue 回放路由归因'),
           s2Attrib.map((a, i) => React.createElement('div', { key: i, className: 'ev-kv', style: { padding: '3px 0' } },
             '#' + a.issue + ' → ' + a.component + '：' + (a.note || '')))) : null,
       )

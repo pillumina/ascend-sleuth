@@ -31,7 +31,7 @@
 | 体检器三态退出码：`--check` 时 0 全评过无越界、1 有违反、2 有判据未评；不带 `--check` 恒为 0 | [evaluation.md](evaluation.md) 3.5 | 已落地 | `grep -n "exit_code = 2 if" scripts/evolution_health.py` |
 | 记录不陈旧（观测记录进 CI）与硬性检查的负例断言 | [evaluation.md](evaluation.md) 3.5 | 已落地 | `python3 scripts/eval_scorecard.py --check`；`grep -n "负例" scripts/rehearse_evolve_loop.py` |
 | 冻结对照样本按内容哈希固定 | [evaluation.md](evaluation.md) 5.1 | 已落地 | `python3 scripts/holdout.py --check` |
-| S2 单池校准集、判定池吸收分流与运行期重判 | [evaluation.md](evaluation.md) 3.7 | 已落地 | `ls eval/s2/vllm-ascend.yaml`；`grep -n "absorption_rev" scripts/eval_arena.py` |
+| issue 回放校准集、判定池吸收分流与运行期重判 | [evaluation.md](evaluation.md) 3.7 | 已落地 | `ls eval/s2/vllm-ascend.yaml`；`grep -n "absorption_rev" scripts/eval_arena.py` |
 | arena 设计文档与 `scripts/eval_arena.py` 的子命令 | [evaluation.md](evaluation.md) 3.7 | 已落地 | `python3 scripts/eval_arena.py --help` |
 | arena 接受判据（配对检验、复用折减、三态结论） | [evaluation.md](evaluation.md) 3.5、3.7 | 已落地 | `grep -n "exact_mcnemar_ge\|ALPHA_DEFAULT\|reuse_index" scripts/eval_arena.py` |
 | arena `--self-test` 进 CI | [evaluation.md](evaluation.md) 3.7 | 已落地 | `grep -n "arena-gate-rule" .github/workflows/kb-checks.yml` |
@@ -44,7 +44,7 @@
 | 证据面记录（`ground_truth: none` 剔出分母，`kb_rev` 进 `replay_revs`） | [evaluation.md](evaluation.md) 3.7 | 已落地 | `grep -n "ground_truth\|replay_revs" scripts/eval_arena.py` |
 | 选样的机械判据：流程与文档类前缀硬拒，弱信号默认不收 | [evaluation.md](evaluation.md) 3.7 | 已落地 | `grep -n "include-weak" scripts/s2_calibration.py` |
 | 统一执行记录：schema、脚本、收尾接入与聚合 | [records.md](records.md) 3.7 | 已落地 | `python3 scripts/verify_exec_log.py`；`grep -rl "log_skill_exec" skills/`；`grep -n "evolve_check_runs" scripts/metrics_snapshot.py` |
-| S2 feedback 结算 `validation_record` | [operations.md](operations.md) 3.4 | 已落地 | `grep -n "validation_record" scripts/settle_s2_feedback.py` |
+| issue 回放结算 `validation_record` | [operations.md](operations.md) 3.4 | 已落地 | `grep -n "validation_record" scripts/settle_s2_feedback.py` |
 | 现场置信只由现场回报写入 | [operations.md](operations.md) 3.4 | 已落地 | `ls scripts/settle_trace_feedback.py` |
 | 条目使用记录 | [diagnosis-observability.md](diagnosis-observability.md) 3.3 | 已落地 | `python3 scripts/verify_entry_activity.py` |
 | 工具分布 | [diagnosis-observability.md](diagnosis-observability.md) 3.3 | 已落地 | `grep -n '"tool": ("calls"' scripts/entry_activity.py` |
@@ -59,7 +59,7 @@
 | arena 判定池的 expected 标注与基线回放 | [evaluation.md](evaluation.md) 5.2 | 蓝图 | 继续扩样本；基线已出、逐条向量见 `python3 scripts/eval_arena.py --stats` |
 | arena 端到端运转一次（真实 miss → 候选 → 结论 → 合入） | [evaluation.md](evaluation.md) 5.2 | 蓝图 | baseline 可用之后 |
 | arena test 分离 | [evaluation.md](evaluation.md) 5.2 | 蓝图 | 池子撑得起两半 |
-| S2 单池校准集的 selection 与 test 分离 | [evaluation.md](evaluation.md) 5.2 | 蓝图 | 判定池中未被本系统沉淀过的样本条数够支撑判定 |
+| issue 回放校准集的 selection 与 test 分离 | [evaluation.md](evaluation.md) 5.2 | 蓝图 | 判定池中未被本系统沉淀过的样本条数够支撑判定 |
 | arena 归因层与交互层入台 | [evaluation.md](evaluation.md) 5.2 | 蓝图 | 两层各自有可用的评测集 |
 | arena 分数进 timeline | [evaluation.md](evaluation.md) 5.2 | 蓝图 | 样本规模达标（带分母） |
 | arena 判定池扩容 | [evaluation.md](evaluation.md) 5.2 | 蓝图 | 规模或数据触发 |
@@ -72,20 +72,20 @@
 | 记录端口层 | [records.md](records.md) 3.6 | 已落地 | `grep -n "class .*Protocol" scripts/evolve/ports.py` |
 | 适配器层与旧脚本薄壳 | [records.md](records.md) 3.6 | 已落地 | `ls scripts/evolve/adapters`；`python3 scripts/evolve.py replay --help`；`python3 scripts/evolve.py sample import-s2 --help` |
 | core 样本与 `eval/core/` | [records.md](records.md) 5.2 | 蓝图 | `ls eval/core` |
-| 观察窗超时降级态 `unconfirmed_valid` / `unconfirmed` | [operations.md](operations.md) 5.2 | 蓝图 | S1 断供真实持续两期以上；此前用「标存疑加提醒人」 |
+| 观察窗超时降级态 `unconfirmed_valid` / `unconfirmed` | [operations.md](operations.md) 5.2 | 蓝图 | 现场反馈断供真实持续两期以上；此前用「标存疑加提醒人」 |
 | 候选过期态 `stale` | [records.md](records.md) 5.2 | 蓝图 | 候选停留超过八周且从未被采纳；此前用 inbox 式标红 |
 | 策略记忆独立文件 `strategy-memory.yaml` | [operations.md](operations.md) 5.2 | 蓝图 | 季度自评跑通至少一轮后 |
 | 稳态降频 `steady` 与任务级批提交跨轮 | [operations.md](operations.md) 5.2 | 蓝图 | 某个范围真实收敛；用户真实要求「跨多轮攒批」后 |
 | 多 agent 载体（DSH Agent Teams 一类） | [operations.md](operations.md) 5.2 | 蓝图 | 出现真实的多 agent 并行场景 |
 | 冲突检测的机械检查 | [operations.md](operations.md) 5.2 | 蓝图 | `affected_paths` 进卡 schema 后 |
-| 会话协议与预算试点、长期任务层跨轮运行 | [operations.md](operations.md) 5.2 | 蓝图 | 前者排在 golden 验证与 S2 校准集之后；后者有真实数据后手动试点一轮 |
+| 会话协议与预算试点、长期任务层跨轮运行 | [operations.md](operations.md) 5.2 | 蓝图 | 前者排在 golden 验证与 issue 回放校准集之后；后者有真实数据后手动试点一轮 |
 | 可视化面板与 HTML 报告 | [operations.md](operations.md) 5.2 | 蓝图 | 任务层跑通一轮以上 |
 | 长期保护判据接入（回滚率与抽审发现率） | [operations.md](operations.md) 5.2 | 蓝图 | 两项读数接入 `proposals/gates.yaml` |
 | 成功模式提取信号 | [operations.md](operations.md) 5.2 | 蓝图 | 常态运行中首次出现可复述的成功模式 |
 | 可信自动升格 trusted auto-promotion | [roadmap.md](../plan/roadmap.md) | 蓝图 | 随 v2 池入口：记录达到门槛数、前几项完成、指标趋势连续两季可解读 |
-| S2 池管理扩展 | [operations.md](operations.md) 3.4 | 蓝图 | issue-ingest 的 `processed` 记录扩展时 |
-| `predicted_value` / `first_hit` / `expected_window` 三个字段 | [records.md](records.md) 5.3 | 已否决 | 整套依赖 S1 现场反馈，而该通道当前没有数据；两条现成通道已覆盖效果度量 |
-| follow-up 观察窗常态化 | [records.md](records.md) 5.2 | 蓝图 | golden 回放或 S2 校准集可用 |
+| issue 回放池管理扩展 | [operations.md](operations.md) 3.4 | 蓝图 | issue-ingest 的 `processed` 记录扩展时 |
+| `predicted_value` / `first_hit` / `expected_window` 三个字段 | [records.md](records.md) 5.3 | 已否决 | 整套依赖现场反馈，而该通道当前没有数据；两条现成通道已覆盖效果度量 |
+| follow-up 观察窗常态化 | [records.md](records.md) 5.2 | 蓝图 | golden 回放或 issue 回放校准集可用 |
 | 回滚率、采纳率等机制健康指标进 timeline | [operations.md](operations.md) 5.2 | 蓝图 | 自演进执行流程试点满一轮 |
 | agent 供给清单固化为执行清单 | [records.md](records.md) 5.2 | 蓝图 | 执行记录积累一批之后 |
 | arena 外部验证卡占比下限 1/3 | [evaluation.md](evaluation.md) 5.3 | 已否决 | 实测不可达，且原判据把动作文案排除出分子却留在分母里；改为 `external_verification_stall` |
@@ -139,7 +139,7 @@
 | 回归样本、冻结对照样本、校准集与用历史问题重跑 | `eval/golden/` 与 `scripts/replay_golden.py`；`eval/holdout.yaml` 与 `scripts/holdout.py --check`；`eval/s2/`、`scripts/eval_arena.py --stats/--gate`、`scripts/s2_replay.py` |
 | 预期可复现 | `predicted_effect.measure`、`scripts/ev_measure.py` |
 | 诊断记录、执行记录与观测记录 | `traces/<session>.yaml`；`metrics/skill-exec-log.yaml`（运行时件）；`eval/scorecard.yaml` 与 `scripts/eval_scorecard.py --check` |
-| 现场反馈回报、内容与外部结论对照 | 反馈通道 S1 与 S2：条目使用记录（`metrics/entry-activity.d/`）、`case.validation_record` |
+| 现场反馈回报、内容与外部结论对照 | 反馈通道：现场反馈与 issue 回放：条目使用记录（`metrics/entry-activity.d/`）、`case.validation_record` |
 | 影响面、触及面 | 从卡文本派生，判据输出里的 `by_surface`；正文用影响面 |
 | 演练 | `scripts/rehearse_evolve_loop.py` |
 | 先筛摘要再读正文 | 两阶段加载，Tier 2 索引分片 |
@@ -147,7 +147,7 @@
 | 五类演化动作 | [rsi-mechanism.md](rsi-mechanism.md) 3.2 的排序分数校准、知识注入、误诊归因、结构演化、退休与复活 |
 | 卡 schema 必填字段与两道生效日检查 | `scripts/verify_proposals.py` 的 `REQUIRED`、`TARGET_CUTOVER`、`MEASURE_CUTOVER` |
 | 评审把手 | `scripts/ev_measure.py`（`--run` / `--audit`） |
-| S2 与 S1 的结算 | `scripts/settle_s2_feedback.py`（groom 步骤 3.5b）；`scripts/settle_trace_feedback.py` |
+| issue 回放与现场反馈的结算 | `scripts/settle_s2_feedback.py`（groom 步骤 3.5b）；`scripts/settle_trace_feedback.py` |
 | `verification` 档位定义 | `skills/to-postmortem/SKILL.md` 的 verification 段 |
 | case 字段清单与 `ref_knowledge` 的 role 校验 | [case-schema.md](../spec/case-schema.md)；`scripts/verify_references.py` |
 | issue 源的价值启发式 | `scripts/issue_filter.py` |
@@ -181,7 +181,7 @@
 | 交互型 replay 工具 | `scripts/ixn_replay.py`（`cmd_prepare`、`cmd_score`、`cmd_aggregate`） |
 | 交互型 replay 对照答案与分期输入 | `eval/ixn-arena/<issue>/gold.yaml`、`stage-k.md` |
 | 交互型 replay 样本清单 | `eval/ixn-arena/registry.yaml` |
-| 交互型 replay 本地正文与运行件 | `.ixn-replay/<issue>/` |
+| 交互回放本地正文与运行件 | `.ixn-replay/<issue>/` |
 | 交互面改动检查 | [eval.md](../guide/eval.md) 的交互面对口样本一节 |
 
 ## 4 相邻文档分工

@@ -119,8 +119,8 @@
 | 真实 pilot 编排 | `pilot prepare/collect`；创建隔离 candidate worktree、写 baseline/candidate 任务清单、收集 trace/输出 |
 | candidate apply | `candidate validate/apply/rollback/diff`；在隔离 git worktree 应用单个 skill region Patch，不改主检出 |
 | 源码访问效率 | `python3 scripts/evolve.py source-usage from-trace/evaluate/compare`；只读 trace/usage，不下载源码 |
-| RSI 多源计划 | `python3 scripts/evolve.py rsi plan`（trace/metrics/replay → 归因/region/实验 spec）；`--replay .s2-replay` 读 S2 result 失败；`rsi status` 读回；agent 回写用 `rsi attribute/select --state <plan> --file <json>` |
-| holdout 隔离 | issue/S2 导入与手工 sample 新建/复核/升格都按 `eval/holdout.yaml` 的 issue 号拒绝；不把封存样本吸进候选池 |
+| RSI 多源计划 | `python3 scripts/evolve.py rsi plan`（trace/metrics/replay → 归因/region/实验 spec）；`--replay .s2-replay` 读 issue 回放结果失败；`rsi status` 读回；agent 回写用 `rsi attribute/select --state <plan> --file <json>` |
+| holdout 隔离 | issue/issue 回放导入与手工 sample 新建/复核/升格都按 `eval/holdout.yaml` 的 issue 号拒绝；不把封存样本吸进候选池 |
 | 全库观测轮 | `/skill:self-evolve` |
 
 只跑新增样本，不每周跑全量；判定那一次才跑全量。读数包含六项：可评样本数、最近一次全量回放的命中率、单次回放成本、距上次收尾检查的天数、未执行的检查命令数、内容体检的越界项。没测过的项写「未测」，不补零。
@@ -171,11 +171,11 @@ issue 的 resolution（fix PR 合入、维护者确认或 issue 内的用户反�
 
 | 用途 | 说明 |
 |---|---|
-| 反馈源（内容验证） | S2 对照：命中且结论一致记 `validation_record.consistent`，命中但结论不符记 `inconsistent`（复审信号），由 `scripts/settle_s2_feedback.py` 结算 |
+| 反馈源（内容验证） | issue 回放对照：命中且结论一致记 `validation_record.consistent`，命中但结论不符记 `inconsistent`（复审信号），由 `scripts/settle_s2_feedback.py` 结算 |
 | 沉淀素材 | 评测完成后的 issue 才允许沉淀为 case 或 reference |
 | 覆盖缺口信号 | open issue 没有答案，只作弱信号：把现象交给诊断，没有命中或置信度低就记该现象族未覆盖，不参与对照评分 |
 
-「先评测后沉淀」的纪律持续执行：新关闭的 issue 先过 S2 评测，再允许沉淀。评测用的 issue 如果已经被沉淀成 case，重放命中的只是系统自己写下的答案，高分不构成外部验证。隔离有三条：
+「先评测后沉淀」的纪律持续执行：新关闭的 issue 先过 issue 回放评测，再允许沉淀。评测用的 issue 如果已经被沉淀成 case，重放命中的只是系统自己写下的答案，高分不构成外部验证。隔离有三条：
 
 1. 先评测后沉淀。一批新关闭 issue 先全部过 S2，此时知识库还没有这批 issue 的 case，分数反映的是用旧知识解新题。
 2. 结算隔离。结算时检查 replay 的 issue 是否正是该 case 的来源，以及该 case 正文是否引用过这个 issue（`#N`、`issues/N`、`pulls/N`）。命中任一条记 `self_consistent`，不计为外部验证。
@@ -208,7 +208,7 @@ S2 校准集的 selection 与 test 分离是规模条件：池子撑不起两半
 
 ### 3.6 长期任务与视图
 
-长期任务把多轮会话装成一条线。任务由目标、范围、issue 源配置、预算策略、停止条件与运行模式六个字段定义。每轮是一次会话，顺序为：拉新批次 → S2 评测与沉淀评估 → 候选 → 授权 → 实验 → 批提交 → 报告。
+长期任务把多轮会话装成一条线。任务由目标、范围、issue 源配置、预算策略、停止条件与运行模式六个字段定义。每轮是一次会话，顺序为：拉新批次 → issue 回放评测与沉淀评估 → 候选 → 授权 → 实验 → 批提交 → 报告。
 
 轮间调度按上一轮的产出决定下一轮范围：
 
@@ -230,7 +230,7 @@ S2 校准集的 selection 与 test 分离是规模条件：池子撑不起两半
 | 层 | 载体 | 对应内容 |
 |---|---|---|
 | 流程协议 | `skills/self-evolve/SKILL.md` | 一轮的会话协议：目标 → 默认策略 → 确认 → 计划 → 执行 → 报告；由人显式触发，防自发批量改库 |
-| 确定性逻辑 | `scripts/` | S2 评测、结算、归因事件按需聚合、执行记录；机械可判的环节脚本化，agent 只读聚合输出 |
+| 确定性逻辑 | `scripts/` | issue 回放评测、结算、归因事件按需聚合、执行记录；机械可判的环节脚本化，agent 只读聚合输出 |
 | 领域状态 | `proposals/` | 卡是资产，会话、任务、季度自评、实验是运行时件 |
 | 可视化 | `dsh-plugins/` | 任务总览、卡流转、指标等视图；不是多 agent 协作状态视图 |
 

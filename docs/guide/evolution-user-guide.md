@@ -11,8 +11,8 @@
 现在就能用（self-evolve skill + 工具链已落地）：
 
 - 下内容目标（沉淀 / 补 case / 拉取），流程收尾自动 evolve-check：有改进信号就记卡验证、攒进给你的 PR；说「跑一轮自演进」则对全库做深度轮，读信号（容量/归因聚合/指标/S2 校准集）→ 产候选 idea 卡（`proposals/ideas/`，自动分配卡号）→ 校验 → 攒成聚合 PR 给你审；
-- 覆盖缺口驱动补 case：S2 replay 暴露的未覆盖问题 → 候选卡 → to-postmortem 沉淀。升格分场景：默认草稿进 inbox 待 owner 审；owner 预授权的自动化源（issue-ingest 链路）可直接 groom 升格，不等周批；
-- 工具：`ev_proposal.py`（产卡）/ `verify_proposals.py`（校验）/ `component_tally.py`（归因按需聚合）/ `settle_s2_feedback.py`（S2 反馈结算）/ `s2_calibration.py` + `s2_replay.py`（评测）/ `replay_golden.py`（回归）。
+- 覆盖缺口驱动补 case：issue 回放暴露的未覆盖问题 → 候选卡 → to-postmortem 沉淀。升格分场景：默认草稿进 inbox 待 owner 审；owner 预授权的自动化源（issue-ingest 链路）可直接 groom 升格，不等周批；
+- 工具：`ev_proposal.py`（产卡）/ `verify_proposals.py`（校验）/ `component_tally.py`（归因按需聚合）/ `settle_s2_feedback.py`（issue 回放结算）/ `s2_calibration.py` + `s2_replay.py`（评测）/ `replay_golden.py`（回归）。
 
 待蓝图/数据（状态见 `mechanism/status.md` 的「未建与空转」，触发后实现）：
 
@@ -89,7 +89,7 @@ self-evolving 覆盖三层，全都改（下表列每一层做什么、何时给
 | 「我想做 reference 沉淀」 / 「沉淀这个笔记」 | 目标=沉淀 → 问清类别与来源（你给 URL/文档/笔记，不预置抓取器）→ 执行沉淀 → 收尾自动查可改进点 | 内容流程（to-reference / to-postmortem），收尾 evolve-check | ✅ |
 | 「跑一轮自演进」 / 「看看有什么可改进的」 | 目标未定 → 先对齐（给候选目标你选），再按目标执行 | 深度轮（全库体检） | ✅（self-evolve skill） |
 | 「从 vllm-ascend 的 closed issue 补 case」 | 目标=补覆盖，数据源=用户指定 vllm-ascend | 拉指定源 → replay 测缺口 → 补 case | ✅（auto_fetch --source + 链路） |
-| 「持续改进 vllm-ascend 的诊断命中率」 | 范围=vllm-ascend，目标=提命中 | 拉该仓 issue + S2 replay + 补 case | ⚠️ 一轮可做，长期任务待蓝图 |
+| 「持续改进 vllm-ascend 的诊断命中率」 | 范围=vllm-ascend，目标=提命中 | 拉该仓 issue + issue 回放 + 补 case | ⚠️ 一轮可做，长期任务待蓝图 |
 | 「这周有哪些值得沉淀的 verl issue？」 | 范围=verl，目标=补覆盖，单轮盘点 | 一轮盘点 + 沉淀候选 | ✅（issue-ingest + to-postmortem 链路） |
 | 「自演进最近变贵了，查一下」 | 范围=编排层，目标=省 token | token 效率诊断轮 | ⚠️ 蓝图（token 记账未落地） |
 | 「把最近的回滚分析一下」 | 范围=全库，目标=降回滚 | 回滚归因轮 | ⚠️ 待数据（当前无 rolled_back 卡） |
@@ -161,7 +161,7 @@ self-evolving 覆盖三层，全都改（下表列每一层做什么、何时给
 
 | 机制语言（文档/日志里） | 用户语言 |
 |---|---|
-| S2 issue-replay 校准 | 用真实 issue 对照验证 |
+| issue 回放校准 | 用真实 issue 对照验证 |
 | selection/test 分离 | 用没练过的 issue 做最终验收（防「记住答案」） |
 | candidate → validated | 提改进 → 验证有效 |
 | 观察窗 / follow-up | 改完跟踪一段时间看是否真有效 |

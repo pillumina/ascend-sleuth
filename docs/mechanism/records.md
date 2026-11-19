@@ -262,7 +262,7 @@ schema 在 `metrics/skill-exec-log.yaml`，只追加；`scripts/log_skill_exec.p
 - 知识、先验、过程三类对象的评分器与 rubric：`object_types.py` 有描述表，评分器未实现。
 - core 样本与 `eval/core/`：目录不存在，core 样本仍是目标形态。
 - 旧数据迁移：现有样本散在 `eval/s2/`、`eval/golden/`、`eval/holdout.yaml` 与池文件里，尚未迁进样本队列。
-- 观察窗超时降级的正式状态（`unconfirmed_valid` / `unconfirmed` / `rolled_back`）：S1 断供持续两期以上再实现，此前用「标存疑加提醒人」；候选过期态 `stale` 参数待校准。
+- 观察窗超时降级的正式状态（`unconfirmed_valid` / `unconfirmed` / `rolled_back`）：现场反馈断供持续两期以上再实现，此前用「标存疑加提醒人」；候选过期态 `stale` 参数待校准。
 - 内容流程执行记录的服务化：目前是同一克隆内共享的本地文件。
 
 ### 5.3 已否决
@@ -271,7 +271,7 @@ schema 在 `metrics/skill-exec-log.yaml`，只追加；`scripts/log_skill_exec.p
 - `candidate` 待办态与旧的 `estimated_cost` 字段：前者与「产卡即执行」冲突，后者没有 token 记账时不产生实际约束（已由 `actual_cost` 取代）。
 - 每次 skill 调用都落一条执行记录：记录负担超过观测价值；diagnose 有 trace，不重复落。
 - 把计数与分数写回 case 文件：计数进记录、分数进索引生成物，case 只为内容层决定而改。
-- `predicted_value`、`first_hit`、`expected_window` 三个字段与「把结论写进期文件」：前者依赖 S1 现场反馈，而该通道当前没有数据；结论按次记、期文件按周记趋势，粒度不同。
+- `predicted_value`、`first_hit`、`expected_window` 三个字段与「把结论写进期文件」：前者依赖现场反馈，而该通道当前没有数据；结论按次记、期文件按周记趋势，粒度不同。
 
 ## 6 代码与文档入口
 
