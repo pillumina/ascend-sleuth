@@ -15,6 +15,7 @@ from .candidate import create_workspace, validate_candidate
 from .contracts import PROTOCOL_VERSION, Conclusion, Run, Version, now_iso
 from .decision import decide_binary
 from .knowledge_usage import compare as compare_knowledge
+from .harness_usage import read_session
 from .knowledge_usage import from_trace as knowledge_from_trace
 from .policy import policy_hash
 from .records import ConclusionStore, RunStore
@@ -121,6 +122,10 @@ def collect(output: Path, judge: Optional[Path] = None) -> Dict[str, Any]:
                         knowledge["sample_id"] = sid
                         row["knowledge_usage"] = knowledge
                         row["harness_session"] = doc.get("harness_session")
+                        usage = read_session(row["harness_session"])
+                        model = doc.get("model") or (usage or {}).get("model")
+                        if isinstance(model, str) and model:
+                            row["model"] = model
                     source_ok = resolution_ok
                     try:
                         source = source_from_trace(doc, source_ok=source_ok)
@@ -169,7 +174,8 @@ def _worktree_patch(root: Path) -> str:
     return hashlib.sha256(proc.stdout.encode("utf-8")).hexdigest()[:12]
 
 
-def version_for(tasks: Dict[str, Any], policy: Dict[str, Any]) -> Dict[str, Any]:
+def version_for(tasks: Dict[str, Any], policy: Dict[str, Any],
+                model: Optional[str] = None) -> Dict[str, Any]:
     """一次 pilot 的版本坐标：协议、策略、两侧知识库、候选、模型。"""
     arms = tasks.get("arms") or {}
     base_root = (arms.get("baseline") or {}).get("root") or "."
@@ -188,7 +194,7 @@ def version_for(tasks: Dict[str, Any], policy: Dict[str, Any]) -> Dict[str, Any]
         base_kb=base_kb,
         candidate_kb=candidate_kb,
         candidate=str(tasks.get("candidate_id") or "unknown"),
-        model="unknown",
+        model=model or tasks.get("model") or "unknown",
         algorithm="subagent-reflection",
         algorithm_version=str((tasks.get("apply") or {}).get("candidate_id") or "manual"),
     ).validate()
@@ -200,7 +206,10 @@ def record_runs(output: Path, policy: Dict[str, Any], base: Optional[Path] = Non
     output = Path(output)
     tasks = json.loads((output / "tasks.json").read_text(encoding="utf-8"))
     collect = json.loads((output / "collect.json").read_text(encoding="utf-8"))
-    version = version_for(tasks, policy)
+    models = sorted({row.get("model") for rows in (collect.get("arms") or {}).values()
+                     for row in rows
+                     if isinstance(row.get("model"), str) and row["model"]})
+    version = version_for(tasks, policy, model=",".join(models) or None)
     store = RunStore.for_base(Path(base) if base else output.parent)
     existing = {
         (record.get("sample"), (record.get("versions") or {}).get("candidate"),

@@ -5,13 +5,14 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import yaml
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from evolve.pilot import PilotError, _short_id, collect  # noqa: E402
+from evolve.pilot import PilotError, _short_id, collect, record_runs, version_for  # noqa: E402
 
 
 class PilotIdTest(unittest.TestCase):
@@ -50,6 +51,31 @@ class PilotCollectTest(unittest.TestCase):
         row = self._collect(yaml.safe_dump(trace))
         self.assertEqual(row["knowledge_usage"]["sample_id"], "1234")
         self.assertEqual(row["knowledge_usage"]["full_body_reads"], 1)
+
+    def test_collect_records_model_from_session(self):
+        trace = {"session_id": "s", "harness_session": "abc", "trace": []}
+        with patch("evolve.pilot.read_session",
+                   return_value={"model": "deepseek-flash", "tokens": 10}):
+            row = self._collect(yaml.safe_dump(trace))
+        self.assertEqual(row["model"], "deepseek-flash")
+
+    def test_version_model_prefers_explicit_value(self):
+        version = version_for({"candidate_id": "C"}, {}, model="deepseek-flash")
+        self.assertEqual(version["model"], "deepseek-flash")
+        self.assertEqual(version_for({"candidate_id": "C"}, {})["model"], "unknown")
+
+    def test_record_runs_uses_collected_model(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td)
+            (out / "tasks.json").write_text(
+                json.dumps({"candidate_id": "C"}), encoding="utf-8")
+            (out / "collect.json").write_text(json.dumps({"arms": {"baseline": [
+                {"sample_id": "1234", "trace": "t", "model": "deepseek-flash"}]}}),
+                encoding="utf-8")
+            result = record_runs(out, {}, base=out)
+            self.assertEqual(result["version"]["model"], "deepseek-flash")
+            run = json.loads((out / "runs.jsonl").read_text(encoding="utf-8"))
+            self.assertEqual(run["versions"]["model"], "deepseek-flash")
 
     def test_empty_trace_reports_usage_error(self):
         row = self._collect("")

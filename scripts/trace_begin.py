@@ -43,6 +43,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import kb_sync  # noqa: E402  （知识库同步；失败不阻塞建单）
 from exec_log_path import resolve_traces  # noqa: E402  （运行时件锚主检出，同 shared_dir.py）
+from evolve.harness_usage import model_of, tokens_of  # noqa: E402  （模型名与 token 只从 DSH 会话记录读）
 
 SLUG_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[A-Za-z0-9._-]+$")
 
@@ -233,7 +234,8 @@ def build_header(*, slug: str, harness_session: str, created_at: str, kb_rev: st
                  kb_behind: int | str = "unknown", kb_sync_state: str = "off",
                  kb_sync_reason: str = "", kb_merge: str = "none",
                  framework: str = "", platform: str = "", category: str = "",
-                 summary: str = "") -> str:
+                 summary: str = "", model: str = "",
+                 tokens_start: int | None = None) -> str:
     """顶层 header → YAML 文本。纯函数：给定输入就有确定输出（测试直接打它）。
 
     字段顺序与真实 trace 相近（人读时不用来回找）；`trace: []` 留在最后，每步由 agent 追加。
@@ -244,6 +246,8 @@ def build_header(*, slug: str, harness_session: str, created_at: str, kb_rev: st
         "# 每步由 skills/diagnose 往 trace[] 追加事件；字段口径见 skills/diagnose/references/diagnosis-trace.md。",
         "session_id: " + q(slug),
         "harness_session: " + q(harness_session) + ("" if harness_session else "   # 缺！建会话时取 $DSH_SESSION_ID；取不到就留空"),
+        "model: " + q(model) + ("" if model else "   # 取不到模型名就留空，不猜"),
+        "tokens_start: " + (str(tokens_start) if isinstance(tokens_start, int) and not isinstance(tokens_start, bool) else "null") + "   # 建单时会话累计；收尾按差值算单次 token",
         "status: in_progress",
         "current_step: 0",
         "summary: " + q(summary),
@@ -343,7 +347,9 @@ def main() -> int:
     text = build_header(slug=args.slug, harness_session=session, created_at=now_stamp(),
                         kb_rev=kb, kb_rev_dirty=kb_dirty, **kb_fields(result),
                         framework=args.framework, platform=args.platform,
-                        category=args.category, summary=args.summary)
+                        category=args.category, summary=args.summary,
+                        model=model_of(session) or "",
+                        tokens_start=tokens_of(session))
 
     if args.print_only:
         sys.stdout.write(text)

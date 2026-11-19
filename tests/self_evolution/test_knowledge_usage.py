@@ -3,6 +3,7 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -43,6 +44,30 @@ class KnowledgeUsageTest(unittest.TestCase):
         self.assertTrue(out["hit"])
         self.assertEqual(out["wrong_cases"], 0)
         self.assertAlmostEqual(out["elapsed_ms"], 2000.0)
+
+    def test_from_trace_reads_explicit_tokens(self):
+        trace = {"session_id": "s1", "trace": [], "tokens": {"input": 10, "output": 20}}
+        self.assertEqual(from_trace(trace)["tokens"], 30)
+        trace["tokens"] = 42
+        self.assertEqual(from_trace(trace)["tokens"], 42)
+
+    def test_from_trace_reads_tokens_from_harness_session(self):
+        with patch("evolve.knowledge_usage.read_session",
+                   return_value={"tokens": 77, "model": "deepseek-flash"}):
+            out = from_trace({"session_id": "s1", "harness_session": "abc", "trace": []})
+        self.assertEqual(out["tokens"], 77)
+
+    def test_tokens_start_subtracts_prior_session_turns(self):
+        with patch("evolve.knowledge_usage.read_session",
+                   return_value={"tokens": 100}):
+            out = from_trace({"session_id": "s1", "harness_session": "abc",
+                              "tokens_start": 40, "trace": []})
+        self.assertEqual(out["tokens"], 60)
+        with patch("evolve.knowledge_usage.read_session",
+                   return_value={"tokens": 100}):
+            out = from_trace({"session_id": "s1", "harness_session": "abc",
+                              "tokens_start": 200, "trace": []})
+        self.assertEqual(out["tokens"], 100)
 
     def test_from_trace_marks_wrong_final_case(self):
         trace = {"session_id": "s2", "trace": [{"action": "hit", "case": "C-1", "step": 2}]}

@@ -54,9 +54,12 @@ class HeaderTest(unittest.TestCase):
         text = trace_begin.build_header(
             slug="2026-10-30-demo", harness_session="session-abc",
             created_at="2026-10-30T10:00:00+08:00", kb_rev="deadbee",
+            model="deepseek-flash", tokens_start=1234,
         )
         self.assertIn('session_id: "2026-10-30-demo"', text)
         self.assertIn('harness_session: "session-abc"', text)
+        self.assertIn('model: "deepseek-flash"', text)
+        self.assertIn("tokens_start: 1234", text)
         self.assertIn('kb_rev: "deadbee"', text)
         self.assertIn('created_at: "2026-10-30T10:00:00+08:00"', text)
         self.assertIn("trace: []", text)
@@ -80,6 +83,7 @@ class HeaderTest(unittest.TestCase):
         )
         self.assertIn('harness_session: ""', text)
         self.assertIn("缺！", text)
+        self.assertIn("取不到模型名就留空", text)
 
 
 class CliTest(unittest.TestCase):
