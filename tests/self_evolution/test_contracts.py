@@ -176,6 +176,7 @@ class VersionRunConclusionTest(unittest.TestCase):
             delta_q=4 / 9,
             cost_ratio=1.05,
             sample="S-1",
+            card="EV-2026-001",
             pool="pool-x",
             pool_hash="abc123",
             at="2026-11-17T09:35:00+08:00",
@@ -183,6 +184,7 @@ class VersionRunConclusionTest(unittest.TestCase):
         data = conclusion.to_dict()
         self.assertAlmostEqual(data["cost_ratio"], 1.05)
         self.assertEqual(data["sample"], "S-1")
+        self.assertEqual(data["card"], "EV-2026-001")
         self.assertEqual(data["pool"], "pool-x")
         self.assertEqual(Conclusion.from_dict(data), conclusion)
 
