@@ -299,7 +299,71 @@ def _as_list(value) -> list:
     return value if isinstance(value, list) else []
 
 
-def _extra(doc: dict, traces: Path) -> dict:
+def _sample_lookup(root: Path):
+    """按 trace 文件名 / 会话号 / 命中 case 号找候选样本；读不到就返回空表。"""
+    try:
+        sys.path.insert(0, str(root / "scripts"))
+        from evolve.intake import completeness
+        from evolve.samples import SampleStore
+        base = Path(root) / ".s2-replay" / "evolve"
+        store = SampleStore(base=base)
+        samples = store.read_all()
+    except Exception:
+        return None
+    index = {}
+    for sample in samples:
+        prov = _as_dict(sample.provenance)
+        keys = {str(sample.id)}
+        ref = str(prov.get("trace_ref") or "")
+        if ref:
+            keys.add(Path(ref).name)
+        src = str(sample.source or "")
+        if src.startswith("traces/"):
+            keys.add(Path(src).name)
+        if str(sample.id).startswith("S-"):
+            keys.add(str(sample.id)[2:])
+        match = re.search(r"(\d{3,6})$", str(sample.id))
+        if match:
+            keys.add("case:" + match.group(1))
+        for key in keys:
+            index.setdefault(key, sample)
+    return {"store": store, "index": index, "root": Path(root),
+            "completeness": completeness}
+
+
+def _sample_state(doc: dict, lookup) -> dict:
+    if not lookup:
+        return {}
+    candidates = []
+    file_name = Path(str(doc.get("_file") or "")).name
+    if file_name:
+        candidates.append(file_name)
+    session_id = str(doc.get("session_id") or "")
+    if session_id:
+        candidates.extend([session_id, "S-" + session_id])
+    case_id = str(doc.get("active_case") or doc.get("activeCase") or "")
+    match = re.search(r"(\d{3,6})$", case_id)
+    if match:
+        candidates.append("case:" + match.group(1))
+    for key in candidates:
+        sample = lookup["index"].get(key)
+        if sample is None:
+            continue
+        try:
+            result = lookup["completeness"](
+                sample, store=lookup["store"], root=lookup["root"])
+        except Exception:
+            return {}
+        return {
+            "id": sample.id,
+            "state": result.get("state"),
+            "reasons": result.get("reasons") or [],
+            "duplicates": result.get("duplicates") or [],
+        }
+    return {}
+
+
+def _extra(doc: dict, traces: Path, sample_lookup=None) -> dict:
     """一条轨迹里状态条与总览要展示、但状态投影不负责的现成事实。
 
     全部是 trace 里已经写着的内容，这里只做计数与截断，不新增判断。
@@ -404,6 +468,7 @@ def _extra(doc: dict, traces: Path) -> dict:
         "sedimentCandidates": len([c for c in _as_list(doc.get("sediment_candidates")) if isinstance(c, dict)]),
         "sedimentCandidateList": candidates,
         "missingMaterials": _material_items(evidence_missing_full, _one_line(doc.get("summary"))),
+        "sample": _sample_state(doc, sample_lookup),
     }
     # 三段时间线 + 修订明细不随薄行下发（80 单最坏会放大到数 MB）：总览详情选中行时再调
     # copilot-timeline 取 layers，步骤仍按「加载步骤」懒加载。
@@ -524,9 +589,12 @@ def main(argv=None) -> int:
     for row in rows:
         by_id[row.get("sessionId") or row.get("file")] = row
     extras = {}
+    sample_lookup = _sample_lookup(root)
     for session_id, row in by_id.items():
         try:
-            extras[session_id] = _extra(_as_dict(row.get("doc")), traces)
+            doc = _as_dict(row.get("doc"))
+            doc["_file"] = row.get("file") or ""
+            extras[session_id] = _extra(doc, traces, sample_lookup)
         except Exception:
             # 单条轨迹的派生字段失败只降级这一行：整块状态不因一条坏数据空掉。
             extras[session_id] = {}
@@ -605,6 +673,7 @@ def main(argv=None) -> int:
             "transitions": session.get("transitions"),
             "reports": session.get("reports"),
             "reviews": session.get("reviews"),
+            "sample": session.get("sample") or extra.get("sample") or {},
             "extra": {
                 "currentStep": extra.get("currentStep"),
                 "maxSteps": extra.get("maxSteps"),

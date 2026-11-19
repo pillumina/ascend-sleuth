@@ -153,6 +153,15 @@ window.__ModuleLoader__.load({
       'stepsShort': '{n}/{m}',
       'chip.miss': '知识库未覆盖',
       'chip.excluded': '已排除 {n} 条',
+      'chip.sample': '候选样本',
+      'chip.sample.ready': '候选样本：可提交',
+      'chip.sample.needs_answer': '候选样本：待补根因与修复',
+      'chip.sample.needs_sanitize': '候选样本：待脱敏',
+      'chip.sample.needs_source': '候选样本：缺来源',
+      'chip.sample.non_diagnostic': '候选样本：无可判别现象',
+      'chip.sample.duplicate': '候选样本：已存在同来源',
+      'chip.sample.absorbed': '候选样本：已进知识库',
+      'chip.sample.stale': '候选样本：来源失效',
       'chip.hit': '命中 {id}',
       'chip.sediment': '可沉淀',
       'chip.feedback': '待回报',
@@ -736,6 +745,15 @@ window.__ModuleLoader__.load({
       'stepsShort': '{n}/{m}',
       'chip.miss': 'not in knowledge base',
       'chip.excluded': '{n} excluded',
+      'chip.sample': 'Sample',
+      'chip.sample.ready': 'Sample: ready',
+      'chip.sample.needs_answer': 'Sample: needs root cause/fix',
+      'chip.sample.needs_sanitize': 'Sample: needs sanitizing',
+      'chip.sample.needs_source': 'Sample: missing source',
+      'chip.sample.non_diagnostic': 'Sample: no diagnostic signal',
+      'chip.sample.duplicate': 'Sample: same source exists',
+      'chip.sample.absorbed': 'Sample: already in knowledge',
+      'chip.sample.stale': 'Sample: source missing',
       'chip.hit': 'Hit {id}',
       'chip.sediment': 'can sediment',
       'chip.feedback': 'outcome pending',
@@ -2522,6 +2540,12 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const chips = []
       if (row && row.activeCase) chips.push({ key: 'hit', tone: 'brand', text: tr('chip.hit', { id: row.activeCase }) })
       else if (derived.caseKind === 'none') chips.push({ key: 'miss', tone: 'idle', text: tr('chip.miss') })
+      const sample = extra.sample || (row && row.sample)
+      if (sample && sample.state) {
+        const tone = sample.state === 'ready' ? 'brand'
+          : sample.state === 'absorbed' ? 'idle' : 'warn'
+        chips.push({ key: 'sample', tone, text: tr('chip.sample.' + sample.state) })
+      }
       if (isPending(row)) chips.push({ key: 'feedback', tone: 'warn', text: tr('chip.feedback') })
       if (derived.needSed) chips.push({ key: 'sediment', tone: 'brand', text: tr('chip.sediment') })
       if (derived.needPromote) chips.push({ key: 'promote', tone: 'warn', text: tr('chip.promote') })
@@ -2542,6 +2566,12 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       if (derived.needPromote) chips.push({ key: 'promote', tone: 'warn', text: tr('chip.promote') })
       if (derived.needReview) chips.push({ key: 'review', tone: 'brand', text: tr('chip.review') })
       if (derived.needReportReview) chips.push({ key: 'reportReview', tone: 'warn', text: tr('chip.reportReview') })
+      if (extra.sample && extra.sample.state) {
+        const sample = extra.sample
+        const tone = sample.state === 'ready' ? 'brand'
+          : sample.state === 'absorbed' ? 'idle' : 'warn'
+        chips.push({ key: 'sample', tone, text: tr('chip.sample.' + sample.state) })
+      }
       if (derived.upstreamPending) chips.push({ key: 'upstream', tone: 'idle', text: tr('chip.upstream') })
       if (row.activeCase) chips.push({ key: 'hit', tone: 'brand', text: tr('chip.hit', { id: row.activeCase }) })
       if (extra.excludedCases && extra.excludedCases.length) {
