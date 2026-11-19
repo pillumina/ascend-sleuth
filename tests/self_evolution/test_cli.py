@@ -1188,3 +1188,25 @@ class JudgeCalibrationCliTest(unittest.TestCase):
             bad = run_cli("judge-calibration", "--a", str(a), "--b", str(b))
             self.assertEqual(bad.returncode, 1)
             self.assertIn("passed: false", bad.stdout)
+
+
+class SampleReviewJsonCliTest(unittest.TestCase):
+    def test_review_and_promote_json(self):
+        with tempfile.TemporaryDirectory() as td:
+            created = run_cli("sample", "new", "--root", td, "--id", "S-J",
+                              "--object-type", "diagnosis",
+                              "--source", "traces/j.yaml",
+                              "--expected", '{"resolution": "r"}')
+            self.assertEqual(created.returncode, 0, created.stderr)
+            answer = run_cli("sample", "set-answer", "--root", td, "--id", "S-J",
+                             "--resolution", "r", "--sanitized", "true",
+                             "--confidence", "maintainer-reviewed")
+            self.assertEqual(answer.returncode, 0, answer.stderr)
+            reviewed = run_cli("sample", "review", "--root", td, "--id", "S-J",
+                               "--approve", "--json")
+            self.assertEqual(reviewed.returncode, 0, reviewed.stderr)
+            self.assertEqual(json.loads(reviewed.stdout)["status"], "active")
+            promoted = run_cli("sample", "promote", "--root", td, "--id", "S-J",
+                               "--to", "core", "--json")
+            self.assertEqual(promoted.returncode, 0, promoted.stderr)
+            self.assertEqual(json.loads(promoted.stdout)["origin"], "core")

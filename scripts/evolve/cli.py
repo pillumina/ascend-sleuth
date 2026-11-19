@@ -449,7 +449,11 @@ def cmd_sample_review(args: argparse.Namespace) -> int:
     except (StoreError, ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    print(f"{sample.id}: {sample.status}")
+    if args.json:
+        print(json.dumps({"ok": True, "id": sample.id, "status": sample.status},
+                         ensure_ascii=False))
+    else:
+        print(f"{sample.id}: {sample.status}")
     return 0
 
 
@@ -463,7 +467,12 @@ def cmd_sample_promote(args: argparse.Namespace) -> int:
     except (StoreError, ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    print(f"{sample.id}: {sample.status} ({sample.origin})")
+    if args.json:
+        print(json.dumps({"ok": True, "id": sample.id, "status": sample.status,
+                          "origin": sample.origin, "purpose": sample.purpose},
+                         ensure_ascii=False))
+    else:
+        print(f"{sample.id}: {sample.status} ({sample.origin})")
     return 0
 
 
@@ -1487,6 +1496,7 @@ def build_parser() -> argparse.ArgumentParser:
     verdict.add_argument("--reject", dest="approve", action="store_false")
     review.add_argument("--actor", default="maintainer")
     review.add_argument("--reason", default="")
+    review.add_argument("--json", action="store_true")
     review.set_defaults(func=cmd_sample_review)
 
     promote = sample_sub.add_parser("promote", help="active/field → active/core（origin 转换）")
@@ -1495,6 +1505,7 @@ def build_parser() -> argparse.ArgumentParser:
     promote.add_argument("--to", required=True, choices=("core",))
     promote.add_argument("--actor", default="maintainer")
     promote.add_argument("--reason", default="")
+    promote.add_argument("--json", action="store_true")
     promote.set_defaults(func=cmd_sample_promote)
 
     retire = sample_sub.add_parser("retire", help="active（field/core origin）→ retired")
