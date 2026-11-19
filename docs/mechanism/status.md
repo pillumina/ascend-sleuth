@@ -73,7 +73,7 @@
 | 已闭环 case 回流样本（trace / postmortem，完整性与跨集查重） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/evolve.py sample new --from trace --help`；`python3 scripts/evolve.py sample status --help` |
 | 记录端口层 | [records.md](records.md) 3.6 | 已落地 | `grep -n "class .*Protocol" scripts/evolve/ports.py` |
 | 适配器层与旧脚本薄壳 | [records.md](records.md) 3.6 | 已落地 | `ls scripts/evolve/adapters`；`python3 scripts/evolve.py replay --help`；`python3 scripts/evolve.py sample import-s2 --help` |
-| core 样本与 `eval/core/` | [records.md](records.md) 5.2 | 蓝图 | `ls eval/core` |
+| core 样本与 `eval/core/samples/`（test + regression） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `ls eval/core/samples`；`python3 scripts/evolve.py sample export-core --help` |
 | 观察窗超时降级态 `unconfirmed_valid` / `unconfirmed` | [operations.md](operations.md) 5.2 | 蓝图 | 现场反馈断供真实持续两期以上；此前用「标存疑加提醒人」 |
 | 候选过期态 `stale` | [records.md](records.md) 5.2 | 蓝图 | 候选停留超过八周且从未被采纳；此前用 inbox 式标红 |
 | 策略记忆独立文件 `strategy-memory.yaml` | [operations.md](operations.md) 5.2 | 蓝图 | 季度自评跑通至少一轮后 |

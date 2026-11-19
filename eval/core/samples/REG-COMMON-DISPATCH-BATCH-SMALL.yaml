@@ -1,0 +1,38 @@
+id: REG-COMMON-DISPATCH-BATCH-SMALL
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: msprof docs/zh/best_practices/dispatch_small_batch_performance.md（MindStudio
+  26.2.0.B060_001）
+input:
+  phenomenon: Insight 打开 msprof.json / trace_view.json 可观察到业务整体 free 时间占比偏高；硬件资源利用率较低，存在明显空档
+  environment: ''
+  evidence:
+    case: COMMON-DISPATCH-BATCH-SMALL
+    references:
+    - msprof docs/zh/best_practices/dispatch_small_batch_performance.md（MindStudio
+      26.2.0.B060_001）
+expected:
+  resolution: '未充分利用硬件资源（如 batch size 偏小），导致算子下发与执行之间出现大量空档， free 时间占比偏高、整体利用率低。
+
+
+
+    借 profiling 流水图 / host_to_device 连线 / 内存数据定位瓶颈后调整业务参数 （如增大 batch size）。'
+  case: COMMON-DISPATCH-BATCH-SMALL
+  confidence: maintainer-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: postmortem
+  report_ref: knowledge/common/performance/COMMON-DISPATCH-BATCH-SMALL.yaml
+  captured_at: '2026-11-19T14:13:03+00:00'
+  kb_rev: unknown
+  sanitized: true
+  redactions: []
+  confidence: maintainer-reviewed
+  extraction: auto
+created_at: '2026-11-19T14:13:03+00:00'
+updated_at: '2026-11-19T14:13:03+00:00'
+history: []
+notes: core regression derived from knowledge/common/performance/COMMON-DISPATCH-BATCH-SMALL.yaml

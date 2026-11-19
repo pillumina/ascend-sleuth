@@ -1,0 +1,89 @@
+id: LOCAL-VLLM-PROJECT-VLLM-ASCEND-19562
+status: active
+object_type: diagnosis
+origin: core
+purpose: test
+source: local/vllm-project/vllm-ascend#19562
+input:
+  title: '[Bug]: 0.30 kimi-k3 V pool 命中请求在 WAITING_FOR_REMOTE_KVS 状态永久死等（加载从未发生、finished_recving
+    永不上报）'
+  body: "### Your current environment\n\n部署池化 long_pool：P 侧 4 节点 PP4×TP16（PP 分段 25,25,24,19），D\
+    \ 侧 4 节点 DP4+DCP16KV 连接器`MultiConnector`（kv_producer）：`MooncakeConnectorV2`（kv_port\
+    \ 26001）+ `AscendStoreConnector`（backend=memcache）模型Kimi-K3-w4a8（mamba 混合架构），`--max-num-batched-tokens\
+    \ 8192`，`--enable-prefix-caching`触发请求双大图 multimodal chat（2×2560×2640，17735 tokens）——**重复发送同一\
+    \ payload 使其命中外部 KV pool**\n\n### \U0001F41B Describe the bug\n\n## 2. 问题现象\n\n\
+    1. **必现挂死**：命中外部 KV pool 的请求（`kvpool hit tokens: 8064`）→ 引擎无限空步自旋 → 0 token 输出直到客户端超时（60\
+    \ 分钟 `http_code=100 size=0`，仅 100-Continue 握手）；两次复现（19:45 轮 max-time 3600 超时、21:01\
+    \ 轮主动 abort 取证）。\n2. **对照组成立**：不命中 pool 的请求（smoke / 8k 文本）全部 2.45s 正常完成；pool-miss\
+    \ 的变体请求（修改图像字节改变 mm hash）能正常进入执行路径。\n3. **引擎无任何报错**：无 ERROR、无 Traceback、无 abort\
+    \ 日志；API server / EngineCore / 全部 64 worker 进程全程存活。\n4. 偶发命中即挂：只要请求前缀在外部 pool\
+    \ 中有 KV（此前请求存入的），即复现。\n\n## 3. 根因链（源码级 + 栈级证据）\n\n1. `pool_scheduler.py:739` 日志：`Reqid:\
+    \ ..., Total tokens 17735, kvpool hit tokens: 8064, need to load: 0`——本地 vLLM\
+    \ 前缀缓存已覆盖 pool 命中部分，AscendStore 侧 `get_num_new_matched_tokens` 返回 `(0, False)`（pool_scheduler.py:751\
+    \ 提前 return，**不创建 LoadSpec**）。\n2. 但请求仍被置入 `RequestStatus.WAITING_FOR_REMOTE_KVS`（scheduler.py:1212\
+    \ / patch_balance_schedule.py:658，`load_kv_async=True` 分支）——**MultiConnector 合并各子连接器的匹配结果**，AscendStore\
+    \ 报 (0, False) 的同时 MooncakeConnectorV2 侧疑似报 (8064, async=True)，合并后走了异步加载路径。\n\
+    3. 提升条件：调度器只认 worker 侧回传的 `KVConnectorOutput.finished_recving`（scheduler.py:2966-2971：`request.request_id\
+    \ in self.finished_recving_kv_ids` 才会 `_update_waiting_for_remote_kv` 并提升）。\n\
+    4. **实测加载从未发生**（多路证据）：\n   - 全部 P 节点 NPU 利用率 0%（连续 20 分钟采样）；\n   - mooncake transfer\
+    \ executor 线程全部 epoll 空闲（/proc wchan 取证）；worker 的 28 个 ThreadPool 线程全部 idle；\n\
+    \   - EngineCore 仅 2 个 Python 线程（MainThread + MultiprocWorkerMonitor），均空闲；\n \
+    \  - p_stage0.log 中 13:01:24（调度时刻）之后零新日志，无任何 load/store 活动记录；\n   - meta/standalone\
+    \ 服务无 lookup 活动痕迹。\n5. EngineCore 在空步循环中自旋：`_process_engine_step`（core.py:1464）→\
+    \ `step_with_batch_queue → _wait_for_response → get_response → recv`；`model_executed=False\
+    \ 且 has_requests` 时走 core.py:1471-1475 的 `time.sleep(0.001)` yield 分支（注释明示 WAITING_FOR_REMOTE_KVS\
+    \ / delayed KV connector frees 场景）；P0 的 16 个 TP worker 以 ~80% CPU 热自旋（sched_yield）等待永远不来的任务。\n\
+    6. 终态栈形：EngineCore `get_response` ↔ 64 worker 等指令（与池化环境既往\"prefill 卡死\"终点形态一致——**既往多轮\"\
+    执行器互等\"观测的本轮定案根因即此状态机死等**）。"
+expected:
+  resolution: 'AscendStore KV Pool 当前不支持多模态 LLM；双大图请求在 WAITING_FOR_REMOTE_KVS 永久等待。升级到含
+    PR #19692 的版本后不再进入该路径。'
+  namespace: inference/vllm-ascend
+  category: interrupt
+  confidence: agent-reviewed
+expected_kind: resolution
+non_diagnostic: false
+proposed:
+  repo: vllm-project/vllm-ascend
+  issue: 19562
+  labels:
+  - bug
+  - triaged
+  - kv-cache-pool
+  closed_at: '2026-10-26T07:02:52Z'
+  url: https://github.com/vllm-project/vllm-ascend/issues/19562
+  quality:
+    score: 0.95
+    namespace: inference/vllm-ascend
+    category: interrupt
+    answer: 'AscendStore KV Pool 当前不支持多模态 LLM；双大图请求在 WAITING_FOR_REMOTE_KVS 永久等待。升级到含
+      PR #19692 的版本后不再进入该路径。'
+    accepted: true
+provenance:
+  trigger: issue_import
+  sanitized: true
+  redactions: []
+  confidence: issue-verified
+  extraction: auto
+created_at: '2026-11-19T06:52:48+00:00'
+updated_at: '2026-11-19T06:52:56+00:00'
+history:
+- from: candidate
+  to: active
+  reason: fresh closed issue with maintainer fix; held out from pilot
+  actor: lead
+  at: '2026-11-19T06:52:55+00:00'
+- from: active
+  to: active
+  reason: core test candidate
+  actor: lead
+  at: '2026-11-19T06:52:55+00:00'
+  from_origin: field
+  to_origin: core
+- from: active
+  to: active
+  reason: draw 4 held-out test samples
+  actor: lead
+  at: '2026-11-19T06:52:56+00:00'
+  from_purpose: evaluation
+  to_purpose: test

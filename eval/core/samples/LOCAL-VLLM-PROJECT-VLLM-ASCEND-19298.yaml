@@ -1,0 +1,304 @@
+id: LOCAL-VLLM-PROJECT-VLLM-ASCEND-19298
+status: active
+object_type: diagnosis
+origin: core
+purpose: test
+source: local/vllm-project/vllm-ascend#19298
+input:
+  title: '[Bug]:  Deterministic MTE error (errcode 95) at cudagraph capture size 32
+    with GLM-5.3-Flash on Ascend 950PR'
+  body: "### Your current environment\n\n**Title: [Bug] Deterministic MTE error (errcode\
+    \ 95) at cudagraph capture size 32 with GLM-5.3-Flash on Ascend 950PR**\n\n##\
+    \ Environment\n- vLLM: v0.30.0rc2 (image: quay.io/ascend/vllm-ascend:v0.30.0rc2-a5-openeuler)\n\
+    - vllm-ascend: v0.30.0rc2\n- CANN: 9.2.0\n- Hardware: 4x Ascend 950PR (128GB),\
+    \ single node, TP4, pure text mode\n  (--limit-mm-per-prompt '{\"image\":0,\"\
+    video\":0}')\n- Model: GLM-5.3-Flash W8A8-mxfp8 (Eco-Tech/GLM-5.3-Flash-w8a8-mxfp8),\n\
+    \  --quantization ascend\n- cudagraph: FULL_DECODE_ONLY, capture_sizes [1,2,4,8,16,32,64]\n\
+    \n## Reproduction\nDeterministic crash under sustained decode at batch size 32:\n\
+    vllm bench serve --random-input-len 3072 --random-output-len 256 \\\n  --max-concurrency\
+    \ 32 --num-prompts 640\n\n- batch &lt;= 24: stable, zero failures\n- batch ==\
+    \ 32 with capture size 32 in capture_sizes: crashes within ~1 min,\n  reproduced\
+    \ 2/2 times (across container restarts)\n- batch == 32 with capture sizes capped\
+    \ at [1,2,4,8,16] (eager for batch&gt;16): stable, 640/640 OK\n\n## Error signature\
+    \ (identical across both crashes and across different physical cards)\n\nEE9999:\
+    \ aivec error, error code = 95\n  errcode:(95) \"The MTE instruction accesses\
+    \ an invalid GM address\n  or the cross-device memory access timeout\", subErrType\
+    \ 0x4\n  aic error mask: 0x395856\n  para base: 0x124040447840   &lt;-- identical\
+    \ on two different physical cards\n  pc start: 0x12537ffc9e00 / current: 0x12537ffcec38\
+    \  &lt;-- identical\n\nRuntimeError: synchronize ... NPU function error: device\
+    \ error type 3, error code 507011\nSubsequent side effect: AclrtGetDeviceInfo\
+    \ fails with 507899; the faulted\ndevice stays wedged across process restarts\
+    \ until PCI reset / host reboot.\n\n## Hypothesis\nThe batch-32 captured graph\
+    \ for GLM-5.3-Flash (sparse attention indexer / MoE\npath) computes an invalid\
+    \ GM address for some MTE instruction. Eager mode at\nthe same batch size works,\
+    \ pointing to the captured graph rather than the\nunderlying kernel.\n\n## Impact\n\
+    Aggregate output throughput is capped by the max graph-captured batch\n(~317 tok/s\
+    \ at batch 16); larger batches must fall back to eager mode\n(slower step time,\
+    \ TPOT 77ms vs 60ms at batch 24 graph-mode... batch 32 eager 77ms).\n\n## Workaround\n\
+    \"cudagraph_capture_sizes\": [1,2,4,8,16]  (batch&gt;16 runs eager)\n\n## Attachments\n\
+    - crash logs (2 occurrences), dmesg, startup log with KV cache config\n\n### \U0001F41B\
+    \ Describe the bug\n\n```\nraph capture at decode-FULL.\nINFO 10-20 09:43:34 [ascend_config.py:334]\
+    \ Dynamic EPLB is False\nINFO 10-20 09:43:34 [ascend_config.py:335] The number\
+    \ of redundant experts is 0\nINFO 10-20 09:43:34 [ascend_config.py:768] FlashComm1\
+    \ is disabled. Using flashinfer_all2allv as the all2all backend.\n[W1020 09:43:37.691735291\
+    \ Module.cpp:235] Warning: AclrtGetDeviceInfo failed to get total global memory,\
+    \ error code is 507899. The possible cause is that the driver version is too old\
+    \ or does not match CANN. Fall back to aclrtGetMemInfo. Please upgrade the driver\
+    \ to the matching version. (function operator())\nINFO 10-20 09:43:38 [__init__.py:52]\
+    \ Available plugins for group vllm.platform_plugins:\nINFO 10-20 09:43:38 [__init__.py:54]\
+    \ - ascend -> vllm_ascend:register\nINFO 10-20 09:43:38 [__init__.py:57] All plugins\
+    \ in this group will be loaded. Set `VLLM_PLUGINS` to control which plugins to\
+    \ load.\n/usr/local/python3.12.13/lib/python3.12/site-packages/triton/language/extra/cann/extension/math_ops.py:13:\
+    \ FutureWarning: triton.language.extra.cann.extension.atan2 is deprecated and\
+    \ will be removed in the next release; use triton.language.extra.cann.libdevice.atan2\
+    \ instead.\n  @_deprecated(replacement=\"triton.language.extra.cann.libdevice.atan2\"\
+    )\n/usr/local/python3.12.13/lib/python3.12/site-packages/triton/language/extra/cann/extension/math_ops.py:35:\
+    \ FutureWarning: triton.language.extra.cann.extension.isfinited is deprecated\
+    \ and will be removed in the next release; use triton.language.extra.cann.libdevice.isfinited\
+    \ instead.\n  @_deprecated(replacement=\"triton.language.extra.cann.libdevice.isfinited\"\
+    )\n/usr/local/python3.12.13/lib/python3.12/site-packages/triton/language/extra/cann/extension/math_ops.py:49:\
+    \ FutureWarning: triton.language.extra.cann.extension.finitef is deprecated and\
+    \ will be removed in the next release; use triton.language.extra.cann.libdevice.finitef\
+    \ instead.\n  @_deprecated(replacement=\"triton.language.extra.cann.libdevice.finitef\"\
+    )\nINFO 10-20 09:43:38 [__init__.py:272] Platform plugin ascend is activated\n\
+    INFO 10-20 09:43:38 [platform.py:74] Breakable CUDAGraph on Ascend is opt-in;\
+    \ using VLLM_USE_BREAKABLE_CUDAGRAPH=0.\nWARNING 10-20 09:43:39 [indexer_topk.py:29]\
+    \ Failed to import the DeepSelect extension (vllm._deepselect_C): No module named\
+    \ 'vllm._deepselect_C'\nINFO 10-20 09:43:39 [patch_indexer_kv_dtype.py:102] Patched\
+    \ AttentionConfig.indexer_kv_dtype to accept 'int8' (DeepSeek V4 Ascend indexer\
+    \ K cache dtype).\nINFO 10-20 09:43:39 [patch_kv_cache_dtype.py:117] Patched CacheConfig.cache_dtype\
+    \ to accept 'int8' and 'mxfp8' (Ascend KV cache dtypes).\nINFO 10-20 09:43:39\
+    \ [__init__.py:112] Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElastic'>`\
+    \ with load format `netloader`\nINFO 10-20 09:43:39 [__init__.py:112] Registered\
+    \ model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>`\
+    \ with load format `rfork`\n[W1020 09:43:40.630983746 OptionRegister.cpp:95] Warning:\
+    \ Current device only support allow_internal_format=False, the requested value\
+    \ True is invalid and has been reverted to False. (function operator())\nINFO\
+    \ 10-20 09:43:41 [registry.py:146] All limits of multimodal modalities supported\
+    \ by the model are set to 0, running in text-only mode.\nWARNING 10-20 09:43:41\
+    \ [patch_triton.py:332] NPU Triton causal_conv1d_update is unavailable (cannot\
+    \ import name 'causal_conv1d_update_npu' from 'vllm_ascend.ops.triton.mamba.causal_conv1d'\
+    \ (/vllm-workspace/vllm-ascend/vllm_ascend/ops/triton/mamba/causal_conv1d.py));\
+    \ falling back to the PyTorch implementation, which syncs per request and therefore\
+    \ stalls ACL graph capture at decode-FULL.\nINFO 10-20 09:43:41 [ascend_config.py:334]\
+    \ Dynamic EPLB is False\nINFO 10-20 09:43:41 [ascend_config.py:335] The number\
+    \ of redundant experts is 0\nINFO 10-20 09:43:41 [ascend_config.py:768] FlashComm1\
+    \ is disabled. Using flashinfer_all2allv as the all2all backend.\n(EngineCore\
+    \ pid=162) INFO 10-20 09:43:41 [multiproc_executor.py:472] [shutdown] Executor:\
+    \ waiting for worker exit count=3\n[W1020 09:43:42.022925997 Module.cpp:235] Warning:\
+    \ AclrtGetDeviceInfo failed to get total global memory, error code is 507899.\
+    \ The possible cause is that the driver version is too old or does not match CANN.\
+    \ Fall back to aclrtGetMemInfo. Please upgrade the driver to the matching version.\
+    \ (function operator())\nWARNING 10-20 09:43:43 [indexer_topk.py:29] Failed to\
+    \ import the DeepSelect extension (vllm._deepselect_C): No module named 'vllm._deepselect_C'\n\
+    INFO 10-20 09:43:43 [patch_indexer_kv_dtype.py:102] Patched AttentionConfig.indexer_kv_dtype\
+    \ to accept 'int8' (DeepSeek V4 Ascend indexer K cache dtype).\nINFO 10-20 09:43:43\
+    \ [patch_kv_cache_dtype.py:117] Patched CacheConfig.cache_dtype to accept 'int8'\
+    \ and 'mxfp8' (Ascend KV cache dtypes).\nINFO 10-20 09:43:43 [__init__.py:112]\
+    \ Registered model loader `<class 'vllm_ascend.model_loader.netloader.netloader.ModelNetLoaderElastic'>`\
+    \ with load format `netloader`\nINFO 10-20 09:43:43 [__init__.py:112] Registered\
+    \ model loader `<class 'vllm_ascend.model_loader.rfork.rfork_loader.RForkModelLoader'>`\
+    \ with load format `rfork`\n[W1020 09:43:44.702450181 OptionRegister.cpp:95] Warning:\
+    \ Current device only support allow_internal_format=False, the requested value\
+    \ True is invalid and has been reverted to False. (function operator())\nINFO\
+    \ 10-20 09:43:45 [registry.py:146] All limits of multimodal modalities supported\
+    \ by the model are set to 0, running in text-only mode.\nWARNING 10-20 09:43:45\
+    \ [patch_triton.py:332] NPU Triton causal_conv1d_update is unavailable (cannot\
+    \ import name 'causal_conv1d_update_npu' from 'vllm_ascend.ops.triton.mamba.causal_conv1d'\
+    \ (/vllm-workspace/vllm-ascend/vllm_ascend/ops/triton/mamba/causal_conv1d.py));\
+    \ falling back to the PyTorch implementation, which syncs per request and therefore\
+    \ stalls ACL graph capture at decode-FULL.\nINFO 10-20 09:43:45 [ascend_config.py:334]\
+    \ Dynamic EPLB is False\nINFO 10-20 09:43:45 [ascend_config.py:335] The number\
+    \ of redundant experts is 0\nINFO 10-20 09:43:45 [ascend_config.py:768] FlashComm1\
+    \ is disabled. Using flashinfer_all2allv as the all2all backend.\n(EngineCore\
+    \ pid=162) WARNING 10-20 09:43:46 [multiproc_executor.py:484] [shutdown] Executor:\
+    \ workers still running after grace period; sending SIGTERM count=3\n(EngineCore\
+    \ pid=162) WARNING 10-20 09:43:50 [multiproc_executor.py:494] [shutdown] Executor:\
+    \ workers still running after SIGTERM; sending SIGKILL count=3\n(EngineCore pid=162)\
+    \ ERROR 10-20 09:43:50 [core.py:1366] EngineCore failed to start.\n(EngineCore\
+    \ pid=162) ERROR 10-20 09:43:50 [core.py:1366] Traceback (most recent call last):\n\
+    (EngineCore pid=162) ERROR 10-20 09:43:50 [core.py:1366]   File \"/vllm-workspace/vllm/vllm/v1/engine/core.py\"\
+    , line 1328, in run_engine_core\n(EngineCore pid=162) ERROR 10-20 09:43:50 [core.py:1366]\
+    \     engine_core = EngineCoreProc(*args, engine_index=dp_rank, **kwargs)\n(EngineCore\
+    \ pid=162) ERROR 10-20 09:43:50 [core.py:1366]                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\
+    (EngineCore pid=162) ERROR 10-20 09:43:50 [core.py:1366]   File \"/vllm-workspace/vllm/vllm/tracing/otel.py\"\
+    , line 178, in sync_wrapper\n(EngineCore pid=162) ERROR 10-20 09:43:50 [core.py:1366]\
+    \     return func(*args, **kwargs)\n(EngineCore pid=162) ERROR 10-20 09:43:50\
+    \ [core.py:1366]            ^^^^^^^^^^^^^^^^^^^^^\n(EngineCore pid=162) ERROR\
+    \ 10-20 09:43:50 [core.py:1366]   File \"/vllm-workspace/vllm/vllm/v1/engine/core.py\"\
+    , line 1085, in __init__\n(EngineCore pid=162) ERROR 10-20 09:43:50 [core.py:1366]\
+    \     super().__init__(\n(EngineCore pid=162) ERROR 10-20 09:43:50 [core.py:1366]\
+    \   File \"/vllm-workspace/vllm-ascend/vllm_ascend/patch/platform/patch_profiling_chunk.py\"\
+    , line 198, in _patched_engine_core_init\n(EngineCore pid=162) ERROR 10-20 09:43:50\
+    \ [core.py:1366]     original_init(self, *args, **kwargs)\n(EngineCore pid=162)\
+    \ ERROR 10-20 09:43:50 [core.py:1366]   File \"/vllm-workspace/vllm/vllm/v1/engine/core.py\"\
+    , line 134, in __init__\n(EngineCore pid=162) ERROR 10-20 09:43:50 [core.py:1366]\
+    \     self.model_executor = executor_class(vllm_config)\n(EngineCore pid=162)\
+    \ ERROR 10-20 09:43:50 [core.py:1366]                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\
+    (EngineCore pid=162) ERROR 10-20 09:43:50 [core.py:1366]   File \"/vllm-workspace/vllm/vllm/v1/executor/multiproc_executor.py\"\
+    , line 116, in __init__\n(EngineCore pid=162) ERROR 10-20 09:43:50 [core.py:1366]\
+    \     super().__init__(vllm_config)\n(EngineCore pid=162) ERROR 10-20 09:43:50\
+    \ [core.py:1366]   File \"/vllm-workspace/vllm/vllm/tracing/otel.py\", line 178,\
+    \ in sync_wrapper\n(EngineCore pid=162) ERROR 10-20 09:43:50 [core.py:1366]  \
+    \   return func(*args, **kwargs)\n(EngineCore pid=162) ERROR 10-20 09:43:50 [core.py:1366]\
+    \            ^^^^^^^^^^^^^^^^^^^^^\n(EngineCore pid=162) ERROR 10-20 09:43:50\
+    \ [core.py:1366]   File \"/vllm-workspace/vllm/vllm/v1/executor/abstract.py\"\
+    , line 110, in __init__\n(EngineCore pid=162) ERROR 10-20 09:43:50 [core.py:1366]\
+    \     self._init_executor()\n(EngineCore pid=162) ERROR 10-20 09:43:50 [core.py:1366]\
+    \   File \"/vllm-workspace/vllm/vllm/v1/executor/multiproc_executor.py\", line\
+    \ 214, in _init_executor\n(EngineCore pid=162) ERROR 10-20 09:43:50 [core.py:1366]\
+    \     self.workers = WorkerProc.wait_for_ready(unready_workers)\n(EngineCore pid=162)\
+    \ ERROR 10-20 09:43:50 [core.py:1366]                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\
+    (EngineCore pid=162) ERROR 10-20 09:43:50 [core.py:1366]   File \"/vllm-workspace/vllm/vllm/v1/executor/multiproc_executor.py\"\
+    , line 808, in wait_for_ready\n(EngineCore pid=162) ERROR 10-20 09:43:50 [core.py:1366]\
+    \     raise e from None\n(EngineCore pid=162) ERROR 10-20 09:43:50 [core.py:1366]\
+    \ Exception: WorkerProc initialization failed due to an exception in a background\
+    \ process. See stack trace for root cause.\n(EngineCore pid=162) Process EngineCore:\n\
+    (EngineCore pid=162) Traceback (most recent call last):\n(EngineCore pid=162)\
+    \   File \"/usr/local/python3.12.13/lib/python3.12/multiprocessing/process.py\"\
+    , line 314, in _bootstrap\n(EngineCore pid=162)     self.run()\n(EngineCore pid=162)\
+    \   File \"/usr/local/python3.12.13/lib/python3.12/multiprocessing/process.py\"\
+    , line 108, in run\n(EngineCore pid=162)     self._target(*self._args, **self._kwargs)\n\
+    (EngineCore pid=162)   File \"/vllm-workspace/vllm-ascend/vllm_ascend/patch/platform/patch_engine_core.py\"\
+    , line 56, in _run_engine_core_patch_func\n(EngineCore pid=162)     return _OriginalRunEngineCore(*args,\
+    \ dp_rank=dp_rank, local_dp_rank=local_dp_rank, **kwargs)\n(EngineCore pid=162)\
+    \            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\
+    (EngineCore pid=162)   File \"/vllm-workspace/vllm/vllm/v1/engine/core.py\", line\
+    \ 1370, in run_engine_core\n(EngineCore pid=162)     raise e\n(EngineCore pid=162)\
+    \   File \"/vllm-workspace/vllm/vllm/v1/engine/core.py\", line 1328, in run_engine_core\n\
+    (EngineCore pid=162)     engine_core = EngineCoreProc(*args, engine_index=dp_rank,\
+    \ **kwargs)\n(EngineCore pid=162)                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\
+    (EngineCore pid=162)   File \"/vllm-workspace/vllm/vllm/tracing/otel.py\", line\
+    \ 178, in sync_wrapper\n(EngineCore pid=162)     return func(*args, **kwargs)\n\
+    (EngineCore pid=162)            ^^^^^^^^^^^^^^^^^^^^^\n(EngineCore pid=162)  \
+    \ File \"/vllm-workspace/vllm/vllm/v1/engine/core.py\", line 1085, in __init__\n\
+    (EngineCore pid=162)     super().__init__(\n(EngineCore pid=162)   File \"/vllm-workspace/vllm-ascend/vllm_ascend/patch/platform/patch_profiling_chunk.py\"\
+    , line 198, in _patched_engine_core_init\n(EngineCore pid=162)     original_init(self,\
+    \ *args, **kwargs)\n(EngineCore pid=162)   File \"/vllm-workspace/vllm/vllm/v1/engine/core.py\"\
+    , line 134, in __init__\n(EngineCore pid=162)     self.model_executor = executor_class(vllm_config)\n\
+    (EngineCore pid=162)                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n(EngineCore\
+    \ pid=162)   File \"/vllm-workspace/vllm/vllm/v1/executor/multiproc_executor.py\"\
+    , line 116, in __init__\n(EngineCore pid=162)     super().__init__(vllm_config)\n\
+    (EngineCore pid=162)   File \"/vllm-workspace/vllm/vllm/tracing/otel.py\", line\
+    \ 178, in sync_wrapper\n(EngineCore pid=162)     return func(*args, **kwargs)\n\
+    (EngineCore pid=162)            ^^^^^^^^^^^^^^^^^^^^^\n(EngineCore pid=162)  \
+    \ File \"/vllm-workspace/vllm/vllm/v1/executor/abstract.py\", line 110, in __init__\n\
+    (EngineCore pid=162)     self._init_executor()\n(EngineCore pid=162)   File \"\
+    /vllm-workspace/vllm/vllm/v1/executor/multiproc_executor.py\", line 214, in _init_executor\n\
+    (EngineCore pid=162)     self.workers = WorkerProc.wait_for_ready(unready_workers)\n\
+    (EngineCore pid=162)                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\
+    (EngineCore pid=162)   File \"/vllm-workspace/vllm/vllm/v1/executor/multiproc_executor.py\"\
+    , line 808, in wait_for_ready\n(EngineCore pid=162)     raise e from None\n(EngineCore\
+    \ pid=162) Exception: WorkerProc initialization failed due to an exception in\
+    \ a background process. See stack trace for root cause.\n(APIServer pid=1) INFO\
+    \ 10-20 09:43:56 [utils.py:632] [shutdown] Process manager: send sigterm to process\
+    \ EngineCore\n(APIServer pid=1) Traceback (most recent call last):\n(APIServer\
+    \ pid=1)   File \"/usr/local/python3.12.13/bin/vllm\", line 6, in <module>\n(APIServer\
+    \ pid=1)     sys.exit(main())\n(APIServer pid=1)              ^^^^^^\n(APIServer\
+    \ pid=1)   File \"/vllm-workspace/vllm/vllm/entrypoints/cli/main.py\", line 106,\
+    \ in main\n(APIServer pid=1)     args.dispatch_function(args)\n(APIServer pid=1)\
+    \   File \"/vllm-workspace/vllm/vllm/entrypoints/cli/serve.py\", line 154, in\
+    \ cmd\n(APIServer pid=1)     uvloop.run(run_server(args))\n(APIServer pid=1) \
+    \  File \"/usr/local/python3.12.13/lib/python3.12/site-packages/uvloop/__init__.py\"\
+    , line 96, in run\n(APIServer pid=1)     return __asyncio.run(\n(APIServer pid=1)\
+    \            ^^^^^^^^^^^^^^\n(APIServer pid=1)   File \"/usr/local/python3.12.13/lib/python3.12/asyncio/runners.py\"\
+    , line 195, in run\n(APIServer pid=1)     return runner.run(main)\n(APIServer\
+    \ pid=1)            ^^^^^^^^^^^^^^^^\n(APIServer pid=1)   File \"/usr/local/python3.12.13/lib/python3.12/asyncio/runners.py\"\
+    , line 118, in run\n(APIServer pid=1)     return self._loop.run_until_complete(task)\n\
+    (APIServer pid=1)            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n(APIServer pid=1)\
+    \   File \"uvloop/loop.pyx\", line 1515, in uvloop.loop.Loop.run_until_complete\n\
+    (APIServer pid=1)   File \"/usr/local/python3.12.13/lib/python3.12/site-packages/uvloop/__init__.py\"\
+    , line 48, in wrapper\n(APIServer pid=1)     return await main\n(APIServer pid=1)\
+    \            ^^^^^^^^^^\n(APIServer pid=1)   File \"/vllm-workspace/vllm/vllm/entrypoints/launchers/api_server/entry.py\"\
+    , line 176, in run_server\n(APIServer pid=1)     await run_server_worker(listen_address,\
+    \ sock, args, **uvicorn_kwargs)\n(APIServer pid=1)   File \"/vllm-workspace/vllm/vllm/entrypoints/launchers/api_server/entry.py\"\
+    , line 190, in run_server_worker\n(APIServer pid=1)     async with build_async_engine_client(\n\
+    (APIServer pid=1)                ^^^^^^^^^^^^^^^^^^^^^^^^^^\n(APIServer pid=1)\
+    \   File \"/usr/local/python3.12.13/lib/python3.12/contextlib.py\", line 210,\
+    \ in __aenter__\n(APIServer pid=1)     return await anext(self.gen)\n(APIServer\
+    \ pid=1)            ^^^^^^^^^^^^^^^^^^^^^\n(APIServer pid=1)   File \"/vllm-workspace/vllm/vllm/entrypoints/launchers/api_server/entry.py\"\
+    , line 58, in build_async_engine_client\n(APIServer pid=1)     async with build_async_engine_client_from_engine_args(\n\
+    (APIServer pid=1)                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\
+    (APIServer pid=1)   File \"/usr/local/python3.12.13/lib/python3.12/contextlib.py\"\
+    , line 210, in __aenter__\n(APIServer pid=1)     return await anext(self.gen)\n\
+    (APIServer pid=1)            ^^^^^^^^^^^^^^^^^^^^^\n(APIServer pid=1)   File \"\
+    /vllm-workspace/vllm/vllm/entrypoints/launchers/api_server/entry.py\", line 94,\
+    \ in build_async_engine_client_from_engine_args\n(APIServer pid=1)     async_llm\
+    \ = AsyncLLM.from_vllm_config(\n(APIServer pid=1)                 ^^^^^^^^^^^^^^^^^^^^^^^^^^\n\
+    (APIServer pid=1)   File \"/vllm-workspace/vllm/vllm/v1/engine/async_llm.py\"\
+    , line 235, in from_vllm_config\n(APIServer pid=1)     return cls(\n(APIServer\
+    \ pid=1)            ^^^^\n(APIServer pid=1)   File \"/vllm-workspace/vllm/vllm/v1/engine/async_llm.py\"\
+    , line 169, in __init__\n(APIServer pid=1)     self.engine_core = EngineCoreClient.make_async_mp_client(\n\
+    (APIServer pid=1)                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\
+    (APIServer pid=1)   File \"/vllm-workspace/vllm/vllm/tracing/otel.py\", line 178,\
+    \ in sync_wrapper\n(APIServer pid=1)     return func(*args, **kwargs)\n(APIServer\
+    \ pid=1)            ^^^^^^^^^^^^^^^^^^^^^\n(APIServer pid=1)   File \"/vllm-workspace/vllm/vllm/v1/engine/core_client.py\"\
+    , line 163, in make_async_mp_client\n(APIServer pid=1)     return AsyncMPClient(\n\
+    (APIServer pid=1)            ^^^^^^^^^^^^^^\n(APIServer pid=1)   File \"/vllm-workspace/vllm/vllm/tracing/otel.py\"\
+    , line 178, in sync_wrapper\n(APIServer pid=1)     return func(*args, **kwargs)\n\
+    (APIServer pid=1)            ^^^^^^^^^^^^^^^^^^^^^\n(APIServer pid=1)   File \"\
+    /vllm-workspace/vllm/vllm/v1/engine/core_client.py\", line 1060, in __init__\n\
+    (APIServer pid=1)     super().__init__(\n(APIServer pid=1)   File \"/vllm-workspace/vllm/vllm/v1/engine/core_client.py\"\
+    , line 656, in __init__\n(APIServer pid=1)     with launch_core_engines(\n(APIServer\
+    \ pid=1)          ^^^^^^^^^^^^^^^^^^^^\n(APIServer pid=1)   File \"/usr/local/python3.12.13/lib/python3.12/contextlib.py\"\
+    , line 144, in __exit__\n(APIServer pid=1)     next(self.gen)\n(APIServer pid=1)\
+    \   File \"/vllm-workspace/vllm/vllm/v1/engine/utils.py\", line 1240, in launch_core_engines\n\
+    (APIServer pid=1)     wait_for_engine_startup(\n(APIServer pid=1)   File \"/vllm-workspace/vllm/vllm/v1/engine/utils.py\"\
+    , line 1320, in wait_for_engine_startup\n(APIServer pid=1)     raise RuntimeError(\n\
+    (APIServer pid=1) RuntimeError: Engine core initialization failed. See root cause\
+    \ above. Failed core proc(s): {}\n(APIServer pid=1) [ERROR] 2026-10-20-09:43:58\
+    \ (PID:1, Device:-1, RankID:-1) ERR99999 UNKNOWN applicaiton exception\n[root@localhost\
+    \ ~]# \n```"
+expected:
+  resolution: 'v0.30.0rc2 在 cudagraph capture size 32 上的确定性 MTE errcode 95；升级到 v0.30.0
+    正式版（含 #19353）后修复。'
+  namespace: inference/vllm-ascend
+  category: interrupt
+  confidence: agent-reviewed
+expected_kind: resolution
+non_diagnostic: false
+proposed:
+  repo: vllm-project/vllm-ascend
+  issue: 19298
+  labels:
+  - bug
+  - glm5
+  - triaged
+  - llm-model
+  closed_at: '2026-10-23T03:06:04Z'
+  url: https://github.com/vllm-project/vllm-ascend/issues/19298
+  quality:
+    score: 0.95
+    namespace: inference/vllm-ascend
+    category: interrupt
+    answer: 'v0.30.0rc2 在 cudagraph capture size 32 上的确定性 MTE errcode 95；升级到 v0.30.0
+      正式版（含 #19353）后修复。'
+    accepted: true
+provenance:
+  trigger: issue_import
+  sanitized: true
+  redactions: []
+  confidence: issue-verified
+  extraction: auto
+created_at: '2026-11-19T06:52:48+00:00'
+updated_at: '2026-11-19T06:52:56+00:00'
+history:
+- from: candidate
+  to: active
+  reason: fresh closed issue with maintainer fix; held out from pilot
+  actor: lead
+  at: '2026-11-19T06:52:55+00:00'
+- from: active
+  to: active
+  reason: core test candidate
+  actor: lead
+  at: '2026-11-19T06:52:56+00:00'
+  from_origin: field
+  to_origin: core
+- from: active
+  to: active
+  reason: draw 4 held-out test samples
+  actor: lead
+  at: '2026-11-19T06:52:56+00:00'
+  from_purpose: evaluation
+  to_purpose: test

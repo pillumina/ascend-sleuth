@@ -249,6 +249,16 @@ def cmd_sample_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sample_export_core(args: argparse.Namespace) -> int:
+    try:
+        path = _store(args).export_core(args.id)
+    except (StoreError, ContractError, CliError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    print(f"exported: {path}")
+    return 0
+
+
 def cmd_sample_import_pilot(args: argparse.Namespace) -> int:
     try:
         result = import_pilot(_store(args), Path(args.tasks))
@@ -1399,6 +1409,10 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--id", required=True)
     status.add_argument("--json", action="store_true")
     status.set_defaults(func=cmd_sample_status)
+    export_core = sample_sub.add_parser("export-core", help="把 active/core 样本写入 tracked eval/core")
+    export_core.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    export_core.add_argument("--id", required=True)
+    export_core.set_defaults(func=cmd_sample_export_core)
 
     import_s2 = sample_sub.add_parser(
         "import-s2", help="把 eval/s2 校准集导入候选队列（跳过非诊断/无症状/重复来源）"

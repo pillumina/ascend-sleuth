@@ -1,0 +1,43 @@
+id: REG-VLLM-ASC-10524
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: https://github.com/vllm-project/vllm-ascend/issues/10524
+input:
+  phenomenon: GLM-5.1-w8a8 PD 分离（P:TP16/DP2，D:TP4/DP8 FULL_DECODE_ONLY 图模式+MTP，Mooncake
+    KV transfer）+ Claude Code（转 completions 接口）压测偶现精度问题（输出劣化/复读），再次请求恢复；触发条件：同一时刻两个
+    DP 存在一长一短两个请求时大概率出现；服务日志无报错、无 Mooncake transfer 失败；v0.18.0 与 v0.20.2 同样复现；精度数据集得分正常（偶现复读，非系统乱码）
+  environment: A3-910C
+  evidence:
+    case: VLLM-ASC-10524
+    references:
+    - https://github.com/vllm-project/vllm-ascend/issues/10524
+    - https://github.com/vllm-project/vllm-ascend/pull/11774
+expected:
+  resolution: 'GLM-5.1-w8a8 PD 分离 + FULL_DECODE_ONLY 图模式下，dummy/graph-capture run
+    不走 _prepare_inputs()，所有 kv cache group 的 slot_mapping 未被填充；图捕获时读取到上一 run 残留的未初始化/陈旧
+    slot 值（并发长短请求改变 batch 结构后更易命中），捕获进图的 KV 索引 含垃圾值 → decode 偶发错误输出（复读等），重发请求自愈。修复：dummy
+    run 把 slot_mapping 重置为 pad id（PR #11774，vllm_ascend worker 图捕获路径）。
+
+
+
+    升级到含 PR #11774 的 vllm-ascend（main 2026-07-11 合入 b9acec8；首个含修复 tag v0.24.0rc1；
+    PR 测试 env v0.23.0）。无配置 workaround——线程未给，不建议在旧版本绕行（问题偶发且无日志）。'
+  case: VLLM-ASC-10524
+  confidence: maintainer-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: postmortem
+  report_ref: knowledge/inference/vllm-ascend/precision/VLLM-ASC-10524.yaml
+  captured_at: '2026-11-19T14:13:03+00:00'
+  kb_rev: unknown
+  sanitized: true
+  redactions: []
+  confidence: maintainer-reviewed
+  extraction: auto
+created_at: '2026-11-19T14:13:03+00:00'
+updated_at: '2026-11-19T14:13:03+00:00'
+history: []
+notes: core regression derived from knowledge/inference/vllm-ascend/precision/VLLM-ASC-10524.yaml

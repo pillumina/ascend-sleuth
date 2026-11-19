@@ -80,6 +80,7 @@ class SampleStore:
         else:
             raise StoreError("SampleStore requires root or base")
         self.samples_dir = self.base / SAMPLES_DIRNAME
+        self.core_dir = self.root / "eval" / "core" / "samples"
 
     # ---------------------------------------------------------------- 读取
     def path_for(self, id: str) -> Path:
@@ -103,9 +104,13 @@ class SampleStore:
             raise StoreError(f"invalid sample in {path}: {exc}") from exc
         return sample
 
-    def load(self, id: str) -> Optional[Sample]:
+    def core_path_for(self, id: str) -> Path:
         sample_id = id
-        path = self.path_for(sample_id)
+        if not valid_id(sample_id):
+            raise StoreError(f"invalid sample id: {sample_id!r}")
+        return self.core_dir / f"{sample_id}.yaml"
+
+    def _load_at(self, path: Path, sample_id: str) -> Optional[Sample]:
         if not path.exists():
             return None
         sample = self._read_path(path)
@@ -115,17 +120,34 @@ class SampleStore:
             )
         return sample
 
+    def load(self, id: str) -> Optional[Sample]:
+        sample_id = id
+        return (self._load_at(self.path_for(sample_id), sample_id)
+                or self._load_at(self.core_path_for(sample_id), sample_id))
+
     def require(self, id: str) -> Sample:
         sample = self.load(id)
         if sample is None:
             raise StoreError(f"no such sample: {id}")
         return sample
 
-    def read_all(self) -> List[Sample]:
-        if not self.samples_dir.exists():
-            return []
-        samples = [self._read_path(path) for path in sorted(self.samples_dir.glob("*.yaml"))]
-        return sorted(samples, key=lambda item: item.id)
+    def read_all(self, strict: bool = True) -> List[Sample]:
+        local = ([self._read_path(path)
+                  for path in sorted(self.samples_dir.glob("*.yaml"))]
+                 if self.samples_dir.exists() else [])
+        core = ([self._read_path(path)
+                 for path in sorted(self.core_dir.glob("*.yaml"))]
+                if self.core_dir.exists() else [])
+        out = []
+        seen = set()
+        for sample in local + core:
+            if sample.id in seen and strict:
+                raise StoreError(
+                    f"duplicate sample id across local and eval/core: {sample.id}"
+                )
+            seen.add(sample.id)
+            out.append(sample)
+        return sorted(out, key=lambda item: item.id)
 
     def list(
         self,
@@ -152,6 +174,10 @@ class SampleStore:
     # ---------------------------------------------------------------- 写入
     def _write(self, sample: Sample) -> Path:
         sample.validate()
+        if not self.path_for(sample.id).exists() and self.core_path_for(sample.id).exists():
+            raise StoreError(
+                f"{sample.id} is a tracked eval/core sample; edit it via PR, not the local store"
+            )
         path = self.path_for(sample.id)
         text = yaml.safe_dump(
             sample.to_dict(),
@@ -282,7 +308,7 @@ class SampleStore:
                     f"purpose={sample.purpose} not allowed for object_type={sample.object_type}; "
                     f"allowed: {list(spec.allowed_purposes)}"
                 )
-        others = self.read_all()
+        others = self.read_all(strict=False)
         for other in others:
             if other.id != sample.id and source_group(other) == source_group(sample):
                 errors.append(f"duplicate source also used by sample {other.id}")
@@ -530,6 +556,29 @@ class SampleStore:
                 reason=reason or "drawn for test set",
             ))
         return sorted(existing + drawn, key=lambda sample: sample.id)
+
+    def export_core(self, id: str) -> Path:
+        """把本地 active/core 样本写入 tracked eval/core/samples/，并移除本地副本。"""
+        sample = self.require(id)
+        if sample.status != "active":
+            raise StoreError("export-core requires an active sample")
+        if sample.origin != "core":
+            raise StoreError("export-core requires origin=core (promote first)")
+        if sample.purpose not in ("test", "regression"):
+            raise StoreError("export-core requires purpose=test or regression")
+        self.core_dir.mkdir(parents=True, exist_ok=True)
+        path = self.core_path_for(sample.id)
+        text = yaml.safe_dump(
+            sample.to_dict(), sort_keys=False, allow_unicode=True,
+            default_flow_style=False,
+        )
+        if not text.endswith("\n"):
+            text += "\n"
+        _atomic_write(path, text)
+        local = self.path_for(sample.id)
+        if local.exists():
+            local.unlink()
+        return path
 
     def retire(self, id: str, actor: str = "maintainer", reason: str = "") -> Sample:
         """active → retired（软退休，可复活）。"""

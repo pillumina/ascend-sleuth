@@ -1,0 +1,38 @@
+id: REG-COMMON-CPU-THREAD-SWITCH
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: msprof docs/zh/best_practices/cpu_thread_frequent_switching.md（MindStudio
+  26.2.0.B060_001）
+input:
+  phenomenon: 每个训练迭代均有某一张卡 PyTorch 框架侧队列取出（Dequeue）耗时过长，最长可达 7.9 秒；同期 Device 硬件侧没有任何算子在执行，CPU
+    侧 synchronize 同步函数多等约 92ms 才返回 → Device 无效空闲
+  environment: ''
+  evidence:
+    case: COMMON-CPU-THREAD-SWITCH
+    references:
+    - msprof docs/zh/best_practices/cpu_thread_frequent_switching.md（MindStudio 26.2.0.B060_001）
+expected:
+  resolution: '系统侧运行着大量与模型训练无关的后台线程，与模型算子下发线程竞争 CPU 资源， 导致下发线程发生频繁的非自愿上下文切换。
+
+
+
+    CPU 绑核：把 NPU 核心链路线程绑定到独立 CPU 核，减少上下文切换与跨核迁移开销 （优先绑核对象为执行时间长、CPU 消耗高的进程/线程）。'
+  case: COMMON-CPU-THREAD-SWITCH
+  confidence: maintainer-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: postmortem
+  report_ref: knowledge/common/performance/COMMON-CPU-THREAD-SWITCH.yaml
+  captured_at: '2026-11-19T14:13:03+00:00'
+  kb_rev: unknown
+  sanitized: true
+  redactions: []
+  confidence: maintainer-reviewed
+  extraction: auto
+created_at: '2026-11-19T14:13:03+00:00'
+updated_at: '2026-11-19T14:13:03+00:00'
+history: []
+notes: core regression derived from knowledge/common/performance/COMMON-CPU-THREAD-SWITCH.yaml

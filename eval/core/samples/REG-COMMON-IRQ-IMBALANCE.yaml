@@ -1,0 +1,38 @@
+id: REG-COMMON-IRQ-IMBALANCE
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: msprof docs/zh/best_practices/irq_interruption.md（MindStudio 26.2.0.B060_001）
+input:
+  phenomenon: A+K 平台业务吞吐、延迟等核心性能指标明显劣化，达不到预期；排除算子执行异常、NPU 计算瓶颈、内存泄漏、网络通信异常、环境配置错误、驱动故障等常规问题；系统资源监控与内核状态观测发现：部分
+    CPU 核心中断次数异常偏高，大量资源消耗在硬件中断处理流程
+  environment: ''
+  evidence:
+    case: COMMON-IRQ-IMBALANCE
+    references:
+    - msprof docs/zh/best_practices/irq_interruption.md（MindStudio 26.2.0.B060_001）
+expected:
+  resolution: 'Ascend 平台 Host 与 NPU 通过中断完成任务下发与状态同步，高并发下发场景下中断频次天然升高； A+K 平台默认中断调度策略未做针对性优化，核心业务中断过度集中在个别
+    CPU 核心， 单核长期高频处理中断、持续抢占业务线程时间片。
+
+
+
+    中断负载均衡 / 绑核：把核心业务中断分散到多核，避免单核长期高频处理中断。'
+  case: COMMON-IRQ-IMBALANCE
+  confidence: maintainer-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: postmortem
+  report_ref: knowledge/common/performance/COMMON-IRQ-IMBALANCE.yaml
+  captured_at: '2026-11-19T14:13:03+00:00'
+  kb_rev: unknown
+  sanitized: true
+  redactions: []
+  confidence: maintainer-reviewed
+  extraction: auto
+created_at: '2026-11-19T14:13:03+00:00'
+updated_at: '2026-11-19T14:13:03+00:00'
+history: []
+notes: core regression derived from knowledge/common/performance/COMMON-IRQ-IMBALANCE.yaml

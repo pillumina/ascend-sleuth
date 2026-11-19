@@ -1,0 +1,130 @@
+id: '16446'
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: github/vllm-project/vllm-ascend#16446
+input:
+  title: '[Bug]: vllm serve hangs with vector core timeout (507034) on DP>1 when FlashComm1
+    (SP) and multistream_overlap_shared_expert are both enabled'
+  body: "### Your current environment\n\n<details>\n<summary>Environment</summary>\n\
+    \n```text\n- vLLM: 0.28.0 (built into image vllm-ascend:v0.28.0-a3-openeuler)\n\
+    - vLLM-Ascend: main @ d4d2957e5 (editable install; also reproduced on f640d1348\
+    \ and on the image built-in version)\n- CANN: cann-9.1.0\n- torch: 2.10.0+cpu\
+    \ / torch_npu: 2.10.0.post4\n- Hardware: Atlas 800 A3 (Ascend 910B x 16), single\
+    \ node\n- OS: openEuler (docker)\n- Model: GLM-5.2-w4a8c8 (W4A8, --quantization\
+    \ ascend)\n```\n\n</details>\n\n### Describe the bug\n\n`vllm serve` with `--data-parallel-size\
+    \ 2 --tensor-parallel-size 8` hangs during engine initialization (memory profiling\
+    \ / dummy run) and dies with:\n\n```text\nRuntimeError: synchronize:../torch_npu/csrc/core/npu/NPUEvent.cpp:215\
+    \ NPU function error: aclrtSynchronizeEvent(event_), error code is 507034\n[Error]:\
+    \ Vector core execution timed out.\n```\n\nThis happens **only when all three\
+    \ factors are present simultaneously**:\n\n1. `VLLM_ASCEND_ENABLE_FLASHCOMM1=1`\
+    \ (env var, i.e. SP enabled)\n2. `multistream_overlap_shared_expert: true` (in\
+    \ `--additional-config`)\n3. `--data-parallel-size > 1`\n\nRemoving **any one**\
+    \ of the three makes the service start normally. Verified with a 12-experiment\
+    \ matrix (below), each run on a clean 16-card machine (HBM baseline confirmed\
+    \ before each run).\n\nIndependently excluded (failure persists with each of these\
+    \ removed/changed):\n- `enable_sfa_prolog_v3`, `enable_dsa_cp`, `enable_sparse_li_c8`\
+    \ / `enable_sparse_sfa_c8` (none present in the minimal repro)\n- MTP speculative\
+    \ decoding (present in the passing minimal repro; disabling it does not rescue\
+    \ the failing combo)\n- cudagraph `FULL_DECODE_ONLY` (failing combo still dies\
+    \ with `--enforce-eager`)\n- vLLM-Ascend version (main @ d4d2957e5, main @ f640d1348,\
+    \ and image built-in all fail; same code passes with DP=1)\n- `LD_PRELOAD` jemalloc\n\
+    \n### Verification matrix\n\n| # | FLASHCOMM1 (SP) | multistream_overlap_shared_expert\
+    \ | extra additional-config | DP | Result |\n|---|---|---|---|---|---|\n| 1 |\
+    \ - | - | (empty) | 2 | PASS (starts in ~4 min) |\n| 2 | - | - | balance_scheduling\
+    \ | 2 | PASS |\n| 3 | - | - | fused_mc2:0 | 2 | PASS |\n| 4 | yes | - | (empty)\
+    \ | 2 | PASS |\n| 5 | - | yes | (empty) | 2 | PASS |\n| 9 | yes | - | balance_scheduling\
+    \ | 2 | PASS |\n| 12 | yes | - | fused_mc2:0 | 2 | PASS |\n| **11** | **yes**\
+    \ | **yes** | **(empty)** | **2** | **FAIL - 507034 vector core timeout, ~13 min\
+    \ into init** |\n| 10 | yes | yes | + fused_mc2:0 | 2 | FAIL |\n| 8 | yes | yes\
+    \ | + balance + fused_mc2 | 2 | FAIL |\n| ctrl-A | yes | yes | full prod config\
+    \ (c8 etc.) | 1 (TP16) | PASS |\n| ctrl-B | - | yes | DSv4-Flash tutorial A3 config\
+    \ | 2 (TP8) | PASS (different model, no FlashComm1) |\n\n### To Reproduce\n\n\
+    Failing command (GLM-5.2-w4a8c8, single node 16x 910B):\n\n```bash\nexport VLLM_ASCEND_ENABLE_FLASHCOMM1=1\n\
+    vllm serve /path/to/GLM-5.2-w4a8c8 --host 0.0.0.0 --port 8177 \\\n  --safetensors-load-strategy\
+    \ prefetch --api-server-count 1 \\\n  --data-parallel-size 2 --enable-expert-parallel\
+    \ --tensor-parallel-size 8 \\\n  --seed 1024 --served-model-name glm-5 \\\n  --tool-call-parser\
+    \ glm47 --reasoning-parser glm45 --enable-auto-tool-choice \\\n  --max-num-seqs\
+    \ 12 --max-model-len 135000 --max-num-batched-tokens 8192 \\\n  --trust-remote-code\
+    \ --gpu-memory-utilization 0.92 --quantization ascend \\\n  --compilation-config\
+    \ '{\"cudagraph_mode\": \"FULL_DECODE_ONLY\"}' \\\n  --additional-config '{\"\
+    multistream_overlap_shared_expert\":true}' \\\n  --speculative-config '{\"num_speculative_tokens\"\
+    :3,\"method\":\"deepseek_mtp\",\"enforce_eager\":true}'\n```\n\nThe exact same\
+    \ command starts normally if either `VLLM_ASCEND_ENABLE_FLASHCOMM1` is unset,\
+    \ or `multistream_overlap_shared_expert` is removed from `--additional-config`,\
+    \ or `--data-parallel-size 1` (TP16) is used.\n\n### Error log\n\n```text\n(Worker_DP1_TP1_EP9\
+    \ pid=xxxxx) ERROR [multiproc_executor.py:1047] Traceback (most recent call last):\n\
+    (Worker_DP1_TP1_EP9 pid=xxxxx) ERROR   File \".../vllm/v1/executor/multiproc_executor.py\"\
+    , line 1039, in worker_busy_loop\n(Worker_DP1_TP1_EP9 pid=xxxxx) ERROR   File\
+    \ \".../vllm_ascend/worker/worker.py\", line 600, in determine_available_memory\n\
+    (Worker_DP1_TP1_EP9 pid=xxxxx) ERROR     self.model_runner.profile_run()\n(Worker_DP1_TP1_EP9\
+    \ pid=xxxxx) ERROR   File \".../vllm_ascend/worker/model_runner_v1.py\", line\
+    \ 4041, in profile_run\n(Worker_DP1_TP1_EP9 pid=xxxxx) ERROR     super().profile_run()\n\
+    (Worker_DP1_TP1_EP9 pid=xxxxx) ERROR   File \".../vllm/v1/worker/gpu_model_runner.py\"\
+    , line 6618, in profile_run\n(Worker_DP1_TP1_EP9 pid=xxxxx) ERROR     hidden_states,\
+    \ last_hidden_states = self._dummy_run(...)\n(Worker_DP1_TP1_EP9 pid=xxxxx) ERROR\
+    \   File \".../vllm_ascend/worker/model_runner_v1.py\", line 3771, in _dummy_run\n\
+    (Worker_DP1_TP1_EP9 pid=xxxxx) ERROR     with self.synchronize_input_prep():\n\
+    (Worker_DP1_TP1_EP9 pid=xxxxx) ERROR   File \".../torch_npu/npu/streams.py\",\
+    \ line 192, in synchronize\n(Worker_DP1_TP1_EP9 pid=xxxxx) ERROR RuntimeError:\
+    \ synchronize:../torch_npu/csrc/core/npu/NPUEvent.cpp:215 NPU function error:\
+    \ aclrtSynchronizeEvent(event_), error code is 507034\n(Worker_DP1_TP1_EP9 pid=xxxxx)\
+    \ ERROR [Error]: Vector core execution timed out.\n```\n\nWorkers across **both\
+    \ DP ranks** fail at the same second (~13 min after launch, during `determine_available_memory\
+    \ -> profile_run -> _dummy_run`). Sometimes also accompanied by `HCCL watchdog\
+    \ thread terminated with exception`.\n\n### Expected behavior\n\nThe service should\
+    \ start normally with FlashComm1 (SP) + `multistream_overlap_shared_expert` on\
+    \ DP>1, as it does with DP=1 (TP16) under the identical configuration.\n\n###\
+    \ Additional context\n\n- Hypothesis: an interaction between the FlashComm1 (SP)\
+    \ communication path and the shared-expert side stream (`npu_stream_switch(shared_experts_calculation_stream())`\
+    \ in `vllm_ascend/ops/fused_moe/fused_moe.py`) deadlocks during the DP dummy run\
+    \ and surfaces as a vector core timeout.\n- Impact note for users: `enable_dsa_cp`\
+    \ **requires** SP (`vllm_ascend/utils.py:1558` raises `ValueError` if FlashComm1\
+    \ is off), so users who need DSA CP cannot drop FlashComm1 - their only workaround\
+    \ on DP>1 today is to disable `multistream_overlap_shared_expert`.\n- Related\
+    \ interplay: `enable_fused_mc2=1` force-disables `multistream_overlap_shared_expert`\
+    \ (with a warning) in `ascend_config.py`, so the fused_mc2 path is presumably\
+    \ unaffected.\n- Environment detail: reproduced consistently across two days (2026-09-12\
+    \ / 09-13), >6 failing runs, all on a freshly verified idle machine; the passing\
+    \ runs prove the stack itself is healthy."
+expected:
+  resolution: 'DP>1 且同时开 VLLM_ASCEND_ENABLE_FLASHCOMM1=1（SP）与 multistream_overlap_shared_expert=true
+    时，vllm serve 在初始化 dummy run/memory profiling 阶段挂死，约 13 分钟后报 aclrtSynchronizeEvent
+    507034「Vector core execution timed out」；三者去掉任一个都能正常启动（12 组对照矩阵）。问题出在共享专家的多流 overlap
+    调度与 FlashComm1 SP、DP 组合下的 event 同步，由 #15352 重构共享专家多流调度修复；临时规避是关掉 multistream_overlap_shared_expert
+    或 flashcomm1。'
+  namespace: inference/vllm-ascend
+  category: interrupt
+  confidence: agent-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: issue_import
+  sanitized: true
+  redactions: []
+  confidence: agent-reviewed
+  extraction: auto
+created_at: '2026-11-18T08:33:21+00:00'
+updated_at: '2026-11-19T14:10:38+00:00'
+history:
+- from: candidate
+  to: active
+  reason: public issue candidate from pilot; answer present
+  actor: lead
+  at: '2026-11-19T06:26:33+00:00'
+- from: active
+  to: active
+  reason: 答案已进知识库，转 regression，避免自证留在 field
+  actor: lead
+  at: '2026-11-19T14:10:28+00:00'
+  from_purpose: evaluation
+  to_purpose: regression
+- from: active
+  to: active
+  reason: 答案已进知识库，regression core
+  actor: lead
+  at: '2026-11-19T14:10:38+00:00'
+  from_origin: field
+  to_origin: core
+notes: imported from pilot C-DIAGNOSE-KNOWLEDGE-USAGE-001
