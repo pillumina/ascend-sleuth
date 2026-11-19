@@ -63,7 +63,7 @@
 case 文件，结算就变成每次改知识条目，观测与知识本体也就分不开了。case 文件因此只为内容层的
 决定而改（复审、合并、退休、补样例），不因观测而改。
 
-它与 S2 的 `validation_record.self_consistent` 同一条纪律：同一份证据只记一次。
+它与 issue 回放对照的 `validation_record.self_consistent` 同一条纪律：同一份证据只记一次。
 
 ### 3.4 `validation_record`：{consistent, inconsistent, self_consistent, last_verified}
 
@@ -73,13 +73,13 @@ case 文件，结算就变成每次改知识条目，观测与知识本体也就
 
 强度：可选。
 
-与现场解决计数分开：S2 issue-replay 对照的是外部 ground truth（issue resolution / 维护者 fix PR / committer 确认），它证明的是「内容对不对」，不证明「现场解决了没有」——后者只由现场回报写入使用记录。
+与现场解决计数分开：issue 回放对照的是外部 ground truth（issue resolution / 维护者 fix PR / committer 确认），它证明的是「内容对不对」，不证明「现场解决了没有」——后者只由现场回报写入使用记录。
 
 - `consistent`：外部验证一致（同等 score 下排序优先）。语义是「该 issue 既不是它的来源、也未在正文被引用」，不是「信息独立」——case 与样本出自同一族判词或同一 fix PR 的关联无法机械识别，这点是半硬的。
 - `self_consistent`：非独立命中，两种：replay issue 即 case 来源（自证），或 replay issue 在 case 正文里被引用（是该 case 的撰写依据——命中结论就是写 case 时从它那儿读来的，记 consistent 等于一份证据数两次）。
 - `inconsistent`：命中但结论与 resolution 不符（复审信号）。
 
-无 S2 验证不填。
+无 issue 回放验证不填。
 
 ### 3.5 `source_ref`：{repo, ref, file, line}
 

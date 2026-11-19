@@ -428,7 +428,7 @@ async function main() {
   if ((board.stats.negative_terminal || 0) === 0 && (board.stats.terminal_count || 0) > 0) {
     expect('采纳率 100% 旁点明其含义（没有否决记录）', /没有否决记录/.test(ev.text), ev.text.slice(0, 200))
   }
-  expect('自演进度量：验证方式分布', /验证方式分布/.test(ev.text) && /S2 issue 回放/.test(ev.text))
+  expect('自演进度量：验证方式分布', /验证方式分布/.test(ev.text) && /issue 回放/.test(ev.text))
   expect('信号来源分布', /信号来源/.test(ev.text))
   // EV 面板的容量节：判据量是**读入 token**，与「指标」tab 必须说同一件事。
   // 为什么补这条（预核 2026-09-29）：该节此前零断言——index_counts 的每格记录去掉 `cap` 之后，

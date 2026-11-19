@@ -6,7 +6,7 @@
 
 范围：评估对象、评估集的构建与分层、rubric、判定、成本、版本，以及评估台（`scripts/eval_arena.py`）的池与结论。不含记录的存储与接口（[records.md](records.md)）、运行节奏（[operations.md](operations.md)）、诊断侧的字段（[diagnosis-observability.md](diagnosis-observability.md)）。
 
-本文不写会过期的数字。样本条数、已吸收条数、已评分条数由 `python3 scripts/eval_arena.py --stats` 的「N/M 条已评分」与 `held_out_skipped` 现算；S2 校准集的条数与强度分布读 `eval/s2/vllm-ascend.yaml`。
+本文不写会过期的数字。样本条数、已吸收条数、已评分条数由 `python3 scripts/eval_arena.py --stats` 的「N/M 条已评分」与 `held_out_skipped` 现算；issue 回放校准集的条数与强度分布读 `eval/s2/vllm-ascend.yaml`。
 
 ## 1 解决什么问题
 
@@ -211,7 +211,7 @@ tokens 分 uncached、cache_read、cache_write、out、billed 五类，并记 `c
 
 评估台把回放结果配成对、给出结论，并记下这次判定。它作用在检索与路由层的改动上，也就是 triage 分支文本、quickly_check、case 内容与排序这一层。
 
-池从已跟踪的 S2 校准集机械重建，一条命令派生，不依赖某次会话留下的本地文件：
+池从已跟踪的 issue 回放校准集机械重建，一条命令派生，不依赖某次会话留下的本地文件：
 
 - 候选来自 ingest 状态里已处理的 issue，去掉答案已进知识库的。
 - 筛选规则：issue 处于 closed 且 `state_reason=completed`；内容是实体缺陷或用法问题，排除文档类、营销类与 not_planned；标题带流程或文档类前缀的硬拒。
@@ -233,9 +233,9 @@ tokens 分 uncached、cache_read、cache_write、out、billed 五类，并记 `c
 2. 非诊断样本不进命中率。issue 正文里没有可判别的现象，任何诊断都不可能有结论；判据由人读校准集那一行的输入下，代码不按正文长度猜。
 3. 重放版本只告警不拒判。一批结果跨若干次 `git pull` 才跑完时，跨版本混算的分数前后不可比；`--stats` 收 `kb_rev` 写进 `replay_revs`，混版本打印警告，`--gate` 记进影响记录。
 
-命中低是设计的结果：S2 池从未沉淀的 closed issue 里选样，池本身就是用来暴露覆盖缺口的，不命中即库里没有这条知识，走补 case 候选。它不是已有 case 的外部验证通道。
+命中低是设计的结果：issue 回放池从未沉淀的 closed issue 里选样，池本身就是用来暴露覆盖缺口的，不命中即库里没有这条知识，走补 case 候选。它不是已有 case 的外部验证通道。
 
-S2 未命中有三种解释：路由错、缺 case、内容错。它只看到没命中，区分不了三者，因此只能产出检索层候选（查路由、查覆盖缺口），不能据此判定 case 内容错。命中但结论不符不是未命中，它有区分力：说明被命中的那条 case 内容或判别力有问题，是复审的合法证据。
+issue 回放未命中有三种解释：路由错、缺 case、内容错。它只看到没命中，区分不了三者，因此只能产出检索层候选（查路由、查覆盖缺口），不能据此判定 case 内容错。命中但结论不符不是未命中，它有区分力：说明被命中的那条 case 内容或判别力有问题，是复审的合法证据。
 
 交叉验证样本是另一类：与某条 case 的来源 issue 不同、但错误签名与该 case 对得上的 issue。它只收已关闭且有维护者结论的条目；结算前先查该 case 正文有没有引用这个 issue 号，引用了就记 `self_consistent`，不计为外部验证。
 
@@ -333,7 +333,7 @@ python3 scripts/evolve.py tool-usage compare --baseline base.json --candidate ca
 
 | target | 改什么 | 评测面 | 端到端 evaluator | 授权 | 默认算法 |
 |---|---|---|---|---|---|
-| skill | skill 文本、步骤、流程 | arena 配对门禁（golden/S2 旁路） | 已接（`arena`） | A2 | baseline |
+| skill | skill 文本、步骤、流程 | arena 配对门禁（golden 与 issue 回放旁路） | 已接（`arena`） | A2 | baseline |
 | knowledge | case/reference 内容 | rubric + 效用审计 | 已接（`rubric` 评分） | A2 | baseline |
 | tooling | 工具路由、缓存、重试、目录数据 | replay + trace 工具使用 | 已接（`replay_trace`） | A1 | baseline |
 | harness | 调度与控制流 | 端到端回放 + 回归 | 未接（`end_to_end`） | A1 | baseline |
@@ -382,14 +382,14 @@ python3 scripts/evolve.py experiment gate --target tooling \
 - 池按吸收状态分流、吸收状态在运行期重判：`--build-pool` 与 `absorption_rev`；非诊断样本剔出命中率、结论一致率与配对。
 - 适配器层与旧脚本薄壳：`scripts/evolve/adapters/` 已落地；旧脚本仍是实现源，适配器只做包装，不复制评分与派发规则；`judge-stats` 对跨池和吸收失效有守卫。
 - 无回归范围、`ground_truth` 与重放版本写进影响记录。
-- S2 单池校准集、交叉验证样本与保留测试集：`eval/s2/`；`eval/holdout.yaml` 按内容哈希封存（`scripts/holdout.py --check`）。
+- issue 回放校准集、交叉验证样本与保留测试集：`eval/s2/`；`eval/holdout.yaml` 按内容哈希封存（`scripts/holdout.py --check`）。
 
 ### 5.2 蓝图
 
 以下是设计保留、触发条件出现才实现的部分：
 
 - 评估台的测试集分离：判定池的可评样本数达到触发线才划出终判子集（算法见 3.4）。
-- S2 单池校准集的 selection 与 test 分离：判定池中未被本系统沉淀过的样本条数够支撑判定之后再分；与上一行是两处不同的池，各自独立。
+- issue 回放校准集的 selection 与 test 分离：判定池中未被本系统沉淀过的样本条数够支撑判定之后再分；与上一行是两处不同的池，各自独立。
 - 归因层与交互层进评估台、分数进 timeline：两层各自有可用评测集后；分数在样本规模达标且带分母后。
 - 判定池扩容、知识/先验/过程三类对象的评分器：扩容继续补未吸收样本；评分器只有描述表。
 
@@ -408,7 +408,7 @@ python3 scripts/evolve.py experiment gate --target tooling \
 | 回放与对照评分 | `scripts/s2_replay.py`、`eval/s2/` |
 | 校准集生成 | `scripts/s2_calibration.py`、`NON_DIAGNOSTIC_PREFIXES` |
 | 评估台（池、出分、结论、影响记录） | `scripts/eval_arena.py`（`--build-pool` / `--pool` / `--stats` / `--gate` / `--rc-check` / `--self-test`） |
-| S2 结算进 case | `scripts/settle_s2_feedback.py` |
+| issue 回放结算进 case | `scripts/settle_s2_feedback.py` |
 | 保留测试集与 golden 全量回归 | `eval/holdout.yaml`、`scripts/holdout.py --check`；`scripts/replay_golden.py` |
 | 重放版本 | `scripts/kb_rev.py`、`replay_revs` |
 | 评估协议与策略 | `eval/policy.yaml`（唯一调参入口） |

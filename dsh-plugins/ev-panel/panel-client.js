@@ -35,7 +35,7 @@ return {
     }
     const METHOD_LABELS = {
       golden_replay: 'golden 回放', metrics_compare: '指标对照',
-      issue_replay: 'S2 issue 回放', scan_review: '扫描 + 人审',
+      issue_replay: 'issue 回放', scan_review: '扫描 + 人审',
     }
     const DEC_TYPE = {
       proposal: { label: '提案', color: 'var(--c-purple)', acc: 'var(--acc-purple)' },
@@ -853,7 +853,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       if (!hasTally && !hasS2) {
         return React.createElement(Section, { title: '流程演进信号' },
           React.createElement('div', { className: 'ev-empty' },
-            '尚无归因事件（需 S1 反馈归因或 S2 replay 路由未命中累积后产生）。'),
+            '尚无归因事件（需现场反馈归因或 issue 回放路由未命中累积后产生）。'),
         )
       }
       return React.createElement(Section, { title: '流程演进信号' },
@@ -865,7 +865,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
             React.createElement('span', { className: 'k', style: { marginLeft: 'auto' } }, (c.traces || c.source_traces || []).length + ' 来源'),
           ))) : null,
         hasS2 ? React.createElement('div', null,
-          React.createElement(SectionLabel, null, 'S2 replay 路由归因'),
+          React.createElement(SectionLabel, null, 'issue 回放路由归因'),
           s2Attrib.map((a, i) => React.createElement('div', { key: i, className: 'ev-kv', style: { padding: '3px 0' } },
             '#' + a.issue + ' → ' + a.component + '：' + (a.note || '')))) : null,
       )
