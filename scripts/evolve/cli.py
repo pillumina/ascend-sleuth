@@ -54,6 +54,7 @@ from .quality import QualityError, load_quality
 from .policy import PolicyError, load_policy, policy_hash, resolve_autonomy
 from .intake import IntakeError, completeness, extract_case, extract_trace, make_sample
 from .samples import import_pilot
+from .readback import ReadbackError, latest_conclusion, summary as readback_summary
 from .records import ConclusionStore, ExperimentStore, RecordError
 from .runner import issue_plan, render_plan
 from .scoring import RubricError, score_rubric
@@ -1060,6 +1061,28 @@ def cmd_pilot_collect(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_readback(args: argparse.Namespace) -> int:
+    try:
+        record = latest_conclusion(args.card, _evolve_base(args))
+    except ReadbackError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if record is None:
+        print(f"error: no conclusion bound to {args.card}", file=sys.stderr)
+        return 1
+    data = readback_summary(record)
+    if args.json:
+        print(json.dumps(data, ensure_ascii=False, indent=2))
+    else:
+        print(f"card: {data['card']}")
+        print(f"decision: {data['decision']}")
+        print(f"b/c/n: {data['b']}/{data['c']}/{data['n']} p={data['p_value']} alpha_eff={data['alpha_eff']}")
+        print(f"model: {data['model'] or 'unknown'}")
+        print(f"cost: {data['cost'] or 'unavailable'} paired={data['cost_paired']} missing={data['cost_missing']}")
+        print(f"at: {data['at']}")
+    return 0
+
+
 def cmd_pilot_decide(args: argparse.Namespace) -> int:
     try:
         policy = _policy_for(args)
@@ -1559,6 +1582,12 @@ def build_parser() -> argparse.ArgumentParser:
     draw.add_argument("--actor", default="maintainer")
     draw.add_argument("--reason", default="")
     draw.set_defaults(func=cmd_sample_draw_test)
+
+    readback = sub.add_parser("readback", help="按 EV 卡回读最新 Conclusion")
+    readback.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    readback.add_argument("--card", required=True)
+    readback.add_argument("--json", action="store_true")
+    readback.set_defaults(func=cmd_readback)
 
     judge = sub.add_parser("judge", help="二元配对判定（b/c/n + 可选成本）")
     judge.add_argument("--b", type=int, required=True, help="候选独家命中数")
