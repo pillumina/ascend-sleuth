@@ -18,6 +18,7 @@ from typing import Any, Dict, Optional, Sequence
 
 import yaml
 
+from .calibration import CalibrationError, calibrate
 from .candidate import CandidateError, create_workspace, diff_workspace, rollback_workspace, validate_candidate
 from .contracts import (
     OBJECT_TYPE_VALUES,
@@ -661,6 +662,24 @@ def cmd_judge(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     return _finish_judge(args, result)
+
+
+def cmd_judge_calibration(args: argparse.Namespace) -> int:
+    try:
+        result = calibrate(Path(args.a), Path(args.b),
+                           min_raw=args.min_raw, min_kappa=args.min_kappa)
+    except CalibrationError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+    else:
+        print(f"n: {result['n']}")
+        print(f"agree: {result['agree']} ({result['raw']:.4f})")
+        print(f"kappa: {result['kappa']:.4f}")
+        print(f"passed: {str(result['passed']).lower()} "
+              f"(min_raw={result['min_raw']}, min_kappa={result['min_kappa']})")
+    return 0 if result["passed"] else 1
 
 
 def cmd_judge_stats(args: argparse.Namespace) -> int:
@@ -1550,6 +1569,15 @@ def build_parser() -> argparse.ArgumentParser:
     judge_stats.add_argument("--sample", default=None, help="写进结论的样本 id")
     judge_stats.add_argument("--pool", default=None, help="写进结论的评估池名")
     judge_stats.set_defaults(func=cmd_judge_stats)
+
+    calibration = sub.add_parser(
+        "judge-calibration", help="两份 0/1 标签的一致率与 kappa 门槛")
+    calibration.add_argument("--a", required=True, help="评分员 A 的 JSON 标签")
+    calibration.add_argument("--b", required=True, help="评分员 B 的 JSON 标签")
+    calibration.add_argument("--min-raw", type=float, default=0.8)
+    calibration.add_argument("--min-kappa", type=float, default=0.6)
+    calibration.add_argument("--json", action="store_true")
+    calibration.set_defaults(func=cmd_judge_calibration)
 
     replay = sub.add_parser("replay", help="S2 replay 输入准备与评分收集")
     replay_sub = replay.add_subparsers(dest="replay_command", required=True)

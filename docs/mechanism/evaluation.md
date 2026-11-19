@@ -197,6 +197,8 @@ $$
 
 v1 已能按策略直接判一次二元配对：`python3 scripts/evolve.py judge --b <候选独家命中> --c <基线独家命中> --n <配对样本数>`，可选带成本；阈值读 `eval/policy.yaml`，加 `--record` 时结论追加进 `.s2-replay/evolve/conclusions.jsonl`。
 
+judge 本身也要校准：同一批样本让两个独立评分员各打 0/1，跑 `python3 scripts/evolve.py judge-calibration --a A.json --b B.json`。默认门槛 raw ≥ 0.8、Cohen's κ ≥ 0.6；不过门槛的 judge 只能提名，不能单独支撑 accept。
+
 ### 3.6 成本与版本
 
 成本是次要指标，参与预算与只看成本的接受，不单独决定主指标的胜负。成本是向量，至少记 tokens、工具调用（知识、源码、网页、命令分开）、工具耗时、交互轮次、纠偏次数、墙钟与人工时间；按常规、复杂与大日志、跨机场景切片，复杂场景单独定预算。
