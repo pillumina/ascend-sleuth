@@ -72,7 +72,7 @@
 | 模型与 token 采集：trace header + DSH 会话记录 | [records.md](records.md) 3.2 | 已落地 | `python3 scripts/trace_begin.py --print-only`；`grep -n "read_session" scripts/evolve/pilot.py` |
 | pilot 样本注册进本地队列 | [evaluation.md](evaluation.md) 3.9 | 已落地 | `python3 scripts/evolve.py sample import-pilot --help` |
 | 已闭环 case 回流样本（trace / postmortem，完整性与跨集查重） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/evolve.py sample new --from trace --help`；`python3 scripts/evolve.py sample status --help` |
-| 样本队列复核动作（通过 / 退回 / 升 core） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `grep -n "ev-sample-action" dsh-plugins/ev-panel/panel-host.js` |
+| 样本队列复核动作（通过 / 退回 / 升 core，失败在队列内显示） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `grep -n "ev-sample-action" dsh-plugins/ev-panel/panel-host.js` |
 | 记录端口层 | [records.md](records.md) 3.6 | 已落地 | `grep -n "class .*Protocol" scripts/evolve/ports.py` |
 | 适配器层与旧脚本薄壳 | [records.md](records.md) 3.6 | 已落地 | `ls scripts/evolve/adapters`；`python3 scripts/evolve.py replay --help`；`python3 scripts/evolve.py sample import-s2 --help` |
 | core 样本与 `eval/core/samples/`（test + regression） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `ls eval/core/samples`；`python3 scripts/evolve.py sample export-core --help` |
