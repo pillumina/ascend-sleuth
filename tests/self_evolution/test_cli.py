@@ -1171,3 +1171,20 @@ class SampleIntakeCliTest(unittest.TestCase):
             status = run_cli("sample", "status", "--id", sample_id, "--root", td, "--json")
             self.assertEqual(status.returncode, 0, status.stderr)
             self.assertEqual(json.loads(status.stdout)["state"], "ready")
+
+
+class JudgeCalibrationCliTest(unittest.TestCase):
+    def test_agreement_and_gate(self):
+        with tempfile.TemporaryDirectory() as td:
+            a = Path(td) / "a.json"
+            b = Path(td) / "b.json"
+            a.write_text(json.dumps({"scores": [
+                {"id": "x", "score": 1}, {"id": "y", "score": 0}]}), encoding="utf-8")
+            b.write_text(json.dumps({"x": 1, "y": 0}), encoding="utf-8")
+            ok = run_cli("judge-calibration", "--a", str(a), "--b", str(b), "--json")
+            self.assertEqual(ok.returncode, 0, ok.stderr)
+            self.assertTrue(json.loads(ok.stdout)["passed"])
+            b.write_text(json.dumps({"x": 0, "y": 0}), encoding="utf-8")
+            bad = run_cli("judge-calibration", "--a", str(a), "--b", str(b))
+            self.assertEqual(bad.returncode, 1)
+            self.assertIn("passed: false", bad.stdout)
