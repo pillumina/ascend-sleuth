@@ -12,7 +12,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from evolve.pilot import PilotError, _read_samples, _short_id, collect, record_runs, version_for  # noqa: E402
+from evolve.pilot import (PilotError, _read_samples, _short_id, collect,  # noqa: E402
+                          models_from_collect, record_runs, version_for)
 
 
 class PilotIdTest(unittest.TestCase):
@@ -69,6 +70,14 @@ class PilotCollectTest(unittest.TestCase):
                 }), encoding="utf-8")
                 with self.assertRaises(PilotError):
                     _read_samples([str(path)])
+
+    def test_models_from_collect_joins_arms(self):
+        collect = {"arms": {
+            "baseline": [{"model": "deepseek-flash"}],
+            "candidate": [{"model": "deepseek-flash"}],
+        }}
+        self.assertEqual(models_from_collect(collect), "deepseek-flash")
+        self.assertIsNone(models_from_collect({"arms": {"baseline": [{}]}}))
 
     def test_version_model_prefers_explicit_value(self):
         version = version_for({"candidate_id": "C"}, {}, model="deepseek-flash")

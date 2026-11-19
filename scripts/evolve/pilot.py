@@ -179,6 +179,13 @@ def _worktree_patch(root: Path) -> str:
     return hashlib.sha256(proc.stdout.encode("utf-8")).hexdigest()[:12]
 
 
+def models_from_collect(collect: Dict[str, Any]) -> Optional[str]:
+    models = sorted({row.get("model") for rows in (collect.get("arms") or {}).values()
+                     for row in rows
+                     if isinstance(row.get("model"), str) and row["model"]})
+    return ",".join(models) or None
+
+
 def version_for(tasks: Dict[str, Any], policy: Dict[str, Any],
                 model: Optional[str] = None) -> Dict[str, Any]:
     """一次 pilot 的版本坐标：协议、策略、两侧知识库、候选、模型。"""
@@ -211,10 +218,7 @@ def record_runs(output: Path, policy: Dict[str, Any], base: Optional[Path] = Non
     output = Path(output)
     tasks = json.loads((output / "tasks.json").read_text(encoding="utf-8"))
     collect = json.loads((output / "collect.json").read_text(encoding="utf-8"))
-    models = sorted({row.get("model") for rows in (collect.get("arms") or {}).values()
-                     for row in rows
-                     if isinstance(row.get("model"), str) and row["model"]})
-    version = version_for(tasks, policy, model=",".join(models) or None)
+    version = version_for(tasks, policy, model=models_from_collect(collect))
     store = RunStore.for_base(Path(base) if base else output.parent)
     existing = {
         (record.get("sample"), (record.get("versions") or {}).get("candidate"),
@@ -303,13 +307,20 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
     cost_cfg = policy.get("cost") or {}
     dimension = cost_cfg.get("primary_dimension", "tokens")
     cost_b = cost_c = None
+    cost_paired = 0
     if dimension == "tokens":
-        tokens_b = [(row.get("knowledge_usage") or {}).get("tokens")
-                    for row in collect["arms"]["baseline"]]
-        tokens_c = [(row.get("knowledge_usage") or {}).get("tokens")
-                    for row in collect["arms"]["candidate"]]
-        if tokens_b and tokens_c and all(v is not None for v in tokens_b + tokens_c):
-            cost_b, cost_c = sum(tokens_b), sum(tokens_c)
+        base_rows = {row["sample_id"]: row for row in collect["arms"]["baseline"]}
+        cand_rows = {row["sample_id"]: row for row in collect["arms"]["candidate"]}
+        pairs = []
+        for sample_id in sorted(set(base_rows) & set(cand_rows)):
+            tb = (base_rows[sample_id].get("knowledge_usage") or {}).get("tokens")
+            tc = (cand_rows[sample_id].get("knowledge_usage") or {}).get("tokens")
+            if tb is not None and tc is not None:
+                pairs.append((tb, tc))
+        if pairs:
+            cost_b = sum(pair[0] for pair in pairs)
+            cost_c = sum(pair[1] for pair in pairs)
+            cost_paired = len(pairs)
 
     decision = decide_binary(
         counts["b"], counts["c"], counts["n"], alpha=alpha, k=reuse_index,
@@ -330,7 +341,7 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
             digest = "unknown"
         pool_rows.append(f"{sid}:{digest}")
     pool_hash = hashlib.sha256("\n".join(sorted(pool_rows)).encode("utf-8")).hexdigest()[:12]
-    version = version_for(tasks, policy)
+    version = version_for(tasks, policy, model=models_from_collect(collect))
     store = ConclusionStore.for_base(Path(base) if base else output.parent)
     for record in store.read():
         if (
@@ -355,7 +366,9 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
             "constraints": constraints,
             "main_metric": "resolution",
         },
-        cost={"tokens": {"baseline": cost_b, "candidate": cost_c}} if cost_b is not None else None,
+        cost=({"tokens": {"baseline": cost_b, "candidate": cost_c},
+               "paired": cost_paired, "missing": len(all_ids) - cost_paired}
+              if cost_b is not None else None),
         versions=Version.from_dict(version),
         pool_hash=pool_hash,
         reuse_index=reuse_index, alpha_eff=alpha_eff,
