@@ -18,6 +18,7 @@ import yaml
 
 from .contracts import (
     ORIGINS,
+    source_needs_provenance,
     PURPOSES,
     STATUSES,
     Sample,
@@ -205,6 +206,8 @@ class SampleStore:
         input: Optional[Dict[str, Any]] = None,
         expected_kind: Optional[str] = None,
         proposed: Optional[Dict[str, Any]] = None,
+        provenance: Optional[Dict[str, Any]] = None,
+        non_diagnostic: bool = False,
         notes: Optional[str] = None,
     ) -> Sample:
         """创建候选样本。候选可以先缺答案，但 ``sample check`` 会拦下。"""
@@ -243,6 +246,8 @@ class SampleStore:
             expected_kind=expected_kind,
             rubric=rubric,
             proposed=proposed,
+            provenance=dict(provenance) if provenance is not None else None,
+            non_diagnostic=non_diagnostic,
             created_at=stamp,
             updated_at=stamp,
             notes=notes,
@@ -261,6 +266,15 @@ class SampleStore:
             errors.append("purpose=test only from active/core-evaluation")
         if sample.purpose == "feedback" and sample.origin == "core":
             errors.append("purpose=feedback must stay in origin=field")
+        if (sample.object_type == "diagnosis"
+                and sample.purpose in ("evaluation", "test")):
+            provenance = sample.provenance or {}
+            if provenance.get("sanitized") is False or (
+                    provenance.get("sanitized") is None
+                    and source_needs_provenance(sample.source)):
+                errors.append("purpose=evaluation/test requires sanitized provenance")
+        if sample.non_diagnostic and sample.purpose in ("evaluation", "test"):
+            errors.append("non_diagnostic sample cannot enter evaluation/test")
         if sample.object_type in OBJECT_TYPES:
             spec = OBJECT_TYPES[sample.object_type]
             if sample.purpose not in spec.allowed_purposes:
@@ -334,6 +348,10 @@ class SampleStore:
                 "promote rejected: purpose=test is derived from active/core evaluation, "
                 "not promoted from a candidate"
             )
+        if (sample.provenance or {}).get("sanitized") is False:
+            raise StoreError(
+                "promote rejected: provenance.sanitized is false; redact before core"
+            )
         prospective = replace(sample, origin="core")
         errors = self._admission_errors(prospective)
         if errors:
@@ -353,10 +371,11 @@ class SampleStore:
         expected: Optional[Dict[str, Any]] = None,
         rubric: Optional[Dict[str, Any]] = None,
         expected_kind: Optional[str] = None,
+        provenance: Optional[Dict[str, Any]] = None,
         actor: str = "maintainer",
         reason: str = "",
     ) -> Sample:
-        """给 candidate/active 补答案；写前走准入校验，失败不落盘。"""
+        """给 candidate/active 补答案；``provenance`` 只做局部合并。"""
         sample = self.require(id)
         if sample.status not in ("candidate", "active"):
             raise StoreError(
@@ -371,11 +390,21 @@ class SampleStore:
                 expected_kind = "resolution"
             else:
                 expected_kind = sample.expected_kind
+        merged_provenance = dict(sample.provenance or {})
+        if provenance:
+            merged_provenance.update(provenance)
+        if merged_provenance:
+            merged_provenance.setdefault("trigger", "manual_case")
+            merged_provenance.setdefault("sanitized", False)
+            merged_provenance.setdefault("redactions", [])
+            merged_provenance.setdefault("confidence", "agent-reviewed")
+            merged_provenance.setdefault("extraction", "manual")
         prospective = replace(
             sample,
             expected=dict(expected) if expected is not None else None,
             rubric=dict(rubric) if rubric is not None else None,
             expected_kind=expected_kind,
+            provenance=merged_provenance or None,
         )
         errors = self._admission_errors(prospective)
         if errors:
@@ -383,6 +412,7 @@ class SampleStore:
         sample.expected = prospective.expected
         sample.rubric = prospective.rubric
         sample.expected_kind = prospective.expected_kind
+        sample.provenance = prospective.provenance
         self._record_change(
             sample, sample.status, sample.status,
             reason or "answer set by maintainer", actor,
@@ -574,6 +604,9 @@ def import_pilot(store: "SampleStore", tasks_path: Path) -> Dict[str, List[str]]
             input=data.get("input") or {},
             expected=data.get("expected"),
             expected_kind=data.get("expected_kind") or "resolution",
+            provenance={"trigger": "issue_import", "sanitized": True,
+                        "redactions": [], "confidence": "issue-verified",
+                        "extraction": "auto"},
             notes=f"imported from pilot {tasks.get('candidate_id', '')}".strip(),
         )
         created.append(sid)

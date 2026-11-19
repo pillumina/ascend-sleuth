@@ -23,6 +23,13 @@ ORIGINS = ("core", "field")
 PURPOSES = ("evaluation", "feedback", "test", "regression", "cross", "scale")
 OBJECT_TYPE_VALUES = ("diagnosis", "case", "reference", "trace")
 EXPECTED_KINDS = ("resolution", "assertion", "rubric")
+PROVENANCE_TRIGGERS = ("diagnosis_end", "postmortem", "groom", "manual_case",
+                       "issue_import")
+PROVENANCE_CONFIDENCE = ("issue-verified", "maintainer-reviewed", "agent-reviewed")
+PROVENANCE_EXTRACTIONS = ("auto", "manual")
+_PROVENANCE_KEYS = {"trigger", "trace_ref", "report_ref", "captured_at",
+                    "kb_rev", "sanitized", "redactions", "confidence",
+                    "extraction"}
 DECISIONS = ("accept", "insufficient", "reject", "unknown")
 PROTOCOL_VERSION = "evolve-v1"
 
@@ -92,6 +99,7 @@ class Sample:
     non_diagnostic: bool = False
     limits: Optional[Dict[str, Any]] = None
     proposed: Optional[Dict[str, Any]] = None
+    provenance: Optional[Dict[str, Any]] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     history: List[Dict[str, Any]] = field(default_factory=list)
@@ -136,7 +144,7 @@ class Sample:
             errs.append("non_diagnostic must be a boolean")
         if not isinstance(self.history, list):
             errs.append("history must be a list")
-        has_answer = bool(self.expected) or bool(self.rubric)
+        has_answer = bool(self.rubric) or _expected_has_answer(self.expected)
         if self.expected and not self.rubric:
             for key in ("resolution", "fix", "fix_commit"):
                 value = self.expected.get(key)
@@ -155,6 +163,7 @@ class Sample:
             errs.append("expected_kind=rubric requires rubric")
         if self.limits is not None and self.purpose != "scale":
             errs.append("limits is only valid for purpose=scale")
+        errs.extend(_provenance_errors(self.provenance))
         return errs
 
     def validate(self, require_answer: bool = False) -> "Sample":
@@ -178,6 +187,7 @@ class Sample:
             "non_diagnostic": self.non_diagnostic,
             "limits": self.limits,
             "proposed": self.proposed,
+            "provenance": self.provenance,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "history": list(self.history or []),
@@ -207,6 +217,7 @@ class Sample:
                 non_diagnostic=data.get("non_diagnostic", False),
                 limits=data.get("limits"),
                 proposed=data.get("proposed"),
+                provenance=data.get("provenance"),
                 created_at=data.get("created_at"),
                 updated_at=data.get("updated_at"),
                 history=list(data.get("history") or []),
@@ -217,10 +228,60 @@ class Sample:
         return sample
 
 
+def _expected_has_answer(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return bool(value)
+    if "resolution" in value or "fix" in value:
+        return any(str(value.get(key) or "").strip()
+                   for key in ("resolution", "fix", "fix_commit"))
+    for item in value.values():
+        if isinstance(item, str):
+            if item.strip():
+                return True
+        elif item not in (None, [], {}):
+            return True
+    return False
+
+
+def source_needs_provenance(source: str) -> bool:
+    """非 URL 来源按本地材料处理，必须带来源信息与脱敏结论。"""
+    return "://" not in str(source or "").strip()
+
+
+def _provenance_errors(value: Any) -> List[str]:
+    """来源信息：可选对象；未知键与非法取值直接报错，不静默忽略。"""
+    if value is None:
+        return []
+    if not isinstance(value, dict):
+        return ["provenance must be an object or null"]
+    unknown = [key for key in value if key not in _PROVENANCE_KEYS]
+    errs = [f"unknown provenance field(s): {', '.join(sorted(unknown))}"] if unknown else []
+    trigger = value.get("trigger")
+    if trigger not in PROVENANCE_TRIGGERS:
+        errs.append(f"provenance.trigger must be one of {list(PROVENANCE_TRIGGERS)}")
+    for name in ("trace_ref", "report_ref", "captured_at", "kb_rev"):
+        item = value.get(name)
+        if item is not None and (not isinstance(item, str) or not item.strip()):
+            errs.append(f"provenance.{name} must be a non-empty string or null")
+    if not isinstance(value.get("sanitized"), bool):
+        errs.append("provenance.sanitized must be boolean")
+    redactions = value.get("redactions", [])
+    if not isinstance(redactions, list) or not all(
+            isinstance(item, str) and item.strip() for item in redactions):
+        errs.append("provenance.redactions must be a list of non-empty strings")
+    confidence = value.get("confidence")
+    if confidence not in PROVENANCE_CONFIDENCE:
+        errs.append(f"provenance.confidence must be one of {list(PROVENANCE_CONFIDENCE)}")
+    extraction = value.get("extraction")
+    if extraction not in PROVENANCE_EXTRACTIONS:
+        errs.append(f"provenance.extraction must be one of {list(PROVENANCE_EXTRACTIONS)}")
+    return errs
+
+
 _SAMPLE_KEYS = {
     "id", "status", "object_type", "origin", "purpose", "source", "input",
     "expected", "expected_kind", "rubric", "non_diagnostic", "limits",
-    "proposed", "created_at", "updated_at", "history", "notes",
+    "proposed", "provenance", "created_at", "updated_at", "history", "notes",
 }
 
 

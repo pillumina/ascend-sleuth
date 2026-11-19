@@ -2065,6 +2065,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(findButton(await t.settle(), '更多操作'))
   const view = await t.settle()
   expect('更多操作：复制续接与固定仍在菜单里', view.text.includes('复制续接指令') && view.text.includes('固定到状态条'))
+  expect('更多操作：未收尾单不出现复制候选样本指令', !view.text.includes('复制候选样本指令'))
   click(findButton(view, '固定到状态条'))
   const pinnedView = await t.settle()
   const prefs = JSON.parse(storage.get(PREFS_KEY))
@@ -4669,6 +4670,15 @@ function clickWith(node, extra) {
   view = await t.settle()
   expect('弹层：⌘⇧K 不打开命令面板', byClass(view, 'scp-cmd').length === 0 && byClass(view, 'scp-modal').length === 1,
     String(byClass(view, 'scp-cmd').length))
+}
+
+{
+  const t = await mount('closed')
+  click(findToolbar(t.view()))
+  await t.settle()
+  click(findButton(await t.settle(), '更多操作'))
+  const view = await t.settle()
+  expect('更多操作：已闭环单有复制候选样本指令', view.text.includes('复制候选样本指令'))
 }
 
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')
