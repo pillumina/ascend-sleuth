@@ -291,7 +291,13 @@ python3 scripts/evolve.py knowledge-usage compare --baseline base.json --candida
 
 成本控制：`eval/policy.yaml` 的 `cost.runs.max_pairs` / `max_tokens` / `early_stop` 写进 `tasks.json` 的 `budget` 与 `stop_rules`；每跑完一对样本跑 `pilot checkpoint`，若 `b + 剩余 < required_b`（futility）或预算用完，就停，不再跑满全部样本。早停只用于停止无望的实验，不用于提前 accept。
 
-`pilot collect` 之后跑 `pilot decide`。它把每条 rollout 写成一条执行记录（`Run`，见 records.md），把一次对照写成一条结论（`Conclusion`，同篇）。`judge --record` 与 `pilot decide` 都收 `--card EV-YYYY-NNN`，把结论绑到对应卡；合入后跑 `python3 scripts/evolve.py readback --card EV-YYYY-NNN` 读回最近一条结论（decision/b/c/n/model/cost）；自演进页的卡详情也会显示「结论回读」一节。模型的来源是 `collect` 里每条 rollout 的 `model`（多个不同值用逗号连接）；成本只累加**两臂都有 token** 的配对样本，缺失数写进 `cost.missing`，不补 0。
+baseline 复用：`pilot prepare --baseline-traces <dir>` 会把已有的 `traces/` 与 `out/` 复制进 pilot 的 baseline 目录，只让外部 runner 跑 candidate；缺任一条会整体拒绝，`tasks.budget.baseline_reused` 与 `baseline_source` 记录来源。复用要求模型、知识库和输入没变，不能拿旧版本冒充当前 baseline。
+
+确定性 benchmark：工具或检索类改动如果有一条可重复的命令，用 `python3 scripts/evolve.py benchmark --baseline-root <a> --candidate-root <b> --argv '["python3","-m","pytest",...]'`，重复 `cost.runs.benchmark_runs` 次比中位耗时与退出码，不跑完整诊断。它只证明这一步的差异，不替代行为类候选的 pilot。
+
+regression 预算：`cost.runs.regression_pairs` 默认 6，`regression_full_pairs` 默认 30；常规候选先跑受影响子集，高风险或发版前才跑满。当前仓内只有样本池和配置，regression 执行器尚未接。
+
+`pilot collect` 之后跑 `pilot decide`。它把每条 rollout 写成一条执行记录（`Run`，见 records.md），把一次对照写成一条结论（`Conclusion`，同篇）。`judge --record` 与 `pilot decide` 都收 `--card EV-YYYY-NNN`，把结论绑到对应卡；合入后跑 `python3 scripts/evolve.py readback --card EV-YYYY-NNN` 读回最近一条结论（decision/b/c/n/model/cost）；自演进页的卡详情也会显示「结论回读」一节。模型的来源是 `collect` 里每条 rollout 的 `model`（多个不同值用逗号连接）；成本只累加 **baseline 与 candidate 都有 token** 的配对样本，缺失数写进 `cost.missing`，不补 0。
 
 记录写在 pilot 输出目录的父目录（常规位置是 `.s2-replay/evolve/`）：`runs.jsonl` 与 `conclusions.jsonl`。重复执行不会重复记 `Run`；同候选、同池、同参数、同约束的结论只写一次。
 

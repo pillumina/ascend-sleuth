@@ -19,6 +19,7 @@ from typing import Any, Dict, Optional, Sequence
 import yaml
 
 from .calibration import CalibrationError, calibrate
+from .benchmark import BenchmarkError, compare as benchmark_compare, load_argv
 from .candidate import CandidateError, create_workspace, diff_workspace, rollback_workspace, validate_candidate
 from .contracts import (
     OBJECT_TYPE_VALUES,
@@ -1042,10 +1043,34 @@ def cmd_knowledge_usage_evaluate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_benchmark(args: argparse.Namespace) -> int:
+    try:
+        policy = _policy_for(args)
+        runs = args.runs
+        if runs is None:
+            runs = int((((policy.get("cost") or {}).get("runs") or {}).get("benchmark_runs") or 3))
+        result = benchmark_compare(
+            Path(args.baseline_root), Path(args.candidate_root),
+            load_argv(args.argv), runs=runs, timeout=args.timeout,
+        )
+    except (BenchmarkError, OSError, ValueError, PolicyError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(f"baseline: {result['baseline']['median_ms']} ms ok={result['baseline']['ok']}")
+        print(f"candidate: {result['candidate']['median_ms']} ms ok={result['candidate']['ok']}")
+        print(f"delta: {result['delta_ms']} ms ratio={result['ratio']}")
+    return 0 if result["baseline"]["ok"] and result["candidate"]["ok"] else 1
+
+
 def cmd_pilot_prepare(args: argparse.Namespace) -> int:
     try:
         result = pilot_prepare(Path(args.root), Path(args.candidate), args.samples,
-                               Path(args.output), policy=_policy_for(args))
+                               Path(args.output), policy=_policy_for(args),
+                               baseline_traces=(Path(args.baseline_traces)
+                                                if args.baseline_traces else None))
     except (OSError, ValueError, PilotError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -1408,6 +1433,9 @@ def cmd_brief(args: argparse.Namespace) -> int:
     print(f"candidate: {plan_counts['candidate']}")
     print(f"field: {plan_counts['field']}")
     print(f"test: {plan_counts['test']}")
+    cost_plan = plan.get("cost_plan") or {}
+    if cost_plan:
+        print("cost_plan: " + ", ".join(f"{key}={value}" for key, value in cost_plan.items()))
     print(f"conclusions: {len(conclusions)}")
     capacity = plan.get("judgment_capacity") or {}
     print(f"judgment_capacity: pool_samples={capacity.get('potential', 0)} "
@@ -1597,6 +1625,16 @@ def build_parser() -> argparse.ArgumentParser:
     draw.add_argument("--reason", default="")
     draw.set_defaults(func=cmd_sample_draw_test)
 
+    benchmark = sub.add_parser("benchmark", help="确定性 benchmark；工具/检索类改动不走诊断")
+    benchmark.add_argument("--baseline-root", required=True)
+    benchmark.add_argument("--candidate-root", required=True)
+    benchmark.add_argument("--argv", required=True, help='JSON 列表，如 ["python3","-c","print(1)"]')
+    benchmark.add_argument("--runs", type=int, default=None)
+    benchmark.add_argument("--timeout", type=float, default=120.0)
+    benchmark.add_argument("--policy", default=None)
+    benchmark.add_argument("--json", action="store_true")
+    benchmark.set_defaults(func=cmd_benchmark)
+
     readback = sub.add_parser("readback", help="按 EV 卡回读最新 Conclusion")
     readback.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
     readback.add_argument("--card", required=True)
@@ -1732,6 +1770,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_prepare.add_argument("--candidate", required=True)
     p_prepare.add_argument("--samples", nargs="+", required=True)
     p_prepare.add_argument("--output", required=True)
+    p_prepare.add_argument("--baseline-traces", default=None,
+                           help="复用已有 baseline traces/out 的目录；只跑 candidate")
     p_prepare.set_defaults(func=cmd_pilot_prepare)
     p_collect = pilot_sub.add_parser("collect")
     p_collect.add_argument("--output", required=True)

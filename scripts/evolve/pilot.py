@@ -7,6 +7,7 @@ candidate 的样本、目录、trace 隔离，避免手工拼命令时写错路�
 import hashlib
 import json
 import re
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -68,7 +69,8 @@ def _read_samples(paths: List[str], root: Optional[Path] = None) -> List[Dict[st
 
 
 def prepare(root: Path, candidate_path: Path, samples: List[str],
-            output: Path, policy: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+            output: Path, policy: Optional[Dict[str, Any]] = None,
+            baseline_traces: Optional[Path] = None) -> Dict[str, Any]:
     root, output = Path(root), Path(output)
     candidate = validate_candidate(json.loads(Path(candidate_path).read_text(encoding="utf-8")))
     if output.exists():
@@ -84,6 +86,25 @@ def prepare(root: Path, candidate_path: Path, samples: List[str],
     max_pairs = min(int(max_pairs), len(sample_rows))
     alpha = float(((policy or {}).get("decision") or {}).get("alpha", 0.10))
     required = required_exclusive_wins(alpha)
+    baseline_source = None
+    if baseline_traces is not None:
+        if not runs.get("baseline_reuse", True):
+            raise PilotError("baseline reuse is disabled by cost.runs.baseline_reuse")
+        source = Path(baseline_traces)
+        if (source / "traces").is_dir():
+            trace_dir, out_dir = source / "traces", source / "out"
+        elif (source / "baseline" / "traces").is_dir():
+            trace_dir, out_dir = source / "baseline" / "traces", source / "baseline" / "out"
+        else:
+            raise PilotError("baseline traces dir must contain traces/ and out/")
+        missing = []
+        for row in sample_rows:
+            sid = row["short_id"]
+            if not (trace_dir / f"{sid}.yaml").is_file() or not (out_dir / f"{sid}.out.md").is_file():
+                missing.append(sid)
+        if missing:
+            raise PilotError("baseline traces incomplete: " + ", ".join(missing))
+        baseline_source = str(source)
     tasks = {"candidate_id": candidate["candidate_id"], "candidate": candidate,
              "workspace": str(workspace), "apply": info,
              "samples": sample_rows,
@@ -93,6 +114,8 @@ def prepare(root: Path, candidate_path: Path, samples: List[str],
                  "early_stop": bool(runs.get("early_stop", True)),
                  "alpha": alpha,
                  "required_b": required,
+                 "baseline_reused": baseline_source is not None,
+                 "baseline_source": baseline_source,
              },
              "stop_rules": {
                  "futility": "b + remaining < required_b",
@@ -101,7 +124,8 @@ def prepare(root: Path, candidate_path: Path, samples: List[str],
              },
              "arms": {
                  "baseline": {"root": str(root), "trace_dir": str(output / "baseline" / "traces"),
-                              "out_dir": str(output / "baseline" / "out")},
+                              "out_dir": str(output / "baseline" / "out"),
+                              "reused": baseline_source is not None},
                  "candidate": {"root": str(workspace), "trace_dir": str(output / "candidate" / "traces"),
                                "out_dir": str(output / "candidate" / "out")},
              }}
@@ -110,6 +134,11 @@ def prepare(root: Path, candidate_path: Path, samples: List[str],
     for arm in ("baseline", "candidate"):
         (output / arm / "traces").mkdir(parents=True)
         (output / arm / "out").mkdir(parents=True)
+    if baseline_source is not None:
+        for row in sample_rows:
+            sid = row["short_id"]
+            shutil.copyfile(trace_dir / f"{sid}.yaml", output / "baseline" / "traces" / f"{sid}.yaml")
+            shutil.copyfile(out_dir / f"{sid}.out.md", output / "baseline" / "out" / f"{sid}.out.md")
     return tasks
 
 
@@ -155,7 +184,7 @@ def collect(output: Path, judge: Optional[Path] = None) -> Dict[str, Any]:
                         row["usage_error"] = str(exc)
                     else:
                         # usage 的 sample_id 取 pilot 样本 id，不取 trace 里的 session_id：
-                        # 两臂的 trace 往往由不同会话写出，session_id 不保证同名。
+                        # baseline 与 candidate 的 trace 往往由不同会话写出，session_id 不保证同名。
                         knowledge["sample_id"] = sid
                         row["knowledge_usage"] = knowledge
                         row["harness_session"] = doc.get("harness_session")
@@ -355,6 +384,7 @@ def checkpoint(output: Path, judge_path: Path, policy: Dict[str, Any], *,
         "tokens": tokens,
         "max_tokens": max_tokens,
         "early_stop": early_stop,
+        "baseline_reused": bool(budget.get("baseline_reused", False)),
         "would_stop": futility or budget_stop or token_stop,
     }
 
@@ -458,6 +488,7 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
                 "used_pairs": counts["n"],
                 "tokens": _tokens_used(collect),
                 "early_stop": bool((tasks.get("budget") or {}).get("early_stop", True)),
+                "baseline_reused": bool((tasks.get("budget") or {}).get("baseline_reused", False)),
             },
         },
         cost=({"tokens": {"baseline": cost_b, "candidate": cost_c},

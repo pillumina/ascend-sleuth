@@ -61,6 +61,10 @@ DEFAULTS: Dict[str, Any] = {
             "max_pairs": 9,
             "max_tokens": None,
             "early_stop": True,
+            "baseline_reuse": True,
+            "regression_pairs": 6,
+            "regression_full_pairs": 30,
+            "benchmark_runs": 3,
         },
     },
     "rubrics": {
@@ -235,6 +239,14 @@ def validate_policy(policy: Dict[str, Any]) -> None:
                     errors.append("cost.runs.max_tokens must be a non-negative integer or null")
                 if not isinstance(runs.get("early_stop", True), bool):
                     errors.append("cost.runs.early_stop must be boolean")
+                if not isinstance(runs.get("baseline_reuse", True), bool):
+                    errors.append("cost.runs.baseline_reuse must be boolean")
+                for key in ("regression_pairs", "regression_full_pairs", "benchmark_runs"):
+                    value = runs.get(key)
+                    if value is not None and (
+                            not isinstance(value, int) or isinstance(value, bool)
+                            or value < 0):
+                        errors.append(f"cost.runs.{key} must be a non-negative integer or null")
         if cost.get("primary_dimension") not in COST_DIMENSIONS:
             errors.append(
                 f"cost.primary_dimension must be one of {list(COST_DIMENSIONS)}, "

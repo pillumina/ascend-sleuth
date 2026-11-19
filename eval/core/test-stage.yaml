@@ -3,5 +3,5 @@ pool: ["19562", "19498", "13478", "19298", "21558", "22015"]
 selected: ["19562", "19498", "13478", "19298"]
 planned: 4
 required: ["baseline_trace", "candidate_trace"]
-reason: "先按 4 条跑终判，另 2 条留作扩展；pilot 只消费外部 trace，6 条 test 都还没有两臂诊断输出。"
+reason: "先按 4 条跑终判，另 2 条留作扩展；pilot 只消费外部 trace，6 条 test 都还没有 baseline/candidate 诊断输出。"
 at: "2026-11-20"
