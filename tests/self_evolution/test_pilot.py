@@ -12,7 +12,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from evolve.pilot import PilotError, _short_id, collect, record_runs, version_for  # noqa: E402
+from evolve.pilot import PilotError, _read_samples, _short_id, collect, record_runs, version_for  # noqa: E402
 
 
 class PilotIdTest(unittest.TestCase):
@@ -58,6 +58,17 @@ class PilotCollectTest(unittest.TestCase):
                    return_value={"model": "deepseek-flash", "tokens": 10}):
             row = self._collect(yaml.safe_dump(trace))
         self.assertEqual(row["model"], "deepseek-flash")
+
+    def test_sealed_samples_are_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            for purpose in ("test", "regression"):
+                path = Path(td) / f"{purpose}.yaml"
+                path.write_text(yaml.safe_dump({
+                    "id": f"S-{purpose}", "purpose": purpose,
+                    "expected": {"resolution": "r"},
+                }), encoding="utf-8")
+                with self.assertRaises(PilotError):
+                    _read_samples([str(path)])
 
     def test_version_model_prefers_explicit_value(self):
         version = version_for({"candidate_id": "C"}, {}, model="deepseek-flash")
