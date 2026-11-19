@@ -34,6 +34,20 @@ class SampleQueueTest(unittest.TestCase):
             self.assertEqual(result["items"][0]["id"], "S-1")
             self.assertEqual(result["items"][0]["state"], "ready")
 
+    def test_card_conclusions_are_read(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = root / ".s2-replay" / "evolve"
+            base.mkdir(parents=True)
+            (base / "conclusions.jsonl").write_text(
+                '{"card":"EV-2026-001","decision":"accept","b":4,"c":0,"n":9,'
+                '"versions":{"model":"m"},"cost":{"tokens":{"baseline":1,"candidate":2},"paired":1,"missing":0}}\n',
+                encoding="utf-8")
+            rows = ev_board_data.card_conclusions(root, "EV-2026-001")
+            self.assertEqual(rows[0]["decision"], "accept")
+            self.assertEqual(rows[0]["model"], "m")
+            self.assertEqual(ev_board_data.card_conclusions(root, "EV-2026-999"), [])
+
     def test_missing_store_is_reported(self):
         with tempfile.TemporaryDirectory() as td:
             result = ev_board_data.collect_samples(Path(td))
