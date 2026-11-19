@@ -373,8 +373,13 @@ async function main() {
     surfaces.every(s => ev.text.includes(s)), surfaces.join('、'))
   expect('② 触及面：说明本表表示层次、不表示改善幅度',
     /表示改动落在哪一层，不表示改善幅度/.test(ev.text))
-  // 诚实退化：能力轴不可解读时必须明说，不得画趋势线称"稳定"
-  expect('② 触及面：能力轴标注不可解读（不是"稳定"）', /不可解读/.test(ev.text) && !/能力轴[^。]{0,20}稳定/.test(ev.text))
+  // 诚实退化：能力轴不可解读时必须明说；可读时不能反过来说"不可解读"。
+  const capability = (health.readability || {}).capability_readout || {}
+  if (capability.readable === false) {
+    expect('② 触及面：能力轴标注不可解读（不是"稳定"）', /不可解读/.test(ev.text) && !/能力轴[^。]{0,20}稳定/.test(ev.text))
+  } else {
+    expect('② 触及面：能力轴可读时不标不可解读', !/能力轴[^。]{0,20}不可解读/.test(ev.text))
+  }
   expect('② 触及面：标注归类依据字段（并说明依据较弱时的局限）',
     /归类依据/.test(ev.text) && /可能不是实际改动位置/.test(ev.text))
   // 两条**已在本仓库另一面板踩过**的文案缺陷，这里一并钉住（同类缺陷复发 ≥2 次才进 CI 的口径）：
@@ -1605,7 +1610,7 @@ print(json.dumps(n))
     expect('误诊率在本期指标里出现且带标记',
       new RegExp('误诊率[\\s\\S]{0,120}?不可解读').test(vt) || new RegExp('不可解读[\\s\\S]{0,120}?误诊率').test(vt))
   } else {
-    expect('无可解读性违规时不渲染「不可解读」标记', !vt.includes('不可解读'))
+    expect('无可解读性违规时不渲染「读数不可解读」标记', !vt.includes('读数不可解读'))
   }
   expect('反馈捕获为 0 时点明「不可解读」（不是 0）', !unreadMetrics.length || /不是 0/.test(vt))
   // drift：两个方向都测，不依赖"本机此刻索引恰好陈旧"（那是会腐烂的假设——

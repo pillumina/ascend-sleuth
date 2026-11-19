@@ -18,6 +18,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Optional
 
 import yaml
 from exec_log_path import resolve_traces
@@ -125,7 +126,7 @@ KNOWN_KB_MERGE = {"ff-only", "none"}
 from _lexical import has_lexical_signal  # noqa: E402
 
 
-def load_states(root: Path, traces_dir: Path | None = None):
+def load_states(root: Path, traces_dir: Optional[Path] = None):
     # traces/ 是诊断状态目录（gitignored，含客户信息）——活跃 + 历史都归此。
     # traces_dir 显式给了就用它（单元测试的合成 trace / 读另一份检出）；
     # 不给则沿用共享侧语义（resolve_traces 解析到主检出），既有调用面行为不变。
