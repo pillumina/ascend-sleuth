@@ -4694,6 +4694,14 @@ function clickWith(node, extra) {
     view = await t.settle()
   }
   expect('状态条：候选样本标签', view.text.includes('候选样本：可提交'), view.text.slice(-500))
+  const sampleChip = view.nodes.find((node) => typeof (node.props && node.props.className) === 'string'
+    && node.props.className.split(/\s+/).includes('scp-chip') && nodeText(node) === '候选样本：可提交')
+  expect('状态条：候选样本标签可点', !!sampleChip)
+  if (sampleChip) {
+    sampleChip.props.onClick()
+    view = await t.settle()
+    expect('状态条：候选样本浮层显示 id 与原因', view.text.includes('ID：13934') && view.text.includes('候选样本'))
+  }
 }
 
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')

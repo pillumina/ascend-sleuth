@@ -668,7 +668,15 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
           React.createElement('b', null, item.id), ' · ',
           SAMPLE_STATE_LABEL[item.state] || item.state,
           ' · ', item.status + '/' + item.purpose,
-          ' · ', String(item.source || '').slice(-48))))
+          ' · ', String(item.source || '').slice(-48),
+          item.status === 'candidate' ? React.createElement('button', {
+            type: 'button', className: 'ev-btn', style: { marginLeft: 8, padding: '1px 6px' },
+            onClick: () => copyText('python3 scripts/evolve.py sample review --id ' + item.id + ' --approve'),
+          }, '复制通过命令') : null,
+          item.status === 'active' && item.origin === 'field' ? React.createElement('button', {
+            type: 'button', className: 'ev-btn', style: { marginLeft: 8, padding: '1px 6px' },
+            onClick: () => copyText('python3 scripts/evolve.py sample promote --id ' + item.id + ' --to core'),
+          }, '复制升 core 命令') : null)))
     }
 
     // ============ ③ 自演进度量 ============

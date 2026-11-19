@@ -1,7 +1,7 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
 //   dsh-plugins/ascend-panel/panel-client.js  (sha256:ddd85e79a637)
-//   dsh-plugins/ev-panel/panel-client.js  (sha256:1645abd32864)
+//   dsh-plugins/ev-panel/panel-client.js  (sha256:899131b1cda2)
 //   dsh-plugins/sleuth-console/console-client.js  (sha256:2405b5ea8495)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -5158,7 +5158,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       id: 'ev-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ev-panel/panel-client.js (sha256:1645abd32864) 原文开始 ----
+// ---- dsh-plugins/ev-panel/panel-client.js (sha256:899131b1cda2) 原文开始 ----
 // ev-panel client —— 自演进看板（conversation.view 第三个 tab「自演进」）
 // 数据经 host.call('ev-board-load') 从 scripts/ev_board_data.py 汇总；
 // 单卡全文经 host.call('ev-idea-detail') 点开时才拉（列表页只带摘要）。
@@ -5829,7 +5829,15 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
           React.createElement('b', null, item.id), ' · ',
           SAMPLE_STATE_LABEL[item.state] || item.state,
           ' · ', item.status + '/' + item.purpose,
-          ' · ', String(item.source || '').slice(-48))))
+          ' · ', String(item.source || '').slice(-48),
+          item.status === 'candidate' ? React.createElement('button', {
+            type: 'button', className: 'ev-btn', style: { marginLeft: 8, padding: '1px 6px' },
+            onClick: () => copyText('python3 scripts/evolve.py sample review --id ' + item.id + ' --approve'),
+          }, '复制通过命令') : null,
+          item.status === 'active' && item.origin === 'field' ? React.createElement('button', {
+            type: 'button', className: 'ev-btn', style: { marginLeft: 8, padding: '1px 6px' },
+            onClick: () => copyText('python3 scripts/evolve.py sample promote --id ' + item.id + ' --to core'),
+          }, '复制升 core 命令') : null)))
     }
 
     // ============ ③ 自演进度量 ============
