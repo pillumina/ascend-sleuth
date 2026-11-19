@@ -2544,7 +2544,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       if (sample && sample.state) {
         const tone = sample.state === 'ready' ? 'brand'
           : sample.state === 'absorbed' ? 'idle' : 'warn'
-        chips.push({ key: 'sample', tone, text: tr('chip.sample.' + sample.state) })
+        chips.push({
+          key: 'sample', tone, text: tr('chip.sample.' + sample.state),
+          title: [sample.id, ...(sample.reasons || []), ...(sample.duplicates || [])].filter(Boolean).join(' · '),
+        })
       }
       if (isPending(row)) chips.push({ key: 'feedback', tone: 'warn', text: tr('chip.feedback') })
       if (derived.needSed) chips.push({ key: 'sediment', tone: 'brand', text: tr('chip.sediment') })
@@ -2570,7 +2573,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const sample = extra.sample
         const tone = sample.state === 'ready' ? 'brand'
           : sample.state === 'absorbed' ? 'idle' : 'warn'
-        chips.push({ key: 'sample', tone, text: tr('chip.sample.' + sample.state) })
+        chips.push({
+          key: 'sample', tone, text: tr('chip.sample.' + sample.state),
+          title: [sample.id, ...(sample.reasons || []), ...(sample.duplicates || [])].filter(Boolean).join(' · '),
+        })
       }
       if (derived.upstreamPending) chips.push({ key: 'upstream', tone: 'idle', text: tr('chip.upstream') })
       if (row.activeCase) chips.push({ key: 'hit', tone: 'brand', text: tr('chip.hit', { id: row.activeCase }) })
@@ -4823,6 +4829,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 : h('span', { className: 'scp-wait-tag' }, tr('label.updated') + ' ' + (formatTime(primary.updatedAt) || tr('none')))),
               chips.length ? h('span', { className: 'scp-chips' }, chips.map((chip) => h('span', {
                 key: chip.key, className: 'scp-chip', 'data-tone': chip.tone,
+                title: chip.title || undefined,
               }, chip.text))) : null),
             sedimentRow),
           hint ? h('div', { className: 'scp-hint' }, hint) : null)
@@ -6286,6 +6293,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('span', { className: 'scp-badge' }, statusMeta(data.vocab, row.status).label),
               identityChips(row).slice(0, 3).map((chip) => h('span', {
                 key: chip.key, className: 'scp-chip', 'data-tone': chip.tone,
+                title: chip.title || undefined,
               }, chip.text)),
               revisionsTotal
                 ? h('span', {
