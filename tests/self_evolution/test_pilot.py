@@ -71,6 +71,21 @@ class PilotCollectTest(unittest.TestCase):
                 with self.assertRaises(PilotError):
                     _read_samples([str(path)])
 
+    def test_holdout_samples_are_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "eval").mkdir()
+            (root / "eval" / "holdout.yaml").write_text(yaml.safe_dump({
+                "entries": [{"fixture": "VLLM-ASC-12345.fixture.yaml"}]}),
+                encoding="utf-8")
+            sample = root / "s.yaml"
+            sample.write_text(yaml.safe_dump({
+                "id": "S-1", "source": "https://github.com/x/y/issues/12345",
+                "expected": {"resolution": "r"},
+            }), encoding="utf-8")
+            with self.assertRaises(PilotError):
+                _read_samples([str(sample)], root=root)
+
     def test_models_from_collect_joins_arms(self):
         collect = {"arms": {
             "baseline": [{"model": "deepseek-flash"}],

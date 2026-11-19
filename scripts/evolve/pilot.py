@@ -35,8 +35,16 @@ def _short_id(sample_id: str) -> str:
     return matches[-1] if matches else sample_id
 
 
-def _read_samples(paths: List[str]) -> List[Dict[str, Any]]:
+def _read_samples(paths: List[str], root: Optional[Path] = None) -> List[Dict[str, Any]]:
     out = []
+    holdout = None
+    if root is not None:
+        from .holdout_guard import HOLDOUT_REL, HoldoutError, is_holdout_source, issue_numbers
+        if (Path(root) / HOLDOUT_REL).exists():
+            try:
+                holdout = issue_numbers(Path(root))
+            except HoldoutError as exc:
+                raise PilotError(str(exc)) from exc
     for path in paths:
         data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
         if not isinstance(data, dict) or not data.get("id"):
@@ -45,6 +53,11 @@ def _read_samples(paths: List[str]) -> List[Dict[str, Any]]:
         if purpose in ("test", "regression"):
             raise PilotError(
                 f"sealed sample cannot be used in pilot: {data['id']} (purpose={purpose})"
+            )
+        if holdout and is_holdout_source(str(data.get("source") or data["id"]), holdout):
+            raise PilotError(
+                f"holdout sample cannot be used in pilot: {data['id']} "
+                f"(source={data.get('source')})"
             )
         out.append({"id": str(data["id"]), "short_id": _short_id(str(data["id"])),
                     "path": str(Path(path).resolve()), "expected": data.get("expected")})
@@ -63,7 +76,7 @@ def prepare(root: Path, candidate_path: Path, samples: List[str],
     output.mkdir(parents=True)
     workspace = output / "candidate-worktree"
     info = create_workspace(root, candidate, workspace)
-    sample_rows = _read_samples(samples)
+    sample_rows = _read_samples(samples, root=root)
     tasks = {"candidate_id": candidate["candidate_id"], "candidate": candidate,
              "workspace": str(workspace), "apply": info,
              "samples": sample_rows,
