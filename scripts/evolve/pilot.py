@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Optional
 
 from .candidate import create_workspace, validate_candidate
 from .contracts import PROTOCOL_VERSION, Conclusion, Run, Version, now_iso
-from .decision import decide_binary
+from .decision import decide_binary, required_exclusive_wins
 from .knowledge_usage import compare as compare_knowledge
 from .harness_usage import read_session
 from .knowledge_usage import from_trace as knowledge_from_trace
@@ -68,7 +68,7 @@ def _read_samples(paths: List[str], root: Optional[Path] = None) -> List[Dict[st
 
 
 def prepare(root: Path, candidate_path: Path, samples: List[str],
-            output: Path) -> Dict[str, Any]:
+            output: Path, policy: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     root, output = Path(root), Path(output)
     candidate = validate_candidate(json.loads(Path(candidate_path).read_text(encoding="utf-8")))
     if output.exists():
@@ -77,9 +77,28 @@ def prepare(root: Path, candidate_path: Path, samples: List[str],
     workspace = output / "candidate-worktree"
     info = create_workspace(root, candidate, workspace)
     sample_rows = _read_samples(samples, root=root)
+    runs = ((policy or {}).get("cost") or {}).get("runs") or {}
+    max_pairs = runs.get("max_pairs")
+    if max_pairs is None:
+        max_pairs = len(sample_rows)
+    max_pairs = min(int(max_pairs), len(sample_rows))
+    alpha = float(((policy or {}).get("decision") or {}).get("alpha", 0.10))
+    required = required_exclusive_wins(alpha)
     tasks = {"candidate_id": candidate["candidate_id"], "candidate": candidate,
              "workspace": str(workspace), "apply": info,
              "samples": sample_rows,
+             "budget": {
+                 "max_pairs": max_pairs,
+                 "max_tokens": runs.get("max_tokens"),
+                 "early_stop": bool(runs.get("early_stop", True)),
+                 "alpha": alpha,
+                 "required_b": required,
+             },
+             "stop_rules": {
+                 "futility": "b + remaining < required_b",
+                 "budget": "completed_pairs >= max_pairs",
+                 "tokens": ("tokens >= max_tokens" if runs.get("max_tokens") is not None else None),
+             },
              "arms": {
                  "baseline": {"root": str(root), "trace_dir": str(output / "baseline" / "traces"),
                               "out_dir": str(output / "baseline" / "out")},
@@ -286,6 +305,60 @@ def _judge_counts(tasks: Dict[str, Any], judge: Dict[str, Any]) -> Dict[str, int
     return {"b": b, "c": c, "n": n}
 
 
+def _tokens_used(collect: Dict[str, Any]) -> int:
+    return sum(
+        int((row.get("knowledge_usage") or {}).get("tokens") or 0)
+        for rows in (collect.get("arms") or {}).values()
+        for row in rows
+        if (row.get("knowledge_usage") or {}).get("tokens") is not None
+    )
+
+
+def checkpoint(output: Path, judge_path: Path, policy: Dict[str, Any], *,
+               reuse_index: int = 0) -> Dict[str, Any]:
+    """读完当前已产出的 rollouts，判断是否应停止继续跑。"""
+    output = Path(output)
+    tasks = json.loads((output / "tasks.json").read_text(encoding="utf-8"))
+    judge = json.loads(Path(judge_path).read_text(encoding="utf-8"))
+    collected = collect(output, judge=judge_path)
+    counts = _judge_counts(tasks, judge)
+    budget = tasks.get("budget") or {}
+    max_pairs = int(budget.get("max_pairs") or len(tasks.get("samples") or []))
+    alpha = float(budget.get("alpha", 0.10))
+    required = int(budget.get("required_b") or required_exclusive_wins(alpha))
+    completed = counts["n"]
+    remaining = max(0, max_pairs - completed)
+    tokens = _tokens_used(collected)
+    max_tokens = budget.get("max_tokens")
+    early_stop = bool(budget.get("early_stop", True))
+    futility = counts["b"] + remaining < required
+    budget_stop = completed >= max_pairs
+    token_stop = max_tokens is not None and tokens >= int(max_tokens)
+    stop = early_stop and (futility or budget_stop or token_stop)
+    if budget_stop:
+        reason = "budget"
+    elif token_stop:
+        reason = "tokens"
+    elif futility:
+        reason = "futility"
+    else:
+        reason = "continue"
+    return {
+        "stop": stop,
+        "reason": reason,
+        "b": counts["b"],
+        "c": counts["c"],
+        "n": completed,
+        "max_pairs": max_pairs,
+        "remaining": remaining,
+        "required_b": required,
+        "tokens": tokens,
+        "max_tokens": max_tokens,
+        "early_stop": early_stop,
+        "would_stop": futility or budget_stop or token_stop,
+    }
+
+
 def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
            reuse_index: int = 0, pool: str = "pilot",
            card: Optional[str] = None,
@@ -379,6 +452,13 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
         metrics={
             "constraints": constraints,
             "main_metric": "resolution",
+            "budget": {
+                "max_pairs": int((tasks.get("budget") or {}).get("max_pairs")
+                                 or len(tasks.get("samples") or [])),
+                "used_pairs": counts["n"],
+                "tokens": _tokens_used(collect),
+                "early_stop": bool((tasks.get("budget") or {}).get("early_stop", True)),
+            },
         },
         cost=({"tokens": {"baseline": cost_b, "candidate": cost_c},
                "paired": cost_paired, "missing": len(all_ids) - cost_paired}

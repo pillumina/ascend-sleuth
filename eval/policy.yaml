@@ -37,6 +37,10 @@ cost:
   B: 0.10
   epsilon: 0.10
   delta: 0
+  runs:
+    max_pairs: 9
+    max_tokens: null
+    early_stop: true
 
 experiment:
   target: skill

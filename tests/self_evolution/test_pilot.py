@@ -12,8 +12,8 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from evolve.pilot import (PilotError, _read_samples, _short_id, collect,  # noqa: E402
-                          models_from_collect, record_runs, version_for)
+from evolve.pilot import (PilotError, _read_samples, _short_id, checkpoint,  # noqa: E402
+                          collect, models_from_collect, record_runs, version_for)
 
 
 class PilotIdTest(unittest.TestCase):
@@ -70,6 +70,40 @@ class PilotCollectTest(unittest.TestCase):
                 }), encoding="utf-8")
                 with self.assertRaises(PilotError):
                     _read_samples([str(path)])
+
+    def test_checkpoint_stops_on_futility(self):
+        with tempfile.TemporaryDirectory() as td:
+            out = Path(td)
+            sample = out / "s.yaml"
+            sample.write_text(yaml.safe_dump({"id": "S-1", "expected": {"resolution": "r"}}),
+                              encoding="utf-8")
+            tasks = {
+                "candidate_id": "C",
+                "samples": [{"id": "S-1", "short_id": "1", "path": str(sample)}],
+                "budget": {"max_pairs": 2, "max_tokens": None, "early_stop": True,
+                           "alpha": 0.1, "required_b": 4},
+                "arms": {
+                    "baseline": {"trace_dir": str(out / "baseline" / "traces"),
+                                 "out_dir": str(out / "baseline" / "out")},
+                    "candidate": {"trace_dir": str(out / "candidate" / "traces"),
+                                  "out_dir": str(out / "candidate" / "out")},
+                },
+            }
+            (out / "tasks.json").write_text(json.dumps(tasks), encoding="utf-8")
+            for arm in ("baseline", "candidate"):
+                (out / arm / "traces").mkdir(parents=True)
+                (out / arm / "out").mkdir(parents=True)
+                (out / arm / "traces" / "1.yaml").write_text(
+                    yaml.safe_dump({"session_id": "1", "trace": []}), encoding="utf-8")
+                (out / arm / "out" / "1.md").write_text("report", encoding="utf-8")
+            judge = out / "judge.json"
+            judge.write_text(json.dumps({"baseline": {"1": 1}, "candidate": {"1": 0}}),
+                             encoding="utf-8")
+            result = checkpoint(out, judge, {}, reuse_index=0)
+            self.assertTrue(result["stop"])
+            self.assertEqual(result["reason"], "futility")
+            self.assertEqual(result["b"], 0)
+            self.assertEqual(result["c"], 1)
 
     def test_holdout_samples_are_rejected(self):
         with tempfile.TemporaryDirectory() as td:

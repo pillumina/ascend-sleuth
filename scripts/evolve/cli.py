@@ -47,7 +47,8 @@ from .decision import Decision, DecisionResult, decide
 from .experiments import ExperimentError, validate_experiment
 from .holdout_guard import is_holdout_source, issue_numbers
 from .knowledge_usage import UsageError, compare as compare_usage, evaluate as evaluate_usage, from_trace
-from .pilot import PilotError, collect as pilot_collect, decide as pilot_decide, prepare as pilot_prepare
+from .pilot import (PilotError, checkpoint as pilot_checkpoint, collect as pilot_collect,
+                    decide as pilot_decide, prepare as pilot_prepare)
 from .source_usage import SourceUsageError, compare as compare_source_usage, evaluate as evaluate_source_usage, from_trace as source_from_trace
 from .tool_usage import ToolUsageError, compare as compare_tool_usage, evaluate as evaluate_tool_usage, from_trace as tool_from_trace
 from .quality import QualityError, load_quality
@@ -1043,7 +1044,8 @@ def cmd_knowledge_usage_evaluate(args: argparse.Namespace) -> int:
 
 def cmd_pilot_prepare(args: argparse.Namespace) -> int:
     try:
-        result = pilot_prepare(Path(args.root), Path(args.candidate), args.samples, Path(args.output))
+        result = pilot_prepare(Path(args.root), Path(args.candidate), args.samples,
+                               Path(args.output), policy=_policy_for(args))
     except (OSError, ValueError, PilotError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -1081,6 +1083,18 @@ def cmd_readback(args: argparse.Namespace) -> int:
         print(f"cost: {data['cost'] or 'unavailable'} paired={data['cost_paired']} missing={data['cost_missing']}")
         print(f"at: {data['at']}")
     return 0
+
+
+def cmd_pilot_checkpoint(args: argparse.Namespace) -> int:
+    try:
+        policy = _policy_for(args)
+        result = pilot_checkpoint(Path(args.output), Path(args.judge), policy,
+                                  reuse_index=args.reuse_index)
+    except (OSError, ValueError, PilotError, PolicyError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 1 if result["stop"] else 0
 
 
 def cmd_pilot_decide(args: argparse.Namespace) -> int:
@@ -1723,6 +1737,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_collect.add_argument("--output", required=True)
     p_collect.add_argument("--judge", default=None, help="可选 judge JSON，用于给 source_ok 赋值")
     p_collect.set_defaults(func=cmd_pilot_collect)
+    p_check = pilot_sub.add_parser("checkpoint", help="按预算与 futility 判断是否继续跑")
+    p_check.add_argument("--output", required=True)
+    p_check.add_argument("--judge", required=True)
+    p_check.add_argument("--policy", default=None)
+    p_check.add_argument("--reuse-index", type=int, default=0)
+    p_check.set_defaults(func=cmd_pilot_checkpoint)
+
     p_decide = pilot_sub.add_parser("decide", help="配对判定并写 Run/Conclusion 记录")
     p_decide.add_argument("--output", required=True)
     p_decide.add_argument("--judge", required=True)

@@ -57,6 +57,11 @@ DEFAULTS: Dict[str, Any] = {
         "B": 0.10,
         "epsilon": 0.10,
         "delta": 0,
+        "runs": {
+            "max_pairs": 9,
+            "max_tokens": None,
+            "early_stop": True,
+        },
     },
     "rubrics": {
         "case_version": "case-v1",
@@ -213,6 +218,23 @@ def validate_policy(policy: Dict[str, Any]) -> None:
     if not isinstance(cost, dict):
         errors.append("cost must be an object")
     else:
+        runs = cost.get("runs")
+        if runs is not None:
+            if not isinstance(runs, dict):
+                errors.append("cost.runs must be an object")
+            else:
+                max_pairs = runs.get("max_pairs")
+                if max_pairs is not None and (
+                        not isinstance(max_pairs, int) or isinstance(max_pairs, bool)
+                        or max_pairs < 0):
+                    errors.append("cost.runs.max_pairs must be a non-negative integer or null")
+                max_tokens = runs.get("max_tokens")
+                if max_tokens is not None and (
+                        not isinstance(max_tokens, int) or isinstance(max_tokens, bool)
+                        or max_tokens < 0):
+                    errors.append("cost.runs.max_tokens must be a non-negative integer or null")
+                if not isinstance(runs.get("early_stop", True), bool):
+                    errors.append("cost.runs.early_stop must be boolean")
         if cost.get("primary_dimension") not in COST_DIMENSIONS:
             errors.append(
                 f"cost.primary_dimension must be one of {list(COST_DIMENSIONS)}, "
