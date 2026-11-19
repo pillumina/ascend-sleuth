@@ -1,7 +1,7 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
 //   dsh-plugins/ascend-panel/panel-client.js  (sha256:ddd85e79a637)
-//   dsh-plugins/ev-panel/panel-client.js  (sha256:d1cf8c2c16b1)
+//   dsh-plugins/ev-panel/panel-client.js  (sha256:797a5af6d44f)
 //   dsh-plugins/sleuth-console/console-client.js  (sha256:2405b5ea8495)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -5158,7 +5158,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       id: 'ev-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ev-panel/panel-client.js (sha256:d1cf8c2c16b1) 原文开始 ----
+// ---- dsh-plugins/ev-panel/panel-client.js (sha256:797a5af6d44f) 原文开始 ----
 // ev-panel client —— 自演进看板（conversation.view 第三个 tab「自演进」）
 // 数据经 host.call('ev-board-load') 从 scripts/ev_board_data.py 汇总；
 // 单卡全文经 host.call('ev-idea-detail') 点开时才拉（列表页只带摘要）。
@@ -5808,6 +5808,8 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       absorbed: '已进知识库', stale: '来源失效', unknown: '未知',
     }
 
+    let sampleQueueError = ''
+
     function SampleQueue({ samples, sessionId, onReload }) {
       const data = samples || {}
       const items = data.items || []
@@ -5818,12 +5820,14 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       function act(item, action) {
         host.call('ev-sample-action', { sessionId, id: item.id, action }).then(r => {
           if (r && r.ok) {
-            if (onReload) onReload()
-          } else if (typeof console !== 'undefined') {
-            console.error('样本操作失败', r && r.error)
+            sampleQueueError = ''
+          } else {
+            sampleQueueError = (r && r.error) || '样本操作失败'
           }
+          if (onReload) onReload()
         }).catch(e => {
-          if (typeof console !== 'undefined') console.error('样本操作失败', e)
+          sampleQueueError = String((e && e.message) || e)
+          if (onReload) onReload()
         })
       }
       return React.createElement(Section, { title: '评测样本' },
@@ -5832,6 +5836,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
           ' · 已入池 ', React.createElement('b', null, counts.active || 0),
           ' · 共 ', React.createElement('b', null, items.length), ' 条'),
         data.present === false ? React.createElement('div', { className: 'ev-empty' }, data.note || '样本库不可用') : null,
+        sampleQueueError ? React.createElement('div', { className: 'ev-err', style: { padding: '4px 0' } }, sampleQueueError) : null,
         items.slice(0, 12).map((item) => React.createElement('div', {
           key: item.id, className: 'ev-kv',
           style: { padding: '4px 0', borderBottom: '1px dashed var(--bd)' },
