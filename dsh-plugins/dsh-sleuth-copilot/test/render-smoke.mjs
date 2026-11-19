@@ -585,6 +585,7 @@ function makeState(mode) {
         platform: 'A3-910C', category: 'interrupt', framework: 'vllm-ascend',
         excludedCases: [], evidenceFiles: 1, evidenceList: ['traces/evidence/x/p0.log'],
         evidenceMissing: '', hasReport: true, reportFile: 'traces/x.report.md', sedimentCandidateList: [], missingMaterials: [],
+        sample: { id: '13934', state: 'ready', reasons: [], duplicates: [] },
       },
     })
     return {
@@ -778,6 +779,9 @@ function makeState(mode) {
       counts: { open: 1, pendingFeedback: 1, toSediment: 0 }, vocab: VOCAB,
       capabilities: { canWrite: false, reasonCode: 'E_PERM', reason: '当前会话没有写权限' },
     }
+  }
+  if (mode === 'recent') {
+    row.extra.sample = { id: '13934', state: 'ready', reasons: [], duplicates: [] }
   }
   return {
     ok: true, tracesDir: '/repo/traces', bound: null, recent: [row], all: [row],
@@ -4679,6 +4683,25 @@ function clickWith(node, extra) {
   click(findButton(await t.settle(), '更多操作'))
   const view = await t.settle()
   expect('更多操作：已闭环单有复制候选样本指令', view.text.includes('复制候选样本指令'))
+}
+
+{
+  const t = await mount('recent')
+  let view = await t.settle()
+  const expand = findAriaPrefix(view, '展开状态条')
+  if (expand) {
+    click(expand)
+    view = await t.settle()
+  }
+  expect('状态条：候选样本标签', view.text.includes('候选样本：可提交'), view.text.slice(-500))
+  const sampleChip = view.nodes.find((node) => typeof (node.props && node.props.className) === 'string'
+    && node.props.className.split(/\s+/).includes('scp-chip') && nodeText(node) === '候选样本：可提交')
+  expect('状态条：候选样本标签可点', !!sampleChip)
+  if (sampleChip) {
+    sampleChip.props.onClick()
+    view = await t.settle()
+    expect('状态条：候选样本浮层显示 id 与原因', view.text.includes('ID：13934') && view.text.includes('候选样本'))
+  }
 }
 
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')

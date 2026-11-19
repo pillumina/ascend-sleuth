@@ -847,6 +847,43 @@ def collect_s2_attrib(root):
     return d.get("attributions") if isinstance(d, dict) else None
 
 
+def collect_samples(root: Path):
+    """评测样本队列：读本地样本库，现算完整性与查重。读不到就给空表。"""
+    base = root / ".s2-replay" / "evolve"
+    if not (base / "samples").is_dir():
+        return {"present": False, "note": "本地还没有样本库（.s2-replay/evolve/samples）", "items": []}
+    try:
+        sys.path.insert(0, str(root / "scripts"))
+        from evolve.intake import completeness
+        from evolve.samples import SampleStore
+        store = SampleStore(base=base)
+        samples = store.read_all()
+    except Exception as e:
+        return {"present": False, "note": f"样本库不可用: {e}", "items": []}
+    items = []
+    for sample in samples:
+        try:
+            state = completeness(sample, store=store, root=root)
+        except Exception:
+            state = {"state": "unknown", "reasons": [], "duplicates": []}
+        items.append({
+            "id": sample.id,
+            "status": sample.status,
+            "origin": sample.origin,
+            "purpose": sample.purpose,
+            "source": sample.source,
+            "state": state.get("state"),
+            "reasons": state.get("reasons") or [],
+            "duplicates": state.get("duplicates") or [],
+            "created_at": sample.created_at,
+            "updated_at": sample.updated_at,
+        })
+    order = {"candidate": 0, "active": 1, "retired": 2, "rejected": 3}
+    items.sort(key=lambda item: (order.get(item["status"], 9),
+                                 str(item.get("updated_at") or ""), item["id"]))
+    return {"present": True, "items": items, "count": len(items)}
+
+
 def main():
     ap = argparse.ArgumentParser(description="自演进看板数据汇总")
     ap.add_argument("--root", type=Path, default=Path("."))
@@ -871,6 +908,7 @@ def main():
     s2_attrib = collect_s2_attrib(root)
     skill_exec = collect_skill_exec(root)
     measure_runs = collect_measure_runs(root)
+    samples = collect_samples(root)
 
     # 卡状态机分布（词表以 verify_proposals 为准；unknown 说明卡有 schema 问题）
     status_count = {}
@@ -888,6 +926,7 @@ def main():
         "tally": tally,
         "s2_attrib": s2_attrib,
         "skill_exec": skill_exec,
+        "samples": samples,
         "measure_runs": measure_runs,
         "stale_days": STALE_DAYS,
         "surface_window_days": SURFACE_WINDOW_DAYS,

@@ -640,6 +640,45 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       )
     }
 
+
+    const SAMPLE_STATE_LABEL = {
+      ready: '可提交', needs_answer: '待补根因与修复', needs_sanitize: '待脱敏',
+      needs_source: '缺来源', non_diagnostic: '无可判别现象', duplicate: '已存在同来源',
+      absorbed: '已进知识库', stale: '来源失效', unknown: '未知',
+    }
+
+    function SampleQueue({ samples }) {
+      const data = samples || {}
+      const items = data.items || []
+      const counts = items.reduce((acc, item) => {
+        acc[item.status] = (acc[item.status] || 0) + 1
+        return acc
+      }, {})
+      return React.createElement(Section, { title: '评测样本' },
+        React.createElement('div', { className: 'ev-kv', style: { paddingBottom: 6 } },
+          '候选 ', React.createElement('b', null, counts.candidate || 0),
+          ' · 已入池 ', React.createElement('b', null, counts.active || 0),
+          ' · 共 ', React.createElement('b', null, items.length), ' 条'),
+        data.present === false ? React.createElement('div', { className: 'ev-empty' }, data.note || '样本库不可用') : null,
+        items.slice(0, 12).map((item) => React.createElement('div', {
+          key: item.id, className: 'ev-kv',
+          style: { padding: '4px 0', borderBottom: '1px dashed var(--bd)' },
+          title: item.source + (item.duplicates && item.duplicates.length ? ' · 重复：' + item.duplicates.join(', ') : ''),
+        },
+          React.createElement('b', null, item.id), ' · ',
+          SAMPLE_STATE_LABEL[item.state] || item.state,
+          ' · ', item.status + '/' + item.purpose,
+          ' · ', String(item.source || '').slice(-48),
+          item.status === 'candidate' ? React.createElement('button', {
+            type: 'button', className: 'ev-btn', style: { marginLeft: 8, padding: '1px 6px' },
+            onClick: () => copyText('python3 scripts/evolve.py sample review --id ' + item.id + ' --approve'),
+          }, '复制通过命令') : null,
+          item.status === 'active' && item.origin === 'field' ? React.createElement('button', {
+            type: 'button', className: 'ev-btn', style: { marginLeft: 8, padding: '1px 6px' },
+            onClick: () => copyText('python3 scripts/evolve.py sample promote --id ' + item.id + ' --to core'),
+          }, '复制升 core 命令') : null)))
+    }
+
     // ============ ③ 自演进度量 ============
     function StatsPanel({ stats }) {
       if (!stats) return null
@@ -1198,6 +1237,8 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
           React.createElement(TimelineTrend, { timeline: data.timeline })),
         React.createElement('div', { className: 'ev-rise' },
           React.createElement(CapacitySummary, { capacity: data.capacity })),
+        React.createElement('div', { className: 'ev-rise' },
+          React.createElement(SampleQueue, { samples: data.samples })),
         React.createElement('div', { className: 'ev-rise' },
           React.createElement(TallySection, { tally: data.tally, s2Attrib: data.s2_attrib })),
       )

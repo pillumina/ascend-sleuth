@@ -153,6 +153,21 @@ window.__ModuleLoader__.load({
       'stepsShort': '{n}/{m}',
       'chip.miss': '知识库未覆盖',
       'chip.excluded': '已排除 {n} 条',
+      'chip.sample': '候选样本',
+      'sample.pop.title': '候选样本',
+      'sample.pop.state': '状态',
+      'sample.pop.reasons': '原因',
+      'sample.pop.duplicates': '重复',
+      'sample.pop.copy': '复制状态命令',
+      'sample.pop.close': '关闭',
+      'chip.sample.ready': '候选样本：可提交',
+      'chip.sample.needs_answer': '候选样本：待补根因与修复',
+      'chip.sample.needs_sanitize': '候选样本：待脱敏',
+      'chip.sample.needs_source': '候选样本：缺来源',
+      'chip.sample.non_diagnostic': '候选样本：无可判别现象',
+      'chip.sample.duplicate': '候选样本：已存在同来源',
+      'chip.sample.absorbed': '候选样本：已进知识库',
+      'chip.sample.stale': '候选样本：来源失效',
       'chip.hit': '命中 {id}',
       'chip.sediment': '可沉淀',
       'chip.feedback': '待回报',
@@ -736,6 +751,21 @@ window.__ModuleLoader__.load({
       'stepsShort': '{n}/{m}',
       'chip.miss': 'not in knowledge base',
       'chip.excluded': '{n} excluded',
+      'chip.sample': 'Sample',
+      'sample.pop.title': 'Candidate sample',
+      'sample.pop.state': 'State',
+      'sample.pop.reasons': 'Reasons',
+      'sample.pop.duplicates': 'Duplicates',
+      'sample.pop.copy': 'Copy status command',
+      'sample.pop.close': 'Close',
+      'chip.sample.ready': 'Sample: ready',
+      'chip.sample.needs_answer': 'Sample: needs root cause/fix',
+      'chip.sample.needs_sanitize': 'Sample: needs sanitizing',
+      'chip.sample.needs_source': 'Sample: missing source',
+      'chip.sample.non_diagnostic': 'Sample: no diagnostic signal',
+      'chip.sample.duplicate': 'Sample: same source exists',
+      'chip.sample.absorbed': 'Sample: already in knowledge',
+      'chip.sample.stale': 'Sample: source missing',
       'chip.hit': 'Hit {id}',
       'chip.sediment': 'can sediment',
       'chip.feedback': 'outcome pending',
@@ -2516,12 +2546,22 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
     }
 
     // 身份标签：这单到底是什么——命中的 case、知识库覆盖与否、欠什么、排除了多少。
-    function identityChips(row) {
+    function identityChips(row, onSample) {
       const derived = (row && row.derived) || {}
       const extra = (row && row.extra) || {}
       const chips = []
       if (row && row.activeCase) chips.push({ key: 'hit', tone: 'brand', text: tr('chip.hit', { id: row.activeCase }) })
       else if (derived.caseKind === 'none') chips.push({ key: 'miss', tone: 'idle', text: tr('chip.miss') })
+      const sample = extra.sample || (row && row.sample)
+      if (sample && sample.state) {
+        const tone = sample.state === 'ready' ? 'brand'
+          : sample.state === 'absorbed' ? 'idle' : 'warn'
+        chips.push({
+          key: 'sample', tone, text: tr('chip.sample.' + sample.state),
+          title: [sample.id, ...(sample.reasons || []), ...(sample.duplicates || [])].filter(Boolean).join(' · '),
+          onSelect: onSample ? () => onSample(sample) : undefined,
+        })
+      }
       if (isPending(row)) chips.push({ key: 'feedback', tone: 'warn', text: tr('chip.feedback') })
       if (derived.needSed) chips.push({ key: 'sediment', tone: 'brand', text: tr('chip.sediment') })
       if (derived.needPromote) chips.push({ key: 'promote', tone: 'warn', text: tr('chip.promote') })
@@ -2542,6 +2582,15 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       if (derived.needPromote) chips.push({ key: 'promote', tone: 'warn', text: tr('chip.promote') })
       if (derived.needReview) chips.push({ key: 'review', tone: 'brand', text: tr('chip.review') })
       if (derived.needReportReview) chips.push({ key: 'reportReview', tone: 'warn', text: tr('chip.reportReview') })
+      if (extra.sample && extra.sample.state) {
+        const sample = extra.sample
+        const tone = sample.state === 'ready' ? 'brand'
+          : sample.state === 'absorbed' ? 'idle' : 'warn'
+        chips.push({
+          key: 'sample', tone, text: tr('chip.sample.' + sample.state),
+          title: [sample.id, ...(sample.reasons || []), ...(sample.duplicates || [])].filter(Boolean).join(' · '),
+        })
+      }
       if (derived.upstreamPending) chips.push({ key: 'upstream', tone: 'idle', text: tr('chip.upstream') })
       if (row.activeCase) chips.push({ key: 'hit', tone: 'brand', text: tr('chip.hit', { id: row.activeCase }) })
       if (extra.excludedCases && extra.excludedCases.length) {
@@ -3909,6 +3958,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         useSessionSync(props)
         const [menuOpen, setMenuOpen] = React.useState(false)
         const [menuForm, setMenuForm] = React.useState(null)
+        const [samplePop, setSamplePop] = React.useState(null)
         const [pickerOpen, setPickerOpen] = React.useState(false)
         const [idle, setIdle] = React.useState(false)
         const [flashStep, setFlashStep] = React.useState('')
@@ -4578,7 +4628,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const derived = primary.derived || {}
         const waiting = derived.waitingFor || extra.evidenceMissing || ''
         const action = primaryFor(primary, bound)
-        const chips = identityChips(primary).filter((chip) => chip.key !== 'excluded').slice(0, 3)
+        const chips = identityChips(primary, (sample) => setSamplePop(sample)).filter((chip) => chip.key !== 'excluded').slice(0, 3)
         if (s.stale) chips.push({ key: 'stale', tone: 'warn', text: tr('chip.stale') })
         const metaBits = []
         if (status && status.label) metaBits.push(status.label)
@@ -4793,8 +4843,32 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 : h('span', { className: 'scp-wait-tag' }, tr('label.updated') + ' ' + (formatTime(primary.updatedAt) || tr('none')))),
               chips.length ? h('span', { className: 'scp-chips' }, chips.map((chip) => h('span', {
                 key: chip.key, className: 'scp-chip', 'data-tone': chip.tone,
+                title: chip.title || undefined,
+                onClick: chip.onSelect,
+                style: chip.onSelect ? { cursor: 'pointer' } : undefined,
               }, chip.text))) : null),
             sedimentRow),
+          samplePop ? h('div', {
+            className: 'scp-menu scp-sample-pop', role: 'dialog',
+            'aria-label': tr('sample.pop.title'), style: { width: '360px' },
+          },
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px 8px' } },
+              h('b', null, tr('sample.pop.title')), h('span', { className: 'scp-spacer' }),
+              h('button', {
+                type: 'button', className: 'scp-btn scp-btn--quiet',
+                onClick: () => setSamplePop(null),
+              }, tr('sample.pop.close'))),
+            h('div', { className: 'scp-kv' }, tr('sample.pop.state') + '：' + tr('chip.sample.' + samplePop.state)),
+            samplePop.id ? h('div', { className: 'scp-kv' }, 'ID：' + samplePop.id) : null,
+            samplePop.reasons && samplePop.reasons.length
+              ? h('div', { className: 'scp-kv' }, tr('sample.pop.reasons') + '：' + samplePop.reasons.join('、')) : null,
+            samplePop.duplicates && samplePop.duplicates.length
+              ? h('div', { className: 'scp-kv' }, tr('sample.pop.duplicates') + '：' + samplePop.duplicates.join('、')) : null,
+            h('div', { className: 'scp-upstream-row' },
+              h('button', {
+                type: 'button', className: 'scp-check-action',
+                onClick: () => copyToClipboard('python3 scripts/evolve.py sample status --id ' + samplePop.id),
+              }, tr('sample.pop.copy')))) : null,
           hint ? h('div', { className: 'scp-hint' }, hint) : null)
       }
     }
@@ -6256,6 +6330,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('span', { className: 'scp-badge' }, statusMeta(data.vocab, row.status).label),
               identityChips(row).slice(0, 3).map((chip) => h('span', {
                 key: chip.key, className: 'scp-chip', 'data-tone': chip.tone,
+                title: chip.title || undefined,
               }, chip.text)),
               revisionsTotal
                 ? h('span', {
