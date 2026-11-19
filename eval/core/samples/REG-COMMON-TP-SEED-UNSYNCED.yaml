@@ -1,0 +1,41 @@
+id: REG-COMMON-TP-SEED-UNSYNCED
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: msprobe docs/zh/best_practices/ascend_qwen_image_edit_tp8_distorted_image_localization.md（MindStudio
+  26.2.0.B050_003）
+input:
+  phenomenon: TP=8 时跑多个请求，第 3 张生成图片必然花图；TP=1 时低分辨率推理跑 100 个实例未发现花图；msprobe 分级可视化比对
+    TP8 vs TP1：第一个 nn.Module（Linear）就出现精度不一致；该层为非行切/列切层（未做 TP 切分），多卡间统计值本应完全相同，但卡
+    0 的数据明显与其他卡不同；代码回溯定位到模型初始阶段的 random.randint 在卡 0 上与其他卡不同
+  environment: ''
+  evidence:
+    case: COMMON-TP-SEED-UNSYNCED
+    references:
+    - msprobe docs/zh/best_practices/ascend_qwen_image_edit_tp8_distorted_image_localization.md（MindStudio
+      26.2.0.B050_003）
+expected:
+  resolution: 'TP8 场景下未控制同一 TP 组内各卡输入一致，仅依赖初始随机种子。 0 卡作为通信主卡，其 random 调用次数与其他 TP 卡不一致，导致组内各卡拿到的随机数不同，
+    后续模型输出不同，拼接为完整图片后表现为花图。
+
+
+
+    增加同步广播机制：随机种子生成后由主卡广播到副卡同步，确保所有卡拿到相同随机种子。 长稳测试后图像生成正常，未再出现花图。'
+  case: COMMON-TP-SEED-UNSYNCED
+  confidence: maintainer-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: postmortem
+  report_ref: knowledge/common/precision/COMMON-TP-SEED-UNSYNCED.yaml
+  captured_at: '2026-11-19T14:13:03+00:00'
+  kb_rev: unknown
+  sanitized: true
+  redactions: []
+  confidence: maintainer-reviewed
+  extraction: auto
+created_at: '2026-11-19T14:13:03+00:00'
+updated_at: '2026-11-19T14:13:03+00:00'
+history: []
+notes: core regression derived from knowledge/common/precision/COMMON-TP-SEED-UNSYNCED.yaml

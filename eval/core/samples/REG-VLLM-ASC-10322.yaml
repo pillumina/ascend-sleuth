@@ -1,0 +1,51 @@
+id: REG-VLLM-ASC-10322
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: https://github.com/vllm-project/vllm-ascend/issues/10322
+input:
+  phenomenon: 'DeepSeek-V4-Flash（w8a8-mtp）decode 服务 FULL_DECODE_ONLY cudagraph 模式启动：全部
+    DP worker 在 profile_cudagraph_memory → _warmup_and_capture → _dummy_run 崩溃；同配置
+    --enforce-eager 正常；Python 侧：RuntimeError: ... current working operator name is
+    aclnnScatterNdUpdateV2（torch.npu.graph context 内 torch.npu.synchronize）；plog：aicore
+    exception 507015；硬件错误 ''DDR address of the MTE instruction is out of range'' +
+    SMMU fault；fault kernel=Compressor_... SuperKernel（含 ScatterNdUpdateV2，来自 vllm_ascend/_cann_ops_custom/custom_transformer）；崩溃发生在启动期
+    cudagraph 显存 profiling（KV cache 分配前），非正常推理期'
+  environment: ''
+  evidence:
+    case: VLLM-ASC-10322
+    references:
+    - https://github.com/vllm-project/vllm-ascend/issues/10322
+    - https://github.com/vllm-project/vllm-ascend/pull/10369
+expected:
+  resolution: '#9865（commit 9099b7f）为估图模式显存而在 KV cache 分配之前增加 pre-KV ACL graph memory
+    profiling（临时 capture）。对 DeepSeek-V4 DSA 压缩 attention（compressed KV）场景，该临时 capture
+    在 KV cache 尚不存在时执行，撞上 compress 路径中 fused 进 Compressor SuperKernel 的 ScatterNdUpdateV2
+    自定义算子 → aicore exception（MTE DDR 地址越界 + SMMU fault，错误码 507015）， 全部 decode DP worker
+    在 profile_cudagraph_memory/_warmup_and_capture 阶段崩溃。正常 KV-cache 分配后的 ACL graph
+    capture/replay 路径本身可用（--enforce-eager 正常印证）。PR #10369 仅对 model_type=deepseek_v4
+    且压缩 attention 的场景跳过 pre-KV profiling，保留 KV 分配后的图捕获。
+
+
+
+    升级 vllm-ascend 至含 PR #10369（merged 2026-06-12）的版本；#10369 对 DSV4 压缩 attention 跳过
+    pre-KV ACL graph 显存预估，cudagraph_mode=FULL_DECODE_ONLY 正常捕获。升级前规避：--enforce-eager
+    或 export VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS=0（Nagisa125 建议）。'
+  case: VLLM-ASC-10322
+  confidence: maintainer-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: postmortem
+  report_ref: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10322.yaml
+  captured_at: '2026-11-19T14:13:03+00:00'
+  kb_rev: unknown
+  sanitized: true
+  redactions: []
+  confidence: maintainer-reviewed
+  extraction: auto
+created_at: '2026-11-19T14:13:03+00:00'
+updated_at: '2026-11-19T14:13:03+00:00'
+history: []
+notes: core regression derived from knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10322.yaml

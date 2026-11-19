@@ -1,0 +1,89 @@
+id: LOCAL-VLLM-PROJECT-VLLM-ASCEND-19498
+status: active
+object_type: diagnosis
+origin: core
+purpose: test
+source: local/vllm-project/vllm-ascend#19498
+input:
+  title: '[Bug]: 0.30.0 Kimi-K3 dspark 投机解码采信率随上下文长度坍塌'
+  body: '### Your current environment
+
+
+    模型 / 量化Kimi-K3-W4A8
+
+    推理框架vllm-ascend 0.30.0rc2.dev200
+
+    硬件 / 拓扑8 × A3，1P1D 分离：P = PP4/TP16（4 节点），D = DP4/TP16/DCP16（4 节点）
+
+    KV 传输 / 池化MultiConnector（MooncakeConnectorV2 + AscendStore/memcache 池化），prefix
+    cache 命中率 90%投机配置`{"method":"dspark","num_speculative_tokens":7,"draft_tensor_parallel_size":16,"draft_sample_method":"greedy"}`
+
+    负载aisbench，128k/1k 与 460k/1k 两组，repeat 0.9（90% 前缀复用），128k 并发 1~32、460k 并发 1~16，请求数
+    = 5×并发
+
+
+    ### 🐛 Describe the bug
+
+
+    * 128k → 460k，总采信率从 ~33% 坍塌到 ~9%（约 1/3.5），平均接受长度从 ~3.3 掉到 ~1.6。
+
+    * 460k 下 pos4~pos7 四个草稿位采信率趋近于 0（合计贡献 <5%），但每步仍固定支付 7 次 draft 前向。
+
+    * 坍塌由**上下文长度**驱动、与并发无关：460k 场景 c1 与 c16 采信率几乎相同；同时段非矩阵短上下文窗口（写池/精度类负载）采信率恢复到 ~32%（mean_len
+    ~3.2），排除服务/环境状态因素。
+
+    **单步时延不变**：ITL P50 在 128k 与 460k 低并发档几乎相同——decode 单步（7 次 draft + 1 次 verify）耗时并未随上下文显著增长。
+
+
+    460k ITL 长尾异常'
+expected:
+  resolution: 'Kimi-K3 dspark 长上下文采信率坍塌与草稿模型有关；升级到含 PR #20287 的版本并使用 MLA-block5 草稿模型后，长序列采信率恢复，TPOT
+    提升。'
+  namespace: inference/vllm-ascend
+  category: performance
+  confidence: agent-reviewed
+expected_kind: resolution
+non_diagnostic: false
+proposed:
+  repo: vllm-project/vllm-ascend
+  issue: 19498
+  labels:
+  - bug
+  - triaged
+  closed_at: '2026-11-05T07:22:20Z'
+  url: https://github.com/vllm-project/vllm-ascend/issues/19498
+  quality:
+    score: 0.95
+    namespace: inference/vllm-ascend
+    category: performance
+    answer: 'Kimi-K3 dspark 长上下文采信率坍塌与草稿模型有关；升级到含 PR #20287 的版本并使用 MLA-block5 草稿模型后，长序列采信率恢复，TPOT
+      提升。'
+    accepted: true
+provenance:
+  trigger: issue_import
+  sanitized: true
+  redactions: []
+  confidence: issue-verified
+  extraction: auto
+created_at: '2026-11-19T06:52:48+00:00'
+updated_at: '2026-11-19T06:52:56+00:00'
+history:
+- from: candidate
+  to: active
+  reason: fresh closed issue with maintainer fix; held out from pilot
+  actor: lead
+  at: '2026-11-19T06:52:55+00:00'
+- from: active
+  to: active
+  reason: core test candidate
+  actor: lead
+  at: '2026-11-19T06:52:55+00:00'
+  from_origin: field
+  to_origin: core
+- from: active
+  to: active
+  reason: draw 4 held-out test samples
+  actor: lead
+  at: '2026-11-19T06:52:56+00:00'
+  from_purpose: evaluation
+  to_purpose: test

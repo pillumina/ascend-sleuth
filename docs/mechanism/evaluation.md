@@ -134,7 +134,7 @@ $$
 
 补充样本按固定流程走，不让用户额外写提示词：诊断结束、case 沉淀、issue 关闭或导入、groom 改 case 四个触发点都调用 `python3 scripts/evolve.py sample new`，候选生成、查重与状态转换在 `samples` 一处。候选可以缺答案，`review` 前必须补。
 
-候选与 field 样本放本地运行件，不进公开仓；core 样本放 tracked `eval/core/`，通过 PR 入库。
+候选与 field 样本放本地运行件，不进公开仓；core 样本放 tracked `eval/core/samples/`，通过 PR 入库。`sample export-core --id <id>` 把本地 active/core 样本写进该目录并移除本地副本；`SampleStore` 同时读本地队列与 `eval/core/samples/`，同一 id 两边都有会报重复。
 
 已闭环案例也可以直接回流：走过 sleuth 的用 `sample new --from trace --trace <path>`；没走 sleuth 的先走 `to-postmortem` 产出 case YAML，再用 `sample new --from postmortem --case <path>`。先跑 `--dry-run` 看完整性。
 

@@ -1,0 +1,252 @@
+id: LOCAL-VLLM-PROJECT-VLLM-ASCEND-13478
+status: active
+object_type: diagnosis
+origin: core
+purpose: test
+source: local/vllm-project/vllm-ascend#13478
+input:
+  title: '[Bug]: Deepseek-V4-Flash-0731-kvpool压测问题，128K上下文压测90K输入1K输出请求卡住'
+  body: "### Your current environment\n\n<details>\n镜像版本：quay.io/ascend/vllm-ascend:DeepSeekV4-flash-0731\n\
+    <summary>部署脚本</summary>\n\n```text\nexport OMP_PROC_BIND=false\nexport OMP_NUM_THREADS=10\n\
+    export PYTORCH_NPU_ALLOC_CONF=expandable_segments:True\nexport LD_PRELOAD=/usr/lib/aarch64-linux-gnu/libjemalloc.so.2:$LD_PRELOAD\n\
+    export HCCL_BUFFSIZE=1024\nexport VLLM_ASCEND_APPLY_DSV4_PATCH=1\nexport TASK_QUEUE_ENABLE=1\n\
+    export VLLM_ASCEND_ENABLE_FLASHCOMM1=1\nexport HCCL_OP_EXPANSION_MODE=\"AIV\"\n\
+    export HCCL_INTRA_ROCE_ENABLE=1\nexport HCCL_RDMA_CONNECT_TIMEOUT=17\nexport ASCEND_CONNECT_TIMEOUT=10000\n\
+    export ASCEND_TRANSFER_TIMEOUT=10000\nexport MOONCAKE_CONFIG_PATH=/mnt/local/kjj/mooncake.json\n\
+    export PYTHONHASHSEED=0\nexport ACL_OP_INIT_MODE=1\nexport VLLM_PREFIX_CACHE_RETENTION_INTERVAL=16384\n\
+    \n\nvllm serve /mnt/public/leow3lab/models/Eco-Tech/DeepSeek-V4-Flash-0731-w8a8\
+    \ \\\n--gpu-memory-utilization 0.9 \\\n--enable-expert-parallel \\\n--tokenizer-mode\
+    \ deepseek_v4 \\\n--quantization ascend \\\n--served-model-name ds \\\n--compilation-config\
+    \ '{\"cudagraph_mode\":\"FULL_DECODE_ONLY\"}' \\\n--max-num-seqs 16 \\\n--model-loader-extra-config\
+    \ '{\"enable_multithread_load\": true,\"num_threads\":128}' \\\n--max-num-batched-tokens\
+    \ 8192 \\\n--no-disable-hybrid-kv-cache-manager \\\n--max-model-len 133072 \\\n\
+    --tensor-parallel-size 4 \\\n--speculative-config '{\"method\":\"dspark\",\"num_speculative_tokens\"\
+    :3,\"enforce_eager\":true}' \\\n--enable-auto-tool-choice \\\n--async-scheduling\
+    \ \\\n--enable-prefix-caching \\\n--data-parallel-size 2 \\\n--reasoning-parser\
+    \ deepseek_v4 \\\n--tool-call-parser deepseek_v4 \\\n--port 8006 \\\n--block-size\
+    \ 32 \\\n--additional-config '{\"ascend_compilation_config\":{\"enable_npugraph_ex\"\
+    :true,\"enable_static_kernel\":false},\"enable_dsa_cp\":true,\"enable_cpu_binding\"\
+    :true,\"multistream_overlap_shared_expert\":true}' \\\n--kv-transfer-config '{\n\
+    \    \"kv_connector\": \"AscendStoreConnector\",\n    \"kv_role\": \"kv_both\"\
+    ,\n    \"kv_connector_extra_config\": {\n        \"lookup_rpc_port\":\"1\",\n\
+    \        \"backend\": \"mooncake\"\n        }\n    }'\n```\nmooncake启动命令：\n```\n\
+    mooncake_master --port 50088 --eviction_high_watermark_ratio 0.9 --eviction_ratio\
+    \ 0.1 --default_kv_lease_ttl 11000\n```\nmooncake配置：\n```\n{\n    \"metadata_server\"\
+    : \"P2PHANDSHAKE\",\n    \"protocol\": \"ascend\",\n    \"device_name\": \"\"\
+    ,\n    \"master_server_address\": \"100.102.191.183:50088\",\n    \"global_segment_size\"\
+    : \"60GB\"\n}\n```\n\n</details>\n\n\n### \U0001F41B Describe the bug\n\n```\n\
+    (EngineCore_DP0 pid=642) INFO 08-04 07:28:00 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:01 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:01 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:02 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:03 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:04 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:05 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:06 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:07 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:07 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:08 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:09 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:10 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:11 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:12 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:13 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:13 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:14 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:15 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:16 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:17 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:18 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:19 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:19 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:20 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:21 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:22 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:23 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:24 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:25 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:26 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:26 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:27 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:28 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:29 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:30 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:31 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:32 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:32 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:33 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:34 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:35 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:36 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:37 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:38 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:38 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:39 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:40 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:41 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:42 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:43 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:44 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:44 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:45 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:46 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:47 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:48 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:49 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:50 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:50 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP0\
+    \ pid=642) INFO 08-04 07:28:51 [pool_scheduler.py:565] Reqid: chatcmpl-8126129606728c28-a17826c2,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n(EngineCore_DP1\
+    \ pid=693) INFO 08-04 07:28:52 [pool_scheduler.py:565] Reqid: chatcmpl-bd806e3598837dd6-bca3abef,\
+    \ Total tokens 92164, kvpool hit tokens: 65536, need to load: 0\n```\naisbench卡住：\n\
+    ```\n2026-08-04 08:28:23,341 - INFO - make symlink: /mnt/local/kjj/benchmark/ais_bench/benchmark/configs/models/vllm_api/vllm_api_chat_temp.py\
+    \ ==> /mnt/local/kjj/aisbench_auto_tools_prefix/temp_api.py\n2026-08-04 08:28:23,341\
+    \ - INFO - src_file: /mnt/local/kjj/aisbench_auto_tools_prefix/prefix-GSM8K-in92160-num3-DeepSeek-V4-Flash-0731-w8a8.jsonl\n\
+    2026-08-04 08:28:23,341 - INFO - dst_file: /mnt/local/kjj/benchmark/ais_bench/datasets/gsm8k/test.jsonl\n\
+    2026-08-04 08:28:23,341 - INFO - make symlink: /mnt/local/kjj/benchmark/ais_bench/datasets/gsm8k/test.jsonl\
+    \ ==> /mnt/local/kjj/aisbench_auto_tools_prefix/prefix-GSM8K-in92160-num3-DeepSeek-V4-Flash-0731-w8a8.jsonl\n\
+    {0: 8297812, 1: 25340129} {0: 6425858, 1: 6476884}\n{0: 647168, 1: 1015808} {0:\
+    \ 5177344, 1: 4915200}\n[2026-08-04 08:28:44,105] [ais_bench] [INFO] Loading vllm_api_chat_temp:\
+    \ /mnt/local/kjj/benchmark/ais_bench/benchmark/configs/./models/vllm_api/vllm_api_chat_temp.py\n\
+    [2026-08-04 08:28:44,111] [ais_bench] [INFO] Loading gsm8k_gen_0_shot_cot_str_perf:\
+    \ /mnt/local/kjj/benchmark/ais_bench/benchmark/configs/./datasets/gsm8k/gsm8k_gen_0_shot_cot_str_perf.py\n\
+    [2026-08-04 08:28:44,115] [ais_bench] [INFO] Loading default_perf: /mnt/local/kjj/benchmark/ais_bench/benchmark/configs/./summarizers/perf/default_perf.py\n\
+    [2026-08-04 08:28:44,116] [ais_bench] [INFO] Current exp folder: ./outputs/default/20260804_082829\n\
+    [2026-08-04 08:28:44,129] [ais_bench] [INFO] Starting inference tasks...\n[2026-08-04\
+    \ 08:28:44,130] [ais_bench] [INFO] Partitioned into 1 tasks.\n[2026-08-04 08:28:44,130]\
+    \ [ais_bench] [INFO] Merging datasets with the same model and inferencer...\n\
+    [2026-08-04 08:28:44,167] [ais_bench] [INFO] Launch TasksMonitor, PID: 4153, Refresh\
+    \ interval: 0.5, Run in background: True\n[2026-08-04 08:29:00,540] [ais_bench]\
+    \ [INFO] Debug mode, print progress directly\n[2026-08-04 08:29:00,541] [ais_bench]\
+    \ [INFO] Task [vllm-api-stream-chat/gsm8k]\n[2026-08-04 08:29:00,578] [ais_bench]\
+    \ [INFO] Zero Retriever initialized, returning empty shot case for all queries\n\
+    [2026-08-04 08:29:00,581] [ais_bench] [INFO] Apply ice template finished\n[2026-08-04\
+    \ 08:29:00,583] [ais_bench] [WARNING] VLLMCustomAPIChatStream is deprecated, please\
+    \ use VLLMCustomAPIChat with stream=True instead.\n[2026-08-04 08:29:00,584] [ais_bench]\
+    \ [INFO] Warmup size is 0, skip...\n[2026-08-04 08:29:00,585] [ais_bench] [INFO]\
+    \ Dataset needed memory size: 1.07629299 MB\n[2026-08-04 08:29:00,585] [ais_bench]\
+    \ [INFO] Memory usage check passed: 28.90% < 80% (Available: 1356.82 GB)\n[2026-08-04\
+    \ 08:29:00,587] [ais_bench] [WARNING] The request rate is below 0.1, resulting\
+    \ in an excessively long interval between two consecutive requests.\n[2026-08-04\
+    \ 08:29:00,587] [ais_bench] [INFO] Traffic request rate: 0 RPS with burstiness\
+    \ 1.0.\n[2026-08-04 08:29:00,587] [ais_bench] [INFO] Request rate (0.0) or ramp\
+    \ end rps (None) < 0.001, sending all requests simultaneously\n[2026-08-04 08:29:00,588]\
+    \ [ais_bench] [INFO] Debug mode, run with concurrency: 1\n[2026-08-04 08:29:00,688]\
+    \ [ais_bench] [INFO] All subprocesses have finished deserializing the first batch\
+    \ of data\n[2026-08-04 08:29:00,788] [ais_bench] [INFO] Starting progress bar\
+    \ Total data num: 3 Finished data num: 0 Left data num: 3\nProgress:   0%|   \
+    \       | 0/3 [00:00<?, ?case/s]\nPOST=1 (0.0/s)  RECV=0 (0.0/s)  FAIL=0 (0.0/s)\
+    \  FIN=0 (0.0/s)\n```\n"
+expected:
+  resolution: 'async scheduler 与 kv pool 同时使用时，抢占重试循环无法真正释放 kv block，scheduler 挂住；修复见
+    vllm PR #49675，vllm 0.30.0 起不再复现。'
+  namespace: inference/vllm-ascend
+  category: interrupt
+  confidence: agent-reviewed
+expected_kind: resolution
+non_diagnostic: false
+proposed:
+  repo: vllm-project/vllm-ascend
+  issue: 13478
+  labels:
+  - bug
+  - triaged
+  - llm-model
+  - deepseek
+  closed_at: '2026-10-13T07:13:45Z'
+  url: https://github.com/vllm-project/vllm-ascend/issues/13478
+  quality:
+    score: 0.95
+    namespace: inference/vllm-ascend
+    category: interrupt
+    answer: 'async scheduler 与 kv pool 同时使用时，抢占重试循环无法真正释放 kv block，scheduler 挂住；修复见
+      vllm PR #49675，vllm 0.30.0 起不再复现。'
+    accepted: true
+provenance:
+  trigger: issue_import
+  sanitized: true
+  redactions: []
+  confidence: issue-verified
+  extraction: auto
+created_at: '2026-11-19T06:52:48+00:00'
+updated_at: '2026-11-19T06:52:56+00:00'
+history:
+- from: candidate
+  to: active
+  reason: fresh closed issue with maintainer fix; held out from pilot
+  actor: lead
+  at: '2026-11-19T06:52:55+00:00'
+- from: active
+  to: active
+  reason: core test candidate
+  actor: lead
+  at: '2026-11-19T06:52:55+00:00'
+  from_origin: field
+  to_origin: core
+- from: active
+  to: active
+  reason: draw 4 held-out test samples
+  actor: lead
+  at: '2026-11-19T06:52:56+00:00'
+  from_purpose: evaluation
+  to_purpose: test
