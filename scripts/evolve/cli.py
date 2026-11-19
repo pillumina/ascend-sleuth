@@ -648,6 +648,7 @@ def _record_conclusion(args: argparse.Namespace, result: DecisionResult) -> Path
         delta_q=result.delta_q,
         cost_ratio=result.cost_ratio,
         sample=args.sample,
+        card=getattr(args, "card", None),
         pool=args.pool,
         at=now_iso(),
     )
@@ -1063,7 +1064,8 @@ def cmd_pilot_decide(args: argparse.Namespace) -> int:
     try:
         policy = _policy_for(args)
         result = pilot_decide(Path(args.output), Path(args.judge), policy,
-                              reuse_index=args.reuse_index, pool=args.pool)
+                              reuse_index=args.reuse_index, pool=args.pool,
+                              card=args.card)
     except (OSError, ValueError, PilotError, PolicyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -1575,6 +1577,7 @@ def build_parser() -> argparse.ArgumentParser:
     judge.add_argument("--metrics-json", default=None, help="JSON 对象，写进结论 metrics")
     judge.add_argument("--cost-json", default=None, help="JSON 对象，写进结论 cost")
     judge.add_argument("--sample", default=None, help="写进结论的样本 id")
+    judge.add_argument("--card", default=None, help="写进结论的 EV 卡号")
     judge.add_argument("--pool", default=None, help="写进结论的评估池名")
     judge.set_defaults(func=cmd_judge)
 
@@ -1597,6 +1600,7 @@ def build_parser() -> argparse.ArgumentParser:
     judge_stats.add_argument("--metrics-json", default=None, help="JSON 对象，写进结论 metrics")
     judge_stats.add_argument("--cost-json", default=None, help="JSON 对象，写进结论 cost")
     judge_stats.add_argument("--sample", default=None, help="写进结论的样本 id")
+    judge_stats.add_argument("--card", default=None, help="写进结论的 EV 卡号")
     judge_stats.add_argument("--pool", default=None, help="写进结论的评估池名")
     judge_stats.set_defaults(func=cmd_judge_stats)
 
@@ -1696,6 +1700,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_decide.add_argument("--policy", default=None)
     p_decide.add_argument("--reuse-index", type=int, default=0)
     p_decide.add_argument("--pool", default="pilot")
+    p_decide.add_argument("--card", default=None, help="写进结论的 EV 卡号")
     p_decide.set_defaults(func=cmd_pilot_decide)
 
     candidate = sub.add_parser("candidate", help="candidate Patch 校验/隔离 apply/rollback")
