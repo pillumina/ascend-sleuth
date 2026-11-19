@@ -1,0 +1,5 @@
+status: not_started
+samples: ["19562", "19498", "13478", "19298"]
+required: ["baseline_trace", "candidate_trace"]
+reason: "pilot 只消费外部 trace；仓内没有执行 diagnose replay 的 runner。4 条 test 还没有两臂诊断输出。"
+at: "2026-11-20"

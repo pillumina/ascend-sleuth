@@ -14,6 +14,8 @@ from .policy import policy_hash
 from .records import ConclusionStore
 from .samples import SampleStore
 
+import yaml
+
 
 def _purpose_count(samples: List[Any], purpose: str) -> int:
     return sum(1 for sample in samples if sample.purpose == purpose)
@@ -190,6 +192,17 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
                 for key in strata_short
             )
         )
+    stage = root_path / "eval" / "core" / "test-stage.yaml"
+    if stage.is_file():
+        try:
+            doc = yaml.safe_load(stage.read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError) as exc:
+            warnings.append(f"test-stage unreadable: {exc}")
+        else:
+            if str(doc.get("status") or "") != "complete":
+                actions.append(
+                    "test_stage_not_started: " + str(doc.get("reason") or "test replay not run")
+                )
     if not samples:
         warnings.append("sample store is empty")
     if not actions:
