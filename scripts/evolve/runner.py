@@ -210,6 +210,15 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
 
     if metrics is None:
         metrics = {"available": False, "reason": "metrics not loaded by caller"}
+    runs = (policy.get("cost") or {}).get("runs") or {}
+    cost_plan = {
+        "pilot_max_pairs": runs.get("max_pairs"),
+        "baseline_reuse": bool(runs.get("baseline_reuse", True)),
+        "test_samples": (policy.get("samples") or {}).get("test"),
+        "regression_pairs": runs.get("regression_pairs"),
+        "regression_full_pairs": runs.get("regression_full_pairs"),
+        "benchmark_runs": runs.get("benchmark_runs"),
+    }
     return {
         "policy_hash": policy_hash(policy),
         "trace_snapshot": (trace_state or {}).get("snapshot_id"),
@@ -220,6 +229,7 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
         "metrics": metrics,
         "judgment_capacity": {"potential": potential, "required_b": required,
                               "alpha": alpha},
+        "cost_plan": cost_plan,
         "next_actions": actions,
         "warnings": warnings,
     }
@@ -243,6 +253,9 @@ def render_plan(plan: Dict[str, Any]) -> str:
             field=counts.get("field", 0),
             core=counts.get("core", 0),
             test=counts.get("test", 0),
+        ),
+        "cost_plan: " + ", ".join(
+            f"{key}={value}" for key, value in (plan.get("cost_plan") or {}).items()
         ),
         "next_actions:",
     ]

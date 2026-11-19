@@ -41,6 +41,10 @@ cost:
     max_pairs: 9
     max_tokens: null
     early_stop: true
+    baseline_reuse: true
+    regression_pairs: 6
+    regression_full_pairs: 30
+    benchmark_runs: 3
 
 experiment:
   target: skill

@@ -145,6 +145,46 @@ class E2ELoopTest(unittest.TestCase):
         fourth = decide(output, judge_path, policy, reuse_index=1)
         self.assertFalse(fourth.get("duplicate"))
 
+    def test_prepare_reuses_baseline_traces(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        root = Path(tmp.name) / "repo"
+        root.mkdir()
+        _Repo(root)
+        output = Path(tmp.name) / "pilot"
+        samples = []
+        for sid in ("E2E-1001", "E2E-1002"):
+            path = Path(tmp.name) / f"{sid}.yaml"
+            path.write_text(yaml.safe_dump({
+                "id": sid, "source": f"github/e2e#{sid}",
+                "input": {"title": sid}, "expected": {"resolution": "ok"},
+            }), encoding="utf-8")
+            samples.append(str(path))
+        candidate = {
+            "candidate_id": "C-E2E-001", "target_kind": "tooling",
+            "target_component": "tooling.source_fetch", "region": "tooling.source_fetch",
+            "file": "scripts/src_fetch.py",
+            "old_text": "def fetch(ref):\n    return ref\n",
+            "new_text": "def fetch(ref):\n    return ref.strip()\n",
+            "base_rev": "HEAD", "checks": ["py_compile"],
+        }
+        cand_path = Path(tmp.name) / "candidate.json"
+        cand_path.write_text(json.dumps(candidate), encoding="utf-8")
+        source = Path(tmp.name) / "old-pilot"
+        for arm in ("traces", "out"):
+            (source / arm).mkdir(parents=True)
+        for sid in ("1001", "1002"):
+            (source / "traces" / f"{sid}.yaml").write_text(
+                yaml.safe_dump(_trace(sid, hits=True, calls=3)), encoding="utf-8")
+            (source / "out" / f"{sid}.out.md").write_text("report", encoding="utf-8")
+        tasks = prepare(root, cand_path, samples, output, baseline_traces=source)
+        self.assertTrue(tasks["budget"]["baseline_reused"])
+        self.assertTrue(tasks["arms"]["baseline"]["reused"])
+        self.assertEqual(tasks["budget"]["baseline_source"], str(source))
+        self.assertTrue((output / "baseline" / "traces" / "1001.yaml").exists())
+        self.assertTrue((output / "baseline" / "out" / "1002.out.md").exists())
+        self.assertFalse((output / "candidate" / "traces" / "1001.yaml").exists())
+
     def test_small_pool_cannot_accept(self):
         root, output, collected, result, judge_path = self._run(
             "skill",
