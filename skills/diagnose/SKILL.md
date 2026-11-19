@@ -206,7 +206,9 @@ reference 由流程里的**缺口**触发（**不是第四检索层**：不参�
 
 - **先解析 trace 目录（一次，之后全程用它）**：`python3 scripts/shared_dir.py traces` 打印的绝对路径就是本次要读写的 `traces/`——它锚在**主检出**（同一克隆的所有 worktree 共读共写），所以从 worktree 干活也不会把记录写进一个主检出看不到、清理 worktree 就消失的地方。**本 skill 里所有 `traces/…` 的读写（含最前面的 trace 相似检测）都以这个路径为准**，别写相对 `traces/`。
 
-- **随手写三样，否则读数恒空**：每条 agent 事件带 `ts`（epoch 毫秒，`python3 -c 'import time;print(round(time.time()*1000))'`；**每一步至少第一条**），步骤 6 写顶层 `ended_at`（ISO 8601），建 session 时写顶层 `harness_session`（DSH 里是 `$DSH_SESSION_ID`）。没有 `ts` 就切不出每步窗口（每步成本那一格空）；单次的总耗时与 token 另有自己的窗口——`created_at` → `ended_at`，没写 `ended_at` 就退到 `updated_at` 并在面板上标明。同一段对话里做过两单时，会话累计会被两单各算一遍，只有这个窗口能把两单分开。
+- **随手写三样，否则读数恒空**：每条 agent 事件带 `ts`（epoch 毫秒，`python3 -c 'import time;print(round(time.time()*1000))'`；**每一步至少第一条**），步骤 6 写顶层 `ended_at`（ISO 8601），建 session 时写顶层 `harness_session`（DSH 里是 `$DSH_SESSION_ID`）。没有 `ts` 就切不出每步窗口（每步成本那一格空）；单次耗时用 `created_at` → `ended_at`，没写 `ended_at` 就退到 `updated_at` 并在面板上标明。
+
+  单次 token 由 `trace_begin.py` 写入的 `tokens_start`（建单时会话累计）与会话累计的差值算；没写 `tokens_start` 的历史单退回会话累计。同一段对话里做过两单时，只有这个差值能把两单分开。模型名由 `trace_begin.py` 从 `harness_session` 对应的 DSH 会话记录写进顶层 `model`；取不到就留空，不猜。
 - **收尾核对顶层 `harness_session`**（脚本兜住 header，这条兜住「漏跑脚本」；漏写不会当场报错，只会一路错到面板上）：跑 `ascend_trace_status` 时，本单那一行后面带 `⚠缺会话号` 就是漏了——当场补，别等人从面板上发现。补的时候要的是 `$DSH_SESSION_ID`，不是本单的 `session_id`（后者是诊断自己起的名字）：
   `python3 scripts/link_harness_sessions.py --trace <本单文件名> --session-id "$DSH_SESSION_ID" --apply`
   模板 `diagnosis_state.yaml.example` 顶层已列出该字段；更早的历史漏写单用不带 `--session-id` 的跑法（它去会话日志里认名字，几十秒）。

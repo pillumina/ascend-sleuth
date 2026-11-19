@@ -68,6 +68,7 @@
 | tooling 自演进：目标、可改区、候选补丁、评测与门禁 | [evaluation.md](evaluation.md) 3.10.1 | 已落地 | `python3 scripts/evolve.py tool-usage --help`；`grep -n "tooling.source_fetch" scripts/evolve/regions.py` |
 | 判定容量（`required_b` 与池样本数） | [evaluation.md](evaluation.md) 3.9 | 已落地 | `grep -n "required_exclusive_wins" scripts/evolve/decision.py`；`python3 scripts/evolve.py brief` |
 | pilot 记录闭环：Run/Conclusion 与版本坐标 | [records.md](records.md) 3.2、3.3 | 已落地 | `grep -n "def decide" scripts/evolve/pilot.py` |
+| 模型与 token 采集：trace header + DSH 会话记录 | [records.md](records.md) 3.2 | 已落地 | `python3 scripts/trace_begin.py --print-only`；`grep -n "read_session" scripts/evolve/pilot.py` |
 | pilot 样本注册进本地队列 | [evaluation.md](evaluation.md) 3.9 | 已落地 | `python3 scripts/evolve.py sample import-pilot --help` |
 | 已闭环 case 回流样本（trace / postmortem，完整性与跨集查重） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/evolve.py sample new --from trace --help`；`python3 scripts/evolve.py sample status --help` |
 | 记录端口层 | [records.md](records.md) 3.6 | 已落地 | `grep -n "class .*Protocol" scripts/evolve/ports.py` |

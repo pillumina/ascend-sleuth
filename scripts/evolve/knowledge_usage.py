@@ -7,6 +7,7 @@
 from datetime import datetime
 from typing import Any, Dict, Iterable, List, Optional
 
+from .harness_usage import read_session
 from .statistics import paired_diff_ci
 
 EFFICIENCY_FIELDS = (
@@ -63,6 +64,31 @@ def validate_record(record: Any) -> Dict[str, Any]:
         "first_hit_step": first_step, "tokens": tokens, "elapsed_ms": elapsed,
         "resolution_ok": resolution,
     }
+
+
+def _tokens_from_doc(document: Dict[str, Any]) -> Optional[int]:
+    """trace 显式写了就用；没写就按 harness_session 读 DSH 会话累计。"""
+    value = document.get("tokens")
+    if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+        return value
+    if isinstance(value, dict):
+        total = value.get("total")
+        if isinstance(total, int) and not isinstance(total, bool) and total >= 0:
+            return total
+        items = [item for item in value.values()
+                 if isinstance(item, int) and not isinstance(item, bool) and item >= 0]
+        if items:
+            return sum(items)
+    session = document.get("harness_session")
+    if isinstance(session, str) and session:
+        usage = read_session(session)
+        if usage and usage.get("tokens") is not None:
+            total = usage["tokens"]
+            start = document.get("tokens_start")
+            if isinstance(start, int) and not isinstance(start, bool) and 0 <= start <= total:
+                return total - start
+            return total
+    return None
 
 
 def _records(data: Any) -> List[Dict[str, Any]]:
@@ -293,7 +319,7 @@ def from_trace(document: Any, expected_case: Optional[str] = None,
         "resolution_ok": resolution_ok,
         "reference_lookups": refs,
         "wrong_cases": wrong,
-        "tokens": None,
+        "tokens": _tokens_from_doc(document),
         "elapsed_ms": _elapsed_ms(document, events),
     })
 
