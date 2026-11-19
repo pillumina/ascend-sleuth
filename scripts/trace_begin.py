@@ -299,6 +299,9 @@ def main() -> int:
     ap.add_argument("--platform", default="", help="detected_platform（如 A2-910B）")
     ap.add_argument("--category", default="", help="detected_category（interrupt | precision | performance）")
     ap.add_argument("--summary", default="", help="问题背景一段（可后补，别留空到收尾）")
+    ap.add_argument("--harness-session", default="", help="非 DSH agent 显式给会话号；DSH 下省略，取 $DSH_SESSION_ID")
+    ap.add_argument("--model", default="", help="非 DSH agent 显式给模型名；DSH 下省略，从会话记录取")
+    ap.add_argument("--tokens-start", type=int, default=None, help="建单时累计 token；DSH 下省略，从会话记录取")
     ap.add_argument("--repo", default=str(Path(__file__).resolve().parent.parent), help="仓库根")
     ap.add_argument("--print-only", action="store_true", help="只打印 YAML，不落盘")
     ap.add_argument("--no-sync", action="store_true", help="不联网：不 fetch、不合并，只读本机状态")
@@ -308,12 +311,20 @@ def main() -> int:
 
     root = Path(args.repo).resolve()
     session, why = harness_session_of()
+    if args.harness_session:
+        session, why = args.harness_session, "由 --harness-session 显式指定"
+    if args.tokens_start is not None and args.tokens_start < 0:
+        print("--tokens-start 不能为负数", file=sys.stderr)
+        return 2
 
     if args.dry_run_env:
         kb, _dirty = kb_rev_of(root)
         settings, config, _problem = kb_sync.load_settings(root)
         cfg = settings["sync"]
         print("harness_session: " + (session or "（取不到）" + "——" + why))
+        print("model: " + (args.model or (model_of(session) if session else "") or "（取不到）"))
+        print("tokens_start: " + str(args.tokens_start if args.tokens_start is not None
+                                      else (tokens_of(session) if session else None)))
         print("kb_rev: " + kb)
         print(f"kb_sync: {cfg['remote']}/{cfg['branch']}（配置：{config}；不联网）")
         print("traces 目录: " + str(resolve_traces(root)))
@@ -344,12 +355,15 @@ def main() -> int:
 
     result = sync_of(root, no_sync=args.no_sync, no_network=args.print_only)
     kb, kb_dirty = kb_rev_of(root)
+    model = args.model or (model_of(session) if session else "") or ""
+    tokens_start = args.tokens_start
+    if tokens_start is None and session:
+        tokens_start = tokens_of(session)
     text = build_header(slug=args.slug, harness_session=session, created_at=now_stamp(),
                         kb_rev=kb, kb_rev_dirty=kb_dirty, **kb_fields(result),
                         framework=args.framework, platform=args.platform,
                         category=args.category, summary=args.summary,
-                        model=model_of(session) or "",
-                        tokens_start=tokens_of(session))
+                        model=model, tokens_start=tokens_start)
 
     if args.print_only:
         sys.stdout.write(text)

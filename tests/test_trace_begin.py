@@ -104,6 +104,16 @@ class CliTest(unittest.TestCase):
             self.assertIn('harness_session: "session-abc"', r.stdout)
             self.assertFalse((Path(td) / "traces").exists())
 
+    def test_generic_agent_can_supply_model_and_tokens(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = self.run_cli("--slug", "2026-10-30-demo", "--print-only", "--repo", td,
+                             "--harness-session", "claude-abc", "--model", "claude-sonnet-4",
+                             "--tokens-start", "123", "--no-sync")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn('harness_session: "claude-abc"', r.stdout)
+            self.assertIn('model: "claude-sonnet-4"', r.stdout)
+            self.assertIn("tokens_start: 123", r.stdout)
+
     def test_refuses_to_overwrite_an_existing_trace(self):
         with tempfile.TemporaryDirectory() as td:
             traces = Path(td) / "traces"
