@@ -289,7 +289,7 @@ python3 scripts/evolve.py knowledge-usage compare --baseline base.json --candida
 
 `pilot prepare` 只收 field/探索样本：`purpose=test` 或 `regression` 的封存样本会被拒绝，来源命中 `eval/holdout.yaml` 的样本也会被拒绝，避免拿终判集或封存对照集调参；regression 只用于硬回退，不参与 pilot 对照。
 
-`pilot collect` 之后跑 `pilot decide`。它把每条 rollout 写成一条执行记录（`Run`，见 records.md），把一次对照写成一条结论（`Conclusion`，同篇）。`judge --record` 与 `pilot decide` 都收 `--card EV-YYYY-NNN`，把结论绑到对应卡；合入后的效果回读可按卡号找结论。模型的来源是 `collect` 里每条 rollout 的 `model`（多个不同值用逗号连接）；成本只累加**两臂都有 token** 的配对样本，缺失数写进 `cost.missing`，不补 0。
+`pilot collect` 之后跑 `pilot decide`。它把每条 rollout 写成一条执行记录（`Run`，见 records.md），把一次对照写成一条结论（`Conclusion`，同篇）。`judge --record` 与 `pilot decide` 都收 `--card EV-YYYY-NNN`，把结论绑到对应卡；合入后跑 `python3 scripts/evolve.py readback --card EV-YYYY-NNN` 读回最近一条结论（decision/b/c/n/model/cost）。模型的来源是 `collect` 里每条 rollout 的 `model`（多个不同值用逗号连接）；成本只累加**两臂都有 token** 的配对样本，缺失数写进 `cost.missing`，不补 0。
 
 记录写在 pilot 输出目录的父目录（常规位置是 `.s2-replay/evolve/`）：`runs.jsonl` 与 `conclusions.jsonl`。重复执行不会重复记 `Run`；同候选、同池、同参数、同约束的结论只写一次。
 
