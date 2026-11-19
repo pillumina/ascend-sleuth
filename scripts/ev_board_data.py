@@ -560,6 +560,19 @@ def collect_ideas(root):
     return ideas
 
 
+def card_conclusions(root, card):
+    """按 EV 卡号读最近结论；读不到返回空表。"""
+    try:
+        sys.path.insert(0, str(root / "scripts"))
+        from evolve.readback import summary
+        from evolve.records import ConclusionStore
+        rows = [r for r in ConclusionStore.for_root(root).read() if r.get("card") == card]
+    except Exception:
+        return []
+    rows.sort(key=lambda r: str(r.get("at") or ""))
+    return [summary(r) for r in rows[-5:]][::-1]
+
+
 def collect_idea_detail(root, idea_id):
     """单卡全文（点开才拉）：完整决策链 + 验证标准 + 证据轨迹 + 门控。"""
     for f in sorted((root / "proposals" / "ideas").glob("*.yaml")):
@@ -593,6 +606,7 @@ def collect_idea_detail(root, idea_id):
             "supersedes": d.get("supersedes") or [],
             "superseded_by": d.get("superseded_by"),
             "file": f.name,
+            "conclusions": card_conclusions(root, idea_id),
         }
     return None
 

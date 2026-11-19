@@ -1,7 +1,7 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
 //   dsh-plugins/ascend-panel/panel-client.js  (sha256:ddd85e79a637)
-//   dsh-plugins/ev-panel/panel-client.js  (sha256:797a5af6d44f)
+//   dsh-plugins/ev-panel/panel-client.js  (sha256:9d01bb24c31b)
 //   dsh-plugins/sleuth-console/console-client.js  (sha256:2405b5ea8495)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -5158,7 +5158,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       id: 'ev-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ev-panel/panel-client.js (sha256:797a5af6d44f) 原文开始 ----
+// ---- dsh-plugins/ev-panel/panel-client.js (sha256:9d01bb24c31b) 原文开始 ----
 // ev-panel client —— 自演进看板（conversation.view 第三个 tab「自演进」）
 // 数据经 host.call('ev-board-load') 从 scripts/ev_board_data.py 汇总；
 // 单卡全文经 host.call('ev-idea-detail') 点开时才拉（列表页只带摘要）。
@@ -5702,6 +5702,20 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
               React.createElement('span', { className: 'k' }, '门控：'), typeof d.gate === 'string' ? d.gate : (d.gate.condition || JSON.stringify(d.gate))) : null,
             d.validation && d.validation.rollback ? React.createElement('div', { className: 'ev-kv' },
               React.createElement('span', { className: 'k' }, '回滚：'), d.validation.rollback) : null,
+          ) : null,
+          // —— 结论回读：按卡号绑定的 Conclusion
+          (d && d.conclusions && d.conclusions.length) ? React.createElement('div', { className: 'ev-box' },
+            React.createElement(SectionLabel, null, '结论回读'),
+            d.conclusions.map((c, i) => React.createElement('div', { key: i, className: 'ev-kv' },
+              React.createElement(Pill, {
+                color: c.decision === 'accept' ? 'var(--c-green)' : c.decision === 'reject' ? 'var(--c-red)' : 'var(--c-amber)',
+              }, c.decision || '—'),
+              ' ', c.b + '/' + c.c + '/' + c.n + ' · ',
+              c.model || 'unknown',
+              c.cost && c.cost.baseline !== undefined
+                ? ' · 成本 ' + fmtTokens(c.cost.baseline) + '→' + fmtTokens(c.cost.candidate)
+                : '',
+            )),
           ) : null,
           // —— 触发信号：回答"为什么会有这张卡"
           (d && d.source_signals && d.source_signals.length) ? React.createElement('div', null,

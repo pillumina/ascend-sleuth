@@ -542,6 +542,20 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
             d.validation && d.validation.rollback ? React.createElement('div', { className: 'ev-kv' },
               React.createElement('span', { className: 'k' }, '回滚：'), d.validation.rollback) : null,
           ) : null,
+          // —— 结论回读：按卡号绑定的 Conclusion
+          (d && d.conclusions && d.conclusions.length) ? React.createElement('div', { className: 'ev-box' },
+            React.createElement(SectionLabel, null, '结论回读'),
+            d.conclusions.map((c, i) => React.createElement('div', { key: i, className: 'ev-kv' },
+              React.createElement(Pill, {
+                color: c.decision === 'accept' ? 'var(--c-green)' : c.decision === 'reject' ? 'var(--c-red)' : 'var(--c-amber)',
+              }, c.decision || '—'),
+              ' ', c.b + '/' + c.c + '/' + c.n + ' · ',
+              c.model || 'unknown',
+              c.cost && c.cost.baseline !== undefined
+                ? ' · 成本 ' + fmtTokens(c.cost.baseline) + '→' + fmtTokens(c.cost.candidate)
+                : '',
+            )),
+          ) : null,
           // —— 触发信号：回答"为什么会有这张卡"
           (d && d.source_signals && d.source_signals.length) ? React.createElement('div', null,
             React.createElement(SectionLabel, { color: 'var(--br)' }, '触发信号'),
