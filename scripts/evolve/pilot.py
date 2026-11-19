@@ -41,6 +41,11 @@ def _read_samples(paths: List[str]) -> List[Dict[str, Any]]:
         data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
         if not isinstance(data, dict) or not data.get("id"):
             raise PilotError(f"invalid sample file: {path}")
+        purpose = str(data.get("purpose") or "")
+        if purpose in ("test", "regression"):
+            raise PilotError(
+                f"sealed sample cannot be used in pilot: {data['id']} (purpose={purpose})"
+            )
         out.append({"id": str(data["id"]), "short_id": _short_id(str(data["id"])),
                     "path": str(Path(path).resolve()), "expected": data.get("expected")})
     short_ids = [item["short_id"] for item in out]

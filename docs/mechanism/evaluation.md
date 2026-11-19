@@ -287,6 +287,8 @@ python3 scripts/evolve.py knowledge-usage compare --baseline base.json --candida
 
 判定容量在 `brief` 算：同一评估池第 k 次判定时 `alpha_eff = alpha/(k+1)`，达成证据所需的最少独家命中数 `required_b` 是 `min{b: 2^-b <= alpha_eff}`。池样本数（field 加待审候选）少于 `required_b` 时记 `judgment_capacity_short`；这是入池前提示，不改判定结论，判定记录里不重复算。预检按 k=0 算，因为不知道下一次会复用哪个池。
 
+`pilot prepare` 只收 field/探索样本：`purpose=test` 或 `regression` 的封存样本会被拒绝，避免拿终判集调参；regression 只用于硬回退，不参与 pilot 对照。
+
 `pilot collect` 之后跑 `pilot decide`。它把每条 rollout 写成一条执行记录（`Run`，见 records.md），把一次对照写成一条结论（`Conclusion`，同篇）。
 
 记录写在 pilot 输出目录的父目录（常规位置是 `.s2-replay/evolve/`）：`runs.jsonl` 与 `conclusions.jsonl`。重复执行不会重复记 `Run`；同候选、同池、同参数、同约束的结论只写一次。
