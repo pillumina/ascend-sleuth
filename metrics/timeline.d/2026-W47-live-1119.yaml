@@ -1,0 +1,142 @@
+period: 2026-W47-live-1119
+kind: live
+title: W47 完整 live 快照（诊断侧 + 结构侧 + 内容流程侧）
+recorded_at: '2026-11-19'
+source: metrics_snapshot.py（诊断侧+结构侧+内容流程侧，逐块见 sources）
+sources:
+  diagnose_side: trace_metrics.py（traces/*.yaml ← 主检出（同一克隆共享侧），6 个 session）
+  structural_side: case 文件现算（scripts/index_counts.py：条数/逐格容量）+ verify_references.py（词条数）
+  content_flow_side: log_skill_exec.py → tail_exec_log.py（shared）
+metrics:
+  sessions_total: 6
+  tier2_hit: 1
+  misdiagnosis_rate:
+    ok: 0
+    total: 1
+  by_category_hit:
+    interrupt:
+      hit: 0
+      total: 3
+    performance:
+      hit: 0
+      total: 1
+    precision:
+      hit: 1
+      total: 1
+  attribution_ratio:
+    case_error: 0
+    execution_error: 1
+  confidence_distribution:
+    low: 16
+    total: 172
+  feedback_capture:
+    resolved: 1
+    not_resolved: 0
+    partial: 0
+  trace_completeness:
+    ok: 6
+    total: 6
+  vocab_compliance:
+    ok: 81
+    total: 82
+  tier3:
+    used: 2
+    saved: 1
+  reference:
+    hits: 12
+    refs: 9
+  reference_outcomes:
+    hit: 7
+    miss: 3
+  reference_purposes:
+    signature: 3
+    background: 3
+    procedure: 3
+    collect: 1
+    fix: 1
+  reference_detail:
+    '?':
+      hits: 4
+      resolved: 4
+    references/errors/rts.yaml#507011:
+      hits: 1
+      resolved: 0
+    ascend-inference-multistream-and-graph-mode:
+      hits: 1
+      resolved: 0
+    ascend-moe-comm-triage:
+      hits: 1
+      resolved: 0
+    ? profiler-analysis-cli, profiler-db-query, msprof-output-reading-and-performance-analysis,
+      msprof-collection-mechanism-and-metric-semantics, aicore-task-duration-anatomy
+    : hits: 1
+      resolved: 1
+    msprof-collect-parse, msprof-comm-bottleneck-thresholds:
+      hits: 1
+      resolved: 1
+    profiler-host-bound-triage:
+      hits: 1
+      resolved: 1
+    ascend-mooncake-kv-transfer-triage:
+      hits: 1
+      resolved: 0
+    ascend-process-interrupt-triage:
+      hits: 1
+      resolved: 1
+  stop_reasons:
+    halted_ask_user: 2
+    resolved_confirmed: 1
+  stop_reason_unrecorded: 3
+  parallel_group_events: 0
+  considered_candidates_events: 4
+  trace_record_violations:
+  - '2026-07-07-glm52-pd-crash: external_evidence='''''
+  trace_record_violations_total: 1
+  external_evidence:
+    'off': 2
+  external_record_violations_total: 0
+  case_total: 172
+  reference_total: 268
+  capacity_by_ns:
+    common:
+      performance:
+        count: 15
+        tok: 2788
+      precision:
+        count: 6
+        tok: 1228
+    inference/sglang:
+      interrupt:
+        count: 1
+        tok: 423
+    inference/vllm-ascend:
+      interrupt:
+        count: 97
+        tok: 17343
+      performance:
+        count: 8
+        tok: 1697
+      precision:
+        count: 23
+        tok: 4367
+    training/mindspeed-llm:
+      interrupt:
+        count: 11
+        tok: 2161
+      precision:
+        count: 4
+        tok: 1039
+    training/verl:
+      interrupt:
+        count: 6
+        tok: 1186
+      precision:
+        count: 1
+        tok: 439
+  content_flow_runs: 2
+  evolve_check_runs: 0
+  evolve_check_no_signal: 0
+notes: '# 人复核时补：分母是否够、miss 归因、本期说明（阈值见 metrics/gates.yaml）
+
+  '
+
