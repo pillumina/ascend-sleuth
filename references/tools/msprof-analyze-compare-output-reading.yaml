@@ -1,0 +1,77 @@
+id: msprof-analyze-compare-output-reading
+type: tool
+title: msprof-analyze compare 输出阅读（命令面 / xlsx 各 Sheet 语义与单位 / Diff Ratio 判读 / 文件大小阈值）
+summary: 已有两份单卡 profile 或 `performance_comparison_result_*.xlsx` 时读差值：compare 命令、各 Sheet 含义与单位、Diff Ratio 分级、--force 阈值。
+
+sources:
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/en/mindstudio/latest/TITools/msprof_analyze/docs/en/user_guide/compare_tool_instruct.md"
+    version: "MindStudio TITools latest（2026-11-17 抓取原文核验）：compare 命令参数表、xlsx Sheet 清单与单位、--force 文件大小阈值（csv>5G/json>10G/db>8G）、数据准备要求"
+    fetched_at: 2026-11-17
+    verification: cross-checked-source
+  - type: engineer-input
+    engineer: "hu669293657（公开 GitHub 仓库 skills 的作者，匿名工程师）"
+    document: "prof-compare skill（SKILL.md、references/analysis_methodology.md：三步分析法与各 Sheet 判读阈值、references/compare_quickstart.md：数据格式校验与开关决策）"
+    url: "https://github.com/hu669293657/skills/tree/main/prof-compare"
+    input_session: "本地会话：8 个本地 skill 提炼为 reference 的 to-reference 流程（2026-11 批）"
+    confirmed_at: 2026-11-17
+    verification: auto-extracted
+
+applies_to:
+  platforms: [cross]
+  frameworks: [msprof-analyze]
+  categories: [performance]
+
+related_references: [profiler-analysis-cli, profiler-db-query, msprof-collect-parse, cluster-compare-diagnosis, performance-delimiting-and-comparison]
+
+status: active
+last_verified: 2026-11-17
+
+content:
+  tool_name: "msprof-analyze compare（MindStudio Profiler Analyze 的比对子命令，单卡级两份 profiling 数据对比）"
+  invocation: >-
+    `msprof-analyze compare -d <profiling_path> -bp <benchmark_profiling_path> --output_path=<output_path>`；
+    脚本形态 `python performance_compare.py <benchmark_path> <profiling_path> --output_path=<out>`（msprof_analyze/compare_tools 目录）。
+    `-d/--profiling_path` 为比对数据、`-bp/--benchmark_path` 为基准数据，差值一律 = 比对 − 基准、比值 = 比对 / 基准。
+    建议只采集一个 step 即可回答瓶颈类问题。所有 `--enable_*` 开关都不传时默认全量比对；传任一开关则只按开关比对。
+  commands:
+    enable_profiling: "`--enable_profiling_compare`——总体性能比对（终端打印 + OverallMetrics Sheet）"
+    enable_operator: "`--enable_operator_compare`——算子性能比对（OperatorCompare/OperatorCompareStatistic；较耗时，建议单 step；MindSpore 不支持）"
+    enable_communication: "`--enable_communication_compare`——通信性能比对（CommunicationCompare）"
+    enable_memory: "`--enable_memory_compare`——算子内存比对（MemoryCompare/MemoryCompareStatistic；MindSpore 不支持）"
+    enable_kernel: "`--enable_kernel_compare`——kernel 性能比对（KernelCompare/KernelTypeCompare；仅 NPU vs NPU 场景）"
+    enable_api: "`--enable_api_compare`——API 性能比对（ApiCompare；依赖 trace_view.json；MindSpore 不支持）"
+    operator_opts: "`--enable_operator_compare` 特有：`--use_input_shape`（按 input shape 精准匹配算子）、`--max_kernel_num N`（值不得小于 4，越小粒度越细）"
+    operator_opts_align: "同样仅 `--enable_operator_compare` 前缀下使用：`--op_name_map={'GPU名':'NPU名'}`（GPU/NPU 等价算子对齐）、`--gpu_flow_cat <标识>`（GPU 的 Device Duration 全为 0 时用 chrome://tracing 找 Flow events 连线标识补上）"
+    disable_module: "`--disable_module`——据开关名推断：关闭模块级比对、只保留算子级（未逐字核上游参数表）"
+    kernel_opts: "`--use_kernel_type`——true 用 op_statistic.csv 出简化结果；false 用 kernel_details.csv 出完整结果（默认）"
+    step_select: "`--base_step <N> --comparison_step <N>`——必须成对给且 step 真实存在；不传则比对所有 step"
+    disable_details: "`--disable_details`——只出统计级，隐藏明细 Sheet"
+    force: "`--force`——跳过属主判断与文件过大校验（csv>5G / json>10G / db>8G）强制执行"
+    custom_config: "`compare_config.ini`（compare_tools/compare_backend/compare_config/）配置算子名识别关键词，控制按哪些算子比对"
+  output_meaning:
+    - "产物两份：终端打印总体指标概要 + `performance_comparison_result_<时间戳>.xlsx` 明细"
+    - "总体指标字段：Cube Time、Vector Time、Conv/Flash Attention/Paged Attention Time、Lccl Time、Computing Time、Mem Usage、Uncovered Communication Time(Wait Time)"
+    - "总体指标其余字段：RDMA/SDMA Bandwidth(GB/s)、SDMA Time、Free Time、E2E Time、Other Time；字段带 (Num) 表示调用次数"
+    - "OverallMetrics 列：Index / Duration(ms) / Duration Ratio / Number"
+    - "OverallMetrics 内 Computing Time 二级拆解：Flash Attention、Conv、Matmul（各分 Cube/Vector）、Vector（Trans/No Trans，Trans 为 Cast/TransPose/TransData 等转换类）、Cube、SDMA、Other"
+    - "Uncovered Communication Time 按通信域拆 Wait（仅 NPU）与 Transmit，并给通信域之间未被计算掩盖的并行耗时；Free Time = E2E − 算子 − 通信未掩盖，含拷贝时间"
+    - "Diff Duration = 比对 − 基准；Diff Ratio = 比对 / 基准。基准为 0 时 Ratio 为 inf，不是优化到 0"
+    - "单位速查：OverallMetrics / OperatorCompareStatistic / ModuleCompareStatistic / ApiCompare 用 ms；OperatorCompare / ModuleCompare / CommunicationCompare / KernelCompare / KernelTypeCompare 用 us"
+    - "MemoryCompareStatistic 的差值用 MB、Size 列用 KB。先对单位再算比值，混读差 1000 倍"
+    - "OperatorCompareStatistic 按 Diff Duration(ms) 逆序找差距 TOP 算子；OperatorCompare 看该算子 kernel 明细（Device Duration(us)、Input Shape/Type）；同一算子 Kernel 数变化 = 拆分方式变化"
+    - "ModuleCompareStatistic/ModuleCompare：双方数据都带 python function 事件（采集开 with_stack）才产出；Operator Name 为 [ TOTAL ] 的行是模块总体；Device Self Time（排除子模块）与 Device Total Time（含子模块），统计页 ms、明细页 us，另给 Diff Total Ratio 与 Base/Comparison Call Stack"
+    - "CommunicationCompare：第二行表头是通信算子 summary（名称/次数/总耗时/均/最大/最小，单位 us），无背景色行是 task detail（仅 NPU）；Diff Ratio 红色为劣化"
+    - "MemoryCompareStatistic 按 Diff Memory(MB) 逆序；Size(KB) 为算子 device 内存；采集未开 profile_memory=True 时内存数据全 0，先查采集开关"
+    - "KernelCompare（--use_kernel_type=false）按 Kernel Type + Input Shape 分组（Total/Avg/Max/Min Duration(us)、Calls）；KernelTypeCompare（true）按 Kernel Type + Core Type 分组；两者都仅 NPU vs NPU"
+    - "ApiCompare 按 API 名称分组：Total Duration / Self Time / Avg Duration(ms)、Calls"
+    - "分析顺序（三步法）：先 OverallMetrics 定方向（Computing 增大→算子面；Uncovered Communication 增大→通信面；Mem Usage 增大→内存面）→ 再开对应 Statistic Sheet 找差距 TOP → 最后进明细 Sheet 定到具体算子/kernel"
+    - "通信面判读：通信算子逐个都没变慢、而 Uncovered Communication Time 涨了，代表通信与计算并行度变差，转向集群级性能分析，不继续抠单算子"
+    - "Not minimal profiling 标注：E2E 时间存在性能膨胀（采集开销撑大），影响通信与调度耗时，绝对值不可信，只看比率"
+  pitfalls:
+    - "Sheet 缺失 = 对应开关未开或框架不支持：`--enable_api_compare` 无 trace_view.json 不产出；MindSpore 无算子/内存/API 比对；Kernel 比对仅限 NPU vs NPU"
+    - "无明细 Sheet = 传了 `--disable_details`"
+    - "`--max_kernel_num` 小于 4 非法；`--base_step/--comparison_step` 不成对给等于没配"
+    - "同一目录同时存在 Text 与 Db 结果时按 Db 比对（官方口径：同时包含则按 Db）"
+    - "Diff Ratio 大于 1 是比对侧劣化、小于 1 是比对侧改善（红色标劣化侧），别把改善当劣化"
+    - "GPU 侧采集建议开 profile_memory=True 与 record_shapes=True，否则内存与算子逐一匹配的输入范围受限"

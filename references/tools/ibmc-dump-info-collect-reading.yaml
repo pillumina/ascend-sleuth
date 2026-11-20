@@ -1,0 +1,60 @@
+id: ibmc-dump-info-collect-reading
+type: tool
+title: iBMC dump_info 一键收集产物诊断读法（目录结构 / 判定权重序 / 阈值表 / SEL 速查）
+summary: 昇腾服务器故障时按 dump_info 一键收集产物（BMC JSON + HTML 报告）判读：告警→电源→NPU/ECC→光模块→温度/风扇→RAID→BMC；阈值仅作观察项，须对照本机手册确认。
+
+sources:
+  - type: official-doc
+    url: "https://support.huawei.cn/enterprise/en/doc/EDOC1100501383/43c75f76/performing-one-click-information-collection-diaginfo"
+    version: "EDOC1100501383（Performing One-click Information Collection (diaginfo)）——仅佐证 iBMC 一键收集（diaginfo）功能存在及其产物为压缩包；目录结构与各阈值来自 engineer-input"
+    fetched_at: 2026-11-17
+    verification: cross-checked-source
+  - type: engineer-input
+    engineer: "ibmc_analyzer skill 作者（本地导入 skill 包，匿名工程师）"
+    document: "ibmc_analyzer skill（SKILL.md：文件格式坑与交付物；references/judgement.md：全局结论规则、维度正常标准与 SEL 速查；references/versions.md：机型版本表；references/file_inventory.md：目录结构）"
+    input_session: "本地会话：8 个本地 skill 提炼为 reference 的 to-reference 流程（2026-11 批）"
+    confirmed_at: 2026-11-17
+    verification: auto-extracted
+
+applies_to:
+  platforms: [atlas]
+  categories: [interrupt]
+
+related_references: [npu-smi-950-device-ops, host-kernel-log-collection]
+
+status: active
+last_verified: 2026-11-17
+
+content:
+  tool_name: "iBMC dump_info 一键收集与本地判读流程（ibmc_analyzer skill 内置，收集侧为 iBMC diaginfo）"
+  invocation: >-
+    在 iBMC 页面执行一键收集（diaginfo）拿到 dump_info 压缩包，解压后跑本地分析脚本产出
+    <目录名>_bmc.json 与 BMC诊断报告_<机型>_<SN>.html；机器不可达时按目录结构手工判读。
+    运行脚本前设 PYTHONIOENCODING=utf-8，避免中文字符集报错。
+  commands:
+    collect: "iBMC 页面「一键收集」导出 dump_info 压缩包——诊断都从这一手动步骤开始，dnvme_collect.sh 用告警时间戳后的目录/文件名定位"
+    analyze: "本地脚本读取 dump_info 内各文件，输出 <目录名>_bmc.json + HTML 报告（全局结论 + 各维度状态 + 证据条目）"
+  output_meaning:
+    - "适用边界：下面的阈值取自上游 skill 的固定阈值表，表里给的是 4 个 PSU / 8 卡 / 8 个光模块这一组数量；该表未注明适用机型，也没说这组数量对应满配还是其中一种配置，因此不能直接当任何机型的标准。下面各条写「正常标准」时，都指这张表的口径"
+    - "使用方式：本机手册确认前只作观察项，不据此判故障；其他机型以对应机型手册为准"
+    - "核对规则：表列数量与该机型实际配比不符（例如 4 卡机对照表列的 8 卡）记「待核实」；部件未采集或该机型没有这个部件也记「待核实」；两者都不判缺失、不判故障"
+    - "全局结论规则：告警为空 → OK；仅安全类 Minor → P3；非安全 Minor/Major → P1/P2；Critical → P0；P0 = 立即处理停机级，P3 = 观察级"
+    - "判定权重降序：当前活动告警 → 电源 → NPU/ECC → 光模块 → 温度/风扇 → RAID → BMC 自身 → 指示灯 → 版本 → 网络"
+    - "电源正常标准（表列 4 个 PSU）：4 个 PSU 全部 present；非 4 PSU 机型按对应手册的配比判"
+    - "电源电气标准：Vin 180~264V、Vout 11.5~12.6V、InputMode=AC；上游表口径为不达报 P1，本机手册确认前按观察项处理"
+    - "NPU 正常标准（表列 8 卡）：8 卡全部在位且 ECC=0"
+    - "光模块正常标准（表列 8 个）：8 个在位、无 TxLos/RxLos、SNR≥19dB、RX≥0.63mW、TX≥0.2mW（无 19/16 分级）；上游表口径为不达报 P1，本机手册确认前按观察项处理"
+    - "温度/风扇正常标准：Inlet<42°C、HBM<95°C、AI_Tj<105°C、风扇≥7000 RPM"
+    - "RAID 正常标准：全 Normal、MediaError=0；BMC 日志未满、证书未过期；指示灯 GREEN；IPv6 手动 VLAN 关"
+    - "dump_info 目录结构（其一 AppDump·机器与计算）：FruData/fruinfo.txt（机型 SN）、CpuMem/npu_info + npu_ecc_info.json"
+    - "dump_info 目录结构（其二 AppDump·电源与传感器）：BMC/psu_info.txt、PowerMgnt/power_statistics.csv、sensor_alarm/current_event.txt、sensor_info.txt、cooling_app/fan_info.txt"
+    - "dump_info 目录结构（其三 AppDump·网络与存储）：CpuMem/NpuIO/optical_module_static_info + port_history_log、NetConfig/net_info.txt、StorageMgnt/RAID_Controller_Info.txt"
+    - "dump_info 目录结构（其四 AppDump·系统事件）：sel.db（表 sel_data）"
+    - "dump_info 目录结构（其五 版本与日志）：RTOSDump/versioninfo/app_revision.txt + server_config.txt（版本）；LogDump/operate + security_log、ps_black_box.log、storage/IODeterioration.db + SubhealthyStatus.db（慢盘）"
+    - "dump_info 目录结构（其六 其他）：OSDump/img*.jpeg + video_poweroff.rep；SpLogDump 通常无法收集"
+    - "文件格式坑：cpu_info/mem_info 逗号分隔且字段内可能含 |；psu_info/sensor_info/fan_info 管道分隔；fruinfo.txt 在 AppDump/FruData/ 而非根目录"
+    - "平台识别版本：A2 系 → 3.x（3.15.0 起）、A3/850 → 5.x（5.5.0 起）、E 系列 → 26.x（25.0.0 起）"
+    - "特殊版本：800I A2 2UP 为 5.05.12.45；950 SuperPoD 为 iBMC 26.02.03.15 + iRM。同批次要求版本一致"
+    - "SEL 速查：Power Supply input lost = Critical；Above upper threshold = Major/Minor；Operation/Security Log Full = Minor；Cert OverDue = Minor；watchdog = Info"
+  pitfalls:
+    - "5 判读禁忌：历史掉电 ≠ 当前故障（看活动告警窗口）；版本旧 ≠ P0（先与实际现象复核）；集合通信不达标本就查 ASCEND_GLOBAL_LOG_LEVEL 是否=1（可能是日志被打没了而非硬件故障）；OS 自动重启先查 kdump/OOM（crashkernel 1024M 抖 AI 训练场景建议 2048M）；伙伴机型多 SN 以 BMC 页面为准"
