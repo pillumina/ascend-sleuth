@@ -756,6 +756,23 @@ def _print_decision(result: DecisionResult) -> None:
 
 
 # ---------------------------------------------------------------- experiment
+def cmd_store_migrate(args: argparse.Namespace) -> int:
+    from .migrate import migrate_legacy
+    try:
+        result = migrate_legacy(_evolve_base(args), dry_run=args.dry_run)
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        counts = result["counts"]
+        print(f"store: {result['store_path']}")
+        print(f"experiments: {counts['experiments']} decisions: {counts['decisions']} "
+              f"rollouts: {counts['rollouts']} skipped: {counts['skipped']}")
+    return 0
+
+
 def cmd_experiment_list(args: argparse.Namespace) -> int:
     try:
         policy = _policy_for(args)
@@ -2019,6 +2036,14 @@ def build_parser() -> argparse.ArgumentParser:
     replay_collect_cmd.add_argument("--root", default=".", help="检出根目录（默认 .）")
     replay_collect_cmd.add_argument("--report", required=True, help="评分报告输出路径")
     replay_collect_cmd.set_defaults(func=cmd_replay_collect)
+
+    store = sub.add_parser("store", help="RSI 统一存储")
+    store_sub = store.add_subparsers(dest="store_command", required=True)
+    store_migrate = store_sub.add_parser("migrate", help="把旧 JSONL 迁移到 rsi-events")
+    store_migrate.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
+    store_migrate.add_argument("--dry-run", action="store_true")
+    store_migrate.add_argument("--json", action="store_true")
+    store_migrate.set_defaults(func=cmd_store_migrate)
 
     experiment = sub.add_parser("experiment", help="算法适配器")
     experiment_sub = experiment.add_subparsers(dest="experiment_command", required=True)
