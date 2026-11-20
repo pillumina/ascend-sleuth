@@ -115,7 +115,7 @@ def prepare(root: Path, candidate_path: Path, samples: List[str],
             if baseline_meta.get("base_rev") and baseline_meta.get("base_rev") != candidate.get("base_rev"):
                 raise PilotError("baseline base_rev does not match candidate")
         baseline_source = str(source)
-    tasks = {"candidate_id": candidate["candidate_id"], "candidate": candidate,
+    tasks = {"stage": "pilot", "candidate_id": candidate["candidate_id"], "candidate": candidate,
              "workspace": str(workspace), "apply": info,
              "samples": sample_rows,
              "budget": {
