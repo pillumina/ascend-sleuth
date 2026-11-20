@@ -130,6 +130,44 @@ class FlowTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(json.loads(result.stdout)["decision"], "accept")
 
+    def test_rejected_proposal_rolls_back_workspace(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"; root.mkdir(); _repo(root)
+            archive = ProposalArchive(Path(td) / "proposals.jsonl")
+            engine = ProposalEngine(archive)
+            proposal = engine.add(_draft())
+            samples = []
+            for i in range(4):
+                path = Path(td) / f"S-{3000+i}.yaml"
+                path.write_text(yaml.safe_dump({
+                    "id": f"S-{3000+i}", "source": f"github/x/{i}",
+                    "input": {"title": f"S-{i}"}, "expected": {"resolution": "ok"},
+                }), encoding="utf-8")
+                samples.append(str(path))
+            judge = Path(td) / "judge.json"
+            judge.write_text(json.dumps({
+                "baseline": {str(3000+i): 1 for i in range(4)},
+                "candidate": {str(3000+i): 0 for i in range(4)},
+                "meta": {"agent": "test"},
+            }), encoding="utf-8")
+
+            def runner(tasks):
+                for arm in ("baseline", "candidate"):
+                    for sample in tasks["samples"]:
+                        sid = sample["short_id"]
+                        (Path(tasks["arms"][arm]["trace_dir"]) / f"{sid}.yaml").write_text(
+                            yaml.safe_dump({"session_id": sid, "model": "test", "trace": []}),
+                            encoding="utf-8")
+                        (Path(tasks["arms"][arm]["out_dir"]) / f"{sid}.out.md").write_text(
+                            "ok", encoding="utf-8")
+
+            result = run_proposal(root, proposal, samples, Path(td) / "pilot",
+                                  load_policy(None), judge, archive, runner=runner)
+            self.assertNotEqual(result["decision"], "accept")
+            self.assertFalse((Path(td) / "pilot" / "candidate-worktree").exists())
+            rows = ProposalArchive(Path(td) / "proposals.jsonl").read()
+            self.assertTrue(rows[-1]["rolled_back"])
+
     def test_requires_candidate(self):
         with tempfile.TemporaryDirectory() as td:
             engine = ProposalEngine(ProposalArchive(Path(td) / "proposals.jsonl"))

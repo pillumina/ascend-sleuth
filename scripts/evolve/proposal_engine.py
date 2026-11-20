@@ -44,6 +44,8 @@ class Proposal:
     status: str = "candidate"
     decision: Optional[str] = None
     conclusion_ref: Optional[str] = None
+    workspace: Optional[str] = None
+    rolled_back: bool = False
     scores: Dict[str, float] = field(default_factory=dict)
     feedback: Dict[str, str] = field(default_factory=dict)
     errors: List[str] = field(default_factory=list)
@@ -63,6 +65,7 @@ class Proposal:
             "candidate": dict(self.candidate) if self.candidate else None,
             "status": self.status, "decision": self.decision,
             "conclusion_ref": self.conclusion_ref,
+            "workspace": self.workspace, "rolled_back": self.rolled_back,
             "scores": dict(self.scores), "feedback": dict(self.feedback),
             "errors": list(self.errors), "at": now_iso(),
         }
