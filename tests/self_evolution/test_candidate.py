@@ -212,6 +212,22 @@ class CandidateTest(unittest.TestCase):
                 apply_to_root(root, validate_candidate(data))
             self.assertIn("K-1", path.read_text(encoding="utf-8"))
 
+    def test_knowledge_candidate_can_delete_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._repo(td)
+            (root / "knowledge/inference/vllm-ascend").mkdir(parents=True)
+            path = root / "knowledge/inference/vllm-ascend/old.yaml"
+            path.write_text("id: K-OLD\n", encoding="utf-8")
+            data = {
+                "candidate_id": "C-KD-1", "target_kind": "knowledge",
+                "target_component": "knowledge.case_content",
+                "region": "knowledge.case_content", "action": "delete",
+                "file": "knowledge/inference/vllm-ascend/old.yaml",
+                "base_rev": "HEAD",
+            }
+            apply_to_root(root, validate_candidate(data))
+            self.assertFalse(path.exists())
+
     def test_catalog_candidate_can_use_src_fetch_self_test(self):
         with tempfile.TemporaryDirectory() as td:
             root = self._repo(td)
