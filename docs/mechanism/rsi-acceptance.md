@@ -32,6 +32,7 @@
 ## 4 记录与面板
 
 - 旧数据迁移：`store migrate`，真实结果 `events=76`，其中旧实验 6、旧提案 6、decision 10、rollout 54。
+- 真实 issue 候选：`sample ingest-issues` 导入 5 条；8186/10640/13339 ready，10122 absorbed，10720 needs_answer。ready 只表示答案已补，未 review、未入池，也没有断言 baseline 失败。
 - A/B 与 full flow 写入后：`events=100`、`proposals=12`、`experiments=12`。
 - `store verify` 仍报旧数据缺口：6 个实验无 conclusion、10 个 decision 孤儿、54 个 rollout 孤儿；A/B 没有新增缺口。
 - `experiment show --proposal P-0008` 可回读 proposal/conclusion/experiments/history。
