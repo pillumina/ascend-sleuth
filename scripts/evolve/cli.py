@@ -1081,6 +1081,18 @@ def cmd_experiment_gate(args: argparse.Namespace) -> int:
             raise ValueError(
                 f"target {args.target!r} has no implemented evaluator ({profile.id})"
             )
+        if profile.id == "arena":
+            if not args.baseline or not args.candidate or not args.component:
+                raise ValueError("arena gate requires --baseline, --candidate and --component")
+            command = [sys.executable, str(Path(args.root or ".") / "scripts" / "eval_arena.py"),
+                       "--gate", "--baseline", args.baseline, "--candidate", args.candidate,
+                       "--component", args.component, "--alpha", str(args.alpha),
+                       "--root", str(Path(args.root or "."))]
+            if args.candidate_ref:
+                command += ["--candidate-ref", args.candidate_ref]
+            if args.note:
+                command += ["--note", args.note]
+            return subprocess.run(command, cwd=str(Path(args.root or "."))).returncode
         if profile.id == "replay_trace":
             if not args.baseline or not args.candidate:
                 raise ValueError("replay_trace gate requires --baseline and --candidate")
@@ -2132,6 +2144,10 @@ def build_parser() -> argparse.ArgumentParser:
     exp_gate.add_argument("--scores", default=None, help="JSON 对象：维度 → 0/1/2")
     exp_gate.add_argument("--baseline", default=None, help="tooling gate：基线 tool usage JSON")
     exp_gate.add_argument("--candidate", default=None, help="tooling gate：候选 tool usage JSON")
+    exp_gate.add_argument("--component", default=None, help="arena gate：目标组件")
+    exp_gate.add_argument("--candidate-ref", default=None, help="arena gate：候选引用")
+    exp_gate.add_argument("--note", default=None, help="arena gate：备注")
+    exp_gate.add_argument("--alpha", type=float, default=0.1, help="arena gate：alpha")
     exp_gate.set_defaults(func=cmd_experiment_gate)
     exp_flow = experiment_sub.add_parser(
         "flow", help="提案 → candidate → pilot → runner → judge → gate → archive")
