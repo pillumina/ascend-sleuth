@@ -1007,12 +1007,31 @@ def cmd_experiment_show(args: argparse.Namespace) -> int:
         base = _evolve_base(args)
         rows = [row for row in ExperimentStore.for_base(base).read()
                 if row.get("proposal") == args.proposal]
+        events = RSIStore(base).history(proposal_id=args.proposal)
         proposal = ProposalArchive(base / "proposals.jsonl").latest(args.proposal)
         conclusion = latest_by_proposal(args.proposal, base)
-        if proposal is None and rows:
-            proposal = rows[-1].get("proposal_snapshot")
-        if conclusion is None and rows:
-            conclusion = rows[-1].get("conclusion_snapshot")
+        if proposal is None:
+            for event in events:
+                if event.get("kind") == "proposal":
+                    proposal = (event.get("data") or {}).get("proposal")
+                    break
+                if event.get("kind") == "experiment":
+                    proposal = (event.get("data") or {}).get("proposal")
+                    if proposal:
+                        break
+        if conclusion is None:
+            for event in events:
+                if event.get("kind") == "decision":
+                    conclusion = (event.get("data") or {}).get("conclusion")
+                    break
+                if event.get("kind") == "experiment":
+                    conclusion = (event.get("data") or {}).get("conclusion")
+                    if conclusion:
+                        break
+        if not rows:
+            rows = [(event.get("data") or {}).get("experiment") for event in events
+                    if event.get("kind") == "experiment"]
+            rows = [row for row in rows if row]
         if proposal is None:
             print(f"error: no proposal {args.proposal}", file=sys.stderr)
             return 1
@@ -1023,7 +1042,7 @@ def cmd_experiment_show(args: argparse.Namespace) -> int:
         "proposal": proposal,
         "conclusion": conclusion,
         "experiments": rows,
-        "history": RSIStore(base).history(proposal_id=args.proposal),
+        "history": events,
     }, ensure_ascii=False, indent=2))
     return 0
 
