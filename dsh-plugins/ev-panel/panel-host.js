@@ -607,7 +607,8 @@ return {
       const commands = {
         approve: `sample review --id ${id} --approve --json`,
         reject: `sample review --id ${id} --reject --json`,
-        promote: `sample promote --id ${id} --to core --json`,
+        promote: `sample promote --id ${id} --to core --json` +
+          (args && args.export === true ? ' --export' : ''),
       }
       if (!commands[action]) return { ok: false, error: '未知的样本动作' }
       return runScript(sessionId, 'scripts/evolve.py', commands[action])

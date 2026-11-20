@@ -45,6 +45,8 @@ def _prompt(sample: Dict[str, Any], root: Path) -> str:
         f"样本 id: {sample.get('id')}\n"
         f"来源: {sample.get('source')}\n"
         f"输入:\n{json.dumps(sample.get('input') or {}, ensure_ascii=False, indent=2)}\n\n"
+        "把最终定位报告写到 SLEUTH_OUT，把完整诊断 trace 写到 SLEUTH_TRACE"
+        "（按 skills/diagnose/references/diagnosis-trace.md 的事件结构）。\n"
         "给出最终定位报告（现象、证据、根因、修复建议）。"
     )
 
@@ -82,16 +84,22 @@ def run(agent: str, timeout: float = 600.0) -> Dict[str, Any]:
     out.parent.mkdir(parents=True, exist_ok=True)
     trace.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(report, encoding="utf-8")
-    doc = {
-        "session_id": f"adapter-{os.environ.get('SLEUTH_STAGE')}-{os.environ.get('SLEUTH_SHORT_ID')}-"
-                      f"{os.environ.get('SLEUTH_ARM')}",
-        "model": agent,
-        "trace": [
-            {"role": "user", "content": prompt},
-            {"role": "agent", "output": report},
-        ],
-    }
-    trace.write_text(yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    if not trace.exists() or not trace.read_text(encoding="utf-8").strip():
+        doc = {
+            "session_id": f"adapter-{os.environ.get('SLEUTH_STAGE')}-{os.environ.get('SLEUTH_SHORT_ID')}-"
+                          f"{os.environ.get('SLEUTH_ARM')}",
+            "model": agent,
+            "adapter_fallback": True,
+            "trace": [
+                {"role": "user", "content": prompt},
+                {
+                    "role": "agent", "step": 1, "action": "report",
+                    "output": report,
+                    "reason": "adapter fallback: agent did not write a trace",
+                },
+            ],
+        }
+        trace.write_text(yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
     return {"sample": sample.get("id"), "agent": agent, "report_chars": len(report)}
 
 

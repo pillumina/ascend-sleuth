@@ -1,7 +1,7 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
 //   dsh-plugins/ascend-panel/panel-client.js  (sha256:ddd85e79a637)
-//   dsh-plugins/ev-panel/panel-client.js  (sha256:f578d53b7865)
+//   dsh-plugins/ev-panel/panel-client.js  (sha256:c0ce0e209f67)
 //   dsh-plugins/sleuth-console/console-client.js  (sha256:2405b5ea8495)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -5158,7 +5158,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       id: 'ev-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ev-panel/panel-client.js (sha256:f578d53b7865) 原文开始 ----
+// ---- dsh-plugins/ev-panel/panel-client.js (sha256:c0ce0e209f67) 原文开始 ----
 // ev-panel client —— 自演进看板（conversation.view 第三个 tab「自演进」）
 // 数据经 host.call('ev-board-load') 从 scripts/ev_board_data.py 汇总；
 // 单卡全文经 host.call('ev-idea-detail') 点开时才拉（列表页只带摘要）。
@@ -5835,7 +5835,10 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       function act(item, action) {
         if (sampleQueueBusy) return
         sampleQueueBusy = true
-        host.call('ev-sample-action', { sessionId, id: item.id, action }).then(r => {
+        host.call('ev-sample-action', {
+          sessionId, id: item.id, action,
+          export: action === 'promote' && (item.purpose === 'test' || item.purpose === 'regression'),
+        }).then(r => {
           if (r && r.ok) {
             sampleQueueError = ''
           } else {
