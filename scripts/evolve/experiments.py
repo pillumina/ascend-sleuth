@@ -209,7 +209,19 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
     if set(samples) != set(baseline["samples"]):
         raise ExperimentError("top-level samples must match baseline/candidate")
     paired = record.get("paired")
-    if decision == "accept":
+    exploratory = record.get("exploratory") is True
+    if decision == "accept" and exploratory:
+        if paired is None or not isinstance(paired, dict):
+            raise ExperimentError("exploratory accept requires paired evidence {b,c,n}")
+        b, c, n = paired.get("b"), paired.get("c"), paired.get("n")
+        for name, value in (("b", b), ("c", c), ("n", n)):
+            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+                raise ExperimentError(f"paired.{name} must be a non-negative integer")
+        if n < b + c:
+            raise ExperimentError("paired.n must be >= paired.b + paired.c")
+        if candidate["score"] < baseline["score"]:
+            raise ExperimentError("exploratory accept requires candidate.score >= baseline.score")
+    elif decision == "accept":
         if paired is None:
             raise ExperimentError("accept requires paired evidence {b,c,n}")
         if not isinstance(paired, dict):
@@ -270,6 +282,8 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
     }
     if record.get("proposal"):
         result["proposal"] = str(record["proposal"])
+    if exploratory:
+        result["exploratory"] = True
     for key in ("proposal_snapshot", "conclusion_snapshot", "judge_meta"):
         value = record.get(key)
         if isinstance(value, dict):
@@ -290,7 +304,7 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
             normalized_stages[point] = spec.id
         result["stages"] = normalized_stages
     source_usage = record.get("source_usage")
-    if component == "diagnose.source_usage" and decision == "accept" and source_usage is None:
+    if component == "diagnose.source_usage" and decision == "accept" and source_usage is None and not exploratory:
         raise ExperimentError("source usage accept requires source_usage gate evidence")
     if source_usage is not None:
         if not isinstance(source_usage, dict):
@@ -298,11 +312,11 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
         if source_usage.get("decision") not in ("accept", "reject", "insufficient"):
             raise ExperimentError("source_usage.decision must be accept/reject/insufficient")
         _validate_source_usage_evidence(source_usage)
-        if decision == "accept" and (source_usage.get("decision") != "accept" or source_usage.get("reasons")):
+        if decision == "accept" and not exploratory and (source_usage.get("decision") != "accept" or source_usage.get("reasons")):
             raise ExperimentError("accept requires source_usage.decision=accept and no reasons")
         result["source_usage"] = source_usage
     usage = record.get("knowledge_usage")
-    if component == "diagnose.knowledge_usage" and decision == "accept" and usage is None:
+    if component == "diagnose.knowledge_usage" and decision == "accept" and usage is None and not exploratory:
         raise ExperimentError("knowledge usage accept requires knowledge_usage gate evidence")
     if usage is not None:
         if not isinstance(usage, dict):
@@ -310,7 +324,7 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
         if usage.get("decision") not in ("accept", "reject", "insufficient"):
             raise ExperimentError("knowledge_usage.decision must be accept/reject/insufficient")
         _validate_usage_evidence(usage)
-        if decision == "accept" and (usage.get("decision") != "accept" or usage.get("reasons")):
+        if decision == "accept" and not exploratory and (usage.get("decision") != "accept" or usage.get("reasons")):
             raise ExperimentError("accept requires knowledge_usage.decision=accept and no reasons")
         result["knowledge_usage"] = usage
     if paired is not None:

@@ -868,6 +868,7 @@ def cmd_experiment_flow(args: argparse.Namespace) -> int:
             if command else None,
             baseline_traces=Path(args.baseline_traces) if args.baseline_traces else None,
             reuse_index=args.reuse_index,
+            exploratory=args.exploratory,
             dry_run=args.dry_run,
         )
     except (FlowError, ProposalError, OSError, ValueError, PolicyError, PilotError) as exc:
@@ -2202,6 +2203,8 @@ def build_parser() -> argparse.ArgumentParser:
     exp_flow.add_argument("--output", required=True)
     exp_flow.add_argument("--judge", default=None)
     exp_flow.add_argument("--runner-command", default=None, help="JSON argv")
+    exp_flow.add_argument("--exploratory", action="store_true",
+                          help="降级验收：允许 insufficient usage 与成本改善；不作为生产通过")
     exp_flow.add_argument("--dry-run", action="store_true",
                           help="只准备 candidate/pilot tasks，不跑 runner/judge")
     exp_flow.add_argument("--baseline-traces", default=None)

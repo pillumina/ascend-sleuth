@@ -423,7 +423,8 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
            reuse_index: Optional[int] = None, pool: str = "pilot",
            card: Optional[str] = None,
            proposal: Optional[str] = None,
-           base: Optional[Path] = None) -> Dict[str, Any]:
+           base: Optional[Path] = None,
+           exploratory: bool = False) -> Dict[str, Any]:
     """配对判定 + 容量检查，写 Run 与 Conclusion 记录。"""
     output = Path(output)
     if reuse_index is not None and reuse_index < 0:
@@ -452,8 +453,14 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
     component = str((tasks.get("candidate") or {}).get("target_component") or "")
     required = {"diagnose.knowledge_usage": "knowledge",
                 "diagnose.source_usage": "source"}.get(component)
-    if required and required in constraints and constraints[required]["decision"] != "accept":
-        constraints_ok = False
+    if required and required in constraints:
+        decision = constraints[required]["decision"]
+        if decision == "reject":
+            constraints_ok = False
+        elif decision == "accept":
+            constraints_ok = True
+        else:
+            constraints_ok = exploratory
     else:
         constraints_ok = all(item["decision"] != "reject" for item in constraints.values())
 
@@ -504,8 +511,17 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
     )
     result = decision.decision.value
     reason = decision.reason
-    min_pairs = int((tasks.get("budget") or {}).get("min_pairs")
-                    or (policy.get("samples") or {}).get("field_eval") or 0)
+    min_pairs = 1 if exploratory else int(
+        (tasks.get("budget") or {}).get("min_pairs")
+        or (policy.get("samples") or {}).get("field_eval") or 0)
+    if exploratory and result in ("insufficient", "reject") and counts["c"] == 0 and counts["n"] > 0:
+        cost_ratio = getattr(decision, "cost_ratio", None)
+        if result == "insufficient" or (
+                cost_ratio is not None
+                and cost_ratio < 1.0):
+            result = "accept"
+            reason = ("exploratory accept: usage constraint not production-grade; "
+                      f"cost_ratio={cost_ratio} (b={counts['b']}, c={counts['c']}, n={counts['n']})")
     if counts["n"] < min_pairs:
         result = "insufficient"
         reason = f"capacity_short: n={counts['n']} < min_pairs={min_pairs}"
