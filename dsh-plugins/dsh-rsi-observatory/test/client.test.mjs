@@ -114,12 +114,12 @@ test('判定与缺口的文案映射保留未知枚举原值', () => {
   assert.equal(t.decisionTone('accept'), 'ok')
   assert.equal(t.decisionTone('reject'), 'bad')
   assert.equal(t.decisionTone('weird'), 'muted')
-  assert.equal(t.gapLabel('no_cost'), '缺成本')
+  assert.equal(t.gapLabel('no_cost'), '缺少成本数据')
   assert.equal(t.gapLabel('custom_gap'), 'custom_gap')
   assert.equal(t.formatScore(0.3333), '0.3333')
   assert.equal(t.formatScore(null), '—')
-  assert.equal(t.pairedText({ b: 1, c: 0, n: 9 }), 'b 1 · c 0 · n 9')
-  assert.equal(t.formatCost(detailFixture.conclusion), '980000 tok · 9 对')
+  assert.equal(t.pairedText({ b: 1, c: 0, n: 9 }), '候选胜 1 · 对照胜 0 · 样本 9')
+  assert.equal(t.formatCost(detailFixture.conclusion), '980000 词元 · 9 对')
   assert.equal(t.formatCost({}), '—')
   assert.equal(t.eventKinds(detailFixture.history).join(','), 'experiment')
 })
@@ -205,8 +205,28 @@ test('概览的摘要、判定与执行块', () => {
   assert.match(decision, /9 条有效样本/)
 
   const rollout = textOf(plugin.__test.RolloutBlock({ rollout: detailFixture.rollout }))
-  assert.match(rollout, /baseline 9/)
-  assert.match(rollout, /逐样本成绩不在 RSIStore/)
+  assert.match(rollout, /对照 9 条/)
+  assert.match(rollout, /执行情况/)
+})
+
+test('逐样本评分与已记录环节直接来自实验记录', () => {
+  const { plugin } = loadPlugin()
+  const t = plugin.__test
+  const scoreText = textOf(t.SampleScores({
+    record: {
+      baseline: { per_sample: { 15866: 1 } },
+      candidate: { per_sample: { 15866: 1 } },
+    },
+  }))
+  assert.match(scoreText, /逐样本评分/)
+  assert.match(scoreText, /15866/)
+  assert.match(scoreText, /正确/)
+  const stageText = textOf(t.StageTrack({
+    stages: [{ id: 'judge', label: '评分', state: 'recorded', summary: '逐样本评分如下', fields: ['15866：对照 1 / 候选 1'] }],
+    openId: 'judge', onToggle() {},
+  }))
+  assert.match(stageText, /有记录/)
+  assert.match(stageText, /逐样本评分如下/)
 })
 
 test('提案面板给出改动文件、预期与回滚', () => {
@@ -215,7 +235,7 @@ test('提案面板给出改动文件、预期与回滚', () => {
   assert.match(text, /skills\/diagnose\/SKILL\.md/)
   assert.match(text, /预期/)
   assert.match(text, /回滚/)
-  assert.match(text, /改动 diff/)
+  assert.match(text, /改动内容/)
 })
 
 test('事件流按 kind 过滤并提示截断', () => {
@@ -242,5 +262,5 @@ test('缺口列表可读', () => {
   const { plugin } = loadPlugin()
   const text = textOf(plugin.__test.Gaps({ gaps: ['rolled_back', 'id_collision'] }))
   assert.match(text, /已回滚/)
-  assert.match(text, /实验 id 复用/)
+  assert.match(text, /实验编号重复/)
 })

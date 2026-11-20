@@ -168,7 +168,18 @@ def _side(value: Any, name: str) -> Dict[str, Any]:
         raise ExperimentError(f"{name}.samples must be a non-empty list")
     if not all(isinstance(item, str) and item.strip() for item in samples):
         raise ExperimentError(f"{name}.samples must contain non-empty strings")
-    return {"score": score, "samples": list(samples)}
+    per_sample = value.get("per_sample")
+    normalized: Dict[str, Any] = {"score": score, "samples": list(samples)}
+    if per_sample is not None:
+        if not isinstance(per_sample, dict):
+            raise ExperimentError(f"{name}.per_sample must be an object")
+        if set(per_sample) != set(samples):
+            raise ExperimentError(f"{name}.per_sample must match samples")
+        for sample_id, item in per_sample.items():
+            if item not in (0, 1):
+                raise ExperimentError(f"{name}.per_sample.{sample_id} must be 0 or 1")
+        normalized["per_sample"] = {str(key): int(value) for key, value in per_sample.items()}
+    return normalized
 
 
 def validate_experiment(record: Any) -> Dict[str, Any]:
@@ -290,6 +301,26 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
             result[key] = value
     if record.get("judge_sha256"):
         result["judge_sha256"] = str(record["judge_sha256"])
+    stage_reports = record.get("stage_reports")
+    if stage_reports is not None:
+        if not isinstance(stage_reports, list):
+            raise ExperimentError("stage_reports must be a list")
+        cleaned = []
+        for item in stage_reports:
+            if not isinstance(item, dict):
+                raise ExperimentError("each stage_report must be an object")
+            stage_id = item.get("id")
+            if not isinstance(stage_id, str) or not stage_id.strip():
+                raise ExperimentError("stage_report.id is required")
+            cleaned.append({
+                "id": stage_id,
+                "label": str(item.get("label") or stage_id),
+                "state": str(item.get("state") or "empty"),
+                "summary": str(item.get("summary") or ""),
+                "fields": [str(field) for field in (item.get("fields") or [])
+                           if str(field).strip()],
+            })
+        result["stage_reports"] = cleaned
     stages = record.get("stages")
     if stages is not None:
         if not isinstance(stages, dict):

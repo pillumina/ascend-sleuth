@@ -156,8 +156,25 @@ def row_gaps(data: Dict[str, Any]) -> List[str]:
 
 
 def build_stages(data: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """七阶段派生视图：只有真出现在事件里的字段才标 evidence，不编造时间与状态。"""
+    """优先读实验记录里的 stage_reports；旧记录才回退到字段派生。"""
     proposal = dict_of(data.get("proposal"))
+    experiment = dict_of(data.get("experiment"))
+    recorded = experiment.get("stage_reports")
+    if isinstance(recorded, list) and recorded:
+        stages = []
+        for item in recorded:
+            if not isinstance(item, dict) or not text_of(item.get("id")):
+                continue
+            stages.append({
+                "id": text_of(item.get("id")),
+                "label": text_of(item.get("label")) or text_of(item.get("id")),
+                "state": text_of(item.get("state")) or "empty",
+                "summary": text_of(item.get("summary")),
+                "fields": [str(field) for field in (item.get("fields") or [])
+                           if str(field).strip()],
+            })
+        if stages:
+            return stages
     experiment = dict_of(data.get("experiment"))
     conclusion = dict_of(data.get("conclusion"))
     rollout = dict_of(data.get("rollout"))
@@ -262,7 +279,7 @@ def event_summary(row: Dict[str, Any]) -> str:
     if kind == "decision":
         return "判定 " + (text_of(data.get("decision")) or "未记录")
     if kind == "rollout":
-        return "rollout " + (text_of(data.get("decision")) or "未记录")
+        return "执行记录 " + (text_of(data.get("decision")) or "未记录")
     if kind == "archive":
         return "归档记录"
     return kind or "事件"
@@ -398,8 +415,8 @@ def build_detail(rows: List[Dict[str, Any]], store: Any, key: str,
         "gaps": build_gaps(data, history),
         "truncated": any((proposal_truncated, record_truncated,
                           conclusion_truncated, rollout_truncated)),
-        "notes": ["阶段是派生视图：有记录 = 事件里能找到对应字段；不是时间线。",
-                  "数据只来自 RSIStore（open_store/read/history），不读 JSONL 投影。"],
+        "notes": ["七个环节按实验执行顺序排列；没有记录的环节会显示为空。",
+                  "数据只来自实验记录库（RSIStore），不读派生文件。"],
     }
 
 
