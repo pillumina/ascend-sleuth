@@ -49,6 +49,7 @@ from .decision import Decision, DecisionResult, decide
 from .experiments import ExperimentError, validate_experiment
 from .holdout_guard import is_holdout_source, issue_numbers
 from .knowledge_usage import UsageError, compare as compare_usage, evaluate as evaluate_usage, from_trace
+from .proposals import ProposalError, request as proposal_request, validate_draft
 from .pilot import (PilotError, checkpoint as pilot_checkpoint, collect as pilot_collect,
                     decide as pilot_decide, prepare as pilot_prepare)
 from .stage import (StageError, judge as stage_judge, load_argv as stage_load_argv,
@@ -777,42 +778,33 @@ def cmd_experiment_list(args: argparse.Namespace) -> int:
 
 def _agent_draft_patch(path: str, target_override=None, component_override=None,
                        summary_override=None, seed: int = 0) -> "Patch":
-    """把 agent 写好的 target-specific 草案转成 Patch；不调用模型。"""
     data = json.loads(Path(path).read_text(encoding="utf-8"))
     if not isinstance(data, dict):
-        raise ValueError("draft must be an object")
-    target = str(data.get("target_kind") or "")
-    if target_override and target and target != target_override:
-        raise ValueError("draft target_kind does not match --target")
-    target = target_override or target
-    if target not in {tid for tid in target_ids()}:
-        raise ValueError(f"unknown target_kind {target!r}")
-    component = component_override or str(data.get("target_component") or "")
-    summary = summary_override or str(data.get("summary") or "")
-    change = data.get("change")
-    if not isinstance(change, (dict, str)) or not change:
-        raise ValueError("draft.change is required")
-    expected = str(data.get("expected") or "")
-    risk = str(data.get("risk") or "")
-    rollback = str(data.get("rollback") or "")
-    for name, value in (("target_component", component), ("summary", summary),
-                        ("expected", expected), ("risk", risk), ("rollback", rollback)):
-        if not value.strip():
-            raise ValueError(f"draft.{name} is required")
-    payload = {
-        "source": "agent",
-        "change": change,
-        "expected": expected,
-        "risk": risk,
-        "rollback": rollback,
-        "files": data.get("files") or [],
-        "hypothesis": data.get("hypothesis") or "",
-    }
-    return Patch(
-        target_kind=target, target_component=component, summary=summary,
-        algorithm="agent_draft", algorithm_version="v1", payload=payload,
-        seed=seed,
-    )
+        raise ProposalError("draft must be an object")
+    if component_override:
+        data["target_component"] = component_override
+    if summary_override:
+        data["summary"] = summary_override
+    patch = validate_draft(data, target_override=target_override)
+    patch.seed = seed
+    return patch
+
+
+def cmd_experiment_request(args: argparse.Namespace) -> int:
+    try:
+        policy = _policy_for(args)
+        target = args.target or ((policy.get("experiment") or {}).get("target") or "skill")
+        evidence = None
+        if args.evidence:
+            evidence = json.loads(Path(args.evidence).read_text(encoding="utf-8"))
+        constraints = _json_object(args.constraints, "constraints") or {}
+        result = proposal_request(target, args.component, evidence=evidence,
+                                  constraints=constraints)
+    except (ProposalError, OSError, ValueError, json.JSONDecodeError, PolicyError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
 
 
 def cmd_experiment_propose(args: argparse.Namespace) -> int:
@@ -1921,6 +1913,16 @@ def build_parser() -> argparse.ArgumentParser:
     exp_gate.add_argument("--baseline", default=None, help="tooling gate：基线 tool usage JSON")
     exp_gate.add_argument("--candidate", default=None, help="tooling gate：候选 tool usage JSON")
     exp_gate.set_defaults(func=cmd_experiment_gate)
+    exp_request = experiment_sub.add_parser(
+        "request", help="为 agent 生成 target-specific 提案请求与 prompt")
+    exp_request.add_argument("--root", default=None)
+    exp_request.add_argument("--target", default=None)
+    exp_request.add_argument("--component", required=True)
+    exp_request.add_argument("--evidence", default=None, help="JSON 文件")
+    exp_request.add_argument("--constraints", default=None, help="JSON 对象")
+    exp_request.add_argument("--policy", default=None)
+    exp_request.set_defaults(func=cmd_experiment_request)
+
     exp_propose = experiment_sub.add_parser(
         "propose", help="记录对照包络，或接收 agent 的 target-specific 提案草案")
     exp_propose.add_argument("--root", default=None)

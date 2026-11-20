@@ -61,7 +61,7 @@ STAGES: Dict[str, StageSpec] = {
     ),
     "propose.agent": StageSpec(
         "propose.agent", "propose", "v1", "subagent",
-        "agent 根据归因/失败反馈直接写候选区文本；不依赖 GEPA 库",
+        "agent 通过 ProposalPort 的 target-specific prompt 写结构化提案；不依赖 GEPA 库",
     ),
     "propose.reflection": StageSpec(
         "propose.reflection", "propose", "v1", "subagent",
