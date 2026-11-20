@@ -196,6 +196,60 @@ class FlowTest(unittest.TestCase):
                 run_proposal(root, proposal, [str(sample)], Path(td) / "pilot",
                              load_policy(None), judge, archive, runner=runner)
 
+    def test_harness_proposal_reaches_experiment_record(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"; root.mkdir(); _repo(root)
+            (root / "eval").mkdir()
+            (root / "eval" / "scheduler.yaml").write_text("scheduler: old\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=root, check=True)
+            subprocess.run(["git", "commit", "-qm", "scheduler"], cwd=root, check=True)
+            archive = ProposalArchive(Path(td) / "proposals.jsonl")
+            proposal = ProposalEngine(archive).add({
+                "target_kind": "harness",
+                "target_component": "harness.scheduler",
+                "summary": "调整调度",
+                "expected": "减少空转",
+                "risk": "高",
+                "rollback": "恢复调度",
+                "candidate": {
+                    "candidate_id": "C-HF-1", "target_kind": "harness",
+                    "target_component": "harness.scheduler",
+                    "region": "harness.scheduler",
+                    "file": "eval/scheduler.yaml", "base_rev": "HEAD",
+                    "old_text": "scheduler: old\n",
+                    "new_text": "scheduler: new\n",
+                },
+            })
+            samples = []
+            for i in range(4):
+                path = Path(td) / f"S-{5000+i}.yaml"
+                path.write_text(yaml.safe_dump({
+                    "id": f"S-{5000+i}", "source": f"github/x/{i}",
+                    "input": {"title": f"S-{i}"}, "expected": {"resolution": "ok"},
+                }), encoding="utf-8")
+                samples.append(str(path))
+            judge = Path(td) / "judge.json"
+            judge.write_text(json.dumps({
+                "baseline": {str(5000+i): 0 for i in range(4)},
+                "candidate": {str(5000+i): 1 for i in range(4)},
+            }), encoding="utf-8")
+
+            def runner(tasks):
+                for arm in ("baseline", "candidate"):
+                    for row in tasks["samples"]:
+                        sid = row["short_id"]
+                        (Path(tasks["arms"][arm]["trace_dir"]) / f"{sid}.yaml").write_text(
+                            yaml.safe_dump({"session_id": sid, "trace": []}), encoding="utf-8")
+                        (Path(tasks["arms"][arm]["out_dir"]) / f"{sid}.out.md").write_text(
+                            "ok", encoding="utf-8")
+
+            result = run_proposal(root, proposal, samples, Path(td) / "pilot",
+                                  load_policy(None), judge, archive, runner=runner)
+            self.assertEqual(result["decision"], "accept")
+            exp = json.loads((Path(td) / "experiments.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+            self.assertEqual(exp["target_kind"], "harness")
+            self.assertEqual(exp["proposal"], proposal.id)
+
     def test_requires_candidate(self):
         with tempfile.TemporaryDirectory() as td:
             engine = ProposalEngine(ProposalArchive(Path(td) / "proposals.jsonl"))
