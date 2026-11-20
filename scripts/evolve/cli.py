@@ -983,7 +983,8 @@ def cmd_experiment_records(args: argparse.Namespace) -> int:
             f"{record.get('target_component', '')} {record.get('algorithm', '')} "
             f"execution={record.get('execution')} "
             f"eval_ready={record.get('eval_ready')} "
-            f"profile={record.get('eval_profile_id')}{scores}"
+            f"profile={record.get('eval_profile_id')} "
+            f"proposal={record.get('proposal') or ''}{scores}"
         )
     return 0
 

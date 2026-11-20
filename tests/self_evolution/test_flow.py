@@ -34,15 +34,15 @@ def _repo(root: Path):
 def _draft():
     return {
         "target_kind": "skill",
-        "target_component": "diagnose.knowledge_usage",
+        "target_component": "diagnose.verification_checklist",
         "summary": "阶段二只载筛出的候选",
         "expected": "读取量下降",
         "risk": "低",
         "rollback": "恢复原阶段二",
         "candidate": {
             "candidate_id": "C-FLOW-1", "target_kind": "skill",
-            "target_component": "diagnose.knowledge_usage",
-            "region": "diagnose.knowledge_usage",
+            "target_component": "diagnose.verification_checklist",
+            "region": "diagnose.verification_checklist",
             "file": "skills/diagnose/SKILL.md", "base_rev": "HEAD",
             "old_text": "阶段二载全文，按知识候选核对。\n",
             "new_text": "阶段二只载筛出的候选全文，按知识候选核对。\n",
@@ -90,6 +90,9 @@ class FlowTest(unittest.TestCase):
             self.assertEqual(rows[-1]["status"], "accept")
             record = latest_by_proposal(proposal.id, Path(td))
             self.assertEqual(record["decision"], "accept")
+            exp = json.loads((Path(td) / "experiments.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+            self.assertEqual(exp["proposal"], proposal.id)
+            self.assertEqual(exp["decision"], "accept")
             self.assertTrue((Path(td) / "pilot" / "candidate-worktree").exists())
 
     def test_cli_flow_with_external_runner(self):
