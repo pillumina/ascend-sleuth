@@ -1093,7 +1093,11 @@ def cmd_stage_run(args: argparse.Namespace) -> int:
 
 def cmd_stage_judge(args: argparse.Namespace) -> int:
     try:
-        result = stage_judge(Path(args.output), agent=args.agent, timeout=args.timeout)
+        calibration = None
+        if args.calibration:
+            calibration = json.loads(Path(args.calibration).read_text(encoding="utf-8"))
+        result = stage_judge(Path(args.output), agent=args.agent,
+                             timeout=args.timeout, calibration=calibration)
     except (StageError, OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -1747,6 +1751,8 @@ def build_parser() -> argparse.ArgumentParser:
     s_judge.add_argument("--output", required=True)
     s_judge.add_argument("--agent", default="dsh", choices=("dsh", "claude", "echo"))
     s_judge.add_argument("--timeout", type=float, default=300.0)
+    s_judge.add_argument("--calibration", default=None,
+                         help="judge-calibration --json 的结果；test 必须 passed")
     s_judge.set_defaults(func=cmd_stage_judge)
     s_report = stage_sub.add_parser("report", help="test 走 exact gate；regression 走硬失败")
     s_report.add_argument("--stage", required=True, choices=("test", "regression"))

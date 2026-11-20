@@ -131,7 +131,7 @@ class StageTest(unittest.TestCase):
             judge.write_text(json.dumps({
                 "baseline": {"1001": 0, "1002": 0, "1003": 0, "1004": 0},
                 "candidate": {"1001": 1, "1002": 1, "1003": 1, "1004": 1},
-                "meta": {"agent": "echo"},
+                "meta": {"agent": "echo", "calibration": {"passed": True}},
             }), encoding="utf-8")
             reported = report(out, "test", judge, policy, update_stage=True)
             self.assertEqual(reported["decision"]["conclusion"]["decision"], "accept")

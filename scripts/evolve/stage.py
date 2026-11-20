@@ -333,12 +333,21 @@ def _check_traces(output: Path, tasks: Dict[str, Any]) -> None:
                 )
 
 
-def judge(output: Path, agent: str = "dsh", timeout: float = 300.0) -> Dict[str, Any]:
+def judge(output: Path, agent: str = "dsh", timeout: float = 300.0,
+          calibration: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    if calibration is not None and not calibration.get("passed"):
+        raise StageError("judge calibration did not pass")
     output = Path(output)
     tasks = json.loads((output / "tasks.json").read_text(encoding="utf-8"))
     adapter = Path(__file__).resolve().parents[2] / "scripts" / "judge_adapter.py"
-    data: Dict[str, Any] = {"baseline": {}, "candidate": {},
-                            "meta": {"agent": agent, "at": now_iso()}}
+    data: Dict[str, Any] = {
+        "baseline": {}, "candidate": {},
+        "meta": {
+            "agent": agent, "at": now_iso(),
+            "calibration": (calibration if calibration is not None
+                            else {"passed": False, "status": "not_run"}),
+        },
+    }
     for arm in tasks.get("arms") or {}:
         for sample in tasks.get("samples") or []:
             sid = sample["short_id"]
@@ -378,6 +387,10 @@ def report(output: Path, stage: str, judge_path: Path,
     meta = judge.get("meta") if isinstance(judge.get("meta"), dict) else {}
     if not meta.get("agent"):
         raise StageError("judge provenance missing: meta.agent is required")
+    if stage == "test":
+        calibration = meta.get("calibration")
+        if not isinstance(calibration, dict) or calibration.get("passed") is not True:
+            raise StageError("judge calibration missing or not passed")
     _check_traces(output, tasks)
     if stage == "test":
         candidate_id = str(tasks.get("candidate_id") or "")
