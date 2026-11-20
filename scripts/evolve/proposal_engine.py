@@ -166,6 +166,7 @@ class ProposalEngine:
         self.proposals: List[Proposal] = []
         self.reflected: List[str] = []
         self._next = 1
+        self.evaluations = 0
 
     def _id(self) -> str:
         value = f"P-{self._next:04d}"
@@ -198,6 +199,7 @@ class ProposalEngine:
         proposal.scores = {str(k): float(v) for k, v in scores.items()}
         proposal.feedback = {str(k): str(v) for k, v in (feedback or {}).items()}
         proposal.status = "evaluated"
+        self.evaluations += 1
         self.archive.append(proposal)
         return proposal
 
@@ -209,16 +211,22 @@ class ProposalEngine:
     def run(self, proposer: Callable[[Optional[Proposal], List[Dict[str, str]], int], List[Dict[str, Any]]],
             evaluator: Callable[[Proposal, List[str]], tuple], samples: List[str],
             *, max_rounds: int = 3, population: int = 4,
+            max_evaluations: Optional[int] = None,
             policy: Optional[Any] = None) -> Dict[str, Any]:
         """闭环：proposer -> validate -> evaluate -> select -> reflect -> proposer。"""
         if not samples or len(set(samples)) != len(samples):
             raise ProposalError("samples must be unique and non-empty")
         if max_rounds < 1 or population < 1:
             raise ProposalError("max_rounds and population must be positive")
+        if max_evaluations is not None and max_evaluations < 1:
+            raise ProposalError("max_evaluations must be positive")
         policy = policy or ParetoPolicy()
         rounds = 0
         stop_reason = "rounds"
         while rounds < max_rounds and len(self.proposals) < population:
+            if max_evaluations is not None and self.evaluations >= max_evaluations:
+                stop_reason = "evaluation_budget"
+                break
             parent = policy.choose(self.proposals, samples, self.reflected)
             if parent is None:
                 # 首次：用 seed（无父）生成；之后没有可反思候选就停。
@@ -239,11 +247,16 @@ class ProposalEngine:
                 scores, feedback = evaluator(proposal, samples)
                 self.evaluate(proposal, scores, feedback)
                 added += 1
+                if max_evaluations is not None and self.evaluations >= max_evaluations:
+                    stop_reason = "evaluation_budget"
+                    break
             rounds += 1
+            if stop_reason == "evaluation_budget":
+                break
             if added == 0:
                 stop_reason = "no_valid"
                 break
-        if len(self.proposals) >= population:
+        if stop_reason != "evaluation_budget" and len(self.proposals) >= population:
             stop_reason = "population"
         selected = policy.choose(self.proposals, samples, [])
         return {
@@ -251,5 +264,6 @@ class ProposalEngine:
             "proposals": len(self.proposals),
             "selected": selected.to_dict() if selected else None,
             "stop_reason": stop_reason,
+            "evaluations": self.evaluations,
             "archive": str(self.archive.path),
         }
