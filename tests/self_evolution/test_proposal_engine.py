@@ -52,6 +52,29 @@ class ProposalEngineTest(unittest.TestCase):
             self.assertEqual(p.status, "invalid")
             self.assertTrue(any("outside" in e or "forbidden" in e for e in p.errors))
 
+    def test_candidate_proposal_keeps_candidate(self):
+        with tempfile.TemporaryDirectory() as td:
+            engine = ProposalEngine(ProposalArchive(Path(td) / "proposals.jsonl"))
+            p = engine.add({
+                "target_kind": "knowledge",
+                "summary": "补判别",
+                "expected": "提升",
+                "risk": "低",
+                "rollback": "恢复",
+                "candidate": {
+                    "candidate_id": "C-K1", "target_kind": "knowledge",
+                    "target_component": "knowledge.case_content",
+                    "region": "knowledge.case_content",
+                    "file": "knowledge/inference/vllm-ascend/case.yaml",
+                    "base_rev": "HEAD",
+                    "old_text": "quickly_check: 旧判别\n",
+                    "new_text": "quickly_check: 新判别\n",
+                },
+            })
+            self.assertEqual(p.status, "candidate")
+            self.assertEqual(p.candidate["candidate_id"], "C-K1")
+            self.assertEqual(p.component, "knowledge.case_content")
+
     def test_gepa_loop_selects_child(self):
         with tempfile.TemporaryDirectory() as td:
             engine = ProposalEngine(ProposalArchive(Path(td) / "proposals.jsonl"))
