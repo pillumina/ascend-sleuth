@@ -295,7 +295,9 @@ baseline 复用：`pilot prepare --baseline-traces <dir>` 会把已有的 `trace
 
 确定性 benchmark：工具或检索类改动如果有一条可重复的命令，用 `python3 scripts/evolve.py benchmark --baseline-root <a> --candidate-root <b> --argv '["python3","-m","pytest",...]'`，重复 `cost.runs.benchmark_runs` 次比中位耗时与退出码，不跑完整诊断。它只证明这一步的差异，不替代行为类候选的 pilot。
 
-regression 预算：`cost.runs.regression_pairs` 默认 6，`regression_full_pairs` 默认 30；常规候选先跑受影响子集，高风险或发版前才跑满。当前仓内只有样本池和配置，regression 执行器尚未接。
+regression 预算：`cost.runs.regression_pairs` 默认 6，`regression_full_pairs` 默认 30；常规候选先跑受影响子集，高风险或发版前才跑满。
+
+test / regression runner：`stage plan --stage test|regression` 生成任务，`stage run` 按外部 command 执行每个样本/arm，`stage report` 对 test 走 exact gate、对 regression 走硬失败；`--update-stage` 会在 test 报告后把 `eval/core/test-stage.yaml` 标成 `complete`。test 只用 `test-stage.yaml` 的 `selected`，regression 默认取 `regression_pairs` 条，`--full` 取全量。command 通过环境变量拿到 `SLEUTH_TRACE` / `SLEUTH_OUT` 等路径，必须写出这两个文件；runner 本身不调用模型。
 
 `pilot collect` 之后跑 `pilot decide`。它把每条 rollout 写成一条执行记录（`Run`，见 records.md），把一次对照写成一条结论（`Conclusion`，同篇）。`judge --record` 与 `pilot decide` 都收 `--card EV-YYYY-NNN`，把结论绑到对应卡；合入后跑 `python3 scripts/evolve.py readback --card EV-YYYY-NNN` 读回最近一条结论（decision/b/c/n/model/cost）；自演进页的卡详情也会显示「结论回读」一节。模型的来源是 `collect` 里每条 rollout 的 `model`（多个不同值用逗号连接）；成本只累加 **baseline 与 candidate 都有 token** 的配对样本，缺失数写进 `cost.missing`，不补 0。
 

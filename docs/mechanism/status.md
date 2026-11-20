@@ -73,7 +73,8 @@
 | pilot 成本预算与 futility 早停 | [evaluation.md](evaluation.md) 3.5 | 已落地 | `python3 scripts/evolve.py pilot checkpoint --help` |
 | baseline trace 复用（只跑 candidate） | [evaluation.md](evaluation.md) 3.5 | 已落地 | `python3 scripts/evolve.py pilot prepare --help` |
 | 确定性 benchmark（工具/检索类） | [evaluation.md](evaluation.md) 3.5 | 已落地 | `python3 scripts/evolve.py benchmark --help` |
-| regression 预算配置（常规 6 / 全量 30） | [evaluation.md](evaluation.md) 3.4 | 配置已落地，执行器未接 | `grep -n "regression_pairs" eval/policy.yaml` |
+| regression 预算配置（常规 6 / 全量 30） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/evolve.py stage plan --stage regression --limit 1` |
+| test / regression 通用 stage runner（plan / run / report） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/evolve.py stage --help` |
 | 模型与 token 采集：trace header + DSH 会话记录 | [records.md](records.md) 3.2 | 已落地 | `python3 scripts/trace_begin.py --print-only`；`grep -n "read_session" scripts/evolve/pilot.py` |
 | pilot 样本注册进本地队列 | [evaluation.md](evaluation.md) 3.9 | 已落地 | `python3 scripts/evolve.py sample import-pilot --help` |
 | 已闭环 case 回流样本（trace / postmortem，完整性与跨集查重） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/evolve.py sample new --from trace --help`；`python3 scripts/evolve.py sample status --help` |
