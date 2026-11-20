@@ -13,7 +13,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from evolve.flow import FlowError, run_proposal  # noqa: E402
+from evolve.flow import FlowError, _experiment_record, run_proposal  # noqa: E402
 from evolve.policy import load_policy  # noqa: E402
 from tests.self_evolution.test_cli import run_cli  # noqa: E402
 from evolve.proposal_engine import ProposalArchive, ProposalEngine  # noqa: E402
@@ -249,6 +249,38 @@ class FlowTest(unittest.TestCase):
             exp = json.loads((Path(td) / "experiments.jsonl").read_text(encoding="utf-8").splitlines()[-1])
             self.assertEqual(exp["target_kind"], "harness")
             self.assertEqual(exp["proposal"], proposal.id)
+
+    def test_usage_accept_record_carries_usage_evidence(self):
+        with tempfile.TemporaryDirectory() as td:
+            archive = ProposalArchive(Path(td) / "proposals.jsonl")
+            proposal = ProposalEngine(archive).add({
+                "target_kind": "skill",
+                "target_component": "diagnose.knowledge_usage",
+                "summary": "只载候选",
+                "change": {"files": ["skills/diagnose/SKILL.md"], "diff": "+ x"},
+                "expected": "读取下降", "risk": "低", "rollback": "恢复",
+            })
+            samples = [{"id": f"S-{6000+i}", "short_id": str(6000+i)} for i in range(4)]
+            judge = Path(td) / "judge.json"
+            judge.write_text(json.dumps({
+                "baseline": {str(6000+i): 0 for i in range(4)},
+                "candidate": {str(6000+i): 1 for i in range(4)},
+            }), encoding="utf-8")
+            def usage(read, tokens):
+                return [{
+                    "sample_id": str(6000+i), "hit": True, "wrong_cases": 0,
+                    "candidates_examined": 2, "full_body_reads": read,
+                    "reference_lookups": 0, "first_hit_step": 1,
+                    "tokens": tokens, "elapsed_ms": 100.0, "resolution_ok": True,
+                } for i in range(4)]
+            collected = {"arms": {
+                "baseline": [{"knowledge_usage": row} for row in usage(4, 1000)],
+                "candidate": [{"knowledge_usage": row} for row in usage(1, 400)],
+            }}
+            record = _experiment_record(proposal, {"samples": samples}, judge, "accept",
+                                        {"b": 4, "c": 0, "n": 4, "alpha_eff": 0.1}, collected)
+            self.assertEqual(record["knowledge_usage"]["decision"], "accept")
+            self.assertIn("full_body_reads", record["knowledge_usage"]["deltas"])
 
     def test_requires_candidate(self):
         with tempfile.TemporaryDirectory() as td:

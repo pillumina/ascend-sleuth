@@ -11,7 +11,9 @@ from typing import Any, Callable, Dict, List, Optional
 
 from .experiments import ExperimentError, validate_experiment
 from .candidate import rollback_workspace
+from .knowledge_usage import compare as compare_knowledge
 from .pilot import collect as pilot_collect, decide as pilot_decide, prepare as pilot_prepare
+from .source_usage import compare as compare_source
 from .records import ExperimentStore
 from .proposal_engine import Proposal, ProposalArchive, ProposalEngine
 
@@ -50,7 +52,7 @@ def run_proposal(root: Path, proposal: Proposal, samples: List[str], output: Pat
         proposal.rolled_back = True
     archive.append(proposal)
     experiment = _experiment_record(proposal, tasks, judge, decision,
-                                    result.get("conclusion") or {})
+                                    result.get("conclusion") or {}, collected)
     ExperimentStore.for_base(archive.path.parent).append(experiment)
     return {"candidate": proposal.candidate, "tasks": tasks, "collected": collected,
             "conclusion": result.get("conclusion"), "decision": decision,
@@ -83,8 +85,21 @@ def _reject_fallback(tasks: Dict[str, Any]) -> None:
                     f"adapter fallback trace is not valid evidence: {path}")
 
 
+def _usage_evidence(collected: Dict[str, Any], key: str, comparator) -> Optional[Dict[str, Any]]:
+    arms = collected.get("arms") or {}
+    baseline = [row[key] for row in arms.get("baseline") or [] if row.get(key)]
+    candidate = [row[key] for row in arms.get("candidate") or [] if row.get(key)]
+    if not baseline or not candidate:
+        return None
+    try:
+        return comparator({"samples": baseline}, {"samples": candidate})
+    except ValueError:
+        return None
+
+
 def _experiment_record(proposal: Proposal, tasks: Dict[str, Any], judge: Path,
-                       decision: str, conclusion: Dict[str, Any]) -> Dict[str, Any]:
+                       decision: str, conclusion: Dict[str, Any],
+                       collected: Dict[str, Any]) -> Dict[str, Any]:
     data = json.loads(Path(judge).read_text(encoding="utf-8"))
     samples = [str(row.get("short_id") or row.get("id")) for row in tasks.get("samples") or []]
     baseline = _side_scores(data, "baseline", samples)
@@ -106,6 +121,14 @@ def _experiment_record(proposal: Proposal, tasks: Dict[str, Any], judge: Path,
         "summary": proposal.summary,
         "proposal": proposal.id,
     }
+    if proposal.component == "diagnose.knowledge_usage":
+        usage = _usage_evidence(collected, "knowledge_usage", compare_knowledge)
+        if usage is not None:
+            record["knowledge_usage"] = usage
+    if proposal.component == "diagnose.source_usage":
+        usage = _usage_evidence(collected, "source_usage", compare_source)
+        if usage is not None:
+            record["source_usage"] = usage
     if conclusion.get("b") is not None:
         record["paired"] = {"b": conclusion["b"], "c": conclusion["c"],
                             "n": conclusion["n"],
