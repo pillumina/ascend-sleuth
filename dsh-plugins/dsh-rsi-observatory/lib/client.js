@@ -14,7 +14,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement
 
     const CHANNEL = '/rsi-observatory'
-    const PLUGIN_VERSION = '0.3.0'
+    const PLUGIN_VERSION = '0.4.0'
     const PANEL_ID = 'rsi-observatory'
     const PANEL_LABEL = '自演进实验'
 
@@ -341,12 +341,16 @@ window.__ModuleLoader__.load({
             h('th', null, '样本'),
             h('th', null, '对照'),
             h('th', null, '候选'),
+            h('th', null, '变化'),
           )),
           h('tbody', null, ids.map(function (id) {
+            const delta = candidate[id] - baseline[id]
             return h('tr', { key: id },
               h('td', null, String(id)),
               h('td', null, baseline[id] === 1 ? '正确' : '错误'),
               h('td', null, candidate[id] === 1 ? '正确' : '错误'),
+              h('td', { class: delta > 0 ? 'rsi-good' : (delta < 0 ? 'rsi-bad' : '') },
+                delta > 0 ? '变好' : (delta < 0 ? '变差' : '不变')),
             )
           })),
         ),
@@ -800,6 +804,8 @@ window.__ModuleLoader__.load({
       .rsi-table{width:100%;border-collapse:collapse;font-size:12.5px}
       .rsi-table th,.rsi-table td{padding:6px 8px;border-bottom:1px solid var(--rsi-hair);text-align:left}
       .rsi-table th{color:var(--dsw-alias-label-secondary);font-weight:500}
+      .rsi-good{color:var(--rsi-ok,#1a7f37)}
+      .rsi-bad{color:var(--rsi-bad,#b42318)}
       .rsi-code-list{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
       .rsi-code{font-family:var(--font-mono,ui-monospace,Menlo,Consolas,monospace);font-size:11px;
         padding:1px 6px;border:1px solid var(--rsi-hair);border-radius:4px}
