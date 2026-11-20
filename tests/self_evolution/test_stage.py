@@ -1,0 +1,144 @@
+"""通用 stage runner：plan / run / report。"""
+
+import json
+import subprocess
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+import yaml
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from evolve.policy import load_policy  # noqa: E402
+from evolve.stage import StageError, plan, report, run  # noqa: E402
+
+
+def _sample(sid, purpose):
+    return {
+        "id": sid, "status": "active", "origin": "core", "purpose": purpose,
+        "source": f"github/test#{sid}", "expected": {"resolution": "ok"},
+    }
+
+
+class StageTest(unittest.TestCase):
+    def _root(self, td, stage="regression", count=1):
+        root = Path(td) / "repo"
+        core = root / "eval" / "core" / "samples"
+        core.mkdir(parents=True)
+        for index in range(count):
+            sid = f"{stage.upper()}-{1001 + index}"
+            (core / f"{sid}.yaml").write_text(
+                yaml.safe_dump(_sample(sid, stage)), encoding="utf-8")
+        if stage == "test":
+            (root / "eval" / "core" / "test-stage.yaml").write_text(
+                yaml.safe_dump({"selected": [str(1001 + i) for i in range(count)]}),
+                encoding="utf-8")
+        return root
+
+    def test_regression_plan_run_report(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._root(td)
+            out = Path(td) / "out"
+            policy = load_policy(None)
+            tasks = plan(root, "regression", out, policy, limit=1)
+            self.assertEqual(tasks["stage"], "regression")
+            self.assertEqual(tasks["gate"], "hard")
+            self.assertEqual(len(tasks["samples"]), 1)
+            self.assertNotIn("baseline", tasks["arms"])
+            script = (
+                "import os,pathlib;"
+                "pathlib.Path(os.environ['SLEUTH_TRACE']).write_text("
+                "'session_id: x\\ntrace: []\\n');"
+                "pathlib.Path(os.environ['SLEUTH_OUT']).write_text('ok')"
+            )
+            result = run(out, [sys.executable, "-c", script])
+            self.assertEqual(result["completed"], 1)
+            self.assertTrue((out / "candidate" / "traces" / "1001.yaml").exists())
+            judge = Path(td) / "judge.json"
+            judge.write_text(json.dumps({"candidate": {"1001": 1}}), encoding="utf-8")
+            reported = report(out, "regression", judge, policy)
+            self.assertTrue(reported["passed"])
+            self.assertEqual(reported["n"], 1)
+
+    def test_regression_failure_is_reported(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._root(td)
+            out = Path(td) / "out"
+            policy = load_policy(None)
+            plan(root, "regression", out, policy, limit=1)
+            judge = Path(td) / "judge.json"
+            judge.write_text(json.dumps({"candidate": {"1001": 0}}), encoding="utf-8")
+            reported = report(out, "regression", judge, policy)
+            self.assertFalse(reported["passed"])
+            self.assertEqual(reported["failed"], ["1001"])
+
+    def test_test_stage_selects_four(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._root(td, stage="test", count=4)
+            out = Path(td) / "out"
+            policy = load_policy(None)
+            tasks = plan(root, "test", out, policy)
+            self.assertEqual(tasks["stage"], "test")
+            self.assertEqual(tasks["gate"], "exact")
+            self.assertEqual([s["short_id"] for s in tasks["samples"]],
+                             ["1001", "1002", "1003", "1004"])
+            self.assertEqual(tasks["budget"]["required_b"], 4)
+
+    def test_test_stage_rejects_short_selection(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._root(td, stage="test", count=3)
+            out = Path(td) / "out"
+            with self.assertRaises(StageError):
+                plan(root, "test", out, load_policy(None))
+
+    def test_test_report_can_mark_stage_complete(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._root(td, stage="test", count=4)
+            out = Path(td) / "out"
+            policy = load_policy(None)
+            plan(root, "test", out, policy)
+            script = (
+                "import os,pathlib;"
+                "pathlib.Path(os.environ['SLEUTH_TRACE']).write_text("
+                "'session_id: x\\ntrace: []\\n');"
+                "pathlib.Path(os.environ['SLEUTH_OUT']).write_text('ok')"
+            )
+            run(out, [sys.executable, "-c", script])
+            judge = Path(td) / "judge.json"
+            judge.write_text(json.dumps({
+                "baseline": {"1001": 0, "1002": 0, "1003": 0, "1004": 0},
+                "candidate": {"1001": 1, "1002": 1, "1003": 1, "1004": 1},
+            }), encoding="utf-8")
+            reported = report(out, "test", judge, policy, update_stage=True)
+            self.assertEqual(reported["decision"]["conclusion"]["decision"], "accept")
+            stage = yaml.safe_load(
+                (root / "eval" / "core" / "test-stage.yaml").read_text(encoding="utf-8"))
+            self.assertEqual(stage["status"], "complete")
+            self.assertEqual(stage["decision"], "accept")
+
+    def test_regression_limit_and_full(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._root(td, stage="regression", count=8)
+            policy = load_policy(None)
+            short = plan(root, "regression", Path(td) / "short", policy)
+            full = plan(root, "regression", Path(td) / "full", policy, full=True)
+            self.assertEqual(len(short["samples"]), 6)
+            self.assertEqual(len(full["samples"]), 8)
+
+    def test_baseline_reuse_is_test_only(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._root(td)
+            out = Path(td) / "out"
+            source = Path(td) / "baseline"
+            for name in ("traces", "out"):
+                (source / name).mkdir(parents=True)
+            with self.assertRaises(StageError):
+                plan(root, "regression", out, load_policy(None), limit=1,
+                     baseline_traces=source)
+
+
+if __name__ == "__main__":
+    unittest.main()
