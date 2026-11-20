@@ -1,0 +1,88 @@
+# DeepSeek-V3 模型配置
+# 类型: MoE
+# 最后更新: 2026-02-27
+
+model:
+  name: DeepSeek-V3
+  type: MoE
+  description: "DeepSeek-V3 671B MoE 模型, 37B 激活参数"
+  huggingface_path: deepseek-ai/DeepSeek-V3
+  architecture: DeepseekV3ForCausalLM
+
+deployment:
+  recommended_tp: 8
+  min_npu_count: 8
+  recommended_memory: "512 GB"
+
+performance:
+  max_model_len: 65536
+  max_num_seqs: 64
+  max_num_batched_tokens: 8192
+  block_size: 128
+  gpu_memory_utilization: 0.85
+
+environment_variables:
+  VLLM_USE_V1: "1"
+  OMP_PROC_BIND: "false"
+  OMP_NUM_THREADS: "8"
+  CPU_AFFINITY_CONF: "2"
+  TASK_QUEUE_ENABLE: "1"
+  ASCEND_RT_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
+  PYTORCH_NPU_ALLOC_CONF: "expandable_segments:True"
+  HCCL_BUFFSIZE: "4096"
+  HCCL_CONNECT_TIMEOUT: "1800"
+  HCCL_EXEC_TIMEOUT: "1800"
+  VLLM_ASCEND_ENABLE_MOE_OPTIMIZE: "1"
+
+vllm_parameters:
+  - "trust-remote-code"
+  - "quantization ascend"
+  - "async-scheduling"
+  - "no-enable-prefix-caching"
+  - "distributed-executor-backend ray"
+
+additional_config:
+  enable_cpu_binding: true
+
+compilation_config:
+  cudagraph_mode: FULL_DECODE_ONLY
+
+moe_config:
+  num_experts: 256
+  num_experts_per_tok: 8
+  expert_parallel_size: 8
+
+context_parallel:
+  enabled: true
+  size: 2
+
+feature_support:
+  chunked_prefill: "支持"
+  automatic_prefix_cache: "不支持"
+  speculative_decoding: "不支持"
+  lora: "不支持"
+  expert_parallel: "支持"
+  context_parallel: "支持"
+
+quantization_support:
+  ascend: "支持"
+  gptq: "不支持"
+  awq: "不支持"
+
+launch_command: |
+  vllm serve /path/to/DeepSeek-V3 \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --served-model-name DeepSeek-V3 \
+    --trust-remote-code \
+    --max-num-seqs 64 \
+    --max-model-len 65536 \
+    --max-num-batched-tokens 8192 \
+    --tensor-parallel-size 8 \
+    --distributed-executor-backend ray \
+    --quantization ascend \
+    --gpu-memory-utilization 0.85 \
+    --no-enable-prefix-caching \
+    --async-scheduling \
+    --additional-config '{"enable_cpu_binding":true}' \
+    --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}'

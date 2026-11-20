@@ -1,0 +1,71 @@
+# Qwen3-VL 模型配置
+# 类型: 多模态 (VL)
+# 最后更新: 2026-02-27
+
+model:
+  name: Qwen3-VL
+  type: 多模态 (VL)
+  description: "Qwen3 视觉-语言多模态模型"
+  huggingface_path: Qwen/Qwen3-VL-7B-Instruct
+  architecture: Qwen3VLForConditionalGeneration
+
+deployment:
+  recommended_tp: 1
+  min_npu_count: 1
+  recommended_memory: "48 GB"
+
+performance:
+  max_model_len: 32768
+  max_num_seqs: 128
+  max_num_batched_tokens: 4096
+  block_size: 128
+  gpu_memory_utilization: 0.9
+
+environment_variables:
+  TASK_QUEUE_ENABLE: "1"
+  VLLM_ASCEND_ENABLE_DENSE_OPTIMIZE: "1"
+  ASCEND_RT_VISIBLE_DEVICES: "0"
+
+vllm_parameters:
+  - "trust-remote-code"
+  - "quantization ascend"
+  - "async-scheduling"
+  - "no-enable-prefix-caching"
+  - 'limit-mm-per-prompt "image=5,video=1"'
+  - "distributed-executor-backend mp"
+
+additional_config:
+  enable_cpu_binding: true
+
+compilation_config:
+  cudagraph_mode: FULL_DECODE_ONLY
+
+multimodal_config:
+  image_input_type: pixel_values
+  max_image_size: 1024
+  max_video_frames: 16
+
+feature_support:
+  chunked_prefill: "支持"
+  automatic_prefix_cache: "不支持"
+  speculative_decoding: "不支持"
+  lora: "不支持"
+  multimodal: "支持"
+
+launch_command: |
+  vllm serve /path/to/Qwen3-VL-7B \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --served-model-name Qwen3-VL-7B \
+    --trust-remote-code \
+    --max-num-seqs 128 \
+    --max-model-len 32768 \
+    --max-num-batched-tokens 4096 \
+    --tensor-parallel-size 1 \
+    --quantization ascend \
+    --gpu-memory-utilization 0.9 \
+    --no-enable-prefix-caching \
+    --async-scheduling \
+    --limit-mm-per-prompt "image=5,video=1" \
+    --additional-config '{"enable_cpu_binding":true}' \
+    --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}'

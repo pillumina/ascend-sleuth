@@ -1,0 +1,76 @@
+# DeepSeek-V3.1 模型配置
+# 类型: MoE
+# 最后更新: 2026-02-27
+
+model:
+  name: DeepSeek-V3.1
+  type: MoE
+  description: "DeepSeek-V3.1 MoE 模型, 支持投机解码 (MTP)"
+  huggingface_path: deepseek-ai/DeepSeek-V3.1
+  architecture: DeepseekV3ForCausalLM
+
+deployment:
+  recommended_tp: 8
+  recommended_dp: 2
+  min_npu_count: 8
+  recommended_memory: "512 GB"
+  quantization_format: W4A8
+
+performance:
+  max_model_len: 65536
+  max_num_seqs: 96
+  max_num_batched_tokens: 6000
+  gpu_memory_utilization: 0.9
+
+environment_variables:
+  LD_PRELOAD: "/usr/lib/aarch64-linux-gnu/libjemalloc.so.2"
+  HCCL_OP_EXPANSION_MODE: "AIV"
+  PYTORCH_NPU_ALLOC_CONF: "expandable_segments:True"
+  VLLM_USE_V1: "1"
+  VLLM_TORCH_PROFILER_WITH_STACK: "0"
+  HCCL_BUFFSIZE: "500"
+  VLLM_ASCEND_ENABLE_MLAPO: "1"
+  TASK_QUEUE_ENABLE: "1"
+  VLLM_ASCEND_BALANCE_SCHEDULING: "1"
+  OMP_PROC_BIND: "false"
+  OMP_NUM_THREADS: "10"
+
+vllm_parameters:
+  - "trust-remote-code"
+  - "quantization ascend"
+  - "async-scheduling"
+  - "no-enable-prefix-caching"
+  - "enable-expert-parallel"
+
+speculative_decoding:
+  method: mtp
+  num_speculative_tokens: 3
+  disable_padded_drafter_batch: false
+
+compilation_config:
+  cudagraph_mode: FULL_DECODE_ONLY
+
+additional_config:
+  enable_shared_expert_dp: true
+  multistream_overlap_shared_expert: true
+
+launch_command: |
+  vllm serve /path/to/DeepSeek-V3.1-w4a8 \
+    --host 0.0.0.0 \
+    --port 8004 \
+    --data-parallel-size 2 \
+    --tensor-parallel-size 8 \
+    --quantization ascend \
+    --seed 1024 \
+    --served-model-name deepseek_v3 \
+    --enable-expert-parallel \
+    --max-num-seqs 96 \
+    --async-scheduling \
+    --max-model-len 65536 \
+    --max-num-batched-tokens 6000 \
+    --trust-remote-code \
+    --no-enable-prefix-caching \
+    --speculative-config '{"num_speculative_tokens": 3, "method":"mtp","disable_padded_drafter_batch": false}' \
+    --gpu-memory-utilization 0.9 \
+    --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY"}' \
+    --additional-config '{"enable_shared_expert_dp": true,"multistream_overlap_shared_expert": true}'

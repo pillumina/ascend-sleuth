@@ -1,0 +1,72 @@
+# Qwen3.5-27B 模型配置
+# 类型: Dense
+# 最后更新: 2026-02-27
+
+model:
+  name: Qwen3.5-27B
+  type: Dense
+  description: "Qwen3.5 27B Dense 模型, 支持投机解码 (MTP)"
+  huggingface_path: Qwen/Qwen3.5-27B
+  architecture: Qwen2_5ForCausalLM
+
+deployment:
+  recommended_tp: 2
+  recommended_dp: 1
+  min_npu_count: 2
+  recommended_memory: "64 GB"
+  quantization_format: W8A8C16
+
+performance:
+  max_model_len: 262144
+  max_num_seqs: 128
+  max_num_batched_tokens: 16384
+  gpu_memory_utilization: 0.9
+
+environment_variables:
+  LD_PRELOAD: "/usr/lib/aarch64-linux-gnu/libjemalloc.so.2"
+  ASCEND_RT_VISIBLE_DEVICES: "0,1"
+  PYTORCH_NPU_ALLOC_CONF: "expandable_segments:True"
+  HCCL_OP_EXPANSION_MODE: "AIV"
+  HCCL_BUFFSIZE: "1024"
+  OMP_NUM_THREADS: "1"
+  TASK_QUEUE_ENABLE: "1"
+
+vllm_parameters:
+  - "trust-remote-code"
+  - "quantization ascend"
+  - "async-scheduling"
+  - "no-enable-prefix-caching"
+  - "allowed-local-media-path /"
+
+speculative_decoding:
+  method: qwen3_5_mtp
+  num_speculative_tokens: 3
+  enforce_eager: true
+
+compilation_config:
+  cudagraph_mode: FULL_DECODE_ONLY
+  cudagraph_capture_sizes: [1, 4, 8, 12, 16, 24, 32, 48, 56, 64, 72, 84, 96, 108, 112, 128, 160, 172, 196, 200, 212, 232, 272, 288, 312, 328, 344, 360, 384, 400, 416, 432, 448, 480, 512]
+
+additional_config:
+  enable_cpu_binding: true
+
+launch_command: |
+  vllm serve /path/to/Qwen3.5-27B-w8a8 \
+    --served-model-name "qwen3.5" \
+    --host 0.0.0.0 \
+    --port 8010 \
+    --data-parallel-size 1 \
+    --tensor-parallel-size 2 \
+    --max-model-len 262144 \
+    --max-num-batched-tokens 16384 \
+    --max-num-seqs 128 \
+    --gpu-memory-utilization 0.9 \
+    --compilation-config '{"cudagraph_capture_sizes":[1,4,8,12,16,24,32,48,56,64,72,84,96,108,112,128,160,172,196,200,212,232,272,288,312,328,344,360,384,400,416,432,448,480,512], "cudagraph_mode":"FULL_DECODE_ONLY"}' \
+    --speculative_config '{"method": "qwen3_5_mtp", "num_speculative_tokens": 3, "enforce_eager": true}' \
+    --trust-remote-code \
+    --async-scheduling \
+    --allowed-local-media-path / \
+    --quantization ascend \
+    --mm-processor-cache-gb 0 \
+    --additional-config '{"enable_cpu_binding":true}' \
+    --hf-overrides '{"text_config": {"rope_parameters": {"mrope_interleaved": true, "mrope_section": [11, 11, 10], "rope_type": "yarn", "rope_theta": 10000000, "partial_rotary_factor": 0.25, "factor": 4.0, "original_max_position_embeddings": 262144}}}'

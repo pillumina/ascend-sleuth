@@ -1,0 +1,101 @@
+# Qwen3-MoE-480B 模型配置
+# 类型: MoE
+# 最后更新: 2026-02-27
+
+model:
+  name: Qwen3-MoE-480B
+  type: MoE
+  description: "Qwen3 MoE 480B 模型, PD分离部署"
+  huggingface_path: Qwen/Qwen3-Coder-480B-A35B-Instruct
+  architecture: Qwen3MoeForCausalLM
+
+deployment:
+  recommended_tp: 8
+  recommended_dp_p: 2
+  recommended_dp_d: 4
+  min_npu_count: 24
+  recommended_memory: "768 GB"
+  quantization_format: W8A8
+  deployment_mode: "PD分离 (PD_separation)"
+
+performance:
+  max_model_len: 40960
+  max_num_seqs: 24
+  max_num_batched_tokens: 16384
+  gpu_memory_utilization: 0.9
+
+environment_variables:
+  HCCL_BUFFSIZE: "512"
+  HCCL_OP_EXPANSION_MODE: "AIV"
+  PYTORCH_NPU_ALLOC_CONF: "expandable_segments:True"
+  OMP_NUM_THREADS: "1"
+  LD_PRELOAD: "/usr/lib/aarch64-linux-gnu/libjemalloc.so.2"
+  TASK_QUEUE_ENABLE: "1"
+  VLLM_ASCEND_ENABLE_FLASHCOMM1: "1"
+  LD_LIBRARY_PATH: "/usr/local/Ascend/ascend-toolkit/latest/python/site-packages/mooncake:$LD_LIBRARY_PATH"
+
+vllm_parameters:
+  - "trust-remote-code"
+  - "quantization ascend"
+  - "no-enable-prefix-caching"
+  - "enable-expert-parallel"
+  - "enforce-eager"
+
+pd_separation:
+  kv_connector: MooncakeConnectorV1
+  kv_role: "kv_producer (Prefill) / kv_consumer (Decode)"
+  kv_port: 30000
+  engine_id: 0
+  kv_connector_module_path: vllm_ascend.distributed.mooncake_connector
+  kv_connector_extra_config:
+    use_ascend_direct: true
+    prefill:
+      dp_size: 2
+      tp_size: 8
+    decode:
+      dp_size: 8
+      tp_size: 4
+
+launch_command_prefill: |
+  vllm serve /path/to/Qwen3-Coder-480B-A35B-Instruct \
+    --served-model-name "qwen" \
+    --host 0.0.0.0 \
+    --port 20002 \
+    --tensor-parallel-size 8 \
+    --data-parallel-size 2 \
+    --data-parallel-size-local 2 \
+    --data-parallel-start-rank 0 \
+    --data-parallel-address <prefill_ip> \
+    --data-parallel-rpc-port 13395 \
+    --enable-expert-parallel \
+    --max-model-len 40960 \
+    --max-num-batched-tokens 16384 \
+    --max-num-seqs 24 \
+    --trust-remote-code \
+    --gpu-memory-utilization 0.9 \
+    --quantization ascend \
+    --enforce-eager \
+    --no-enable-prefix-caching \
+    --kv-transfer-config '{"kv_connector": "MooncakeConnectorV1", "kv_role": "kv_producer", "kv_port": "30000", "engine_id": "0", "kv_connector_module_path": "vllm_ascend.distributed.mooncake_connector", "kv_connector_extra_config": {"use_ascend_direct": true, "prefill": {"dp_size": 2, "tp_size": 8}, "decode": {"dp_size": 8, "tp_size": 4}}}'
+
+launch_command_decode: |
+  vllm serve /path/to/Qwen3-Coder-480B-A35B-Instruct \
+    --served-model-name "qwen" \
+    --host 0.0.0.0 \
+    --port 20002 \
+    --tensor-parallel-size 4 \
+    --data-parallel-size 8 \
+    --data-parallel-size-local 8 \
+    --data-parallel-start-rank 0 \
+    --data-parallel-address <decode_ip> \
+    --data-parallel-rpc-port 13396 \
+    --enable-expert-parallel \
+    --max-model-len 40960 \
+    --max-num-batched-tokens 16384 \
+    --max-num-seqs 24 \
+    --trust-remote-code \
+    --gpu-memory-utilization 0.9 \
+    --quantization ascend \
+    --enforce-eager \
+    --no-enable-prefix-caching \
+    --kv-transfer-config '{"kv_connector": "MooncakeConnectorV1", "kv_role": "kv_consumer", "kv_port": "30000", "engine_id": "0", "kv_connector_module_path": "vllm_ascend.distributed.mooncake_connector", "kv_connector_extra_config": {"use_ascend_direct": true, "prefill": {"dp_size": 2, "tp_size": 8}, "decode": {"dp_size": 8, "tp_size": 4}}}'

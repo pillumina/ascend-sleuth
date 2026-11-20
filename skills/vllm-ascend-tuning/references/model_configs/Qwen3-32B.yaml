@@ -1,0 +1,70 @@
+# Qwen3-32B 模型配置
+# 类型: Dense
+# 最后更新: 2026-02-27
+
+model:
+  name: Qwen3-32B
+  type: Dense
+  description: "Qwen3 32B Dense 模型, 支持投机解码 (Eagle3)"
+  huggingface_path: Qwen/Qwen3-32B
+  architecture: Qwen3ForCausalLM
+
+deployment:
+  recommended_tp: 8
+  min_npu_count: 8
+  recommended_memory: "256 GB"
+  quantization_format: W8A8
+
+performance:
+  max_model_len: 5500
+  max_num_seqs: 200
+  max_num_batched_tokens: 40960
+  gpu_memory_utilization: 0.9
+  block_size: 128
+
+environment_variables:
+  ASCEND_RT_VISIBLE_DEVICES: "0,1,2,3,4,5,6,7"
+  PYTORCH_NPU_ALLOC_CONF: "expandable_segments:True"
+  TASK_QUEUE_ENABLE: "1"
+  HCCL_OP_EXPANSION_MODE: "AIV"
+  VLLM_ASCEND_ENABLE_DENSE_OPTIMIZE: "1"
+  VLLM_ASCEND_ENABLE_PREFETCH_MLP: "1"
+
+vllm_parameters:
+  - "trust-remote-code"
+  - "quantization ascend"
+  - "async-scheduling"
+  - "no-enable-prefix-caching"
+  - "distributed-executor-backend mp"
+
+speculative_decoding:
+  method: eagle3
+  model: /path/to/Qwen3-32B-speculator.eagle3
+  draft_tensor_parallel_size: 1
+  num_speculative_tokens: 2
+
+compilation_config:
+  cudagraph_mode: FULL_DECODE_ONLY
+  cudagraph_capture_sizes: [1, 5, 8, 72, 76, 80, 100, 120, 140, 144, 160, 192, 216, 240, 252, 288, 320, 336, 360, 384, 400, 408, 416, 420, 480, 540, 576, 600]
+
+additional_config:
+  pa_shape_list: [12, 24, 48, 64, 72, 76, 80, 100, 120, 144, 160, 180, 192, 200, 216, 240, 252, 288, 320, 336]
+  enable_cpu_binding: true
+
+launch_command: |
+  vllm serve /path/to/Qwen3-32B-W8A8 \
+    --served-model-name qwen3 \
+    --trust-remote-code \
+    --distributed-executor-backend mp \
+    --tensor-parallel-size 8 \
+    --max-model-len 5500 \
+    --max-num-batched-tokens 40960 \
+    --no-enable-prefix-caching \
+    --async-scheduling \
+    --quantization ascend \
+    --compilation-config '{"cudagraph_mode": "FULL_DECODE_ONLY","cudagraph_capture_sizes":[1,5,8,72,76,80,100,120,140,144,160,192,216,240,252,288,320,336,360,384,400,408,416,420,480,540,576,600]}' \
+    --additional-config '{"pa_shape_list":[12,24,48,64,72,76,80,100,120,144,160,180,192,200,216,240,252,288,320,336],"enable_cpu_binding": "True"}' \
+    --speculative_config '{"method": "eagle3", "model":"/path/to/Qwen3-32B-speculator.eagle3", "draft_tensor_parallel_size": 1, "num_speculative_tokens": 2}' \
+    --port 8114 \
+    --block-size 128 \
+    --gpu-memory-utilization 0.9
