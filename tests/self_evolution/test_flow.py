@@ -186,6 +186,10 @@ class FlowTest(unittest.TestCase):
             self.assertFalse((Path(td) / "pilot" / "candidate-worktree").exists())
             rows = ProposalArchive(Path(td) / "proposals.jsonl").read()
             self.assertTrue(rows[-1]["rolled_back"])
+            artifact = result["event"]["data"]["proposal"]["artifact"]
+            self.assertTrue(artifact["diff"].startswith("diff --git"))
+            self.assertEqual(artifact["diff_kind"], "unified")
+            self.assertNotIn("workspace", artifact)
 
     def test_adapter_fallback_is_rejected(self):
         with tempfile.TemporaryDirectory() as td:

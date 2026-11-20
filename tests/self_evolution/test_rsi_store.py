@@ -17,10 +17,12 @@ from evolve.store import MemoryBackend, RSIStore, RSIStoreError, StoreConfig, op
 class RSIStoreTest(unittest.TestCase):
     def test_memory_backend_history(self):
         store = RSIStore(Path("."), backend=MemoryBackend())
-        store.append("proposal", {"id": "P-1"}, proposal_id="P-1", experiment_id="EX-1")
+        store.append("proposal", {"proposal": {"id": "P-1"}}, proposal_id="P-1", experiment_id="EX-1")
         store.append("decision", {"decision": "accept"}, proposal_id="P-1", experiment_id="EX-1")
         self.assertEqual(len(store.history(proposal_id="P-1")), 2)
         self.assertEqual(len(store.history(experiment_id="EX-1")), 2)
+        self.assertEqual(store.get_proposal("P-1"), {"id": "P-1"})
+        self.assertIsNone(store.get_proposal("missing"))
 
     def test_unknown_event_kind_is_rejected(self):
         store = RSIStore(Path("."), backend=MemoryBackend())

@@ -74,6 +74,14 @@ class RSIStore:
                 if row.get("experiment_id") == experiment_id]
         return rows[-1] if rows else None
 
+    def get_proposal(self, proposal_id: str) -> Optional[Dict[str, Any]]:
+        rows = [row for row in self.read("proposal")
+                if row.get("proposal_id") == proposal_id]
+        if not rows:
+            return None
+        proposal = (rows[-1].get("data") or {}).get("proposal")
+        return proposal if isinstance(proposal, dict) else None
+
     def record_experiment(self, proposal: Dict[str, Any], experiment: Dict[str, Any],
                           conclusion: Dict[str, Any], tasks: Dict[str, Any],
                           collected: Dict[str, Any], decision: str,
