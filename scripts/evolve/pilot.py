@@ -449,7 +449,13 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
                 "decision": result["decision"], "reasons": result["reasons"],
                 "paired": len(before), "missing": len(all_ids) - len(before),
             }
-    constraints_ok = all(item["decision"] != "reject" for item in constraints.values())
+    component = str((tasks.get("candidate") or {}).get("target_component") or "")
+    required = {"diagnose.knowledge_usage": "knowledge",
+                "diagnose.source_usage": "source"}.get(component)
+    if required and required in constraints and constraints[required]["decision"] != "accept":
+        constraints_ok = False
+    else:
+        constraints_ok = all(item["decision"] != "reject" for item in constraints.values())
 
     pool_rows = []
     for sample in tasks.get("samples") or []:
@@ -500,7 +506,7 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
     reason = decision.reason
     min_pairs = int((tasks.get("budget") or {}).get("min_pairs")
                     or (policy.get("samples") or {}).get("field_eval") or 0)
-    if result == "accept" and counts["n"] < min_pairs:
+    if counts["n"] < min_pairs:
         result = "insufficient"
         reason = f"capacity_short: n={counts['n']} < min_pairs={min_pairs}"
     version = version_for(tasks, policy, model=models_from_collect(collect))
