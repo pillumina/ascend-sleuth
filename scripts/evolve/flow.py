@@ -23,11 +23,12 @@ class FlowError(ValueError):
 
 
 def run_proposal(root: Path, proposal: Proposal, samples: List[str], output: Path,
-                 policy: Dict[str, Any], judge: Path,
+                 policy: Dict[str, Any], judge: Optional[Path],
                  archive: ProposalArchive,
                  runner: Optional[Callable[[Dict[str, Any]], None]] = None,
                  baseline_traces: Optional[Path] = None,
-                 reuse_index: int = 0) -> Dict[str, Any]:
+                 reuse_index: int = 0,
+                 dry_run: bool = False) -> Dict[str, Any]:
     if not proposal.candidate:
         raise FlowError("proposal has no candidate; provide draft.candidate")
     root, output = Path(root), Path(output)
@@ -36,6 +37,13 @@ def run_proposal(root: Path, proposal: Proposal, samples: List[str], output: Pat
                               encoding="utf-8")
     tasks = pilot_prepare(root, candidate_path, samples, output, policy=policy,
                           baseline_traces=baseline_traces)
+    if dry_run:
+        return {"dry_run": True, "candidate": proposal.candidate, "tasks": tasks,
+                "workspace": tasks.get("workspace"), "output": str(output)}
+    if judge is None:
+        raise FlowError("judge is required unless dry_run")
+    if runner is None:
+        raise FlowError("runner is required unless dry_run")
     if runner is not None:
         runner(tasks)
     _reject_fallback(tasks)
