@@ -26,6 +26,7 @@ related_references:
 - hccl-performance-env
 - hccl-reliability-env
 - hccl-comm-init-and-link-faults
+- hccl-domain-link-run-phases
 - hccl-log-key-info-fields
 status: active
 last_verified: 2026-11-16
@@ -39,4 +40,4 @@ content:
   details: >-
     按场景的配方（先动哪个）：启动卡在收人阶段（V2 是 `GetConnections` 无进展，A2/A3 是 `topo exchange server get socket timeout`）→ 调大 `HCCL_CONNECT_TIMEOUT`、查 `HCCL_SOCKET_IFNAME` 与白名单；首个算子超时 → 调大 `HCCL_CONNECT_TIMEOUT`，并 warm-up 一次小算子；显存不够（多域）→ 调小 `hcclBufferSize` / `HCCL_BUFFSIZE`，或减少域数；精度不可复现 → `hcclDeterministic=1`（要保序用 2）；跨机链路抖动 → 调大 `HCCL_RDMA_TIMEOUT` / `HCCL_RDMA_RETRY_CNT`，A3 可开 `hcclRetryEnable`；RoCE 拥塞或多租户 → `HCCL_RDMA_TC` / `HCCL_RDMA_SL`、`hcclQos`；小包时延高 → `hcclOpExpansionMode=3/4`（AIV）并确认算法；大包带宽低 → 查算法（ring / 分层）、`HCCL_BUFFSIZE`、链路；心跳或监控开销大 → `HCCL_DFS_CONFIG=cluster_heartbeat:off`。
     DFX 开关同属第三层：`ASCEND_GLOBAL_LOG_LEVEL`（1 为 INFO、生产一般 3 WARNING）、`ASCEND_SLOG_PRINT_TO_STDOUT`、`HCCL_ENTRY_LOG_ENABLE`（要看 `Entry-Hccl*` 就必须开）、`HCCL_DFS_CONFIG`（子开关如 cluster_heartbeat）、`HCCL_EXEC_TIMEOUT`、`HCCL_CONNECT_TIMEOUT`、`HCCL_DIAGNOSE_ENABLE`。这些开关都有开销，生产按需开；默认值以 `[HCCL_ENV]` 行为准。
-    两处版本间不一致，按现场日志判：`HCCL_EXEC_TIMEOUT` 的注释与默认值在不同位置出现 1836 秒（launch_context.h:24、aicpu_init_param.h:21）与「1800 秒量级」的说法，实际取值看启动日志的 `[HCCL_ENV]` 行；`HCCL_CONNECT_TIMEOUT` 代码默认 120 秒、合法区间 120–7200 秒（externalinput.cc:138 的报错文案给出区间）。另外 nRoot（scalable 的 root 数）只对 A2/A3 有意义，A5 不支持 scalable。
+    两处版本间不一致，按现场日志判：`HCCL_EXEC_TIMEOUT` 的默认值在代码里是 1836 秒（launch_context.h:24、aicpu_init_param.h:21；legacy 侧同值见 `NOTIFY_DEFAULT_WAIT_TIME = 27 * 68`，src/legacy/ascend910/pub_inc/hccl_common.h:86），实际取值看启动日志的 `[HCCL_ENV]` 行；`HCCL_CONNECT_TIMEOUT` 代码默认 120 秒、合法区间 120–7200 秒（externalinput.cc:138 的报错文案给出区间）。另外 nRoot（scalable 的 root 数）只对 A2/A3 有意义，A5 不支持 scalable。
