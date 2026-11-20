@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from .contracts import now_iso
 from .proposals import ProposalError, validate_draft
+from .selectors import BestSelector, ParetoSelector
 
 
 ARTIFACT_KIND = {
@@ -46,6 +47,11 @@ class Proposal:
     scores: Dict[str, float] = field(default_factory=dict)
     feedback: Dict[str, str] = field(default_factory=dict)
     errors: List[str] = field(default_factory=list)
+
+    @property
+    def skill(self) -> str:
+        """兼容 selectors 的文本长度排序；不是“只支持 skill”。"""
+        return str(self.artifact.get("diff") or self.summary or "")
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -133,10 +139,7 @@ class BestPolicy:
                reflected: Iterable[str] = ()) -> Optional[Proposal]:
         done = [c for c in candidates
                 if c.status == "evaluated" and len(c.scores) == len(samples)]
-        eligible = [c for c in done if c.id not in set(reflected)]
-        if not eligible:
-            return None
-        return sorted(eligible, key=lambda c: (-sum(c.scores.values()), c.id))[0]
+        return BestSelector().choose(done, samples, set(reflected))
 
 
 class ParetoPolicy:
@@ -146,23 +149,7 @@ class ParetoPolicy:
                reflected: Iterable[str] = ()) -> Optional[Proposal]:
         done = [c for c in candidates
                 if c.status == "evaluated" and len(c.scores) == len(samples)]
-        front: List[Proposal] = []
-        for candidate in done:
-            dominated = False
-            for other in done:
-                if other.id == candidate.id:
-                    continue
-                if all(other.scores[s] >= candidate.scores[s] for s in samples) and any(
-                        other.scores[s] > candidate.scores[s] for s in samples):
-                    dominated = True
-                    break
-            if not dominated:
-                front.append(candidate)
-        reflected_set = set(reflected)
-        eligible = [c for c in front if c.id not in reflected_set]
-        if not eligible:
-            return None
-        return sorted(eligible, key=lambda c: (-sum(c.scores.values()), c.id))[0]
+        return ParetoSelector().choose(done, samples, set(reflected))
 
 
 class GepaPolicy(ParetoPolicy):
