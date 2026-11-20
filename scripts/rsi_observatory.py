@@ -186,10 +186,20 @@ def build_stages(data: Dict[str, Any]) -> List[Dict[str, Any]]:
         return {"id": stage_id, "label": label, "state": "evidence", "fields": fields,
                 "summary": summary}
 
+    sample_ids = [str(item) for item in (experiment.get("samples") or []) if str(item)]
     stages: List[Dict[str, Any]] = [
-        node("attribute", "归因", [], ""),
-        node("select_region", "选面", [], ""),
-        node("select_candidate", "选候选", [], ""),
+        node("attribute", "问题归因", sample_ids,
+             "使用 {} 个真实样本：{}".format(len(sample_ids), "、".join(sample_ids))),
+        node("select_region", "改动范围",
+             [str(experiment.get("target_component"))] if experiment.get("target_component") else [],
+             "目标组件：{}".format(experiment.get("target_component") or "未记录")),
+        node("select_candidate", "候选选择",
+             [str(item) for item in (
+                 dict_of(proposal.get("candidate")).get("candidate_id"),
+                 dict_of(proposal.get("candidate")).get("file"),
+                 dict_of(proposal.get("candidate")).get("base_rev"),
+             ) if item],
+             "候选：{}".format(dict_of(proposal.get("candidate")).get("candidate_id") or "未记录")),
     ]
 
     propose_fields = [f"data.proposal.{key}" for key in ("artifact", "expected", "risk", "rollback")

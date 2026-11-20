@@ -135,7 +135,7 @@ class RsiObservatoryBridgeTest(unittest.TestCase):
             stages = {item["id"]: item for item in detail["stages"]}
             self.assertEqual(stages["propose"]["state"], "evidence")
             self.assertEqual(stages["gate"]["state"], "evidence")
-            self.assertEqual(stages["attribute"]["state"], "empty")
+            self.assertEqual(stages["attribute"]["state"], "evidence")
             self.assertIn("rolled_back", detail["gaps"])
 
     def test_unknown_experiment_exits_4(self):
