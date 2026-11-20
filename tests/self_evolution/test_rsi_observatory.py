@@ -109,7 +109,9 @@ class RsiObservatoryBridgeTest(unittest.TestCase):
             base = Path(td) / "evolve"
             store = _record(base)
             rows = store.read()
-            self.assertEqual(len(rows), 1)
+            self.assertEqual(len(rows), 4)
+            self.assertEqual({row["kind"] for row in rows},
+                             {"proposal", "decision", "rollout", "experiment"})
 
             listed = _run(base, "list")
             self.assertEqual(listed.returncode, 0, listed.stderr)
@@ -128,7 +130,8 @@ class RsiObservatoryBridgeTest(unittest.TestCase):
             self.assertEqual(detail["experiment"]["eventId"], row["eventId"])
             self.assertEqual(detail["proposal"]["id"], "P-1")
             self.assertEqual(detail["rollout"]["arms"], {"baseline": 2, "candidate": 2})
-            self.assertEqual([item["kind"] for item in detail["history"]], ["experiment"])
+            self.assertEqual([item["kind"] for item in detail["history"]],
+                             ["proposal", "decision", "rollout", "experiment"])
             stages = {item["id"]: item for item in detail["stages"]}
             self.assertEqual(stages["propose"]["state"], "evidence")
             self.assertEqual(stages["gate"]["state"], "evidence")
