@@ -302,6 +302,74 @@ class FlowTest(unittest.TestCase):
             self.assertTrue((Path(td) / "pilot" / "tasks.json").exists())
             self.assertTrue((Path(td) / "pilot" / "candidate-worktree").exists())
 
+    def test_knowledge_and_tooling_proposals_reach_experiment_records(self):
+        cases = [
+            ("knowledge", "knowledge.case_content", {
+                "candidate_id": "C-KF-1", "target_kind": "knowledge",
+                "target_component": "knowledge.case_content",
+                "region": "knowledge.case_content",
+                "file": "knowledge/inference/vllm-ascend/case.yaml",
+                "base_rev": "HEAD",
+                "old_text": "quickly_check: old\n",
+                "new_text": "quickly_check: new\n",
+            }, "knowledge/inference/vllm-ascend/case.yaml",
+               "id: K-1\nquickly_check: old\n"),
+            ("tooling", "tooling.source_fetch", {
+                "candidate_id": "C-TF-1", "target_kind": "tooling",
+                "target_component": "tooling.source_fetch",
+                "region": "tooling.source_fetch",
+                "file": "scripts/src_fetch.py", "base_rev": "HEAD",
+                "old_text": "def fetch(ref):\n    return ref\n",
+                "new_text": "def fetch(ref):\n    return ref.strip()\n",
+            }, "scripts/src_fetch.py",
+               "def fetch(ref):\n    return ref\n"),
+        ]
+        for index, (target, component, candidate, path, content) in enumerate(cases):
+            with tempfile.TemporaryDirectory() as td:
+                root = Path(td) / "repo"; root.mkdir(); _repo(root)
+                file = root / path
+                file.parent.mkdir(parents=True, exist_ok=True)
+                file.write_text(content, encoding="utf-8")
+                subprocess.run(["git", "add", "."], cwd=root, check=True)
+                subprocess.run(["git", "commit", "-qm", "case"], cwd=root, check=True)
+                archive = ProposalArchive(Path(td) / "proposals.jsonl")
+                proposal = ProposalEngine(archive).add({
+                    "target_kind": target, "target_component": component,
+                    "summary": "target flow", "expected": "effect",
+                    "risk": "低", "rollback": "restore",
+                    "candidate": candidate,
+                })
+                samples = []
+                for i in range(4):
+                    sample = Path(td) / f"S-{8000+index*10+i}.yaml"
+                    sample.write_text(yaml.safe_dump({
+                        "id": f"S-{8000+index*10+i}", "source": f"github/x/{i}",
+                        "input": {"title": f"S-{i}"}, "expected": {"resolution": "ok"},
+                    }), encoding="utf-8")
+                    samples.append(str(sample))
+                judge = Path(td) / "judge.json"
+                judge.write_text(json.dumps({
+                    "baseline": {str(8000+index*10+i): 0 for i in range(4)},
+                    "candidate": {str(8000+index*10+i): 1 for i in range(4)},
+                }), encoding="utf-8")
+
+                def runner(tasks):
+                    for arm in ("baseline", "candidate"):
+                        for row in tasks["samples"]:
+                            sid = row["short_id"]
+                            (Path(tasks["arms"][arm]["trace_dir"]) / f"{sid}.yaml").write_text(
+                                yaml.safe_dump({"session_id": sid, "trace": []}),
+                                encoding="utf-8")
+                            (Path(tasks["arms"][arm]["out_dir"]) / f"{sid}.out.md").write_text(
+                                "ok", encoding="utf-8")
+
+                result = run_proposal(root, proposal, samples, Path(td) / "pilot",
+                                      load_policy(None), judge, archive, runner=runner)
+                self.assertEqual(result["decision"], "accept")
+                exp = json.loads((Path(td) / "experiments.jsonl").read_text(encoding="utf-8").splitlines()[-1])
+                self.assertEqual(exp["target_kind"], target)
+                self.assertEqual(exp["proposal"], proposal.id)
+
     def test_requires_candidate(self):
         with tempfile.TemporaryDirectory() as td:
             engine = ProposalEngine(ProposalArchive(Path(td) / "proposals.jsonl"))
