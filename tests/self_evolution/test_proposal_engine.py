@@ -111,6 +111,22 @@ class ProposalEngineTest(unittest.TestCase):
             self.assertEqual(result["stop_reason"], "evaluation_budget")
             self.assertEqual(result["evaluations"], 1)
 
+    def test_token_budget_stops_loop(self):
+        with tempfile.TemporaryDirectory() as td:
+            engine = ProposalEngine(ProposalArchive(Path(td) / "proposals.jsonl"))
+
+            def proposer(parent, failures, round_no):
+                return [skill_draft(diff="+ token")]
+
+            def evaluator(proposal, samples):
+                return ({"s1": 1, "s2": 1}, {}, 10)
+
+            result = engine.run(proposer, evaluator, ["s1", "s2"],
+                                max_rounds=3, population=10, max_tokens=5)
+            self.assertEqual(result["stop_reason"], "token_budget")
+            self.assertEqual(result["tokens"], 10)
+            self.assertEqual(result["evaluations"], 1)
+
     def test_archive_latest_by_id(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "proposals.jsonl"
