@@ -7,6 +7,10 @@ harness 拿到 ``next_action`` 后用 task/judge/reflection subagent 执行，�
 
 sleuth 适配：候选是 skill 的可变异文本，不是整份 SKILL.md；task 只看样本输入，
 judge 看 rubric/expected；reflect 只看失败反馈。
+
+状态机是兼容 adapter；选择层复用 ``selectors``，与新提案引擎的
+``BestPolicy``/``ParetoPolicy`` 是同一份实现。新代码优先用
+``proposal_engine.GepaPolicy``。
 """
 
 from dataclasses import dataclass, field
