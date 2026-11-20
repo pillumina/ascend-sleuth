@@ -55,7 +55,7 @@ class StageTest(unittest.TestCase):
             self.assertTrue((out / "candidate" / "traces" / "1001.yaml").exists())
             judge = Path(td) / "judge.json"
             judge.write_text(json.dumps({"candidate": {"1001": 1}}), encoding="utf-8")
-            reported = report(out, "regression", judge, policy)
+            reported = report(out, "regression", judge, policy, allow_fallback=True)
             self.assertTrue(reported["passed"])
             self.assertEqual(reported["n"], 1)
 
@@ -65,9 +65,10 @@ class StageTest(unittest.TestCase):
             out = Path(td) / "out"
             policy = load_policy(None)
             plan(root, "regression", out, policy, limit=1)
+            run(out, [sys.executable, str(ADAPTER), "--agent", "echo"])
             judge = Path(td) / "judge.json"
             judge.write_text(json.dumps({"candidate": {"1001": 0}}), encoding="utf-8")
-            reported = report(out, "regression", judge, policy)
+            reported = report(out, "regression", judge, policy, allow_fallback=True)
             self.assertFalse(reported["passed"])
             self.assertEqual(reported["failed"], ["1001"])
 
@@ -83,6 +84,16 @@ class StageTest(unittest.TestCase):
                              ["1001", "1002", "1003", "1004"])
             self.assertEqual(tasks["budget"]["required_b"], 4)
 
+    def test_test_stage_rejects_changed_seal(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._root(td, stage="test", count=4)
+            path = root / "eval" / "core" / "test-stage.yaml"
+            doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+            doc["sealed_sha256"] = {str(1001 + i): "0" * 64 for i in range(4)}
+            path.write_text(yaml.safe_dump(doc), encoding="utf-8")
+            with self.assertRaises(StageError):
+                plan(root, "test", Path(td) / "out", load_policy(None))
+
     def test_test_stage_rejects_short_selection(self):
         with tempfile.TemporaryDirectory() as td:
             root = self._root(td, stage="test", count=3)
@@ -97,17 +108,39 @@ class StageTest(unittest.TestCase):
             policy = load_policy(None)
             plan(root, "test", out, policy)
             run(out, [sys.executable, str(ADAPTER), "--agent", "echo"])
+            tasks = json.loads((out / "tasks.json").read_text(encoding="utf-8"))
+            tasks["candidate_id"] = "C-TEST"
+            tasks["candidate"] = {"candidate_id": "C-TEST"}
+            (out / "tasks.json").write_text(json.dumps(tasks), encoding="utf-8")
+            field = root / ".s2-replay" / "evolve"
+            field.mkdir(parents=True)
+            (field / "conclusions.jsonl").write_text(
+                json.dumps({"pool": "pilot", "decision": "accept",
+                            "versions": {"candidate": "C-TEST"}}) + "\n",
+                encoding="utf-8")
             judge = Path(td) / "judge.json"
             judge.write_text(json.dumps({
                 "baseline": {"1001": 0, "1002": 0, "1003": 0, "1004": 0},
                 "candidate": {"1001": 1, "1002": 1, "1003": 1, "1004": 1},
             }), encoding="utf-8")
-            reported = report(out, "test", judge, policy, update_stage=True)
+            reported = report(out, "test", judge, policy, update_stage=True, allow_fallback=True)
             self.assertEqual(reported["decision"]["conclusion"]["decision"], "accept")
             stage = yaml.safe_load(
                 (root / "eval" / "core" / "test-stage.yaml").read_text(encoding="utf-8"))
             self.assertEqual(stage["status"], "complete")
             self.assertEqual(stage["decision"], "accept")
+
+    def test_regression_where_filter(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._root(td, stage="regression", count=4)
+            sample = root / "eval" / "core" / "samples" / "REGRESSION-1001.yaml"
+            data = yaml.safe_load(sample.read_text(encoding="utf-8"))
+            data["input"] = {"environment": "310P"}
+            sample.write_text(yaml.safe_dump(data), encoding="utf-8")
+            tasks = plan(root, "regression", Path(td) / "out",
+                         load_policy(None), where={"environment": "310P"})
+            self.assertEqual(len(tasks["samples"]), 1)
+            self.assertEqual(tasks["samples"][0]["short_id"], "1001")
 
     def test_regression_limit_and_full(self):
         with tempfile.TemporaryDirectory() as td:
@@ -131,6 +164,18 @@ class StageTest(unittest.TestCase):
             sample.write_text(yaml.safe_dump(data), encoding="utf-8")
             with self.assertRaises(StageError):
                 plan(root, "regression", Path(td) / "out", load_policy(None), limit=1)
+
+    def test_fallback_trace_is_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._root(td)
+            out = Path(td) / "out"
+            policy = load_policy(None)
+            plan(root, "regression", out, policy, limit=1)
+            run(out, [sys.executable, str(ADAPTER), "--agent", "echo"])
+            judge = Path(td) / "judge.json"
+            judge.write_text(json.dumps({"candidate": {"1001": 1}}), encoding="utf-8")
+            with self.assertRaises(StageError):
+                report(out, "regression", judge, policy)
 
     def test_baseline_reuse_is_test_only(self):
         with tempfile.TemporaryDirectory() as td:

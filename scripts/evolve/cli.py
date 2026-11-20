@@ -481,12 +481,18 @@ def cmd_sample_promote(args: argparse.Namespace) -> int:
         sample = _store(args).promote(
             args.id, to=args.to, actor=args.actor, reason=args.reason or "",
         )
+        exported = None
+        if args.export:
+            if sample.purpose not in ("test", "regression"):
+                raise StoreError("--export requires purpose=test or regression")
+            exported = str(_store(args).export_core(sample.id))
     except (StoreError, ValueError, OSError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     if args.json:
         print(json.dumps({"ok": True, "id": sample.id, "status": sample.status,
-                          "origin": sample.origin, "purpose": sample.purpose},
+                          "origin": sample.origin, "purpose": sample.purpose,
+                          "exported": exported},
                          ensure_ascii=False))
     else:
         print(f"{sample.id}: {sample.status} ({sample.origin})")
@@ -1045,6 +1051,18 @@ def cmd_knowledge_usage_evaluate(args: argparse.Namespace) -> int:
     return 0
 
 
+def _where_pairs(values):
+    pairs = {}
+    for raw in values or []:
+        if "=" not in raw:
+            raise ValueError(f"--where expects key=value, got {raw!r}")
+        key, value = raw.split("=", 1)
+        if not key:
+            raise ValueError(f"--where expects key=value, got {raw!r}")
+        pairs[key] = value
+    return pairs
+
+
 def cmd_stage_plan(args: argparse.Namespace) -> int:
     try:
         tasks = stage_plan(
@@ -1052,6 +1070,7 @@ def cmd_stage_plan(args: argparse.Namespace) -> int:
             limit=args.limit, full=args.full,
             candidate_path=Path(args.candidate) if args.candidate else None,
             baseline_traces=Path(args.baseline_traces) if args.baseline_traces else None,
+            where=_where_pairs(args.where),
         )
     except (StageError, OSError, ValueError, PolicyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -1076,7 +1095,8 @@ def cmd_stage_report(args: argparse.Namespace) -> int:
     try:
         policy = _policy_for(args)
         result = stage_report(Path(args.output), args.stage, Path(args.judge), policy,
-                              card=args.card, update_stage=args.update_stage)
+                              card=args.card, update_stage=args.update_stage,
+                              allow_fallback=args.allow_adapter_trace)
     except (StageError, OSError, ValueError, PolicyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -1149,6 +1169,17 @@ def cmd_readback(args: argparse.Namespace) -> int:
         print(f"model: {data['model'] or 'unknown'}")
         print(f"cost: {data['cost'] or 'unavailable'} paired={data['cost_paired']} missing={data['cost_missing']}")
         print(f"at: {data['at']}")
+    if args.measure:
+        root = Path(args.root or ".")
+        proc = subprocess.run(
+            [sys.executable, str(root / "scripts" / "ev_measure.py"), args.card,
+             "--run", "--timeout", str(args.measure_timeout)],
+            cwd=str(root), capture_output=True, text=True, encoding="utf-8",
+            errors="replace", check=False,
+        )
+        sys.stdout.write(proc.stdout)
+        sys.stderr.write(proc.stderr)
+        return proc.returncode
     return 0
 
 
@@ -1633,6 +1664,8 @@ def build_parser() -> argparse.ArgumentParser:
     promote.add_argument("--to", required=True, choices=("core",))
     promote.add_argument("--actor", default="maintainer")
     promote.add_argument("--reason", default="")
+    promote.add_argument("--export", action="store_true",
+                         help="升 core 后立即写入 tracked eval/core（仅 test/regression）")
     promote.add_argument("--json", action="store_true")
     promote.set_defaults(func=cmd_sample_promote)
 
@@ -1677,6 +1710,8 @@ def build_parser() -> argparse.ArgumentParser:
     s_plan.add_argument("--baseline-traces", default=None)
     s_plan.add_argument("--limit", type=int, default=None)
     s_plan.add_argument("--full", action="store_true")
+    s_plan.add_argument("--where", action="append", default=None,
+                        help="按 sample.input 的 key=value 选子集，可重复")
     s_plan.add_argument("--policy", default=None)
     s_plan.set_defaults(func=cmd_stage_plan)
     s_run = stage_sub.add_parser("run", help="按外部 command 执行 stage 任务")
@@ -1692,6 +1727,8 @@ def build_parser() -> argparse.ArgumentParser:
     s_report.add_argument("--card", default=None)
     s_report.add_argument("--update-stage", action="store_true",
                           help="test 报告通过后把 test-stage.yaml 标 complete")
+    s_report.add_argument("--allow-adapter-trace", action="store_true",
+                          help="允许 adapter 生成的 fallback trace（仅冒烟）")
     s_report.add_argument("--policy", default=None)
     s_report.set_defaults(func=cmd_stage_report)
 
@@ -1708,6 +1745,8 @@ def build_parser() -> argparse.ArgumentParser:
     readback = sub.add_parser("readback", help="按 EV 卡回读最新 Conclusion")
     readback.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
     readback.add_argument("--card", required=True)
+    readback.add_argument("--measure", action="store_true", help="再跑 EV 卡的 predicted_effect.measure")
+    readback.add_argument("--measure-timeout", type=int, default=120)
     readback.add_argument("--json", action="store_true")
     readback.set_defaults(func=cmd_readback)
 

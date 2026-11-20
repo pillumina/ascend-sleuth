@@ -1,7 +1,7 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
 //   dsh-plugins/ascend-panel/panel-host.js  (sha256:088d9c09d14a)
-//   dsh-plugins/ev-panel/panel-host.js  (sha256:fda8b1eb8f88)
+//   dsh-plugins/ev-panel/panel-host.js  (sha256:717410b650e4)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
 // 面板源码是动态插件方言（文件是函数体，靠沙箱提供的 harness 通信）；这里原文嵌入常驻
@@ -3066,7 +3066,7 @@ return {
     id: 'ev-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ev-panel/panel-host.js (sha256:fda8b1eb8f88) 原文开始 ----
+// ---- dsh-plugins/ev-panel/panel-host.js (sha256:717410b650e4) 原文开始 ----
 // ev-panel host —— 自演进看板数据服务（EV 卡 / 容量 / 归因聚合 / timeline）
 // 用法：cordis_define kind:new → code.host 用本文件全文；code.client 用 panel-client.js 全文。
 // host 侧通过 shell 跑 scripts/ev_board_data.py 汇总 JSON（确定性逻辑在脚本，遵循原则二）。
@@ -3676,7 +3676,8 @@ return {
       const commands = {
         approve: `sample review --id ${id} --approve --json`,
         reject: `sample review --id ${id} --reject --json`,
-        promote: `sample promote --id ${id} --to core --json`,
+        promote: `sample promote --id ${id} --to core --json` +
+          (args && args.export === true ? ' --export' : ''),
       }
       if (!commands[action]) return { ok: false, error: '未知的样本动作' }
       return runScript(sessionId, 'scripts/evolve.py', commands[action])

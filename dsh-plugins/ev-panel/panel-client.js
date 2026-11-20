@@ -674,7 +674,10 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       function act(item, action) {
         if (sampleQueueBusy) return
         sampleQueueBusy = true
-        host.call('ev-sample-action', { sessionId, id: item.id, action }).then(r => {
+        host.call('ev-sample-action', {
+          sessionId, id: item.id, action,
+          export: action === 'promote' && (item.purpose === 'test' || item.purpose === 'regression'),
+        }).then(r => {
           if (r && r.ok) {
             sampleQueueError = ''
           } else {

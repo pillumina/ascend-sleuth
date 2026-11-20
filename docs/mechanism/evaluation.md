@@ -291,7 +291,11 @@ python3 scripts/evolve.py knowledge-usage compare --baseline base.json --candida
 
 成本控制：`eval/policy.yaml` 的 `cost.runs.max_pairs` / `max_tokens` / `early_stop` 写进 `tasks.json` 的 `budget` 与 `stop_rules`；每跑完一对样本跑 `pilot checkpoint`，若 `b + 剩余 < required_b`（futility）或预算用完，就停，不再跑满全部样本。早停只用于停止无望的实验，不用于提前 accept。
 
-baseline 复用：`pilot prepare --baseline-traces <dir>` 会把已有的 `traces/` 与 `out/` 复制进 pilot 的 baseline 目录，只让外部 runner 跑 candidate；缺任一条会整体拒绝，`tasks.budget.baseline_reused` 与 `baseline_source` 记录来源。复用要求模型、知识库和输入没变，不能拿旧版本冒充当前 baseline。
+baseline 复用：`pilot prepare --baseline-traces <dir>` 会把已有的 `traces/` 与 `out/` 复制进 pilot 的 baseline 目录，只让外部 runner 跑 candidate；缺任一条会整体拒绝，`tasks.budget.baseline_reused` 与 `baseline_source` 记录来源。复用要求模型、知识库和输入没变，不能拿旧版本冒充当前 baseline；`baseline.json` 里有 `base_rev` 时和 candidate 的 `base_rev` 比对，不一致直接拒绝。
+
+test 门禁：`stage report --stage test` 要求 `candidate_id` 不是 `HEAD`、存在同一候选的 field accept Conclusion、所有选中样本的 trace/out/judge 齐全；缺任一条都拒绝出结论。adapter 在 agent 没写 trace 时会生成 `adapter_fallback: true` 的最小 trace；report 默认拒绝这种证据，只有显式 `--allow-adapter-trace` 才允许冒烟。`test-stage.yaml` 的 `sealed_sha256` 在 plan 时校验样本文件哈希，样本改动即拒绝。
+
+证据与成本：judge 的 `meta`（模型、tokens、时间）会写进 Conclusion 的 `metrics.judge`；regression 报告要求 candidate trace/out 与 judge 分数齐全，缺一条就报硬错误。`stage plan --where key=value` 按 `sample.input` 选 regression 子集；`readback --measure` 会再跑 EV 卡的 predicted_effect.measure。
 
 确定性 benchmark：工具或检索类改动如果有一条可重复的命令，用 `python3 scripts/evolve.py benchmark --baseline-root <a> --candidate-root <b> --argv '["python3","-m","pytest",...]'`，重复 `cost.runs.benchmark_runs` 次比中位耗时与退出码，不跑完整诊断。它只证明这一步的差异，不替代行为类候选的 pilot。
 

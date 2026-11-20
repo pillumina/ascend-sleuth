@@ -87,6 +87,7 @@ def prepare(root: Path, candidate_path: Path, samples: List[str],
     alpha = float(((policy or {}).get("decision") or {}).get("alpha", 0.10))
     required = required_exclusive_wins(alpha)
     baseline_source = None
+    baseline_meta = None
     if baseline_traces is not None:
         if not runs.get("baseline_reuse", True):
             raise PilotError("baseline reuse is disabled by cost.runs.baseline_reuse")
@@ -104,6 +105,15 @@ def prepare(root: Path, candidate_path: Path, samples: List[str],
                 missing.append(sid)
         if missing:
             raise PilotError("baseline traces incomplete: " + ", ".join(missing))
+        baseline_meta = None
+        meta_path = source / "baseline.json"
+        if meta_path.exists():
+            try:
+                baseline_meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise PilotError(f"cannot read {meta_path}: {exc}") from exc
+            if baseline_meta.get("base_rev") and baseline_meta.get("base_rev") != candidate.get("base_rev"):
+                raise PilotError("baseline base_rev does not match candidate")
         baseline_source = str(source)
     tasks = {"candidate_id": candidate["candidate_id"], "candidate": candidate,
              "workspace": str(workspace), "apply": info,
@@ -116,6 +126,7 @@ def prepare(root: Path, candidate_path: Path, samples: List[str],
                  "required_b": required,
                  "baseline_reused": baseline_source is not None,
                  "baseline_source": baseline_source,
+                 "baseline_meta": baseline_meta if baseline_source is not None else None,
              },
              "stop_rules": {
                  "futility": "b + remaining < required_b",
@@ -482,6 +493,7 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
         metrics={
             "constraints": constraints,
             "main_metric": "resolution",
+            "judge": (judge.get("meta") if isinstance(judge.get("meta"), dict) else None),
             "budget": {
                 "max_pairs": int((tasks.get("budget") or {}).get("max_pairs")
                                  or len(tasks.get("samples") or [])),
