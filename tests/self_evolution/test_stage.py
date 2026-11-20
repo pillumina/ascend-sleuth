@@ -115,6 +115,7 @@ class StageTest(unittest.TestCase):
             root = self._root(td, stage="test", count=4)
             out = Path(td) / "out"
             policy = load_policy(None)
+            policy["samples"]["field_eval"] = 4
             plan(root, "test", out, policy)
             tasks = json.loads((out / "tasks.json").read_text(encoding="utf-8"))
             tasks["candidate_id"] = "C-TEST"

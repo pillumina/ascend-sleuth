@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional
 
 from .contracts import now_iso
+from .records import JsonlStore
 from .proposals import ProposalError, validate_draft
 from .selectors import BestSelector, ParetoSelector
 
@@ -119,20 +120,13 @@ def proposal_from_draft(proposal_id: str, draft: Dict[str, Any],
 class ProposalArchive:
     def __init__(self, path: Path):
         self.path = Path(path)
+        self._store = JsonlStore(self.path)
 
     def append(self, proposal: Proposal) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(proposal.to_dict(), ensure_ascii=False) + "\n")
+        self._store.append(proposal.to_dict())
 
     def read(self) -> List[Dict[str, Any]]:
-        if not self.path.exists():
-            return []
-        rows = []
-        for line in self.path.read_text(encoding="utf-8").splitlines():
-            if line.strip():
-                rows.append(json.loads(line))
-        return rows
+        return self._store.read()
 
     def latest(self, proposal_id: str) -> Optional[Dict[str, Any]]:
         hits = [row for row in self.read() if row.get("id") == proposal_id]
@@ -172,7 +166,10 @@ class ProposalEngine:
         self.archive = archive
         self.proposals: List[Proposal] = []
         self.reflected: List[str] = []
-        self._next = 1
+        existing = [str(row.get("id") or "") for row in archive.read()]
+        numbers = [int(item.split("-")[1]) for item in existing
+                   if item.startswith("P-") and item.split("-")[1].isdigit()]
+        self._next = max(numbers, default=0) + 1
         self.evaluations = 0
         self.tokens = 0
 

@@ -169,6 +169,17 @@ class CandidateTest(unittest.TestCase):
                 apply_to_root(root, validate_candidate(data))
             self.assertIn("scheduler: old", path.read_text(encoding="utf-8"))
 
+    def test_harness_cannot_change_judge_policy_or_holdout(self):
+        for file in ("eval/policy.yaml", "eval/holdout.yaml", "eval/core/test.yaml",
+                     "scripts/evolve/stage.py", "tests/self_evolution/test_flow.py"):
+            with self.assertRaises(CandidateError):
+                validate_candidate({
+                    "candidate_id": "C-H3", "target_kind": "harness",
+                    "target_component": "harness.scheduler",
+                    "region": "harness.scheduler", "file": file,
+                    "base_rev": "HEAD", "old_text": "old\n", "new_text": "new\n",
+                })
+
     def test_catalog_candidate_can_use_src_fetch_self_test(self):
         with tempfile.TemporaryDirectory() as td:
             root = self._repo(td)

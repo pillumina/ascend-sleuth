@@ -86,6 +86,7 @@ def prepare(root: Path, candidate_path: Path, samples: List[str],
     max_pairs = min(int(max_pairs), len(sample_rows))
     alpha = float(((policy or {}).get("decision") or {}).get("alpha", 0.10))
     required = required_exclusive_wins(alpha)
+    min_pairs = int(((policy or {}).get("samples") or {}).get("field_eval", 0) or 0)
     baseline_source = None
     baseline_meta = None
     if baseline_traces is not None:
@@ -124,6 +125,7 @@ def prepare(root: Path, candidate_path: Path, samples: List[str],
                  "early_stop": bool(runs.get("early_stop", True)),
                  "alpha": alpha,
                  "required_b": required,
+                 "min_pairs": min_pairs,
                  "baseline_reused": baseline_source is not None,
                  "baseline_source": baseline_source,
                  "baseline_meta": baseline_meta if baseline_source is not None else None,
@@ -414,6 +416,8 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
         raise PilotError("reuse_index must be non-negative")
     tasks = json.loads((output / "tasks.json").read_text(encoding="utf-8"))
     collect = json.loads((output / "collect.json").read_text(encoding="utf-8"))
+    if not collect.get("complete"):
+        raise PilotError("pilot evidence is incomplete; trace/out missing")
     judge = json.loads(Path(judge_path).read_text(encoding="utf-8"))
     counts = _judge_counts(tasks, judge)
 
@@ -464,6 +468,11 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
     )
     result = decision.decision.value
     reason = decision.reason
+    min_pairs = int((tasks.get("budget") or {}).get("min_pairs")
+                    or (policy.get("samples") or {}).get("field_eval") or 0)
+    if result == "accept" and counts["n"] < min_pairs:
+        result = "insufficient"
+        reason = f"capacity_short: n={counts['n']} < min_pairs={min_pairs}"
     pool_rows = []
     for sample in tasks.get("samples") or []:
         sid = str(sample.get("short_id") or sample.get("id"))
@@ -502,6 +511,7 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
                 "max_pairs": int((tasks.get("budget") or {}).get("max_pairs")
                                  or len(tasks.get("samples") or [])),
                 "used_pairs": counts["n"],
+                "min_pairs": min_pairs,
                 "tokens": _tokens_used(collect),
                 "early_stop": bool((tasks.get("budget") or {}).get("early_stop", True)),
                 "baseline_reused": bool((tasks.get("budget") or {}).get("baseline_reused", False)),
