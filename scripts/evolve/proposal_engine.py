@@ -41,6 +41,8 @@ class Proposal:
     evidence: List[str] = field(default_factory=list)
     candidate: Optional[Dict[str, Any]] = None
     status: str = "candidate"
+    decision: Optional[str] = None
+    conclusion_ref: Optional[str] = None
     scores: Dict[str, float] = field(default_factory=dict)
     feedback: Dict[str, str] = field(default_factory=dict)
     errors: List[str] = field(default_factory=list)
@@ -53,7 +55,8 @@ class Proposal:
             "expected": self.expected, "risk": self.risk, "rollback": self.rollback,
             "evidence": list(self.evidence),
             "candidate": dict(self.candidate) if self.candidate else None,
-            "status": self.status,
+            "status": self.status, "decision": self.decision,
+            "conclusion_ref": self.conclusion_ref,
             "scores": dict(self.scores), "feedback": dict(self.feedback),
             "errors": list(self.errors), "at": now_iso(),
         }

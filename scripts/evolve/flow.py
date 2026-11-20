@@ -32,9 +32,12 @@ def run_proposal(root: Path, proposal: Proposal, samples: List[str], output: Pat
     if runner is not None:
         runner(tasks)
     collected = pilot_collect(output, judge=judge)
-    result = pilot_decide(output, judge, policy, reuse_index=reuse_index)
+    result = pilot_decide(output, judge, policy, reuse_index=reuse_index,
+                          proposal=proposal.id)
     decision = (result.get("conclusion") or {}).get("decision") or "unknown"
     proposal.status = decision
+    proposal.decision = decision
+    proposal.conclusion_ref = str(output.parent / "conclusions.jsonl")
     archive.append(proposal)
     return {"candidate": proposal.candidate, "tasks": tasks, "collected": collected,
             "conclusion": result.get("conclusion"), "decision": decision}

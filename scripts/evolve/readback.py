@@ -12,6 +12,19 @@ class ReadbackError(ValueError):
     pass
 
 
+def latest_by_proposal(proposal: str, base: Path) -> Optional[Dict[str, Any]]:
+    if not isinstance(proposal, str) or not proposal.strip():
+        raise ReadbackError("proposal is required")
+    try:
+        records = ConclusionStore.for_base(Path(base)).read()
+    except (OSError, RecordError) as exc:
+        raise ReadbackError(f"cannot read conclusions: {exc}") from exc
+    hits = [record for record in records if record.get("proposal") == proposal.strip()]
+    if not hits:
+        return None
+    return sorted(hits, key=lambda record: str(record.get("at") or ""))[-1]
+
+
 def latest_conclusion(card: str, base: Path) -> Optional[Dict[str, Any]]:
     if not isinstance(card, str) or not card.strip():
         raise ReadbackError("card is required")
@@ -31,6 +44,7 @@ def summary(record: Dict[str, Any]) -> Dict[str, Any]:
     tokens = cost.get("tokens") if isinstance(cost, dict) else None
     return {
         "card": record.get("card"),
+        "proposal": record.get("proposal"),
         "decision": record.get("decision"),
         "b": record.get("b"),
         "c": record.get("c"),

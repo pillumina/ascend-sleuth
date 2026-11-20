@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from evolve.flow import run_proposal  # noqa: E402
 from evolve.policy import load_policy  # noqa: E402
 from evolve.proposal_engine import ProposalArchive, ProposalEngine  # noqa: E402
+from evolve.readback import latest_by_proposal  # noqa: E402
 
 
 def _repo(root: Path):
@@ -83,8 +84,11 @@ class FlowTest(unittest.TestCase):
             result = run_proposal(root, proposal, samples, Path(td) / "pilot",
                                   load_policy(None), judge, archive, runner=runner)
             self.assertEqual(result["conclusion"]["decision"], "accept")
+            self.assertEqual(result["conclusion"]["proposal"], proposal.id)
             rows = ProposalArchive(Path(td) / "proposals.jsonl").read()
             self.assertEqual(rows[-1]["status"], "accept")
+            record = latest_by_proposal(proposal.id, Path(td))
+            self.assertEqual(record["decision"], "accept")
             self.assertTrue((Path(td) / "pilot" / "candidate-worktree").exists())
 
     def test_requires_candidate(self):

@@ -477,6 +477,7 @@ class Conclusion:
     cost_ratio: Optional[float] = None
     sample: Optional[str] = None
     card: Optional[str] = None
+    proposal: Optional[str] = None
     pool: Optional[str] = None
     at: str = ""
 
@@ -507,7 +508,7 @@ class Conclusion:
                 not isinstance(value, (int, float)) or isinstance(value, bool)
             ):
                 errs.append(f"{name} must be a number or null")
-        for name in ("sample", "card", "pool"):
+        for name in ("sample", "card", "proposal", "pool"):
             value = getattr(self, name)
             if value is not None and (not isinstance(value, str) or not value.strip()):
                 errs.append(f"{name} must be a non-empty string or null")
@@ -537,6 +538,7 @@ class Conclusion:
             "cost_ratio": self.cost_ratio,
             "sample": self.sample,
             "card": self.card,
+            "proposal": self.proposal,
             "pool": self.pool,
             "at": self.at,
         }
@@ -567,6 +569,7 @@ class Conclusion:
             cost_ratio=data.get("cost_ratio"),
             sample=data.get("sample"),
             card=data.get("card"),
+            proposal=data.get("proposal"),
             pool=data.get("pool"),
             at=data.get("at", ""),
         )
@@ -577,5 +580,5 @@ class Conclusion:
 _CONCLUSION_KEYS = {
     "decision", "metrics", "cost", "reason", "versions", "pool_hash",
     "reuse_index", "alpha_eff", "b", "c", "n", "p_value", "delta_q",
-    "cost_ratio", "sample", "card", "pool", "at",
+    "cost_ratio", "sample", "card", "proposal", "pool", "at",
 }

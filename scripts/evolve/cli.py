@@ -63,7 +63,8 @@ from .quality import QualityError, load_quality
 from .policy import PolicyError, load_policy, policy_hash, resolve_autonomy
 from .intake import IntakeError, completeness, extract_case, extract_trace, make_sample
 from .samples import import_pilot
-from .readback import ReadbackError, latest_conclusion, summary as readback_summary
+from .readback import (ReadbackError, latest_by_proposal, latest_conclusion,
+                       summary as readback_summary)
 from .records import ConclusionStore, ExperimentStore, RecordError
 from .runner import issue_plan, render_plan
 from .scoring import RubricError, score_rubric
@@ -1291,19 +1292,27 @@ def _card_rollback(root: Path, card: str):
 
 
 def cmd_readback(args: argparse.Namespace) -> int:
+    if bool(args.card) == bool(args.proposal):
+        print("error: pass exactly one of --card or --proposal", file=sys.stderr)
+        return 2
     try:
-        record = latest_conclusion(args.card, _evolve_base(args))
+        if args.proposal:
+            record = latest_by_proposal(args.proposal, _evolve_base(args))
+        else:
+            record = latest_conclusion(args.card, _evolve_base(args))
     except ReadbackError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
     if record is None:
-        print(f"error: no conclusion bound to {args.card}", file=sys.stderr)
+        label = args.card or args.proposal
+        print(f"error: no conclusion bound to {label}", file=sys.stderr)
         return 1
     data = readback_summary(record)
     if args.json:
         print(json.dumps(data, ensure_ascii=False, indent=2))
     else:
-        print(f"card: {data['card']}")
+        print(f"card: {data['card'] or ''}")
+        print(f"proposal: {data['proposal'] or ''}")
         print(f"decision: {data['decision']}")
         print(f"b/c/n: {data['b']}/{data['c']}/{data['n']} p={data['p_value']} alpha_eff={data['alpha_eff']}")
         print(f"model: {data['model'] or 'unknown'}")
@@ -1900,7 +1909,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     readback = sub.add_parser("readback", help="按 EV 卡回读最新 Conclusion")
     readback.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
-    readback.add_argument("--card", required=True)
+    readback.add_argument("--card", default=None)
+    readback.add_argument("--proposal", default=None)
     readback.add_argument("--measure", action="store_true", help="再跑 EV 卡的 predicted_effect.measure")
     readback.add_argument("--measure-timeout", type=int, default=120)
     readback.add_argument("--json", action="store_true")
