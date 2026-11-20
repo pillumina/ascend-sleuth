@@ -83,6 +83,12 @@ class RSIStore:
             "rolled_back": bool(proposal.get("rolled_back")),
             "decision": decision,
         }
+        self.append("proposal", {"proposal": proposal},
+                    experiment_id=experiment_id, proposal_id=proposal_id or None)
+        self.append("decision", {"conclusion": conclusion},
+                    experiment_id=experiment_id, proposal_id=proposal_id or None)
+        self.append("rollout", {"rollout": rollout},
+                    experiment_id=experiment_id, proposal_id=proposal_id or None)
         return self.append(
             "experiment",
             {"proposal": proposal, "conclusion": conclusion,
