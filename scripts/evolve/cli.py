@@ -969,13 +969,17 @@ def cmd_experiment_record(args: argparse.Namespace) -> int:
 def cmd_experiment_show(args: argparse.Namespace) -> int:
     try:
         base = _evolve_base(args)
+        rows = [row for row in ExperimentStore.for_base(base).read()
+                if row.get("proposal") == args.proposal]
         proposal = ProposalArchive(base / "proposals.jsonl").latest(args.proposal)
+        conclusion = latest_by_proposal(args.proposal, base)
+        if proposal is None and rows:
+            proposal = rows[-1].get("proposal_snapshot")
+        if conclusion is None and rows:
+            conclusion = rows[-1].get("conclusion_snapshot")
         if proposal is None:
             print(f"error: no proposal {args.proposal}", file=sys.stderr)
             return 1
-        conclusion = latest_by_proposal(args.proposal, base)
-        rows = [row for row in ExperimentStore.for_base(base).read()
-                if row.get("proposal") == args.proposal]
     except (OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
