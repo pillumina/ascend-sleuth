@@ -1,0 +1,162 @@
+id: vllm-ascend-tuning-workflow
+type: methodology
+title: vLLM-Ascend 推理性能调优流程（目标先行 / 基准配置 / 并行策略 / 环境变量时滞检查）
+summary: vLLM-Ascend 性能调优按固定相位走。先定目标与基准配置，再并行策略、环境、编译、OS、torch_npu、CANN/HCCL、vLLM 参数、加速特性、PD 分离（prefill/decode 分池），最后 vllm bench 验证。
+
+sources:
+  - type: engineer-input
+    engineer: "vllm-ascend-tuning skill 作者（本地导入 skill 包，匿名工程师）"
+    document: "vllm-ascend-tuning skill（SKILL.md 相位编排与双模板；references/parallel_strategy.md 快速表；references/env-variables.md 分域变量清单；references/os_level.md；references/launch_templates.md）"
+    input_session: "本地会话：8 个本地 skill 提炼为 reference 的 to-reference 流程（2026-11 批）"
+    confirmed_at: 2026-11-17
+    verification: auto-extracted
+  - type: official-doc
+    url: "https://docs.vllm.ai/projects/ascend/zh-cn/v0.23.0/user_guide/configuration/additional_config.html"
+    version: "docs.vllm.ai projects/ascend zh-cn v0.23.0 user_guide/configuration/additional_config——佐证 VLLM_ASCEND_ENABLE_MLAPO/VLLM_ASCEND_ENABLE_FUSED_MC2/VLLM_ASCEND_ENABLE_FLASHCOMM1 等 9 个环境变量自 PR #9064 起迁移进 --additional-config（enable_mlapo/enable_fused_mc2/enable_flashcomm1 等），过渡期 env 与 config 双支持、env 将在未来版本移除"
+    fetched_at: 2026-11-17
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://github.com/vllm-project/vllm-ascend/pull/7357"
+    version: "vllm-project/vllm-ascend PR #7357（commit 8e0ebb470）——佐证 VLLM_ASCEND_ENABLE_PREFETCH_MLP 已从上游移除"
+    fetched_at: 2026-11-17
+    verification: cross-checked-source
+  - type: official-doc
+    url: "https://github.com/vllm-project/vllm-ascend/blob/main/vllm_ascend/envs.py"
+    version: "vllm-project/vllm-ascend main 分支 vllm_ascend/envs.py——佐证 VLLM_ASCEND_ENABLE_DENSE_OPTIMIZE 与 VLLM_ASCEND_ENABLE_PREFETCH_MLP 均不在现行环境变量注册表内（已移除/废弃）"
+    fetched_at: 2026-11-17
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [atlas]
+  categories: [performance]
+
+related_references: [hccl-function-env]
+
+status: active
+last_verified: 2026-11-17
+
+content:
+  flow:
+    - step: 1
+      name: 确认目标与模型规模
+      action: >-
+        先定目标档：低延迟（TPOT 约 20ms；TPOT = 每输出 token 耗时，Time Per Output Token）、
+        高吞吐（TPOT 约 50ms）还是最大上下文；
+        再定模型规模与可用卡数。目标不同，并行策略与参数的取舍方向相反（低延迟压 TPOT，高吞吐压吞吐量）。
+      check: 目标档、模型、卡数三者已写清
+      when_to_use: 任何调优开始前
+
+    - step: 2
+      name: 匹配模型基准配置
+      action: >-
+        按模型与上下文长度先对齐 skill 内置的模型基准启动配置（references/model_configs/*.yaml），
+        用基准配置跑通并记下基线数字。基准配置匹配必须先于一切参数调优——它在模型-上下文维度上先排除
+        启动参数缺配，后续每步改动都对照这个基线看增量。
+      check: 基线数字已记录
+      when_to_use: 拿到新模型或新上下文长度时
+
+    - step: 3
+      name: 定并行策略
+      action: >-
+        低延迟三原则：Max TP（张量并行，tensor parallel）；Min DP（数据并行，data parallel，DP1/DP2）；
+        MTP 或 EAGLE 的 num_speculative_tokens 取 3-5（MTP = 多 token 预测，EAGLE 是另一类投机解码方法）。
+        高吞吐：DeepSeek 系列按总卡数给组合，8 卡用 DP2×TP4 或 DP1×TP8，16 卡才用 DP4×TP4
+        （上游 references/parallel_strategy.md 把 DP4+TP4 标在 8 卡，按 DP×TP 应为 16 卡）；
+        max-num-seqs 128-1000、max-num-batched-tokens 9000-16384。
+        MoE（混合专家，mixture of experts）模型必须开 --enable-expert-parallel，
+        EP（专家并行，expert parallel）大小 = 总卡数；Total Cards = DP×TP。
+        常见错误：低延迟配高 DP、MoE 不开 EP、TP>卡数、DP×TP 不等于总卡数留卡。
+      check: DP×TP=总卡数；MoE 已开 EP 且 EP=总卡数
+      when_to_use: 目标定好后第一步
+
+    - step: 4
+      name: 核对环境
+      action: >-
+        核对驱动/CANN/torch_npu/vLLM-Ascend 配套版本、卡数与拓扑（8P mesh 或 16P 以上）、
+        RDMA 组网形态。环境不齐时先补齐再做编译与参数优化，避免把环境问题混进调优结论。
+      check: 版本配套表与拓扑已核对
+      when_to_use: 并行策略定好后、动系统参数前
+
+    - step: 5
+      name: 编译级优化
+      action: >-
+        需要时对转换层/LoRA 等组件做 LTO、PGO（Python）编译。编译优化收益与部署形态强相关，
+        逐项记收益，可回滚的项先验证再保留。
+      check: 每项编译改动有收益记录或已回滚
+      when_to_use: 运行时参数已就位、仍不够时
+
+    - step: 6
+      name: OS 级参数
+      action: >-
+        TCMalloc 优先于 jemalloc：LD_PRELOAD 按 libtcmalloc/libjemalloc 顺序追加，ldd python 验证生效。
+        CPU 拉 performance 模式（scaling_governor）；vm.swappiness 设 0 或 1；多 socket 显式绑核场景
+        kernel.numa_balancing=0；sched_migration_cost_ns 取 50000-100000。
+      check: ldd python 看到 tcmalloc；sysctl 已生效
+      when_to_use: 单 token 时延或调度抖动类问题
+
+    - step: 7
+      name: torch_npu 层
+      action: >-
+        PYTORCH_NPU_ALLOC_CONF=\"expandable_segments:True\"、TASK_QUEUE_ENABLE=1 全场景必开；
+        显存复用与下发并行由这两个变量承载。DENSE_OPTIMIZE 类变量先查上游是否仍支持（见第 13 步时滞检查）。
+      check: 两个必开变量已置位
+      when_to_use: 进入运行层参数前
+
+    - step: 8
+      name: CANN/HCCL 层
+      action: >-
+        HCCL_OP_EXPANSION_MODE=AIV；HCCL_BUFFSIZE 低延迟模板 256-500、高吞吐 1024；
+        HCCL_CONNECT_TIMEOUT 与 HCCL_EXEC_TIMEOUT 是两个独立变量：CONNECT 默认 120；EXEC 的默认值随产品
+        与展开模式不同（A3 AI_CPU 模式 1836，见 hccl-function-env）。不能把两者混成统一的 120；
+        调大前先查当前环境的实际默认值，只有超时证据表明不够时才按默认值向上抬，不写死 ≥600。
+        8P mesh 用 HCCL_INTRA_ROCE_ENABLE=1；大 EP 或 PD 分离场景（PD 即摘要里的 prefill/decode 分池）
+        再加 ASCEND_AGGREGATE_ENABLE=1、ASCEND_A3_ENABLE=1、VLLM_ASCEND_ENABLE_FLASHCOMM1。
+      check: 两个超时变量的当前值与官方默认值已按硬件/执行模式核对；调大时有超时证据
+      when_to_use: 多卡/多机、通信占比高或拉起失败时
+
+    - step: 9
+      name: vLLM 服务参数
+      action: >-
+        常用面：--host 0.0.0.0 --port 8000 --trust-remote-code --tensor-parallel-size；
+        性能面：--max-num-seqs、--max-num-batched-tokens、--gpu-memory-utilization 0.9、
+        --async-scheduling、--compilation-config {\"cudagraph_mode\": \"FULL_DECODE_ONLY\"}，
+        绑核类参数走 --additional-config 的 enable_cpu_binding（ARM 默认 true）；量化推理用 --quantization ascend。
+      check: 与第 1 步目标档一致的参数组合已落地
+      when_to_use: vLLM 侧参数调整时
+
+    - step: 10
+      name: 加速特性
+      action: >-
+        Speculative Decoding 两档：低延迟 num_speculative_tokens=5、高吞吐=3，method 用 mtp；
+        量化三档 W4A8/W8A8/W4A8C16 换显存与吞吐，数值敏感场景先小规模验证精度再全量。
+      check: 加速特性变更是否做了精度/收益双验证
+      when_to_use: 前 9 步后仍达不到目标档
+
+    - step: 11
+      name: PD 分离（可选）
+      action: >-
+        长上下文或大并发下把 prefill 与 decode 分池调度。
+        示例（GLM-5.1）：按 DP×TP 推算 P 池 32 卡（DP4×TP8）、D 池 32 卡（DP32×TP1），两池合计 64 卡。
+        上游同一处把总数标作「32 卡」，与合计 64 不符；「P Node 16 cards / D Node 16 cards」（见上游 references/pd_separation.md）是按节点计的规模，两池各 2 节点即 32 + 32。卡数以现场实际为准。
+        改动面大，只在明确需要时做，并与第 1 步目标对照收益。
+      check: 分池后 TPOT 与吞吐相对目标的变化已量化
+      when_to_use: 首 token 与吞吐互相挤压、单池调不动时
+
+    - step: 12
+      name: 用 vllm bench 验证
+      action: >-
+        默认用 vllm bench 压测，对照第 1 步目标档（TPOT 约 20ms/约 50ms）和基线数字；
+        每步改动增量验证、保留基线产物，不做一次性全参数改动。
+      check: 相对基线的增量与目标档达标情况已写清
+      when_to_use: 每步改动后与收尾时
+
+    - step: 13
+      name: 环境变量时滞检查
+      action: >-
+        vLLM-Ascend 上游演进快，改参数前查变量是否仍存在或已迁移：VLLM_ASCEND_ENABLE_PREFETCH_MLP
+        已由 PR #7357 移除；VLLM_ASCEND_ENABLE_DENSE_OPTIMIZE 不在现行环境变量注册表（envs.py）内；
+        VLLM_ASCEND_ENABLE_MLAPO、VLLM_ASCEND_ENABLE_FUSED_MC2、VLLM_ASCEND_ENABLE_FLASHCOMM1 等
+        自 PR #9064 起迁移进 --additional-config（enable_mlapo、enable_fused_mc2、enable_flashcomm1），
+        过渡期 env 仍生效但将在未来版本移除，新项目直接写 additional-config。
+      check: 本次用到的每个环境变量都查过官方注册表或 additional-config 文档
+      when_to_use: 引用任何 VLLM_ASCEND_* 环境变量前，以及调优收尾复核时

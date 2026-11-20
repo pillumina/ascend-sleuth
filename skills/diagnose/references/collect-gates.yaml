@@ -147,6 +147,7 @@ gates:
           - cpu-binding-inspection-procedure
           - multi-rank-slow-rank-detection
           - cluster-compare-diagnosis
+          - msprof-analyze-compare-output-reading
           - operator-pipe-bound-classification
           - operator-tuning-experiment-method
           - operator-compute-failure-modes
@@ -189,6 +190,8 @@ gates:
           - ascend-stack-view
           - ascend-msaicerr
           - host-kernel-log-collection
+          - ibmc-dump-info-collect-reading
+          - msprechecker-dump-compare
           - ascend-slog-conf
           - ascend-restart-slogd
     caveat_refs:

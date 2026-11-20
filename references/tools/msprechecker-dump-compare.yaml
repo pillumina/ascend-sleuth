@@ -1,0 +1,43 @@
+id: msprechecker-dump-compare
+type: tool
+title: msprechecker 与 dump 分析对比（多环境配置漂移定位 / 14 section / 脱敏）
+summary: 环境类故障要对比多台/多次采集的 dump 与预检 JSON 定位漂移：msprechecker_dump.py 采集 14 section，compare_dumps.py 比对差异与相似度。
+
+sources:
+  - type: engineer-input
+    engineer: "ascend-dump-analyzer skill 作者（本地导入 skill 包，匿名工程师）"
+    document: "ascend-dump-analyzer skill（SKILL.md：msprechecker_dump.py 参数与 14 section、compare_dumps.py 行为、脱敏与 _meta.collection 语义）"
+    url: "https://github.com/hu669293657/skills"
+    input_session: "本地会话：8 个本地 skill 提炼为 reference 的 to-reference 流程（2026-11 批）"
+    confirmed_at: 2026-11-17
+    verification: auto-extracted
+
+applies_to:
+  platforms: [cross]
+  categories: [interrupt, performance]
+
+related_references: [hccn-tool-network-diagnosis]
+
+status: active
+last_verified: 2026-11-17
+
+content:
+  tool_name: "msprechecker_dump.py（采集环境 dump/预检 JSON）与 compare_dumps.py（多环境 diff）。ascend-dump-analyzer skill 内置，Python 实现，关键文件零依赖"
+  invocation: >-
+    两台环境（正常 vs 异常）各跑 msprechecker_dump.py 出 dumping JSON，然后 compare_dumps.py 对两份以上
+    采集文件比对，定位配置/权重/网络等差异。采集侧按参数决定是否触发网络与权重校验，服务与网络类故障
+    建议带上 rank-table 相关参数。脚本随 ascend-dump-analyzer skill 分发（上游 commit 6519f6f 的
+    references/msprechecker_dump.py、compare_dumps.py），需 Linux 主机与昇腾工具在位，采集侧要能读
+    /proc 与 npu-smi 等设备信息（一般要 root 或同等权限）；脚本本身不装依赖。
+  commands:
+    collect: "`python3 msprechecker_dump.py -o <输出.json> [--filter] [--mies-config-path <p>] [--user-config-path <p>] [--mindie-env-path <p>] [--rank-table-path <p>] [--scene mindie|vllm] [--weight-dir <dir>] [--chunk-size 32|64|128|256]`——默认 -o ./msprechecker_dumped.json、--chunk-size 32；`--filter` 是开关（store_true），只用来筛选环境变量，不接受 section 名；--rank-table-path 触发 ping/HCCL/link/vnic/tls 网络检查；--weight-dir 触发权重 SHA256"
+    compare: "`python3 compare_dumps.py <文件1> <文件2> [更多]`——2+ 份采集文件；递归扁平化不依赖固定 schema；修复 markdown 转义（\\_ → _）；输出 modified、only_in（仅存在于某侧）项与相似度分数"
+  output_meaning:
+    - "14 section：system / ascend（7 组件）/ env / mies config / user config / mindie env / model config / weight / ping / hccl / link / vnic / tls / _meta"
+    - "脱敏：敏感值输出为 ***MASKED***，且 env section 带 env.__masking_warning__ 标记；权重 section 只记 SHA256 不记内容"
+    - "_meta.collection 区分采集状态：skipped（未采集，如无 rank table 时网络相关 section）≠ failed（采集失败）；旧格式采集未知 section 状态不硬报"
+    - "compare 输出按 section 分组列差异；缺失 section 报「仅在文件 X 中」，避免误判为值不同"
+  pitfalls:
+    - "网络相关检查（ping/hccl/link/vnic/tls）必须先给 --rank-table-path，否则对应 section 是 skipped 而非 failed"
+    - "msprechecker 比对输出兼容 msprof compare 的口径，不要混用两份工具的字段名"
+    - "--chunk-size（单位 MB，取自上游 --help，本词条未逐字核）只影响权重校验的读取粒度：默认 32，加大到 256 减少 IO 次数但单次读得更多；它不改变同一文件的 SHA256，两侧可以不同"

@@ -1,7 +1,7 @@
 id: cluster-compare-diagnosis
 type: fault-pattern
 title: 双集群 profiling 比对判据（显著性门控 / 贡献度 / 劣化分级 / 有效吞吐与慢卡线索）
-summary: 双集群比对的判据：显著性门控、贡献度语义、有效吞吐才是真实劣化、快慢卡线索阈值。
+summary: 双集群比对的判据：显著性门控、贡献度语义、有效吞吐才是真实劣化、快慢卡线索阈值、差值方向与 --force 文件大小校验。
 
 sources:
   - type: official-doc
@@ -24,6 +24,11 @@ sources:
     version: "Ascend/msagent commit 1a1483f17cf8（2026-09-24）：TEXT 模式 CSV/JSON 列头与嵌套结构"
     fetched_at: 2026-09-29
     verification: cross-checked-source
+  - type: official-doc
+    url: "https://www.hiascend.com/document/detail/en/mindstudio/latest/TITools/msprof_analyze/docs/en/user_guide/compare_tool_instruct.md"
+    version: "MindStudio msprof-analyze compare 工具说明（compare_tool_instruct.md）——仅佐证 --force 跳过属主与文件过大校验的语义与阈值（csv>5GB/json>10GB/db>8GB）"
+    fetched_at: 2026-11-17
+    verification: cross-checked-source
 
 applies_to:
   platforms: [cross]
@@ -33,7 +38,7 @@ applies_to:
 related_references: [multi-rank-slow-rank-detection, profiler-analysis-cli, profiler-db-query, performance-delimiting-and-comparison, msprof-comm-bottleneck-thresholds]
 
 status: active
-last_verified: 2026-09-29
+last_verified: 2026-11-17
 
 content:
   patterns:
@@ -73,3 +78,13 @@ content:
         - "通信表为空或通信带宽/矩阵缺失"
       cause: "`profiler_level` 低于 Level1 时没有通信小算子；Ascend 950PR/950DT 的 CCU 场景本身不支持采集通信矩阵与通信算子带宽"
       fix: "前者要求按 level1+ 重采；后者属正常缺失，要在结论里写明是平台限制而不是问题。**“没有数据”与“数据是零”必须分开写**"
+    - pattern: 文件过大校验与 --force 语义
+      symptoms:
+        - "比对直接触发失败：csv>5GB/json>10GB/db>8GB 被拦，或属主/权限校验不过"
+      cause: "compare 的默认入口先做属主、权限与文件大小校验，超限文件（csv>5GB/json>10GB/db>8GB）被拒绝，除非显式绕过"
+      fix: "先缩小数据面（收窄 --base_step/--comparison_step 范围）再考虑 --force；--force 同时跳过属主、权限与文件过大校验，绕过后确认来源可信与内容完整，不把 --force 当常规启动方式"
+    - pattern: 差值方向（基准 A vs 对比 B）
+      symptoms:
+        - "ΔStage 符号与预期相反，或把基准当异常、对比当正常来读"
+      cause: "语义固定为集群 A 是基准（正常）、集群 B 是对比（异常），所有差值 = B − A"
+      fix: "任何差值（含 ΔStage = Stage_B − Stage_A）都按 B − A 读：为正 = 对比侧变慢，为负 = 对比侧变快；写结论先写明谁是基准谁是对比，避免颠倒方向"
