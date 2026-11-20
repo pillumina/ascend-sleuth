@@ -23,14 +23,14 @@ from typing import Any, Dict, List
 from .regions import REGIONS
 
 
-TARGET_KINDS = ("skill", "knowledge", "tooling")
+TARGET_KINDS = ("skill", "knowledge", "tooling", "harness")
 FORBIDDEN_PREFIXES = (
     ".git/", ".github/", "knowledge/", "references/", "postmortems/",
     "eval/", "tests/", "docs/", "skills/", ".s2-replay/", ".worktrees/",
 )
 CHECK_TIMEOUT = 120
 CHECK_KINDS = ("py_compile", "diff_check", "src_fetch_self_test")
-MAX_TEXT = {"skill": 8000, "knowledge": 12000, "tooling": 20000}
+MAX_TEXT = {"skill": 8000, "knowledge": 12000, "tooling": 20000, "harness": 20000}
 TOOLING_SUFFIXES = (".py", ".yaml", ".yml", ".json")
 
 REGION_MARKERS = {
@@ -43,6 +43,7 @@ REGION_MARKERS = {
     "knowledge.reference_content": ("词条", "适用范围", "来源", "scope"),
     "tooling.source_fetch": ("src_fetch", "cache", "缓存", "retry", "重试", "ref"),
     "tooling.source_catalog": ("catalog", "repo", "仓", "签名", "signature"),
+    "harness.scheduler": ("scheduler", "调度", "budget", "预算", "stop", "停止"),
 }
 
 
@@ -81,6 +82,9 @@ def _checks(value: Any) -> List[str]:
 def _file_allowed(file: str, region) -> bool:
     if region.target_kind == "knowledge":
         return file.startswith(("knowledge/", "references/")) and file.endswith((".yaml", ".yml"))
+    if region.target_kind == "harness":
+        return (file.startswith(("scripts/", "eval/"))
+                and file.endswith((".py", ".yaml", ".yml", ".json")))
     if region.target_kind == "tooling":
         if any(file == prefix or file.startswith(prefix.rstrip("/") + "/")
                for prefix in FORBIDDEN_PREFIXES):
@@ -155,6 +159,22 @@ def _validate_content(candidate: Dict[str, Any], text: str) -> None:
             raise CandidateError(f"knowledge YAML is invalid: {exc}") from exc
         if not isinstance(doc, dict) or not doc.get("id"):
             raise CandidateError("knowledge YAML must be an object with id")
+    elif target == "harness":
+        if file.endswith(".py"):
+            try:
+                compile(text, file, "exec")
+            except SyntaxError as exc:
+                raise CandidateError(f"harness Python is invalid: {exc}") from exc
+        elif file.endswith((".yaml", ".yml")):
+            try:
+                yaml.safe_load(text)
+            except yaml.YAMLError as exc:
+                raise CandidateError(f"harness YAML is invalid: {exc}") from exc
+        elif file.endswith(".json"):
+            try:
+                json.loads(text)
+            except json.JSONDecodeError as exc:
+                raise CandidateError(f"harness JSON is invalid: {exc}") from exc
     elif target == "tooling":
         if file.endswith(".py"):
             try:

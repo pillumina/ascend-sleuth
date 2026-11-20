@@ -54,6 +54,12 @@ REGIONS: Dict[str, RegionSpec] = {
         components=("reference_content", "reference_miss"),
         description="reference 词条的事实/范围；走 rubric 与人工审",
     ),
+    "harness.scheduler": RegionSpec(
+        id="harness.scheduler", skill="harness", target_kind="harness",
+        components=("harness_scheduler", "scheduler", "budget", "stop"),
+        description="调度、控制流、预算与停止条件；高风险，走 end-to-end 回归",
+        paths=("scripts/", "eval/"),
+    ),
     # tooling 区改的是工具本身，不是使用工具的提示文本。
     "tooling.source_fetch": RegionSpec(
         id="tooling.source_fetch", skill="tooling", target_kind="tooling",
