@@ -196,8 +196,8 @@ class FlowTest(unittest.TestCase):
                 "input": {"title": "S-0"}, "expected": {"resolution": "ok"},
             }), encoding="utf-8")
             judge = Path(td) / "judge.json"
-            judge.write_text(json.dumps({"baseline": {"4000": 0}, "candidate": {"4000": 1}}),
-                             encoding="utf-8")
+            judge.write_text(json.dumps({"baseline": {"4000": 0}, "candidate": {"4000": 1},
+                                         "meta": {"agent": "test"}}), encoding="utf-8")
 
             def runner(tasks):
                 for arm in ("baseline", "candidate"):
@@ -249,6 +249,7 @@ class FlowTest(unittest.TestCase):
             judge.write_text(json.dumps({
                 "baseline": {str(5000+i): 0 for i in range(4)},
                 "candidate": {str(5000+i): 1 for i in range(4)},
+                "meta": {"agent": "test"},
             }), encoding="utf-8")
 
             def runner(tasks):
@@ -282,6 +283,7 @@ class FlowTest(unittest.TestCase):
             judge.write_text(json.dumps({
                 "baseline": {str(6000+i): 0 for i in range(4)},
                 "candidate": {str(6000+i): 1 for i in range(4)},
+                "meta": {"agent": "test"},
             }), encoding="utf-8")
             def usage(read, tokens):
                 return [{
@@ -366,6 +368,7 @@ class FlowTest(unittest.TestCase):
                 judge.write_text(json.dumps({
                     "baseline": {str(8000+index*10+i): 0 for i in range(4)},
                     "candidate": {str(8000+index*10+i): 1 for i in range(4)},
+                    "meta": {"agent": "test"},
                 }), encoding="utf-8")
 
                 def runner(tasks):
@@ -396,8 +399,8 @@ class FlowTest(unittest.TestCase):
                 "input": {"title": "S-0"}, "expected": {"resolution": "ok"},
             }), encoding="utf-8")
             judge = Path(td) / "judge.json"
-            judge.write_text(json.dumps({"baseline": {"9000": 0}, "candidate": {"9000": 1}}),
-                             encoding="utf-8")
+            judge.write_text(json.dumps({"baseline": {"9000": 0}, "candidate": {"9000": 1},
+                                         "meta": {"agent": "test"}}), encoding="utf-8")
             with self.assertRaises(Exception):
                 run_proposal(root, proposal, [str(sample)], Path(td) / "pilot",
                              _policy(), judge, archive, runner=lambda tasks: None)
@@ -420,6 +423,7 @@ class FlowTest(unittest.TestCase):
             judge.write_text(json.dumps({
                 "baseline": {str(9500+i): 0 for i in range(4)},
                 "candidate": {str(9500+i): 1 for i in range(4)},
+                "meta": {"agent": "test"},
             }), encoding="utf-8")
 
             def runner(tasks):
@@ -435,6 +439,33 @@ class FlowTest(unittest.TestCase):
                                   load_policy(None), judge, archive, runner=runner)
             self.assertEqual(result["decision"], "insufficient")
             self.assertIn("capacity_short", (result["conclusion"] or {}).get("reason", ""))
+
+    def test_judge_provenance_is_required(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"; root.mkdir(); _repo(root)
+            archive = ProposalArchive(Path(td) / "proposals.jsonl")
+            proposal = ProposalEngine(archive).add(_draft())
+            sample = Path(td) / "S-9900.yaml"
+            sample.write_text(yaml.safe_dump({
+                "id": "S-9900", "source": "github/x/0",
+                "input": {"title": "S-0"}, "expected": {"resolution": "ok"},
+            }), encoding="utf-8")
+            judge = Path(td) / "judge.json"
+            judge.write_text(json.dumps({"baseline": {"9900": 0}, "candidate": {"9900": 1}}),
+                             encoding="utf-8")
+
+            def runner(tasks):
+                for arm in ("baseline", "candidate"):
+                    for row in tasks["samples"]:
+                        sid = row["short_id"]
+                        (Path(tasks["arms"][arm]["trace_dir"]) / f"{sid}.yaml").write_text(
+                            yaml.safe_dump({"session_id": sid, "trace": []}), encoding="utf-8")
+                        (Path(tasks["arms"][arm]["out_dir"]) / f"{sid}.out.md").write_text(
+                            "ok", encoding="utf-8")
+
+            with self.assertRaises(FlowError):
+                run_proposal(root, proposal, [str(sample)], Path(td) / "pilot",
+                             load_policy(None), judge, archive, runner=runner)
 
     def test_requires_candidate(self):
         with tempfile.TemporaryDirectory() as td:
