@@ -134,6 +134,23 @@ class CandidateTest(unittest.TestCase):
                 apply_to_root(root, validate_candidate(data))
             self.assertIn("return ref", (root / "scripts/src_fetch.py").read_text(encoding="utf-8"))
 
+    def test_harness_candidate_applies_yaml(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._repo(td)
+            (root / "eval").mkdir()
+            path = root / "eval" / "scheduler.yaml"
+            path.write_text("scheduler: old\n", encoding="utf-8")
+            data = {
+                "candidate_id": "C-H1", "target_kind": "harness",
+                "target_component": "harness.scheduler",
+                "region": "harness.scheduler",
+                "file": "eval/scheduler.yaml", "base_rev": "HEAD",
+                "old_text": "scheduler: old\n",
+                "new_text": "scheduler: new\n",
+            }
+            apply_to_root(root, validate_candidate(data))
+            self.assertIn("new", path.read_text(encoding="utf-8"))
+
     def test_catalog_candidate_can_use_src_fetch_self_test(self):
         with tempfile.TemporaryDirectory() as td:
             root = self._repo(td)
