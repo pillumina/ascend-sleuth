@@ -391,10 +391,28 @@ async function runVerification(options, io) {
       const result = response.envelope && response.envelope.result ? response.envelope.result : null
       if (response.status !== 200 || result === null || result.ok !== true) {
         io.warn('RPC ' + RPC_CHANNEL + '/' + RPC_ENDPOINT + ' 不通：HTTP ' + response.status + '，'
-          + (result === null ? '应答不是合法信封' : 'result.ok=' + String(result.ok)))
+          + (result === null ? '应答不是合法信封'
+             : 'result.ok=' + String(result.ok) + ' error=' + JSON.stringify(result.error || null)))
         return 1
       }
       io.say('RPC          ok（' + RPC_ENDPOINT + ' 回 result.ok=true）')
+    }
+
+    if (expected.includes('dsh-rsi-observatory')) {
+      const response = await rpcCall('/rsi-observatory', 'rsi-list',
+        { sessionId: null, refresh: true }, waited.found.base, session.cookie)
+      const result = response.envelope && response.envelope.result ? response.envelope.result : null
+      const errorCode = result && result.error && result.error.code
+      if (response.status === 200 && errorCode === 'E_NO_REPO') {
+        io.warn('RSI RPC      已注册，但临时实例没有仓库 cwd（E_NO_REPO）；host 路由存在')
+      } else if (response.status !== 200 || result === null || result.ok !== true) {
+        io.warn('RPC /rsi-observatory/rsi-list 不通：HTTP ' + response.status + '，'
+          + (result === null ? '应答不是合法信封'
+             : 'result.ok=' + String(result.ok) + ' error=' + JSON.stringify(result.error || null)))
+        return 1
+      } else {
+        io.say('RSI RPC      ok（rsi-list 回 result.ok=true）')
+      }
     }
 
     io.say('全部通过：临时 profile 能拼出配置，页面会加载已登记包的浏览器半'
