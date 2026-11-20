@@ -100,6 +100,8 @@ class FlowTest(unittest.TestCase):
             exp = json.loads((Path(td) / "experiments.jsonl").read_text(encoding="utf-8").splitlines()[-1])
             self.assertEqual(exp["proposal"], proposal.id)
             self.assertEqual(exp["decision"], "accept")
+            self.assertEqual(len(exp["stage_reports"]), 7)
+            self.assertEqual(set(exp["baseline"]["per_sample"]), set(exp["samples"]))
             self.assertEqual(exp["proposal_snapshot"]["id"], proposal.id)
             self.assertEqual(exp["conclusion_snapshot"]["decision"], "accept")
             events = RSIStore(Path(td)).history(proposal_id=proposal.id)

@@ -135,6 +135,46 @@ def _usage_evidence(collected: Dict[str, Any], key: str, comparator) -> Optional
         return None
 
 
+def _stage_reports(proposal: Proposal, tasks: Dict[str, Any], judge_data: Dict[str, Any],
+                   decision: str, conclusion: Dict[str, Any],
+                   collected: Dict[str, Any], baseline: Dict[str, int],
+                   candidate: Dict[str, int]) -> List[Dict[str, Any]]:
+    samples = [str(row.get("short_id") or row.get("id")) for row in tasks.get("samples") or []]
+    candidate_info = proposal.candidate if isinstance(proposal.candidate, dict) else {}
+    arms = collected.get("arms") or {}
+    counts = {arm: len(rows or []) for arm, rows in arms.items()}
+    score_rows = [
+        "{}：对照 {} / 候选 {}".format(sid, baseline.get(sid, "—"), candidate.get(sid, "—"))
+        for sid in samples
+    ]
+    return [
+        {"id": "attribute", "label": "问题归因", "state": "recorded",
+         "summary": "使用了 {} 个真实样本：{}".format(len(samples), "、".join(samples)),
+         "fields": samples},
+        {"id": "select_region", "label": "改动范围", "state": "recorded",
+         "summary": "目标组件：{}".format(proposal.component or "未记录"),
+         "fields": [proposal.component] if proposal.component else []},
+        {"id": "select_candidate", "label": "候选选择", "state": "recorded",
+         "summary": "候选：{}".format(candidate_info.get("candidate_id") or "未记录"),
+         "fields": [str(candidate_info.get(key)) for key in ("candidate_id", "file", "base_rev")
+                    if candidate_info.get(key)]},
+        {"id": "propose", "label": "改动提案", "state": "recorded",
+         "summary": proposal.summary or "没有提案摘要",
+         "fields": [str(item) for item in (proposal.expected, proposal.risk, proposal.rollback)
+                    if item]},
+        {"id": "execute", "label": "执行", "state": "recorded" if counts else "empty",
+         "summary": "对照 {} 条 / 候选 {} 条".format(counts.get("baseline", "—"),
+                                                       counts.get("candidate", "—")),
+         "fields": ["样本数：{}".format(len(samples))] + [
+             "{}：{} 条".format(arm, count) for arm, count in counts.items()]},
+        {"id": "judge", "label": "评分", "state": "recorded" if score_rows else "empty",
+         "summary": "逐样本评分如下", "fields": score_rows},
+        {"id": "gate", "label": "结论", "state": "recorded" if decision else "empty",
+         "summary": "{} · {}".format(decision or "未判定", conclusion.get("reason") or ""),
+         "fields": [decision] if decision else []},
+    ]
+
+
 def _experiment_record(proposal: Proposal, tasks: Dict[str, Any], judge: Path,
                        decision: str, conclusion: Dict[str, Any],
                        collected: Dict[str, Any], *, exploratory: bool = False) -> Dict[str, Any]:
@@ -151,9 +191,9 @@ def _experiment_record(proposal: Proposal, tasks: Dict[str, Any], judge: Path,
         "decision": decision,
         "samples": samples,
         "baseline": {"score": sum(baseline.values()) / len(baseline),
-                     "samples": samples},
+                     "samples": samples, "per_sample": baseline},
         "candidate": {"score": sum(candidate.values()) / len(candidate),
-                      "samples": samples},
+                      "samples": samples, "per_sample": candidate},
         "eval_profile_id": "subagent_judge",
         "eval_ready": False,
         "summary": proposal.summary,
@@ -163,6 +203,8 @@ def _experiment_record(proposal: Proposal, tasks: Dict[str, Any], judge: Path,
         "judge_meta": data.get("meta") if isinstance(data.get("meta"), dict) else None,
         "judge_sha256": hashlib.sha256(Path(judge).read_bytes()).hexdigest(),
         "exploratory": bool(exploratory),
+        "stage_reports": _stage_reports(proposal, tasks, data, decision,
+                                        conclusion, collected, baseline, candidate),
     }
     if proposal.component == "diagnose.knowledge_usage":
         usage = _usage_evidence(collected, "knowledge_usage", compare_knowledge)

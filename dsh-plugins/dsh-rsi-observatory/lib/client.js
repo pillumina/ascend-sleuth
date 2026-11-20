@@ -14,14 +14,14 @@ window.__ModuleLoader__.load({
     const h = React.createElement
 
     const CHANNEL = '/rsi-observatory'
-    const PLUGIN_VERSION = '0.1.0'
+    const PLUGIN_VERSION = '0.2.0'
     const PANEL_ID = 'rsi-observatory'
     const PANEL_LABEL = '实验台'
 
     const TABS = [
-      { id: 'overview', label: '概览' },
-      { id: 'proposal', label: '提案' },
-      { id: 'events', label: '事件' },
+      { id: 'overview', label: '实验概览' },
+      { id: 'proposal', label: '改动提案' },
+      { id: 'events', label: '操作记录' },
     ]
 
     const DECISION_LABEL = {
@@ -37,12 +37,12 @@ window.__ModuleLoader__.load({
       unknown: 'muted',
     }
     const GAP_LABEL = {
-      no_conclusion: '缺结论',
-      no_cost: '缺成本',
-      unknown_decision: '无判定',
-      no_rollout: '缺执行记录',
+      no_conclusion: '缺少结论',
+      no_cost: '缺少成本数据',
+      unknown_decision: '还没有结论',
+      no_rollout: '缺少执行记录',
       rolled_back: '已回滚',
-      id_collision: '实验 id 复用',
+      id_collision: '实验编号重复',
     }
     const KIND_LABEL = {
       experiment: '实验',
@@ -54,17 +54,17 @@ window.__ModuleLoader__.load({
     const COPY = {
       loading: '正在读取实验记录…',
       emptyTitle: '还没有实验记录',
-      emptyBody: 'RSIStore 里还没有 experiment 事件。跑一次实验（experiment flow 或 experiment record）后回到这里刷新。',
+      emptyBody: '实验记录库里还没有数据。跑一次自演进实验后回到这里刷新。',
       emptySource: '数据源',
       retry: '重试',
       refresh: '刷新',
       readOnly: '只读',
       experiments: '实验',
       proposals: '提案',
-      noDetail: '选一条实验看明细。',
-      noProposal: '这条事件里没有提案快照。',
-      noEvents: '这条实验没有 history。',
-      noStageFields: '这个阶段没有写进 store。',
+      noDetail: '从左侧选一条实验查看明细。',
+      noProposal: '这条实验没有保存改动提案。',
+      noEvents: '这条实验还没有操作记录。',
+      noStageFields: '这个环节没有留下记录。',
       unknownTime: '时间未记录',
     }
 
@@ -95,7 +95,7 @@ window.__ModuleLoader__.load({
       const tokens = cost.tokens
       if (tokens && typeof tokens === 'object') {
         const paired = typeof cost.paired === 'number' ? cost.paired : null
-        return String(tokens.candidate) + ' tok' + (paired !== null ? ' · ' + paired + ' 对' : '')
+        return String(tokens.candidate) + ' 词元' + (paired !== null ? ' · ' + paired + ' 对' : '')
       }
       if (typeof cost === 'number') return String(cost)
       return '—'
@@ -109,11 +109,22 @@ window.__ModuleLoader__.load({
 
     function pairedText(paired) {
       if (!paired || typeof paired !== 'object') return '—'
-      return 'b ' + String(paired.b) + ' · c ' + String(paired.c) + ' · n ' + String(paired.n)
+      return '候选胜 ' + String(paired.b) + ' · 对照胜 ' + String(paired.c)
+        + ' · 样本 ' + String(paired.n)
+    }
+
+    function constraintLabel(name) {
+      return { knowledge: '知识使用', source: '源码使用', tool: '工具使用' }[String(name)]
+        || String(name)
+    }
+
+    function stageStateLabel(state) {
+      return String(state) === 'recorded' || String(state) === 'evidence' ? '有记录' : '暂无记录'
     }
 
     function stageTone(stage) {
-      return stage && stage.state === 'evidence' ? 'ok' : 'muted'
+      const state = String((stage && stage.state) || '')
+      return state === 'evidence' || state === 'recorded' ? 'ok' : 'muted'
     }
 
     function eventKinds(history) {
@@ -165,7 +176,7 @@ window.__ModuleLoader__.load({
       const generatedAt = props && props.generatedAt
       return h('div', { class: 'rsi-source' },
         h('span', { class: 'rsi-badge' }, h(Dot, { tone: 'ok' }), COPY.readOnly),
-        source ? h('span', null, '数据源：' + String(source.backend || '') + ' · ' + String(source.path || source.base || '')) : null,
+        source ? h('span', null, '数据来源：' + String(source.backend || '') + ' · ' + String(source.path || source.base || '')) : null,
         generatedAt ? h('span', null, '生成于 ' + formatAt(generatedAt)) : null,
       )
     }
@@ -231,7 +242,7 @@ window.__ModuleLoader__.load({
       const conclusion = props.conclusion || {}
       const paired = experiment.paired
       const cells = [
-        { key: '判定', value: decisionLabel(experiment.decision), tone: decisionTone(experiment.decision) },
+        { key: '结论', value: decisionLabel(experiment.decision), tone: decisionTone(experiment.decision) },
         { key: '样本', value: paired ? String(paired.n) : '—', tone: 'muted' },
         { key: '成本', value: formatCost(conclusion), tone: 'muted' },
         { key: '回滚', value: experiment.rolledBack ? '是' : '否', tone: experiment.rolledBack ? 'warn' : 'muted' },
@@ -248,11 +259,11 @@ window.__ModuleLoader__.load({
       const stages = props.stages || []
       const openId = props.openId || ''
       const onToggle = props.onToggle || function () {}
-      if (!stages.length) return h('div', { class: 'rsi-text' }, '没有阶段记录。')
+      if (!stages.length) return h('div', { class: 'rsi-text' }, '没有环节记录。')
       return h('div', null,
         h('div', { class: 'rsi-section-head' },
-          h('h3', { class: 'rsi-h3' }, '阶段'),
-          h('span', { class: 'rsi-hint' }, '派生视图：有记录 = store 事件里能找到对应字段；不是时间线'),
+          h('h3', { class: 'rsi-h3' }, '实验环节'),
+          h('span', { class: 'rsi-hint' }, '按执行顺序排列；没有记录的环节会标为「暂无记录」'),
         ),
         h('ol', { class: 'rsi-stages' }, stages.map(function (stage) {
           const open = String(openId) === String(stage.id)
@@ -264,7 +275,7 @@ window.__ModuleLoader__.load({
             },
             h(Dot, { tone: stageTone(stage) }),
             h('span', { class: 'rsi-stage-label' }, String(stage.label || stage.id)),
-            h('span', { class: 'rsi-stage-state' }, stage.state === 'evidence' ? '有记录' : '无记录'),
+            h('span', { class: 'rsi-stage-state' }, stageStateLabel(stage.state)),
             ),
             open ? h('div', { class: 'rsi-stage-body' },
               h('p', { class: 'rsi-text' }, String(stage.summary || '')),
@@ -285,12 +296,12 @@ window.__ModuleLoader__.load({
       const gates = conclusion.metrics && conclusion.metrics.constraints
       const constraints = gates && typeof gates === 'object' ? gates : null
       const rows = [
-        ['判定', decisionLabel(experiment.decision)],
+        ['结论', decisionLabel(experiment.decision)],
         ['原因', String(conclusion.reason || '—')],
-        ['配对', pairedText(experiment.paired)],
-        ['p 值', conclusion.p_value === undefined || conclusion.p_value === null ? '—' : String(conclusion.p_value)],
-        ['alpha_eff', conclusion.alpha_eff === undefined || conclusion.alpha_eff === null ? '—' : String(conclusion.alpha_eff)],
-        ['均分', 'baseline ' + formatScore(experiment.baselineScore) + ' / candidate ' + formatScore(experiment.candidateScore)],
+        ['成对比较', pairedText(experiment.paired)],
+        ['显著性', conclusion.p_value === undefined || conclusion.p_value === null ? '—' : String(conclusion.p_value)],
+        ['判定阈值', conclusion.alpha_eff === undefined || conclusion.alpha_eff === null ? '—' : String(conclusion.alpha_eff)],
+        ['平均分', '对照 ' + formatScore(experiment.baselineScore) + ' / 候选 ' + formatScore(experiment.candidateScore)],
         ['成本', formatCost(conclusion)],
       ]
       return h('div', { class: 'rsi-card' },
@@ -304,11 +315,37 @@ window.__ModuleLoader__.load({
           h('ul', { class: 'rsi-list-plain' }, Object.keys(constraints).map(function (name) {
             const item = constraints[name] || {}
             return h('li', { key: name },
-              String(name) + '：' + String(item.decision || '—')
-                + (item.paired !== undefined ? ' · ' + String(item.paired) + ' 对' : ''),
+              constraintLabel(name) + '：' + decisionLabel(item.decision)
+                + (item.paired !== undefined ? ' · ' + String(item.paired) + ' 对样本' : ''),
             )
           })),
         ) : null,
+      )
+    }
+
+    function SampleScores(props) {
+      const record = props.record || {}
+      const baseline = record.baseline && record.baseline.per_sample
+      const candidate = record.candidate && record.candidate.per_sample
+      if (!baseline || !candidate) return null
+      const ids = Object.keys(baseline)
+      if (!ids.length) return null
+      return h('div', { class: 'rsi-card' },
+        h('h3', { class: 'rsi-h3' }, '逐样本评分'),
+        h('table', { class: 'rsi-table' },
+          h('thead', null, h('tr', null,
+            h('th', null, '样本'),
+            h('th', null, '对照'),
+            h('th', null, '候选'),
+          )),
+          h('tbody', null, ids.map(function (id) {
+            return h('tr', { key: id },
+              h('td', null, String(id)),
+              h('td', null, baseline[id] === 1 ? '正确' : '错误'),
+              h('td', null, candidate[id] === 1 ? '正确' : '错误'),
+            )
+          })),
+        ),
       )
     }
 
@@ -317,11 +354,11 @@ window.__ModuleLoader__.load({
       const arms = rollout.arms && typeof rollout.arms === 'object' ? rollout.arms : {}
       const samples = Array.isArray(rollout.samples) ? rollout.samples : []
       return h('div', { class: 'rsi-card' },
-        h('h3', { class: 'rsi-h3' }, '执行与回滚'),
+        h('h3', { class: 'rsi-h3' }, '执行情况'),
         h('dl', { class: 'rsi-kv' },
-          h('div', { class: 'rsi-kv-row' }, h('dt', null, 'arms'),
-            h('dd', null, 'baseline ' + String(arms.baseline === undefined ? '—' : arms.baseline)
-              + ' / candidate ' + String(arms.candidate === undefined ? '—' : arms.candidate))),
+          h('div', { class: 'rsi-kv-row' }, h('dt', null, '执行组'),
+            h('dd', null, '对照 ' + String(arms.baseline === undefined ? '—' : arms.baseline)
+              + ' 条 / 候选 ' + String(arms.candidate === undefined ? '—' : arms.candidate) + ' 条')),
           h('div', { class: 'rsi-kv-row' }, h('dt', null, '样本数'),
             h('dd', null, String(samples.length))),
           h('div', { class: 'rsi-kv-row' }, h('dt', null, '工作区'),
@@ -331,7 +368,6 @@ window.__ModuleLoader__.load({
         ),
         samples.length ? h('p', { class: 'rsi-hint' }, '样本：' + samples.slice(0, 12).join(' · ')
           + (samples.length > 12 ? ' …' : '')) : null,
-        h('p', { class: 'rsi-hint' }, '逐样本成绩不在 RSIStore 事件里，这里只列样本编号与 arms 计数。'),
       )
     }
 
@@ -344,18 +380,18 @@ window.__ModuleLoader__.load({
         return h('div', { class: 'rsi-empty' }, COPY.noProposal)
       }
       const rows = [
-        ['提案', String(proposal.id || '—')],
-        ['target', String(proposal.target || '—')],
-        ['范围', String(proposal.component || '—')],
+        ['提案编号', String(proposal.id || '—')],
+        ['目标对象', String(proposal.target || '—')],
+        ['影响范围', String(proposal.component || '—')],
         ['改动类型', String(proposal.artifact_kind || '—')],
         ['状态', String(proposal.status || '—')],
-        ['预期', String(proposal.expected || '—')],
+        ['预期效果', String(proposal.expected || '—')],
         ['风险', String(proposal.risk || '—')],
-        ['回滚', String(proposal.rollback || '—')],
-        ['已回滚', proposal.rolled_back ? '是' : '否'],
+        ['回滚方式', String(proposal.rollback || '—')],
+        ['是否回滚', proposal.rolled_back ? '是' : '否'],
       ]
       return h('div', { class: 'rsi-card' },
-        h('h3', { class: 'rsi-h3' }, '提案'),
+        h('h3', { class: 'rsi-h3' }, '改动提案'),
         h('dl', { class: 'rsi-kv' }, rows.map(function (row) {
           return h('div', { class: 'rsi-kv-row', key: row[0] },
             h('dt', null, row[0]), h('dd', null, row[1]))
@@ -367,7 +403,7 @@ window.__ModuleLoader__.load({
           })),
         ) : null,
         diff ? h('details', { class: 'rsi-fold' },
-          h('summary', null, '改动 diff'),
+          h('summary', null, '改动内容'),
           h('pre', { class: 'rsi-pre' }, diff),
         ) : null,
       )
@@ -396,7 +432,7 @@ window.__ModuleLoader__.load({
           }),
           h('span', { class: 'rsi-hint' }, String(visible.length) + ' 条'),
         ),
-        h('ul', { class: 'rsi-events', 'aria-label': '事件流' }, visible.map(function (row) {
+        h('ul', { class: 'rsi-events', 'aria-label': '操作记录' }, visible.map(function (row) {
           const id = String(row.eventId || '')
           const open = openId === id
           return h('li', { key: id || String(row.at), class: 'rsi-event' },
@@ -533,6 +569,7 @@ window.__ModuleLoader__.load({
         || experiments[0]
       const conclusion = (detail && detail.conclusion) || {}
       const rollout = (detail && detail.rollout) || {}
+      const record = (detail && detail.record) || {}
       const proposal = (detail && detail.proposal) || {}
 
       return h('div', { class: 'rsi-page' }, h('div', { class: 'rsi-inner' },
@@ -622,7 +659,8 @@ window.__ModuleLoader__.load({
                           },
                           conclusion: conclusion,
                         }),
-                        h(RolloutBlock, { rollout: rollout }),
+                        h(RolloutBlock, { rollout: rollout, record: record }),
+                        h(SampleScores, { record: record }),
                       ) : null,
                       tab === 'proposal' ? h(ProposalPanel, { proposal: proposal }) : null,
                       tab === 'events' ? h(HistoryList, {
@@ -755,6 +793,9 @@ window.__ModuleLoader__.load({
       .rsi-kv-row dd{margin:0;overflow-wrap:anywhere}
       .rsi-sub{margin-top:8px}
       .rsi-list-plain{margin:0;padding-left:18px;font-size:12.5px}
+      .rsi-table{width:100%;border-collapse:collapse;font-size:12.5px}
+      .rsi-table th,.rsi-table td{padding:6px 8px;border-bottom:1px solid var(--rsi-hair);text-align:left}
+      .rsi-table th{color:var(--dsw-alias-label-secondary);font-weight:500}
       .rsi-code-list{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
       .rsi-code{font-family:var(--font-mono,ui-monospace,Menlo,Consolas,monospace);font-size:11px;
         padding:1px 6px;border:1px solid var(--rsi-hair);border-radius:4px}
@@ -864,7 +905,7 @@ window.__ModuleLoader__.load({
 
     plugin.__test = {
       Page, CatalogList, EmptyState, ErrorState, SourceBar, SummaryStrip, StageTrack,
-      DecisionPanel, RolloutBlock, ProposalPanel, HistoryList, Gaps, DetailTabs,
+      DecisionPanel, RolloutBlock, SampleScores, ProposalPanel, HistoryList, Gaps, DetailTabs,
       decisionLabel, decisionTone, gapLabel, formatScore, formatCost, formatAt, pairedText,
       eventKinds,
     }
