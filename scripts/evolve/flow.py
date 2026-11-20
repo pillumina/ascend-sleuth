@@ -128,6 +128,8 @@ def _experiment_record(proposal: Proposal, tasks: Dict[str, Any], judge: Path,
         "eval_ready": False,
         "summary": proposal.summary,
         "proposal": proposal.id,
+        "proposal_snapshot": proposal.to_dict(),
+        "conclusion_snapshot": conclusion,
     }
     if proposal.component == "diagnose.knowledge_usage":
         usage = _usage_evidence(collected, "knowledge_usage", compare_knowledge)
