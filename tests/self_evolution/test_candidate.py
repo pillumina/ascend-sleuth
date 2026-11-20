@@ -94,7 +94,7 @@ class CandidateTest(unittest.TestCase):
             root = self._repo(td)
             (root / "knowledge/inference/vllm-ascend").mkdir(parents=True)
             path = root / "knowledge/inference/vllm-ascend/case.yaml"
-            path.write_text("quickly_check: 旧判别\n", encoding="utf-8")
+            path.write_text("id: K-1\nquickly_check: 旧判别\n", encoding="utf-8")
             data = {
                 "candidate_id": "C-K1", "target_kind": "knowledge",
                 "target_component": "knowledge.case_content",
@@ -106,6 +106,33 @@ class CandidateTest(unittest.TestCase):
             }
             apply_to_root(root, validate_candidate(data))
             self.assertIn("新判别", path.read_text(encoding="utf-8"))
+
+    def test_invalid_knowledge_yaml_is_rejected_before_write(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._repo(td)
+            (root / "knowledge/inference/vllm-ascend").mkdir(parents=True)
+            path = root / "knowledge/inference/vllm-ascend/case.yaml"
+            path.write_text("id: K-1\nquickly_check: 旧判别\n", encoding="utf-8")
+            data = {
+                "candidate_id": "C-K2", "target_kind": "knowledge",
+                "target_component": "knowledge.case_content",
+                "region": "knowledge.case_content",
+                "file": "knowledge/inference/vllm-ascend/case.yaml",
+                "base_rev": "HEAD",
+                "old_text": "quickly_check: 旧判别\n",
+                "new_text": "quickly_check: [broken\n",
+            }
+            with self.assertRaises(CandidateError):
+                apply_to_root(root, validate_candidate(data))
+            self.assertIn("旧判别", path.read_text(encoding="utf-8"))
+
+    def test_invalid_tooling_python_is_rejected_before_write(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._repo(td)
+            data = tool_candidate(root, new="def fetch(ref):\n    return ref.strip(\n")
+            with self.assertRaises(CandidateError):
+                apply_to_root(root, validate_candidate(data))
+            self.assertIn("return ref", (root / "scripts/src_fetch.py").read_text(encoding="utf-8"))
 
     def test_catalog_candidate_can_use_src_fetch_self_test(self):
         with tempfile.TemporaryDirectory() as td:
