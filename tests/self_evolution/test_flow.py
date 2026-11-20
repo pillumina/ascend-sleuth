@@ -282,6 +282,24 @@ class FlowTest(unittest.TestCase):
             self.assertEqual(record["knowledge_usage"]["decision"], "accept")
             self.assertIn("full_body_reads", record["knowledge_usage"]["deltas"])
 
+    def test_dry_run_prepares_without_judge(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"; root.mkdir(); _repo(root)
+            engine = ProposalEngine(ProposalArchive(Path(td) / "proposals.jsonl"))
+            proposal = engine.add(_draft())
+            sample = Path(td) / "S-7000.yaml"
+            sample.write_text(yaml.safe_dump({
+                "id": "S-7000", "source": "github/x/0",
+                "input": {"title": "S-0"}, "expected": {"resolution": "ok"},
+            }), encoding="utf-8")
+            result = run_proposal(root, proposal, [str(sample)], Path(td) / "pilot",
+                                  load_policy(None), None,
+                                  ProposalArchive(Path(td) / "proposals.jsonl"),
+                                  dry_run=True)
+            self.assertTrue(result["dry_run"])
+            self.assertTrue((Path(td) / "pilot" / "tasks.json").exists())
+            self.assertTrue((Path(td) / "pilot" / "candidate-worktree").exists())
+
     def test_requires_candidate(self):
         with tempfile.TemporaryDirectory() as td:
             engine = ProposalEngine(ProposalArchive(Path(td) / "proposals.jsonl"))

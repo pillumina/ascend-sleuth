@@ -804,13 +804,17 @@ def cmd_experiment_flow(args: argparse.Namespace) -> int:
         proposal = engine.add(draft)
         if proposal.status == "invalid":
             raise FlowError("; ".join(proposal.errors))
-        command = stage_load_argv(args.runner_command)
+        if not args.dry_run and not args.judge:
+            raise FlowError("--judge is required unless --dry-run")
+        command = stage_load_argv(args.runner_command) if args.runner_command else None
         result = run_proposal(
             Path(args.root), proposal, args.samples, Path(args.output), policy,
-            Path(args.judge), archive,
-            runner=lambda tasks: stage_run(Path(args.output), command),
+            Path(args.judge) if args.judge else None, archive,
+            runner=(lambda tasks: stage_run(Path(args.output), command))
+            if command else None,
             baseline_traces=Path(args.baseline_traces) if args.baseline_traces else None,
             reuse_index=args.reuse_index,
+            dry_run=args.dry_run,
         )
     except (FlowError, ProposalError, OSError, ValueError, PolicyError, PilotError) as exc:
         print(f"error: {exc}", file=sys.stderr)
@@ -2048,8 +2052,10 @@ def build_parser() -> argparse.ArgumentParser:
     exp_flow.add_argument("--proposal", required=True)
     exp_flow.add_argument("--samples", nargs="+", required=True)
     exp_flow.add_argument("--output", required=True)
-    exp_flow.add_argument("--judge", required=True)
-    exp_flow.add_argument("--runner-command", required=True, help="JSON argv")
+    exp_flow.add_argument("--judge", default=None)
+    exp_flow.add_argument("--runner-command", default=None, help="JSON argv")
+    exp_flow.add_argument("--dry-run", action="store_true",
+                          help="只准备 candidate/pilot tasks，不跑 runner/judge")
     exp_flow.add_argument("--baseline-traces", default=None)
     exp_flow.add_argument("--archive", default=None)
     exp_flow.add_argument("--policy", default=None)
