@@ -125,9 +125,12 @@ def validate_candidate(data: Any) -> Dict[str, Any]:
     if not _file_allowed(file, spec):
         raise CandidateError(f"file {file!r} is not allowed for region {region!r}")
     action = str(data.get("action") or "modify")
-    if action not in ("modify", "add"):
-        raise CandidateError("action must be modify or add")
-    if action == "add":
+    if action not in ("modify", "add", "delete"):
+        raise CandidateError("action must be modify, add or delete")
+    if action == "delete":
+        old = ""
+        new = ""
+    elif action == "add":
         old = ""
         new = _text(data.get("content"), "content")
     else:
@@ -264,8 +267,18 @@ def _resolve_target(root: Path, candidate: Dict[str, Any], *, must_exist: bool =
 def apply_to_root(root: Path, candidate: Dict[str, Any]) -> Dict[str, Any]:
     root = Path(root).resolve()
     action = candidate.get("action", "modify")
+    after = ""
     path = _resolve_target(root, candidate, must_exist=action != "add")
-    if action == "add":
+    if action == "delete":
+        before = path.read_text(encoding="utf-8")
+        before_sha = _sha(path)
+        path.unlink()
+        try:
+            _run_checks(root, candidate)
+        except Exception:
+            path.write_text(before, encoding="utf-8")
+            raise
+    elif action == "add":
         after = candidate["new_text"]
         _validate_content(candidate, after)
         before_sha = None
