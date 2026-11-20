@@ -376,6 +376,24 @@ class FlowTest(unittest.TestCase):
                 self.assertEqual(exp["target_kind"], target)
                 self.assertEqual(exp["proposal"], proposal.id)
 
+    def test_incomplete_trace_is_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"; root.mkdir(); _repo(root)
+            archive = ProposalArchive(Path(td) / "proposals.jsonl")
+            proposal = ProposalEngine(archive).add(_draft())
+            sample = Path(td) / "S-9000.yaml"
+            sample.write_text(yaml.safe_dump({
+                "id": "S-9000", "source": "github/x/0",
+                "input": {"title": "S-0"}, "expected": {"resolution": "ok"},
+            }), encoding="utf-8")
+            judge = Path(td) / "judge.json"
+            judge.write_text(json.dumps({"baseline": {"9000": 0}, "candidate": {"9000": 1}}),
+                             encoding="utf-8")
+            with self.assertRaises(Exception):
+                run_proposal(root, proposal, [str(sample)], Path(td) / "pilot",
+                             load_policy(None), judge, archive, runner=lambda tasks: None)
+            self.assertFalse((Path(td) / "conclusions.jsonl").exists())
+
     def test_requires_candidate(self):
         with tempfile.TemporaryDirectory() as td:
             engine = ProposalEngine(ProposalArchive(Path(td) / "proposals.jsonl"))

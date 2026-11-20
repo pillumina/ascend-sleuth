@@ -83,6 +83,10 @@ def _file_allowed(file: str, region) -> bool:
     if region.target_kind == "knowledge":
         return file.startswith(("knowledge/", "references/")) and file.endswith((".yaml", ".yml"))
     if region.target_kind == "harness":
+        if file.startswith(("scripts/evolve/", "eval/core/", "tests/")):
+            return False
+        if file in ("eval/policy.yaml", "eval/holdout.yaml"):
+            return False
         return (file.startswith(("scripts/", "eval/"))
                 and file.endswith((".py", ".yaml", ".yml", ".json")))
     if region.target_kind == "tooling":

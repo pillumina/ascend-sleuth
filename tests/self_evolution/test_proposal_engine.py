@@ -136,6 +136,16 @@ class ProposalEngineTest(unittest.TestCase):
             latest = ProposalArchive(path).latest(p.id)
             self.assertEqual(latest["status"], "evaluated")
 
+    def test_two_engines_on_same_archive_get_distinct_ids(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "proposals.jsonl"
+            a = ProposalEngine(ProposalArchive(path))
+            first = a.add(skill_draft())
+            b = ProposalEngine(ProposalArchive(path))
+            second = b.add(skill_draft())
+            self.assertNotEqual(first.id, second.id)
+            self.assertEqual(second.id, "P-0002")
+
     def test_archive_records_proposals(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "proposals.jsonl"
