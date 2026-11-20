@@ -1778,14 +1778,33 @@ def cmd_brief(args: argparse.Namespace) -> int:
         proposals = ProposalArchive(_evolve_base(args) / "proposals.jsonl").read()
     except (OSError, ValueError):
         proposals = []
-    print(f"proposals: {len(proposals)}")
-    if proposals:
-        last = proposals[-1]
-        print(f"last proposal: {last.get('status', '')} {last.get('target', '')} {last.get('id', '')}")
     try:
         experiments = ExperimentStore.for_base(_evolve_base(args)).read()
     except (OSError, ValueError):
         experiments = []
+    try:
+        from .rsi_store import RSIStore
+        events = RSIStore(_evolve_base(args)).read()
+    except (OSError, ValueError):
+        events = []
+    event_proposals = [event["data"]["proposal"] for event in events
+                       if event.get("kind") == "proposal" and isinstance(event.get("data"), dict)
+                       and isinstance(event["data"].get("proposal"), dict)]
+    event_experiments = [
+        {**event["data"]["experiment"], "proposal": event.get("proposal_id")}
+        for event in events
+        if event.get("kind") == "experiment" and isinstance(event.get("data"), dict)
+        and isinstance(event["data"].get("experiment"), dict)
+    ]
+    if event_proposals:
+        proposals = event_proposals
+    if event_experiments:
+        experiments = event_experiments
+    print(f"events: {len(events)}")
+    print(f"proposals: {len(proposals)}")
+    if proposals:
+        last = proposals[-1]
+        print(f"last proposal: {last.get('status', '')} {last.get('target', '')} {last.get('id', '')}")
     print(f"experiments: {len(experiments)}")
     if experiments:
         last = experiments[-1]
