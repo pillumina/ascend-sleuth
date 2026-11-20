@@ -49,6 +49,8 @@ from .decision import Decision, DecisionResult, decide
 from .experiments import ExperimentError, validate_experiment
 from .holdout_guard import is_holdout_source, issue_numbers
 from .knowledge_usage import UsageError, compare as compare_usage, evaluate as evaluate_usage, from_trace
+from .proposal_engine import (BestPolicy, GepaPolicy, ParetoPolicy, ProposalArchive,
+                              ProposalEngine)
 from .proposals import ProposalError, request as proposal_request, validate_draft
 from .pilot import (PilotError, checkpoint as pilot_checkpoint, collect as pilot_collect,
                     decide as pilot_decide, prepare as pilot_prepare)
@@ -788,6 +790,47 @@ def _agent_draft_patch(path: str, target_override=None, component_override=None,
     patch = validate_draft(data, target_override=target_override)
     patch.seed = seed
     return patch
+
+
+def cmd_experiment_search(args: argparse.Namespace) -> int:
+    try:
+        scenario = json.loads(Path(args.scenario).read_text(encoding="utf-8"))
+        if not isinstance(scenario, dict):
+            raise ProposalError("scenario must be an object")
+        target = str(scenario.get("target_kind") or "")
+        component = str(scenario.get("target_component") or "")
+        samples = scenario.get("samples")
+        if not isinstance(samples, list) or not samples:
+            raise ProposalError("scenario.samples must be a non-empty list")
+        candidates = scenario.get("candidates")
+        if not isinstance(candidates, list) or not candidates:
+            raise ProposalError("scenario.candidates must be a non-empty list")
+        policy = {"best": BestPolicy, "pareto": ParetoPolicy, "gepa": GepaPolicy}[args.policy]()
+        archive = ProposalArchive(Path(args.archive) if args.archive
+                                  else _evolve_base(args) / "proposals.jsonl")
+        engine = ProposalEngine(archive)
+        for item in candidates:
+            draft = item.get("draft") if isinstance(item, dict) else None
+            if not isinstance(draft, dict):
+                raise ProposalError("candidate.draft is required")
+            if draft.get("target_kind") and draft["target_kind"] != target:
+                raise ProposalError("draft target_kind does not match scenario")
+            draft.setdefault("target_kind", target)
+            draft.setdefault("target_component", component)
+            proposal = engine.add(draft)
+            if proposal.status != "invalid" and isinstance(item.get("scores"), dict):
+                engine.evaluate(proposal, item["scores"], item.get("feedback"))
+        selected = policy.choose(engine.proposals, list(samples), [])
+    except (ProposalError, OSError, ValueError, KeyError, TypeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps({
+        "policy": policy.id,
+        "proposals": [p.to_dict() for p in engine.proposals],
+        "selected": selected.to_dict() if selected else None,
+        "archive": str(archive.path),
+    }, ensure_ascii=False, indent=2))
+    return 0
 
 
 def cmd_experiment_request(args: argparse.Namespace) -> int:
@@ -1913,6 +1956,14 @@ def build_parser() -> argparse.ArgumentParser:
     exp_gate.add_argument("--baseline", default=None, help="tooling gate：基线 tool usage JSON")
     exp_gate.add_argument("--candidate", default=None, help="tooling gate：候选 tool usage JSON")
     exp_gate.set_defaults(func=cmd_experiment_gate)
+    exp_search = experiment_sub.add_parser(
+        "search", help="用已产出的候选做校验、评分、策略选择并归档")
+    exp_search.add_argument("--root", default=None)
+    exp_search.add_argument("--scenario", required=True)
+    exp_search.add_argument("--policy", choices=("best", "pareto", "gepa"), default="gepa")
+    exp_search.add_argument("--archive", default=None)
+    exp_search.set_defaults(func=cmd_experiment_search)
+
     exp_request = experiment_sub.add_parser(
         "request", help="为 agent 生成 target-specific 提案请求与 prompt")
     exp_request.add_argument("--root", default=None)

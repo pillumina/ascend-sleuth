@@ -471,6 +471,31 @@ class IngestCliTest(unittest.TestCase):
             self.assertEqual(record["eval_profile_id"], "arena")
             self.assertTrue(record["eval_ready"])
 
+    def test_experiment_search_selects_with_gepa(self):
+        with tempfile.TemporaryDirectory() as td:
+            scenario = Path(td) / "scenario.json"
+            scenario.write_text(json.dumps({
+                "target_kind": "skill",
+                "target_component": "diagnose.knowledge_usage",
+                "samples": ["s1", "s2"],
+                "candidates": [
+                    {"draft": {"target_kind": "skill", "target_component": "diagnose.knowledge_usage",
+                               "summary": "seed", "change": {"files": ["skills/diagnose/SKILL.md"], "diff": "+ seed"},
+                               "expected": "提升", "risk": "低", "rollback": "恢复"},
+                     "scores": {"s1": 1, "s2": 0}},
+                    {"draft": {"target_kind": "skill", "target_component": "diagnose.knowledge_usage",
+                               "summary": "child", "change": {"files": ["skills/diagnose/SKILL.md"], "diff": "+ child"},
+                               "expected": "提升", "risk": "低", "rollback": "恢复"},
+                     "scores": {"s1": 1, "s2": 1}},
+                ],
+            }, ensure_ascii=False), encoding="utf-8")
+            result = run_cli("experiment", "search", "--root", td,
+                             "--scenario", str(scenario), "--policy", "gepa")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["selected"]["artifact"]["diff"], "+ child")
+            self.assertTrue((Path(td) / ".s2-replay" / "evolve" / "proposals.jsonl").exists())
+
     def test_experiment_propose_agent_draft_any_target(self):
         with tempfile.TemporaryDirectory() as td:
             draft = Path(td) / "draft.json"
