@@ -93,6 +93,8 @@ class FlowTest(unittest.TestCase):
             exp = json.loads((Path(td) / "experiments.jsonl").read_text(encoding="utf-8").splitlines()[-1])
             self.assertEqual(exp["proposal"], proposal.id)
             self.assertEqual(exp["decision"], "accept")
+            self.assertEqual(exp["proposal_snapshot"]["id"], proposal.id)
+            self.assertEqual(exp["conclusion_snapshot"]["decision"], "accept")
             self.assertTrue((Path(td) / "pilot" / "candidate-worktree").exists())
 
     def test_cli_flow_with_external_runner(self):
