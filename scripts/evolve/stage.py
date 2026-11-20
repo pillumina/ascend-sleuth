@@ -17,6 +17,7 @@ import yaml
 
 from .candidate import create_workspace, validate_candidate
 from .decision import required_exclusive_wins
+from .holdout_guard import HoldoutError, is_holdout_source, issue_numbers
 from .pilot import _short_id, checkpoint as pilot_checkpoint, collect as pilot_collect
 from .pilot import decide as pilot_decide
 from .contracts import now_iso
@@ -55,6 +56,13 @@ def _select_samples(root: Path, stage: str, policy: Dict[str, Any],
     except Exception as exc:
         raise StageError(f"cannot read samples: {exc}") from exc
     by_short = {_short_id(s.id): s for s in samples}
+    try:
+        reserved = issue_numbers(root)
+    except HoldoutError as exc:
+        raise StageError(str(exc)) from exc
+    for sample in samples:
+        if reserved and is_holdout_source(sample.source, reserved):
+            raise StageError(f"holdout source cannot enter {stage}: {sample.id}")
     if stage == "test":
         config = _read_stage_config(root)
         selected = [str(sid) for sid in config.get("selected") or []]
@@ -217,7 +225,9 @@ def run(output: Path, command: List[str], timeout: float = 600.0,
             except subprocess.TimeoutExpired as exc:
                 raise StageError(f"{sid}/{arm} timed out after {timeout}s") from exc
             if proc.returncode != 0:
-                raise StageError(f"{sid}/{arm} command failed: {proc.returncode}")
+                raise StageError(
+                    f"{sid}/{arm} command failed: {proc.returncode}: {proc.stderr[-500:]}"
+                )
             if not trace.exists() or not out.exists():
                 raise StageError(f"{sid}/{arm} did not write trace and out")
             completed += 1
