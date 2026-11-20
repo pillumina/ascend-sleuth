@@ -27,14 +27,15 @@
 - `validate_rsi_gepa.py --exploratory`：用两个真实 pilot 的候选与真实 judge 分数跑 GEPA 选择，选择 B，同时报告两个 gate 结果。
 - `validate_rsi_full_flow.py --exploratory`：用真实 B 候选和真实 trace 走 candidate apply → pilot → judge → gate → archive/event。
 - 结果：`P-0007 / EX-P-0007 accept (exploratory=true)`。
+- 阶段记录：`P-0008` 写入七个环节与逐样本分数；15866 对照 1 / 候选 1。旧记录从 samples/target/candidate 补出前三个环节，但没有逐样本分数。
 
 ## 4 记录与面板
 
 - 旧数据迁移：`store migrate`，真实结果 `events=76`，其中旧实验 6、旧提案 6、decision 10、rollout 54。
-- A/B 与 full flow 写入后：`events=96`、`proposals=11`、`experiments=11`。
+- A/B 与 full flow 写入后：`events=100`、`proposals=12`、`experiments=12`。
 - `store verify` 仍报旧数据缺口：6 个实验无 conclusion、10 个 decision 孤儿、54 个 rollout 孤儿；A/B 没有新增缺口。
-- `experiment show --proposal P-0007` 可回读 proposal/conclusion/experiments/history。
-- 插件临时 profile 验证 5 个包：dump-config、client.js、host 路由都通过；临时实例没有仓库 cwd 时返回 `E_NO_REPO`，脚本明确写“路由存在、数据未读取”。
+- `experiment show --proposal P-0008` 可回读 proposal/conclusion/experiments/history。
+- 插件临时 profile 验证 5 个包：dump-config、client.js、host 路由都通过；真实桌面面板已显示实验，但阶段与逐样本数据要在 0.2.0 + P-0008 后查看。
 
 ## 5 结论
 
