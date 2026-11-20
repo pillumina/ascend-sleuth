@@ -39,7 +39,10 @@ def _short_id(sample_id: str) -> str:
 def _read_samples(paths: List[str], root: Optional[Path] = None) -> List[Dict[str, Any]]:
     out = []
     holdout = None
+    sample_store = None
     if root is not None:
+        from .samples import SampleStore
+        sample_store = SampleStore(root=Path(root))
         from .holdout_guard import HOLDOUT_REL, HoldoutError, is_holdout_source, issue_numbers
         if (Path(root) / HOLDOUT_REL).exists():
             try:
@@ -50,8 +53,19 @@ def _read_samples(paths: List[str], root: Optional[Path] = None) -> List[Dict[st
         data = yaml.safe_load(Path(path).read_text(encoding="utf-8"))
         if not isinstance(data, dict) or not data.get("id"):
             raise PilotError(f"invalid sample file: {path}")
+        if sample_store is not None:
+            stored = sample_store.load(str(data["id"]))
+            if stored is not None:
+                errors = sample_store.admission_errors(stored)
+                if stored.status != "active":
+                    errors.append(f"status={stored.status}, not active")
+                if stored.purpose != "evaluation":
+                    errors.append(f"purpose={stored.purpose}, not evaluation")
+                if errors:
+                    raise PilotError(f"sample not admitted: {path}: " + "; ".join(errors))
+                data = stored.to_dict()
         purpose = str(data.get("purpose") or "")
-        if purpose in ("test", "regression"):
+        if purpose in ("test", "regression", "feedback"):
             raise PilotError(
                 f"sealed sample cannot be used in pilot: {data['id']} (purpose={purpose})"
             )
