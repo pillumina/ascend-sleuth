@@ -7,7 +7,9 @@ import json
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
+from .experiments import ExperimentError, validate_experiment
 from .pilot import collect as pilot_collect, decide as pilot_decide, prepare as pilot_prepare
+from .records import ExperimentStore
 from .proposal_engine import Proposal, ProposalArchive, ProposalEngine
 
 
@@ -39,5 +41,52 @@ def run_proposal(root: Path, proposal: Proposal, samples: List[str], output: Pat
     proposal.decision = decision
     proposal.conclusion_ref = str(output.parent / "conclusions.jsonl")
     archive.append(proposal)
+    experiment = _experiment_record(proposal, tasks, judge, decision,
+                                    result.get("conclusion") or {})
+    ExperimentStore.for_base(archive.path.parent).append(experiment)
     return {"candidate": proposal.candidate, "tasks": tasks, "collected": collected,
-            "conclusion": result.get("conclusion"), "decision": decision}
+            "conclusion": result.get("conclusion"), "decision": decision,
+            "experiment": experiment}
+
+
+def _side_scores(judge: Dict[str, Any], side: str, samples: List[str]) -> Dict[str, float]:
+    raw = judge.get(side) or {}
+    if not isinstance(raw, dict):
+        raise FlowError(f"judge.{side} must be an object")
+    values = [float(raw[s]) for s in samples if s in raw]
+    if len(values) != len(samples):
+        raise FlowError(f"judge.{side} is missing samples")
+    return {sample: float(raw[sample]) for sample in samples}
+
+
+def _experiment_record(proposal: Proposal, tasks: Dict[str, Any], judge: Path,
+                       decision: str, conclusion: Dict[str, Any]) -> Dict[str, Any]:
+    data = json.loads(Path(judge).read_text(encoding="utf-8"))
+    samples = [str(row.get("short_id") or row.get("id")) for row in tasks.get("samples") or []]
+    baseline = _side_scores(data, "baseline", samples)
+    candidate = _side_scores(data, "candidate", samples)
+    record = {
+        "target_kind": proposal.target,
+        "target_component": proposal.component,
+        "algorithm": "agent_draft",
+        "algorithm_version": "v1",
+        "execution": "subagent",
+        "decision": decision,
+        "samples": samples,
+        "baseline": {"score": sum(baseline.values()) / len(baseline),
+                     "samples": samples},
+        "candidate": {"score": sum(candidate.values()) / len(candidate),
+                      "samples": samples},
+        "eval_profile_id": "subagent_judge",
+        "eval_ready": False,
+        "summary": proposal.summary,
+        "proposal": proposal.id,
+    }
+    if conclusion.get("b") is not None:
+        record["paired"] = {"b": conclusion["b"], "c": conclusion["c"],
+                            "n": conclusion["n"],
+                            "alpha_eff": conclusion.get("alpha_eff", 0.1)}
+    try:
+        return validate_experiment(record)
+    except ExperimentError as exc:
+        raise FlowError(f"experiment record invalid: {exc}") from exc
