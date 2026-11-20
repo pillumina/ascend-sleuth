@@ -962,6 +962,27 @@ def cmd_experiment_record(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_experiment_show(args: argparse.Namespace) -> int:
+    try:
+        base = _evolve_base(args)
+        proposal = ProposalArchive(base / "proposals.jsonl").latest(args.proposal)
+        if proposal is None:
+            print(f"error: no proposal {args.proposal}", file=sys.stderr)
+            return 1
+        conclusion = latest_by_proposal(args.proposal, base)
+        rows = [row for row in ExperimentStore.for_base(base).read()
+                if row.get("proposal") == args.proposal]
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps({
+        "proposal": proposal,
+        "conclusion": conclusion,
+        "experiments": rows,
+    }, ensure_ascii=False, indent=2))
+    return 0
+
+
 def cmd_experiment_records(args: argparse.Namespace) -> int:
     try:
         records = ExperimentStore.for_base(_evolve_base(args)).read()
@@ -1990,6 +2011,12 @@ def build_parser() -> argparse.ArgumentParser:
     exp_resolve.add_argument("--target", required=True)
     exp_resolve.add_argument("--algorithm", default=None)
     exp_resolve.set_defaults(func=cmd_experiment_resolve)
+    exp_show = experiment_sub.add_parser(
+        "show", help="按提案编号合并 proposal / conclusion / experiment 记录")
+    exp_show.add_argument("--root", default=None)
+    exp_show.add_argument("--proposal", required=True)
+    exp_show.set_defaults(func=cmd_experiment_show)
+
     exp_records = experiment_sub.add_parser("records", help="列出本地实验记录")
     exp_records.add_argument("--root", default=None)
     exp_records.add_argument("--limit", type=int, default=10)

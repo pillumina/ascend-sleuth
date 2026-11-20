@@ -111,6 +111,15 @@ class ProposalEngineTest(unittest.TestCase):
             self.assertEqual(result["stop_reason"], "evaluation_budget")
             self.assertEqual(result["evaluations"], 1)
 
+    def test_archive_latest_by_id(self):
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "proposals.jsonl"
+            engine = ProposalEngine(ProposalArchive(path))
+            p = engine.add(skill_draft())
+            engine.evaluate(p, {"s1": 1, "s2": 1})
+            latest = ProposalArchive(path).latest(p.id)
+            self.assertEqual(latest["status"], "evaluated")
+
     def test_archive_records_proposals(self):
         with tempfile.TemporaryDirectory() as td:
             path = Path(td) / "proposals.jsonl"

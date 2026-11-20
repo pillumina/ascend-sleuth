@@ -134,6 +134,10 @@ class ProposalArchive:
                 rows.append(json.loads(line))
         return rows
 
+    def latest(self, proposal_id: str) -> Optional[Dict[str, Any]]:
+        hits = [row for row in self.read() if row.get("id") == proposal_id]
+        return hits[-1] if hits else None
+
 
 class BestPolicy:
     id = "select.best"
