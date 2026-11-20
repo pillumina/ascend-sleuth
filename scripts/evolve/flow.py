@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from .experiments import ExperimentError, validate_experiment
+from .candidate import rollback_workspace
 from .pilot import collect as pilot_collect, decide as pilot_decide, prepare as pilot_prepare
 from .records import ExperimentStore
 from .proposal_engine import Proposal, ProposalArchive, ProposalEngine
@@ -40,6 +41,10 @@ def run_proposal(root: Path, proposal: Proposal, samples: List[str], output: Pat
     proposal.status = decision
     proposal.decision = decision
     proposal.conclusion_ref = str(output.parent / "conclusions.jsonl")
+    proposal.workspace = str(tasks.get("workspace") or "")
+    if decision != "accept" and proposal.workspace:
+        rollback_workspace(Path(root), Path(proposal.workspace))
+        proposal.rolled_back = True
     archive.append(proposal)
     experiment = _experiment_record(proposal, tasks, judge, decision,
                                     result.get("conclusion") or {})
