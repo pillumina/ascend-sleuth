@@ -756,6 +756,24 @@ def _print_decision(result: DecisionResult) -> None:
 
 
 # ---------------------------------------------------------------- experiment
+def cmd_store_history(args: argparse.Namespace) -> int:
+    from .rsi_store import RSIStore
+    try:
+        if not args.experiment and not args.proposal:
+            raise ValueError("pass --experiment or --proposal")
+        rows = RSIStore(_evolve_base(args)).history(
+            experiment_id=args.experiment, proposal_id=args.proposal)
+        if args.kind:
+            rows = [row for row in rows if row.get("kind") == args.kind]
+        if args.limit:
+            rows = rows[-args.limit:]
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(rows, ensure_ascii=False, indent=2))
+    return 0
+
+
 def cmd_store_verify(args: argparse.Namespace) -> int:
     from .store import verify
     try:
@@ -2131,6 +2149,14 @@ def build_parser() -> argparse.ArgumentParser:
     store_verify.add_argument("--root", default=None)
     store_verify.add_argument("--json", action="store_true")
     store_verify.set_defaults(func=cmd_store_verify)
+
+    store_history = store_sub.add_parser("history", help="按 experiment/proposal 查事件历史")
+    store_history.add_argument("--root", default=None)
+    store_history.add_argument("--experiment", default=None)
+    store_history.add_argument("--proposal", default=None)
+    store_history.add_argument("--kind", default=None)
+    store_history.add_argument("--limit", type=int, default=0)
+    store_history.set_defaults(func=cmd_store_history)
 
     experiment = sub.add_parser("experiment", help="算法适配器")
     experiment_sub = experiment.add_subparsers(dest="experiment_command", required=True)
