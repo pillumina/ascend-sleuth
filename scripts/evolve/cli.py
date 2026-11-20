@@ -756,6 +756,24 @@ def _print_decision(result: DecisionResult) -> None:
 
 
 # ---------------------------------------------------------------- experiment
+def cmd_store_verify(args: argparse.Namespace) -> int:
+    from .store import verify
+    try:
+        result = verify(_evolve_base(args))
+    except (OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+    else:
+        print(f"store: {result['store_path']}")
+        print("counts: " + " ".join(f"{k}={v}" for k, v in result["counts"].items()))
+        print(f"issues: {len(result['issues'])} ok={result['ok']}")
+        for issue in result["issues"][:20]:
+            print(f"- {issue['severity']} {issue['code']}: {issue['detail']}")
+    return 0 if result["ok"] else 1
+
+
 def cmd_store_migrate(args: argparse.Namespace) -> int:
     from .migrate import migrate_legacy
     try:
@@ -2044,6 +2062,11 @@ def build_parser() -> argparse.ArgumentParser:
     store_migrate.add_argument("--dry-run", action="store_true")
     store_migrate.add_argument("--json", action="store_true")
     store_migrate.set_defaults(func=cmd_store_migrate)
+
+    store_verify = store_sub.add_parser("verify", help="检查 rsi-events 完整性")
+    store_verify.add_argument("--root", default=None)
+    store_verify.add_argument("--json", action="store_true")
+    store_verify.set_defaults(func=cmd_store_verify)
 
     experiment = sub.add_parser("experiment", help="算法适配器")
     experiment_sub = experiment.add_subparsers(dest="experiment_command", required=True)
