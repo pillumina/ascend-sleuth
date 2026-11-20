@@ -184,6 +184,9 @@ def collect(output: Path, judge: Optional[Path] = None) -> Dict[str, Any]:
                 if doc is None:
                     if "usage_error" not in row:
                         row["usage_error"] = "trace is empty"
+                elif doc.get("adapter_fallback"):
+                    raise PilotError(
+                        f"adapter fallback trace is not valid evidence: {trace}")
                 else:
                     score = (judge_data.get(arm) or {}).get(sid)
                     resolution_ok = None if score is None else bool(score)
