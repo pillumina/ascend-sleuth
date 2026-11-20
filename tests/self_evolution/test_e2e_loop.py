@@ -56,7 +56,8 @@ class _Repo:
         (root / "scripts" / "src_fetch.py").write_text(TOOL_TEXT, encoding="utf-8")
         (root / "eval" / "policy.yaml").write_text(
             "decision:\n  alpha: 0.10\ncost:\n  primary_dimension: tokens\n"
-            "  B: 0.10\n  epsilon: 0.10\n  delta: 0\n", encoding="utf-8")
+            "  B: 0.10\n  epsilon: 0.10\n  delta: 0\nsamples:\n  field_eval: 4\n",
+            encoding="utf-8")
         subprocess.run(["git", "-C", str(root), "init", "-q"], check=True)
         subprocess.run(["git", "-C", str(root), "add", "."], check=True)
         subprocess.run(

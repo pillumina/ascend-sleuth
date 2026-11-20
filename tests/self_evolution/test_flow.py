@@ -15,6 +15,12 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from evolve.flow import FlowError, _experiment_record, run_proposal  # noqa: E402
 from evolve.policy import load_policy  # noqa: E402
+
+
+def _policy():
+    policy = load_policy(None)
+    policy["samples"]["field_eval"] = 4
+    return policy
 from tests.self_evolution.test_cli import run_cli  # noqa: E402
 from evolve.proposal_engine import ProposalArchive, ProposalEngine  # noqa: E402
 from evolve.readback import latest_by_proposal  # noqa: E402
@@ -84,7 +90,7 @@ class FlowTest(unittest.TestCase):
                             "ok", encoding="utf-8")
 
             result = run_proposal(root, proposal, samples, Path(td) / "pilot",
-                                  load_policy(None), judge, archive, runner=runner)
+                                  _policy(), judge, archive, runner=runner)
             self.assertEqual(result["conclusion"]["decision"], "accept")
             self.assertEqual(result["conclusion"]["proposal"], proposal.id)
             rows = ProposalArchive(Path(td) / "proposals.jsonl").read()
@@ -122,9 +128,12 @@ class FlowTest(unittest.TestCase):
                 "candidate": {str(2000+i): 1 for i in range(4)},
                 "meta": {"agent": "test"},
             }), encoding="utf-8")
+            policy_path = Path(td) / "policy.yaml"
+            policy_path.write_text("samples:\n  field_eval: 4\n", encoding="utf-8")
             result = run_cli(
                 "experiment", "flow", "--root", str(root),
                 "--proposal", str(draft), "--samples", *samples,
+                "--policy", str(policy_path),
                 "--output", str(Path(td) / "pilot"), "--judge", str(judge),
                 "--runner-command", json.dumps([
                     sys.executable, "-c",
@@ -170,7 +179,7 @@ class FlowTest(unittest.TestCase):
                             "ok", encoding="utf-8")
 
             result = run_proposal(root, proposal, samples, Path(td) / "pilot",
-                                  load_policy(None), judge, archive, runner=runner)
+                                  _policy(), judge, archive, runner=runner)
             self.assertNotEqual(result["decision"], "accept")
             self.assertFalse((Path(td) / "pilot" / "candidate-worktree").exists())
             rows = ProposalArchive(Path(td) / "proposals.jsonl").read()
@@ -202,7 +211,7 @@ class FlowTest(unittest.TestCase):
 
             with self.assertRaises(FlowError):
                 run_proposal(root, proposal, [str(sample)], Path(td) / "pilot",
-                             load_policy(None), judge, archive, runner=runner)
+                             _policy(), judge, archive, runner=runner)
 
     def test_harness_proposal_reaches_experiment_record(self):
         with tempfile.TemporaryDirectory() as td:
@@ -252,7 +261,7 @@ class FlowTest(unittest.TestCase):
                             "ok", encoding="utf-8")
 
             result = run_proposal(root, proposal, samples, Path(td) / "pilot",
-                                  load_policy(None), judge, archive, runner=runner)
+                                  _policy(), judge, archive, runner=runner)
             self.assertEqual(result["decision"], "accept")
             exp = json.loads((Path(td) / "experiments.jsonl").read_text(encoding="utf-8").splitlines()[-1])
             self.assertEqual(exp["target_kind"], "harness")
@@ -301,7 +310,7 @@ class FlowTest(unittest.TestCase):
                 "input": {"title": "S-0"}, "expected": {"resolution": "ok"},
             }), encoding="utf-8")
             result = run_proposal(root, proposal, [str(sample)], Path(td) / "pilot",
-                                  load_policy(None), None,
+                                  _policy(), None,
                                   ProposalArchive(Path(td) / "proposals.jsonl"),
                                   dry_run=True)
             self.assertTrue(result["dry_run"])
@@ -370,7 +379,7 @@ class FlowTest(unittest.TestCase):
                                 "ok", encoding="utf-8")
 
                 result = run_proposal(root, proposal, samples, Path(td) / "pilot",
-                                      load_policy(None), judge, archive, runner=runner)
+                                      _policy(), judge, archive, runner=runner)
                 self.assertEqual(result["decision"], "accept")
                 exp = json.loads((Path(td) / "experiments.jsonl").read_text(encoding="utf-8").splitlines()[-1])
                 self.assertEqual(exp["target_kind"], target)
@@ -391,8 +400,41 @@ class FlowTest(unittest.TestCase):
                              encoding="utf-8")
             with self.assertRaises(Exception):
                 run_proposal(root, proposal, [str(sample)], Path(td) / "pilot",
-                             load_policy(None), judge, archive, runner=lambda tasks: None)
+                             _policy(), judge, archive, runner=lambda tasks: None)
             self.assertFalse((Path(td) / "conclusions.jsonl").exists())
+
+    def test_small_pool_cannot_accept(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"; root.mkdir(); _repo(root)
+            archive = ProposalArchive(Path(td) / "proposals.jsonl")
+            proposal = ProposalEngine(archive).add(_draft())
+            samples = []
+            for i in range(4):
+                sample = Path(td) / f"S-{9500+i}.yaml"
+                sample.write_text(yaml.safe_dump({
+                    "id": f"S-{9500+i}", "source": f"github/x/{i}",
+                    "input": {"title": f"S-{i}"}, "expected": {"resolution": "ok"},
+                }), encoding="utf-8")
+                samples.append(str(sample))
+            judge = Path(td) / "judge.json"
+            judge.write_text(json.dumps({
+                "baseline": {str(9500+i): 0 for i in range(4)},
+                "candidate": {str(9500+i): 1 for i in range(4)},
+            }), encoding="utf-8")
+
+            def runner(tasks):
+                for arm in ("baseline", "candidate"):
+                    for row in tasks["samples"]:
+                        sid = row["short_id"]
+                        (Path(tasks["arms"][arm]["trace_dir"]) / f"{sid}.yaml").write_text(
+                            yaml.safe_dump({"session_id": sid, "trace": []}), encoding="utf-8")
+                        (Path(tasks["arms"][arm]["out_dir"]) / f"{sid}.out.md").write_text(
+                            "ok", encoding="utf-8")
+
+            result = run_proposal(root, proposal, samples, Path(td) / "pilot",
+                                  load_policy(None), judge, archive, runner=runner)
+            self.assertEqual(result["decision"], "insufficient")
+            self.assertIn("capacity_short", (result["conclusion"] or {}).get("reason", ""))
 
     def test_requires_candidate(self):
         with tempfile.TemporaryDirectory() as td:
@@ -403,7 +445,7 @@ class FlowTest(unittest.TestCase):
                 "expected": "x", "risk": "低", "rollback": "x",
             })
             with self.assertRaises(Exception):
-                run_proposal(Path(td), p, ["s"], Path(td) / "out", load_policy(None),
+                run_proposal(Path(td), p, ["s"], Path(td) / "out", _policy(),
                              Path(td) / "j", ProposalArchive(Path(td) / "a.jsonl"))
 
 
