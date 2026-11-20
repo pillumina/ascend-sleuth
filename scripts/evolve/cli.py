@@ -2146,7 +2146,7 @@ def build_parser() -> argparse.ArgumentParser:
     exp_flow.add_argument("--baseline-traces", default=None)
     exp_flow.add_argument("--archive", default=None)
     exp_flow.add_argument("--policy", default=None)
-    exp_flow.add_argument("--reuse-index", type=int, default=0)
+    exp_flow.add_argument("--reuse-index", type=int, default=None)
     exp_flow.set_defaults(func=cmd_experiment_flow)
 
     exp_search = experiment_sub.add_parser(
@@ -2228,7 +2228,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_decide.add_argument("--output", required=True)
     p_decide.add_argument("--judge", required=True)
     p_decide.add_argument("--policy", default=None)
-    p_decide.add_argument("--reuse-index", type=int, default=0)
+    p_decide.add_argument("--reuse-index", type=int, default=None)
     p_decide.add_argument("--pool", default="pilot")
     p_decide.add_argument("--card", default=None, help="写进结论的 EV 卡号")
     p_decide.set_defaults(func=cmd_pilot_decide)

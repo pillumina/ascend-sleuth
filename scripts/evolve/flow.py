@@ -29,7 +29,7 @@ def run_proposal(root: Path, proposal: Proposal, samples: List[str], output: Pat
                  archive: ProposalArchive,
                  runner: Optional[Callable[[Dict[str, Any]], None]] = None,
                  baseline_traces: Optional[Path] = None,
-                 reuse_index: int = 0,
+                 reuse_index: Optional[int] = None,
                  dry_run: bool = False) -> Dict[str, Any]:
     if not proposal.candidate:
         raise FlowError("proposal has no candidate; provide draft.candidate")
