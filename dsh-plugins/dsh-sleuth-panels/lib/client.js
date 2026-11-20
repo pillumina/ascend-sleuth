@@ -1,7 +1,7 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
 //   dsh-plugins/ascend-panel/panel-client.js  (sha256:ddd85e79a637)
-//   dsh-plugins/ev-panel/panel-client.js  (sha256:9d01bb24c31b)
+//   dsh-plugins/ev-panel/panel-client.js  (sha256:f578d53b7865)
 //   dsh-plugins/sleuth-console/console-client.js  (sha256:2405b5ea8495)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -5158,7 +5158,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       id: 'ev-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ev-panel/panel-client.js (sha256:9d01bb24c31b) 原文开始 ----
+// ---- dsh-plugins/ev-panel/panel-client.js (sha256:f578d53b7865) 原文开始 ----
 // ev-panel client —— 自演进看板（conversation.view 第三个 tab「自演进」）
 // 数据经 host.call('ev-board-load') 从 scripts/ev_board_data.py 汇总；
 // 单卡全文经 host.call('ev-idea-detail') 点开时才拉（列表页只带摘要）。
@@ -5823,6 +5823,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
     }
 
     let sampleQueueError = ''
+    let sampleQueueBusy = false
 
     function SampleQueue({ samples, sessionId, onReload }) {
       const data = samples || {}
@@ -5832,15 +5833,19 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
         return acc
       }, {})
       function act(item, action) {
+        if (sampleQueueBusy) return
+        sampleQueueBusy = true
         host.call('ev-sample-action', { sessionId, id: item.id, action }).then(r => {
           if (r && r.ok) {
             sampleQueueError = ''
           } else {
             sampleQueueError = (r && r.error) || '样本操作失败'
           }
+          sampleQueueBusy = false
           if (onReload) onReload()
         }).catch(e => {
           sampleQueueError = String((e && e.message) || e)
+          sampleQueueBusy = false
           if (onReload) onReload()
         })
       }
@@ -5863,14 +5868,17 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
           item.status === 'candidate' ? React.createElement('span', { style: { marginLeft: 8 } },
             React.createElement('button', {
               type: 'button', className: 'ev-btn', style: { padding: '1px 6px' },
+              disabled: sampleQueueBusy,
               onClick: () => act(item, 'approve'),
             }, '通过复核'),
             React.createElement('button', {
               type: 'button', className: 'ev-btn', style: { padding: '1px 6px', marginLeft: 4 },
+              disabled: sampleQueueBusy,
               onClick: () => act(item, 'reject'),
             }, '退回修改')) : null,
           item.status === 'active' && item.origin === 'field' ? React.createElement('button', {
             type: 'button', className: 'ev-btn', style: { marginLeft: 8, padding: '1px 6px' },
+            disabled: sampleQueueBusy,
             onClick: () => act(item, 'promote'),
           }, '升 core') : null)))
     }

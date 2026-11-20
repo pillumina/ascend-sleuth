@@ -15,6 +15,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from evolve.policy import load_policy  # noqa: E402
 from evolve.stage import StageError, plan, report, run  # noqa: E402
 
+ADAPTER = ROOT / "scripts" / "agent_adapter.py"
+
 
 def _sample(sid, purpose):
     return {
@@ -48,13 +50,7 @@ class StageTest(unittest.TestCase):
             self.assertEqual(tasks["gate"], "hard")
             self.assertEqual(len(tasks["samples"]), 1)
             self.assertNotIn("baseline", tasks["arms"])
-            script = (
-                "import os,pathlib;"
-                "pathlib.Path(os.environ['SLEUTH_TRACE']).write_text("
-                "'session_id: x\\ntrace: []\\n');"
-                "pathlib.Path(os.environ['SLEUTH_OUT']).write_text('ok')"
-            )
-            result = run(out, [sys.executable, "-c", script])
+            result = run(out, [sys.executable, str(ADAPTER), "--agent", "echo"])
             self.assertEqual(result["completed"], 1)
             self.assertTrue((out / "candidate" / "traces" / "1001.yaml").exists())
             judge = Path(td) / "judge.json"
@@ -100,13 +96,7 @@ class StageTest(unittest.TestCase):
             out = Path(td) / "out"
             policy = load_policy(None)
             plan(root, "test", out, policy)
-            script = (
-                "import os,pathlib;"
-                "pathlib.Path(os.environ['SLEUTH_TRACE']).write_text("
-                "'session_id: x\\ntrace: []\\n');"
-                "pathlib.Path(os.environ['SLEUTH_OUT']).write_text('ok')"
-            )
-            run(out, [sys.executable, "-c", script])
+            run(out, [sys.executable, str(ADAPTER), "--agent", "echo"])
             judge = Path(td) / "judge.json"
             judge.write_text(json.dumps({
                 "baseline": {"1001": 0, "1002": 0, "1003": 0, "1004": 0},
@@ -127,6 +117,20 @@ class StageTest(unittest.TestCase):
             full = plan(root, "regression", Path(td) / "full", policy, full=True)
             self.assertEqual(len(short["samples"]), 6)
             self.assertEqual(len(full["samples"]), 8)
+
+    def test_holdout_source_is_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._root(td)
+            (root / ".git").mkdir()
+            (root / "eval" / "holdout.yaml").write_text(
+                yaml.safe_dump({"entries": [{"fixture": "VLLM-ASC-12345.fixture.yaml"}]}),
+                encoding="utf-8")
+            sample = next((root / "eval" / "core" / "samples").glob("*.yaml"))
+            data = yaml.safe_load(sample.read_text(encoding="utf-8"))
+            data["source"] = "https://github.com/x/y/issues/12345"
+            sample.write_text(yaml.safe_dump(data), encoding="utf-8")
+            with self.assertRaises(StageError):
+                plan(root, "regression", Path(td) / "out", load_policy(None), limit=1)
 
     def test_baseline_reuse_is_test_only(self):
         with tempfile.TemporaryDirectory() as td:
