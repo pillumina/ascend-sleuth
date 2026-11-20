@@ -1692,6 +1692,15 @@ def cmd_brief(args: argparse.Namespace) -> int:
     if proposals:
         last = proposals[-1]
         print(f"last proposal: {last.get('status', '')} {last.get('target', '')} {last.get('id', '')}")
+    try:
+        experiments = ExperimentStore.for_base(_evolve_base(args)).read()
+    except (OSError, ValueError):
+        experiments = []
+    print(f"experiments: {len(experiments)}")
+    if experiments:
+        last = experiments[-1]
+        print(f"last experiment: {last.get('decision', '')} "
+              f"{last.get('target_kind', '')} proposal={last.get('proposal') or ''}")
     capacity = plan.get("judgment_capacity") or {}
     print(f"judgment_capacity: pool_samples={capacity.get('potential', 0)} "
           f"required_b={capacity.get('required_b', 0)} "
