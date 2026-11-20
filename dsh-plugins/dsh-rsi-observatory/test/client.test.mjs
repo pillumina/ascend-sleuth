@@ -221,6 +221,8 @@ test('逐样本评分与已记录环节直接来自实验记录', () => {
   assert.match(scoreText, /逐样本评分/)
   assert.match(scoreText, /15866/)
   assert.match(scoreText, /正确/)
+  assert.match(scoreText, /变化/)
+  assert.match(scoreText, /不变/)
   const stageText = textOf(t.StageTrack({
     stages: [{ id: 'judge', label: '评分', state: 'recorded', summary: '逐样本评分如下', fields: ['15866：对照 1 / 候选 1'] }],
     openId: 'judge', onToggle() {},

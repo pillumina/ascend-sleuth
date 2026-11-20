@@ -11,7 +11,7 @@ import yaml
 from typing import Any, Callable, Dict, List, Optional
 
 from .experiments import ExperimentError, validate_experiment
-from .candidate import rollback_workspace
+from .candidate import diff_workspace, rollback_workspace
 from .knowledge_usage import compare as compare_knowledge
 from .pilot import collect as pilot_collect, decide as pilot_decide, prepare as pilot_prepare
 from .source_usage import compare as compare_source
@@ -40,6 +40,12 @@ def run_proposal(root: Path, proposal: Proposal, samples: List[str], output: Pat
                               encoding="utf-8")
     tasks = pilot_prepare(root, candidate_path, samples, output, policy=policy,
                           baseline_traces=baseline_traces)
+    workspace = tasks.get("workspace")
+    if workspace:
+        try:
+            proposal.artifact["diff"] = diff_workspace(Path(workspace))
+        except Exception:
+            pass
     if dry_run:
         return {"dry_run": True, "candidate": proposal.candidate, "tasks": tasks,
                 "workspace": tasks.get("workspace"), "output": str(output)}
