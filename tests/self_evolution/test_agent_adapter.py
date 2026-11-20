@@ -29,7 +29,7 @@ class AgentAdapterTest(unittest.TestCase):
         }), encoding="utf-8")
         return output
 
-    def test_dsh_command_contract(self):
+    def test_dsh_cli_command_contract(self):
         with mock.patch.dict(os.environ, {"DEEPSEEK_API_KEY": "test"}, clear=False), \
                 mock.patch.object(agent_adapter.subprocess, "run") as run:
             run.return_value = mock.Mock(returncode=0, stdout="report", stderr="")

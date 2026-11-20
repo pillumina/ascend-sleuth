@@ -2,6 +2,10 @@
 
 stage runner 只认 SLEUTH_* 环境变量与写出的 trace/out；本模块负责构造
 诊断 prompt、调用 agent、把报告和最小 trace 落盘。
+
+注意：``agent="dsh"`` 指 dsh CLI 的 headless 模式，不是 DSH Desktop。
+DSH Desktop 本身是 agent，提案与实验应由会话内 subagent 编排，不需要
+本 adapter 去启动一个 Desktop 进程。
 """
 
 from __future__ import annotations
@@ -126,7 +130,8 @@ def run(agent: str, timeout: float = 600.0) -> Dict[str, Any]:
 
 def main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--agent", default="dsh", choices=("echo", "claude", "dsh", "command"))
+    parser.add_argument("--agent", default="dsh", choices=("echo", "claude", "dsh", "command"),
+                        help="dsh 是 headless CLI，不是 DSH Desktop")
     parser.add_argument("--timeout", type=float, default=600.0)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
