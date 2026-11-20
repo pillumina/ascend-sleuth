@@ -79,6 +79,9 @@ docs:
   - path: docs/evolution.md
     layer: mechanism
     purpose: "旧链接入口（保留以免旧链接失效）：内容已并入 mechanism/rsi-mechanism.md，本文只是一页指路，不要在此续写"
+  - path: docs/mechanism/rsi-acceptance.md
+    layer: mechanism
+    purpose: RSI 真实数据验收记录：样本、候选、A/B gate、full flow、store 缺口与插件验证结论
   - path: docs/mechanism/rsi-mechanism.md
     layer: mechanism
     purpose: "机制技术入口：目标、三条环路、一轮演进、角色、人工介入等级、八篇文档地图"
