@@ -293,7 +293,7 @@ python3 scripts/evolve.py knowledge-usage compare --baseline base.json --candida
 
 baseline 复用：`pilot prepare --baseline-traces <dir>` 会把已有的 `traces/` 与 `out/` 复制进 pilot 的 baseline 目录，只让外部 runner 跑 candidate；缺任一条会整体拒绝，`tasks.budget.baseline_reused` 与 `baseline_source` 记录来源。复用要求模型、知识库和输入没变，不能拿旧版本冒充当前 baseline；`baseline.json` 里有 `base_rev` 时和 candidate 的 `base_rev` 比对，不一致直接拒绝。
 
-test 门禁：`stage report --stage test` 要求 `candidate_id` 不是 `HEAD`、存在同一候选的 field accept Conclusion、所有选中样本的 trace/out/judge 齐全；缺任一条都拒绝出结论。adapter 在 agent 没写 trace 时会生成 `adapter_fallback: true` 的最小 trace；report 默认拒绝这种证据，只有显式 `--allow-adapter-trace` 才允许冒烟。`test-stage.yaml` 的 `sealed_sha256` 在 plan 时校验样本文件哈希，样本改动即拒绝。
+test 门禁：`stage report --stage test` 要求 `candidate_id` 不是 `HEAD`、存在同一候选的 field accept Conclusion、所有选中样本的 trace/out/judge 齐全；缺任一条都拒绝出结论。adapter 在 agent 没写 trace 时会生成 `adapter_fallback: true` 的最小 trace；report 一律拒绝这种证据；`echo` 只写合成 trace，供冒烟用。`test-stage.yaml` 的 `sealed_sha256` 在 plan 时校验样本文件哈希，样本改动即拒绝。
 
 证据与成本：judge 的 `meta`（模型、tokens、时间）会写进 Conclusion 的 `metrics.judge`；regression 报告要求 candidate trace/out 与 judge 分数齐全，缺一条就报硬错误。`stage plan --where key=value` 按 `sample.input` 选 regression 子集；`readback --measure` 会再跑 EV 卡的 predicted_effect.measure。
 
@@ -301,7 +301,9 @@ test 门禁：`stage report --stage test` 要求 `candidate_id` 不是 `HEAD`、
 
 regression 预算：`cost.runs.regression_pairs` 默认 6，`regression_full_pairs` 默认 30；常规候选先跑受影响子集，高风险或发版前才跑满。
 
-test / regression runner：`stage plan --stage test|regression` 生成任务，`stage run` 按外部 command 执行每个样本/arm，`stage report` 对 test 走 exact gate、对 regression 走硬失败；`--update-stage` 会在 test 报告后把 `eval/core/test-stage.yaml` 标成 `complete`。test 只用 `test-stage.yaml` 的 `selected`，regression 默认取 `regression_pairs` 条，`--full` 取全量。command 通过环境变量拿到 `SLEUTH_TRACE` / `SLEUTH_OUT` 等路径，必须写出这两个文件；runner 本身不调用模型。仓库提供一个参考 adapter：`python3 scripts/agent_adapter.py --agent echo` 用于冒烟，`--agent claude` 把样本交给 Claude Code，`--agent command` 读 `SLEUTH_AGENT_CMD`。stage plan 会拒绝来源命中 `eval/holdout.yaml` 的 test/regression 样本。
+test / regression runner：`stage plan --stage test|regression` 生成任务，`stage run` 按外部 command 执行每个样本/arm，`stage report` 对 test 走 exact gate、对 regression 走硬失败；`--update-stage` 会在 test 报告后把 `eval/core/test-stage.yaml` 标成 `complete`。test 只用 `test-stage.yaml` 的 `selected`，regression 默认取 `regression_pairs` 条，`--full` 取全量。command 通过环境变量拿到 `SLEUTH_TRACE` / `SLEUTH_OUT` 等路径，必须写出这两个文件；runner 本身不调用模型。仓库提供一个参考 adapter：`python3 scripts/agent_adapter.py --agent dsh` 默认走 DSH headless，`--agent claude` 走 Claude Code，`--agent echo` 只用于冒烟，`--agent command` 读 `SLEUTH_AGENT_CMD`。stage plan 会拒绝来源命中 `eval/holdout.yaml` 的 test/regression 样本。
+
+judge：`stage judge --output <dir> --agent dsh` 对每个样本/arm 调一次 judge adapter，写出带 `meta.agent` 的 `judge.json`；`stage report` 拒绝没有 `meta.agent` 的 judge。adapter 没写 trace 时生成的 fallback trace 一律拒绝，生产路径没有放行开关。
 
 `pilot collect` 之后跑 `pilot decide`。它把每条 rollout 写成一条执行记录（`Run`，见 records.md），把一次对照写成一条结论（`Conclusion`，同篇）。`judge --record` 与 `pilot decide` 都收 `--card EV-YYYY-NNN`，把结论绑到对应卡；合入后跑 `python3 scripts/evolve.py readback --card EV-YYYY-NNN` 读回最近一条结论（decision/b/c/n/model/cost）；自演进页的卡详情也会显示「结论回读」一节。模型的来源是 `collect` 里每条 rollout 的 `model`（多个不同值用逗号连接）；成本只累加 **baseline 与 candidate 都有 token** 的配对样本，缺失数写进 `cost.missing`，不补 0。
 

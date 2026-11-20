@@ -11,6 +11,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -130,6 +131,21 @@ def _verify_seal(root: Path, rows: List[Dict[str, Any]]) -> None:
             raise StageError(f"test sample changed since seal: {sid}")
 
 
+def _regression_where(root: Path, candidate: Optional[Dict[str, Any]]) -> Optional[Dict[str, str]]:
+    if candidate is None:
+        return None
+    path = root / "eval" / "regression-map.yaml"
+    if not path.exists():
+        return None
+    try:
+        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return None
+    selector = doc.get(candidate.get("target_component")) or doc.get("default") or {}
+    where = selector.get("where") if isinstance(selector, dict) else None
+    return {str(key): str(value) for key, value in (where or {}).items()}
+
+
 def _git_head(root: Path) -> str:
     proc = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"],
                           capture_output=True, text=True, encoding="utf-8")
@@ -145,15 +161,19 @@ def plan(root: Path, stage: str, output: Path, policy: Dict[str, Any],
     if output.exists():
         raise StageError(f"output already exists: {output}")
     spec = STAGES[stage]
-    rows = _select_samples(root, stage, policy, limit, full, where=where)
-    if stage == "test":
-        _verify_seal(root, rows)
     candidate = None
     candidate_root = root
     if candidate_path is not None:
         candidate = validate_candidate(json.loads(Path(candidate_path).read_text(encoding="utf-8")))
+        if stage == "test" and not _field_accept(root, candidate["candidate_id"]):
+            raise StageError(f"no accepted field conclusion for candidate {candidate['candidate_id']}")
         candidate_root = output / "candidate-worktree"
         create_workspace(root, candidate, candidate_root)
+    if stage == "regression" and where is None:
+        where = _regression_where(root, candidate)
+    rows = _select_samples(root, stage, policy, limit, full, where=where)
+    if stage == "test":
+        _verify_seal(root, rows)
     runs = (policy.get("cost") or {}).get("runs") or {}
     alpha = float((policy.get("decision") or {}).get("alpha", 0.10))
     baseline_source = None
@@ -244,6 +264,12 @@ def run(output: Path, command: List[str], timeout: float = 600.0,
     if not command or not all(isinstance(item, str) and item for item in command):
         raise StageError("command must be a non-empty list of non-empty strings")
     tasks = json.loads((output / "tasks.json").read_text(encoding="utf-8"))
+    if tasks.get("stage") == "test":
+        candidate_id = str(tasks.get("candidate_id") or "")
+        if not candidate_id or candidate_id == "HEAD":
+            raise StageError("test run requires a candidate-bound task")
+        if not _field_accept(Path(tasks.get("root") or "."), candidate_id):
+            raise StageError(f"no accepted field conclusion for candidate {candidate_id}")
     completed = 0
     skipped = 0
     for sample in tasks.get("samples") or []:
@@ -290,9 +316,7 @@ def run(output: Path, command: List[str], timeout: float = 600.0,
             "samples": len(tasks.get("samples") or [])}
 
 
-def _check_traces(output: Path, tasks: Dict[str, Any], allow_fallback: bool) -> None:
-    if allow_fallback:
-        return
+def _check_traces(output: Path, tasks: Dict[str, Any]) -> None:
     for sample in tasks.get("samples") or []:
         for arm in tasks.get("arms") or {}:
             path = output / arm / "traces" / f"{sample['short_id']}.yaml"
@@ -305,19 +329,56 @@ def _check_traces(output: Path, tasks: Dict[str, Any], allow_fallback: bool) -> 
             if doc.get("adapter_fallback"):
                 raise StageError(
                     f"adapter fallback trace is not valid evidence: {path}; "
-                    "let the agent write the trace or pass --allow-adapter-trace"
+                    "let the agent write the trace"
                 )
+
+
+def judge(output: Path, agent: str = "dsh", timeout: float = 300.0) -> Dict[str, Any]:
+    output = Path(output)
+    tasks = json.loads((output / "tasks.json").read_text(encoding="utf-8"))
+    adapter = Path(__file__).resolve().parents[2] / "scripts" / "judge_adapter.py"
+    data: Dict[str, Any] = {"baseline": {}, "candidate": {},
+                            "meta": {"agent": agent, "at": now_iso()}}
+    for arm in tasks.get("arms") or {}:
+        for sample in tasks.get("samples") or []:
+            sid = sample["short_id"]
+            out = output / arm / "out" / f"{sid}.out.md"
+            if not out.exists():
+                raise StageError(f"cannot judge missing output: {arm}/{sid}")
+            score_path = output / "judge" / f"{arm}-{sid}.json"
+            env = dict(os.environ)
+            env.update({
+                "SLEUTH_OUT": str(out),
+                "SLEUTH_EXPECTED": json.dumps(sample.get("expected"), ensure_ascii=False),
+                "SLEUTH_JUDGE": str(score_path),
+                "SLEUTH_SAMPLE_ID": str(sample["id"]),
+                "SLEUTH_ARM": arm,
+            })
+            proc = subprocess.run(
+                [sys.executable, str(adapter), "--agent", agent, "--timeout", str(timeout)],
+                cwd=str(output), env=env, timeout=timeout + 30, capture_output=True,
+                text=True, encoding="utf-8", errors="replace", check=False,
+            )
+            if proc.returncode != 0:
+                raise StageError(f"judge failed for {arm}/{sid}: {proc.stderr[-400:]}")
+            data[arm][sid] = int(json.loads(score_path.read_text(encoding="utf-8"))["score"])
+    (output / "judge.json").write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+                                      encoding="utf-8")
+    return data
 
 
 def report(output: Path, stage: str, judge_path: Path,
            policy: Dict[str, Any], *, card: Optional[str] = None,
-           update_stage: bool = False, allow_fallback: bool = False) -> Dict[str, Any]:
+           update_stage: bool = False) -> Dict[str, Any]:
     output = Path(output)
     tasks = json.loads((output / "tasks.json").read_text(encoding="utf-8"))
     if stage != tasks.get("stage"):
         raise StageError(f"stage mismatch: {stage} vs {tasks.get('stage')}")
     judge = json.loads(Path(judge_path).read_text(encoding="utf-8"))
-    _check_traces(output, tasks, allow_fallback)
+    meta = judge.get("meta") if isinstance(judge.get("meta"), dict) else {}
+    if not meta.get("agent"):
+        raise StageError("judge provenance missing: meta.agent is required")
+    _check_traces(output, tasks)
     if stage == "test":
         candidate_id = str(tasks.get("candidate_id") or "")
         if not candidate_id or candidate_id == "HEAD":

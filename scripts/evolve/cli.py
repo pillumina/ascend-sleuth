@@ -50,8 +50,8 @@ from .holdout_guard import is_holdout_source, issue_numbers
 from .knowledge_usage import UsageError, compare as compare_usage, evaluate as evaluate_usage, from_trace
 from .pilot import (PilotError, checkpoint as pilot_checkpoint, collect as pilot_collect,
                     decide as pilot_decide, prepare as pilot_prepare)
-from .stage import (StageError, load_argv as stage_load_argv, plan as stage_plan,
-                    report as stage_report, run as stage_run)
+from .stage import (StageError, judge as stage_judge, load_argv as stage_load_argv,
+                    plan as stage_plan, report as stage_report, run as stage_run)
 from .source_usage import SourceUsageError, compare as compare_source_usage, evaluate as evaluate_source_usage, from_trace as source_from_trace
 from .tool_usage import ToolUsageError, compare as compare_tool_usage, evaluate as evaluate_tool_usage, from_trace as tool_from_trace
 from .quality import QualityError, load_quality
@@ -1091,12 +1091,21 @@ def cmd_stage_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_stage_judge(args: argparse.Namespace) -> int:
+    try:
+        result = stage_judge(Path(args.output), agent=args.agent, timeout=args.timeout)
+    except (StageError, OSError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+    return 0
+
+
 def cmd_stage_report(args: argparse.Namespace) -> int:
     try:
         policy = _policy_for(args)
         result = stage_report(Path(args.output), args.stage, Path(args.judge), policy,
-                              card=args.card, update_stage=args.update_stage,
-                              allow_fallback=args.allow_adapter_trace)
+                              card=args.card, update_stage=args.update_stage)
     except (StageError, OSError, ValueError, PolicyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -1150,6 +1159,17 @@ def cmd_pilot_collect(args: argparse.Namespace) -> int:
     return 0
 
 
+def _card_rollback(root: Path, card: str):
+    for path in sorted((root / "proposals" / "ideas").glob("*.yaml")):
+        try:
+            doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):
+            continue
+        if isinstance(doc, dict) and doc.get("id") == card:
+            return (doc.get("validation") or {}).get("rollback")
+    return None
+
+
 def cmd_readback(args: argparse.Namespace) -> int:
     try:
         record = latest_conclusion(args.card, _evolve_base(args))
@@ -1179,6 +1199,9 @@ def cmd_readback(args: argparse.Namespace) -> int:
         )
         sys.stdout.write(proc.stdout)
         sys.stderr.write(proc.stderr)
+        if proc.returncode != 0:
+            rollback = _card_rollback(root, args.card)
+            print("rollback: " + (rollback or "measure 失败；见卡 validation.rollback"))
         return proc.returncode
     return 0
 
@@ -1720,6 +1743,11 @@ def build_parser() -> argparse.ArgumentParser:
     s_run.add_argument("--judge", default=None)
     s_run.add_argument("--timeout", type=float, default=600.0)
     s_run.set_defaults(func=cmd_stage_run)
+    s_judge = stage_sub.add_parser("judge", help="按样本/arm 执行外部 judge")
+    s_judge.add_argument("--output", required=True)
+    s_judge.add_argument("--agent", default="dsh", choices=("dsh", "claude", "echo"))
+    s_judge.add_argument("--timeout", type=float, default=300.0)
+    s_judge.set_defaults(func=cmd_stage_judge)
     s_report = stage_sub.add_parser("report", help="test 走 exact gate；regression 走硬失败")
     s_report.add_argument("--stage", required=True, choices=("test", "regression"))
     s_report.add_argument("--output", required=True)
@@ -1727,8 +1755,6 @@ def build_parser() -> argparse.ArgumentParser:
     s_report.add_argument("--card", default=None)
     s_report.add_argument("--update-stage", action="store_true",
                           help="test 报告通过后把 test-stage.yaml 标 complete")
-    s_report.add_argument("--allow-adapter-trace", action="store_true",
-                          help="允许 adapter 生成的 fallback trace（仅冒烟）")
     s_report.add_argument("--policy", default=None)
     s_report.set_defaults(func=cmd_stage_report)
 
