@@ -43,7 +43,17 @@ def run_proposal(root: Path, proposal: Proposal, samples: List[str], output: Pat
     workspace = tasks.get("workspace")
     if workspace:
         try:
-            proposal.artifact["diff"] = diff_workspace(Path(workspace))
+            diff = diff_workspace(Path(workspace))
+            proposal.artifact["diff"] = diff
+            proposal.artifact["diff_kind"] = "unified"
+            proposal.artifact["stats"] = {
+                "files": len(proposal.artifact.get("files") or []),
+                "additions": sum(1 for line in diff.splitlines()
+                                 if line.startswith("+") and not line.startswith("+++")),
+                "deletions": sum(1 for line in diff.splitlines()
+                                 if line.startswith("-") and not line.startswith("---")),
+            }
+            proposal.artifact["base_rev"] = (proposal.candidate or {}).get("base_rev")
         except Exception:
             pass
     if dry_run:
