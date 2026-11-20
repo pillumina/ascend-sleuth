@@ -134,7 +134,7 @@ class E2ELoopTest(unittest.TestCase):
         self.assertIn("strip", (output / "candidate-worktree" / "scripts" / "src_fetch.py")
                       .read_text(encoding="utf-8"))
         policy = yaml.safe_load((root / "eval" / "policy.yaml").read_text(encoding="utf-8"))
-        again = decide(output, judge_path, policy)
+        again = decide(output, judge_path, policy, reuse_index=0)
         self.assertTrue(again.get("duplicate"))
         self.assertEqual(len((output.parent / "conclusions.jsonl")
                              .read_text(encoding="utf-8").splitlines()), 1)
@@ -143,7 +143,7 @@ class E2ELoopTest(unittest.TestCase):
         (output / "tasks.json").write_text(json.dumps(changed), encoding="utf-8")
         third = decide(output, judge_path, policy)
         self.assertFalse(third.get("duplicate"))
-        fourth = decide(output, judge_path, policy, reuse_index=1)
+        fourth = decide(output, judge_path, policy, reuse_index=2)
         self.assertFalse(fourth.get("duplicate"))
 
     def test_prepare_reuses_baseline_traces(self):

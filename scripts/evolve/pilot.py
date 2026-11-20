@@ -420,13 +420,13 @@ def checkpoint(output: Path, judge_path: Path, policy: Dict[str, Any], *,
 
 
 def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
-           reuse_index: int = 0, pool: str = "pilot",
+           reuse_index: Optional[int] = None, pool: str = "pilot",
            card: Optional[str] = None,
            proposal: Optional[str] = None,
            base: Optional[Path] = None) -> Dict[str, Any]:
     """配对判定 + 容量检查，写 Run 与 Conclusion 记录。"""
     output = Path(output)
-    if reuse_index < 0:
+    if reuse_index is not None and reuse_index < 0:
         raise PilotError("reuse_index must be non-negative")
     tasks = json.loads((output / "tasks.json").read_text(encoding="utf-8"))
     collect = json.loads((output / "collect.json").read_text(encoding="utf-8"))
@@ -451,6 +451,22 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
             }
     constraints_ok = all(item["decision"] != "reject" for item in constraints.values())
 
+    pool_rows = []
+    for sample in tasks.get("samples") or []:
+        sid = str(sample.get("short_id") or sample.get("id"))
+        try:
+            digest = hashlib.sha256(Path(sample["path"]).read_bytes()).hexdigest()
+        except (KeyError, OSError):
+            digest = "unknown"
+        pool_rows.append(f"{sid}:{digest}")
+    pool_hash = hashlib.sha256("\n".join(sorted(pool_rows)).encode("utf-8")).hexdigest()[:12]
+    store = ConclusionStore.for_base(Path(base) if base else output.parent)
+    if reuse_index is None:
+        reuse_index = sum(
+            1 for record in store.read()
+            if record.get("pool") == pool
+            and record.get("pool_hash") == pool_hash
+        )
     alpha = float((policy.get("decision") or {}).get("alpha", 0.10))
     alpha_eff = alpha / (reuse_index + 1)
 
@@ -487,17 +503,7 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
     if result == "accept" and counts["n"] < min_pairs:
         result = "insufficient"
         reason = f"capacity_short: n={counts['n']} < min_pairs={min_pairs}"
-    pool_rows = []
-    for sample in tasks.get("samples") or []:
-        sid = str(sample.get("short_id") or sample.get("id"))
-        try:
-            digest = hashlib.sha256(Path(sample["path"]).read_bytes()).hexdigest()
-        except (KeyError, OSError):
-            digest = "unknown"
-        pool_rows.append(f"{sid}:{digest}")
-    pool_hash = hashlib.sha256("\n".join(sorted(pool_rows)).encode("utf-8")).hexdigest()[:12]
     version = version_for(tasks, policy, model=models_from_collect(collect))
-    store = ConclusionStore.for_base(Path(base) if base else output.parent)
     for record in store.read():
         if (
             record.get("pool_hash") == pool_hash
