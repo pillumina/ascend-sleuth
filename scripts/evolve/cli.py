@@ -28,6 +28,7 @@ from .contracts import (
     STATUSES,
     Conclusion,
     ContractError,
+    Patch,
     Version,
     now_iso,
 )
@@ -774,27 +775,76 @@ def cmd_experiment_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _agent_draft_patch(path: str, target_override=None, component_override=None,
+                       summary_override=None, seed: int = 0) -> "Patch":
+    """把 agent 写好的 target-specific 草案转成 Patch；不调用模型。"""
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise ValueError("draft must be an object")
+    target = str(data.get("target_kind") or "")
+    if target_override and target and target != target_override:
+        raise ValueError("draft target_kind does not match --target")
+    target = target_override or target
+    if target not in {tid for tid in target_ids()}:
+        raise ValueError(f"unknown target_kind {target!r}")
+    component = component_override or str(data.get("target_component") or "")
+    summary = summary_override or str(data.get("summary") or "")
+    change = data.get("change")
+    if not isinstance(change, (dict, str)) or not change:
+        raise ValueError("draft.change is required")
+    expected = str(data.get("expected") or "")
+    risk = str(data.get("risk") or "")
+    rollback = str(data.get("rollback") or "")
+    for name, value in (("target_component", component), ("summary", summary),
+                        ("expected", expected), ("risk", risk), ("rollback", rollback)):
+        if not value.strip():
+            raise ValueError(f"draft.{name} is required")
+    payload = {
+        "source": "agent",
+        "change": change,
+        "expected": expected,
+        "risk": risk,
+        "rollback": rollback,
+        "files": data.get("files") or [],
+        "hypothesis": data.get("hypothesis") or "",
+    }
+    return Patch(
+        target_kind=target, target_component=component, summary=summary,
+        algorithm="agent_draft", algorithm_version="v1", payload=payload,
+        seed=seed,
+    )
+
+
 def cmd_experiment_propose(args: argparse.Namespace) -> int:
     try:
         policy = _policy_for(args)
         experiment = policy.get("experiment") or {}
         target = args.target or experiment.get("target", "skill")
         algorithm = args.algorithm or experiment.get("algorithm", "baseline")
-        spec, optimizer = resolve_optimizer(target, algorithm)
         budget = _json_object(args.budget, "budget")
         if budget is None:
             budget = experiment.get("budget") or {}
         seed = args.seed if args.seed is not None else experiment.get("seed", 0)
-        patch = optimizer.propose(target, [], None, budget)
-        if args.component:
-            patch.target_component = args.component
-        if args.summary:
-            patch.summary = args.summary
-        patch.seed = seed
-        patch.validate()
-        profile = resolve_evaluator(target)[1]
+        if args.draft:
+            patch = _agent_draft_patch(args.draft, target_override=args.target,
+                                       component_override=args.component,
+                                       summary_override=args.summary, seed=seed)
+            patch.validate()
+            execution = "subagent"
+        else:
+            spec, optimizer = resolve_optimizer(target, algorithm)
+            patch = optimizer.propose(target, [], None, budget)
+            if args.component:
+                patch.target_component = args.component
+            if args.summary:
+                patch.summary = args.summary
+            patch.seed = seed
+            patch.validate()
+            execution = getattr(optimizer, "execution", "manual")
+        profile = resolve_evaluator(patch.target_kind)[1]
         record = asdict(patch)
-        record["execution"] = getattr(optimizer, "execution", "manual")
+        record["execution"] = execution
+        record["source"] = "agent_draft" if args.draft else "algorithm"
         record["eval_profile_id"] = profile.id
         record["eval_gate"] = profile.gate
         record["eval_ready"] = profile.implemented
@@ -1871,7 +1921,8 @@ def build_parser() -> argparse.ArgumentParser:
     exp_gate.add_argument("--baseline", default=None, help="tooling gate：基线 tool usage JSON")
     exp_gate.add_argument("--candidate", default=None, help="tooling gate：候选 tool usage JSON")
     exp_gate.set_defaults(func=cmd_experiment_gate)
-    exp_propose = experiment_sub.add_parser("propose", help="按 target 生成并记录一个 baseline Patch")
+    exp_propose = experiment_sub.add_parser(
+        "propose", help="记录对照包络，或接收 agent 的 target-specific 提案草案")
     exp_propose.add_argument("--root", default=None)
     exp_propose.add_argument("--policy", default=None)
     exp_propose.add_argument("--target", default=None)
@@ -1880,6 +1931,8 @@ def build_parser() -> argparse.ArgumentParser:
     exp_propose.add_argument("--summary", default=None)
     exp_propose.add_argument("--budget", default=None, help="JSON 对象")
     exp_propose.add_argument("--seed", type=int, default=None)
+    exp_propose.add_argument("--draft", default=None,
+                             help="agent 写好的 target-specific 草案 JSON；不调用模型")
     exp_propose.set_defaults(func=cmd_experiment_propose)
 
     run = sub.add_parser("run", help="维护者下一步计划（不跑模型/不写库）")
