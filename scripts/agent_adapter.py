@@ -52,15 +52,30 @@ def _prompt(sample: Dict[str, Any], root: Path) -> str:
     )
 
 
+def _dsh_bin() -> str:
+    return (os.environ.get("SLEUTH_DSH_BIN") or shutil.which("dsh") or
+            "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh")
+
+
+def _dsh_preflight() -> None:
+    if os.environ.get("DEEPSEEK_API_KEY"):
+        return
+    if os.environ.get("SLEUTH_DSH_ALLOW_STORED") == "1":
+        return
+    raise AdapterError(
+        "agent=dsh needs DEEPSEEK_API_KEY for headless auth; "
+        "export it or set SLEUTH_DSH_ALLOW_STORED=1 for a stored credential"
+    )
+
+
 def _run_agent(agent: str, prompt: str, root: Path, timeout: float) -> str:
     if agent == "echo":
         return "echo adapter: " + prompt.splitlines()[0]
     if agent == "claude":
         command = ["claude", "-p", prompt, "--output-format", "text"]
     elif agent == "dsh":
-        dsh = os.environ.get("SLEUTH_DSH_BIN") or shutil.which("dsh") or \
-            "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh"
-        command = [dsh, "headless", prompt, "--permission-mode", "workspace-write"]
+        _dsh_preflight()
+        command = [_dsh_bin(), "headless", prompt, "--permission-mode", "workspace-write"]
     elif agent == "command":
         raw = os.environ.get("SLEUTH_AGENT_CMD")
         if not raw:
@@ -116,8 +131,12 @@ def main(argv: List[str]) -> int:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
     if args.dry_run:
-        print(json.dumps({"agent": args.agent, "env": sorted(k for k in os.environ if k.startswith("SLEUTH_"))},
-                         ensure_ascii=False))
+        print(json.dumps({
+            "agent": args.agent,
+            "env": sorted(k for k in os.environ if k.startswith("SLEUTH_")),
+            "dsh_bin": _dsh_bin() if args.agent == "dsh" else None,
+            "credential_env": bool(os.environ.get("DEEPSEEK_API_KEY")) if args.agent == "dsh" else None,
+        }, ensure_ascii=False))
         return 0
     try:
         result = run(args.agent, timeout=args.timeout)
