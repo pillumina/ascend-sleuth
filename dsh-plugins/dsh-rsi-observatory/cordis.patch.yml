@@ -1,0 +1,11 @@
+# RSI 实验台：左侧栏图标 + 主区整页
+#
+# 装法：plugin_manager install_bundle(target: <本目录绝对路径>)
+# 卸载：plugin_manager remove_bundle(target: 'dsh-rsi-observatory')
+#
+# host 半注册 /rsi-observatory 的 prefix RPC 路由，经 shell 跑 scripts/rsi_observatory.py
+# （只读 RSIStore）；client 半注册 main 的 keyed 条目 rsi-observatory 与侧栏图标
+# sidebar.panellist。不改仓库里的任何文件。
+- insert:
+    - id: dsh-rsi-observatory
+      name: 'dsh-rsi-observatory'
