@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -56,6 +57,10 @@ def _run_agent(agent: str, prompt: str, root: Path, timeout: float) -> str:
         return "echo adapter: " + prompt.splitlines()[0]
     if agent == "claude":
         command = ["claude", "-p", prompt, "--output-format", "text"]
+    elif agent == "dsh":
+        dsh = os.environ.get("SLEUTH_DSH_BIN") or shutil.which("dsh") or \
+            "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh"
+        command = [dsh, "headless", prompt, "--permission-mode", "workspace-write"]
     elif agent == "command":
         raw = os.environ.get("SLEUTH_AGENT_CMD")
         if not raw:
@@ -89,23 +94,24 @@ def run(agent: str, timeout: float = 600.0) -> Dict[str, Any]:
             "session_id": f"adapter-{os.environ.get('SLEUTH_STAGE')}-{os.environ.get('SLEUTH_SHORT_ID')}-"
                           f"{os.environ.get('SLEUTH_ARM')}",
             "model": agent,
-            "adapter_fallback": True,
             "trace": [
                 {"role": "user", "content": prompt},
                 {
                     "role": "agent", "step": 1, "action": "report",
                     "output": report,
-                    "reason": "adapter fallback: agent did not write a trace",
+                    "reason": "echo adapter: synthetic trace for smoke" if agent == "echo"
+                              else "adapter fallback: agent did not write a trace",
                 },
             ],
         }
+        doc["adapter_fallback"] = True
         trace.write_text(yaml.safe_dump(doc, allow_unicode=True, sort_keys=False), encoding="utf-8")
     return {"sample": sample.get("id"), "agent": agent, "report_chars": len(report)}
 
 
 def main(argv: List[str]) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--agent", default="echo", choices=("echo", "claude", "command"))
+    parser.add_argument("--agent", default="dsh", choices=("echo", "claude", "dsh", "command"))
     parser.add_argument("--timeout", type=float, default=600.0)
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
