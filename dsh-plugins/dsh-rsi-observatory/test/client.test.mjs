@@ -99,7 +99,7 @@ test('模块形态与两个注册面', () => {
   assert.ok(side, '应注册侧栏图标')
   assert.equal(side.entry.id, 'rsi-observatory')
   assert.equal(side.entry.order, 50)
-  assert.equal(side.entry.label, '实验台')
+  assert.equal(side.entry.label, '自演进实验')
   dispose()
 })
 
@@ -142,7 +142,7 @@ test('错误态原样显示错误文本并给重试', () => {
     message: 'error: RecordError: invalid JSON in /x/rsi-events.jsonl line 2',
     onRefresh() {},
   }))
-  assert.match(text, /取数失败/)
+  assert.match(text, /读取失败/)
   assert.match(text, /invalid JSON/)
   assert.match(text, /重试/)
 })
