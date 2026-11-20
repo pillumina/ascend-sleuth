@@ -1,0 +1,42 @@
+id: hccl-rankgraph-and-netlayer-model
+type: software-fact
+title: HCCL 的 RankGraph 与 netLayer 模型：图模型的四个用途、层 ≠ 域、实例数与多 root 的区别
+summary: 分不清「层 / 域 / 实例 / 多 root」时看这条：RankGraph 存什么、四个数各由谁决定、A2/A3 的算法分层与规模减压手段。
+
+sources:
+- type: official-doc
+  url: https://gitcode.com/cann/hcomm
+  version: hcomm master commit c7e149d（2026-11-07 提交，2026-11-16 本地核对）：src/coll_communicator_mgr/rank_graph/rank_graph_builder/rank_graph_builder.{h,cc}、rank_graph/phy_topo/phy_topo.h、rank_graph/rank_graph/net_instance.h、rank_graph/common/graph.h、rank_graph_builder/updater_for_64_plus_1.h、src/legacy/ascend950/common/types/topo_common_types.h、src/legacy/ascend910/framework/common/src/topo/topoinfo_exchange_base.h、topoinfo_detect.cc、src/legacy/ascend910/algorithm/base/alg_aiv_template/aiv_communication_base.h
+  fetched_at: 2026-11-16
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - A2-910B
+  - A3-910C
+  - A5-950
+  frameworks:
+  - hccl
+  categories:
+  - interrupt
+  - performance
+related_references:
+- hccl-domain-link-run-phases
+- hccl-bootstrap-rank-table-and-rootinfo
+- hccl-transport-and-notify-dataplane
+- hccl-comm-init-and-link-faults
+- hccl-cluster-heartbeat-and-link-probe
+- hcomm-a5-code-map
+- hccn-tool-network-diagnosis
+status: active
+last_verified: 2026-11-16
+content:
+  claim: >-
+    RankGraph 是通信域内「谁和谁怎么连」的图模型，由 `RankGraphBuilder::Build(ranktableM, topoPath, myRank)` 从 rank table 与机型拓扑生成：Node 是通信实体（Peer）或 Fabric（交换机抽象，`NodeType` 有 FABRIC 取值，见 phy_topo.h:51），Endpoint 是 Node 的逻辑端口（协议 + 地址 + 位置），Edge / Link 是两端 Endpoint 之间的连接并带「可建链」的协议信息，netLayer 是网络层级（L0 机内 / L1 超节点 / L2 集群），TopoInstance 是每层内的拓扑实例。它只用于建链时查路（填 `HcclChannelDesc`）、选算法（按层取 rank 列表与拓扑类型）、切子域（`CreateSubRankGraph` 不重新 bootstrap）和 DFX 监控（心跳按层建环就读它）；它不是运行时路由表（数据面只认 channel 句柄）、不是 rank table（表是名单 + 地址，图是关系 + 层）、也不是动态的（建好只读，拓扑变了要重建域）。
+    层与域是两个维度：问「为什么慢 / 能不能通」看层，问「这次通话有哪些卡、rank 几号」看域。四个数互不联动：rank 数由启动参数 nRanks / rank table 决定；通信域数由业务调用了几次建域接口决定；网络层数由机器形态与 rank table 决定；层内实例数由物理分组决定。节点数增加不会自动多出通信域，变的是层数、每层实例数和控制面要搬的数据量。
+    交换机的角色是「不参与建链，但决定路径」：HCCL 把它抽象成 Fabric 节点（`NodeType` 的 FABRIC 取值，phy_topo.h:51），跨机 link 类型是 `PEER2NET` 且按 `PEER2NET_LINK_HOP = 2` 算两跳（rank_graph_builder.cc:23-24 的注释「peer 经 fabric 一跳到达 = 2 hop」）；QP 握手只在两端网卡之间交换 QPN / PSN / GID / MTU，交换机只转发、不参与状态迁移；跨机报文走哪条上行由 ECMP 哈希决定，RoCEv2 封在 UDP 里、UDP 源端口参与哈希，所以设备侧会调整源端口影响分布（代码里是 `udpSport`，host_cpu_roce_channel.cc:198）。无损网络要求的 PFC / ECN 配错时，表现是建链慢、偶发超时、CQE 错误，而不是「连不上」。
+  evidence: >-
+    `PEER2NET_LINK_HOP` 的定义与注释：「peer 与 fabric 之间的 hop 数（peer 经 fabric 一跳到达 = 2 hop）」「constexpr u32 PEER2NET_LINK_HOP = 2;」（src/coll_communicator_mgr/rank_graph/rank_graph_builder/rank_graph_builder.cc:23-24）。Fabric 作为图节点：`NodeType` 含 FABRIC（src/coll_communicator_mgr/rank_graph/phy_topo/phy_topo.h:51），builder 侧有 `AddFabricInfo(u32 netLayer)`、`AddPeer2NetLink(...)`、`AddTopoDescFabricInfo()`（rank_graph_builder.h:62-68）。拓扑类型 `TopoType::CLOS` 是 Link 的默认值（phy_topo.h:114），层内拓扑实例 `TopoInstance`（net_instance.h:216）带 `topoType` 字段。备份平面 link 类型 `PEER2BACKUP`（src/legacy/ascend950/common/types/topo_common_types.h:34）。A2/A3 算法分层上限：`MAX_RANK_SIZE_A3 = 768; // 超节点内最大卡数`（src/legacy/ascend910/algorithm/base/alg_aiv_template/aiv_communication_base.h:51），同处 `MAX_RANK_SIZE = 16`（server 内最大卡数）、`MAX_RANK_SIZE_RDMA = 64`（A2 跨机最大卡数）。分层阈值与分组：`TOPO_HIERARCHICAL_ENABLE_THRESHOLD = 32768`（TopoDetect 分层阈值）、`TOPO_MAX_GROUP_SIZE = 2048`（topoinfo_exchange_base.h:28、33），启用条件 `rankSize > TOPO_HIERARCHICAL_ENABLE_THRESHOLD && !isScalable`（topoinfo_detect.cc:641）。
+  details: >-
+    A2/A3 的算法分层：A2 是 L0 机内 HCCS + L1 跨机 RoCE（代码里 `MAX_RANK_SIZE_RDMA = 64` 标出 A2 跨机上限）；A3 是 L0 机内 HCCS、L1 超节点内跨 server、L2 跨超节点 RoCE，超节点上限 768 卡（aiv_communication_base.h:51）。三个「L」别混：netLayer 是网络层级（0 机内 / 1 超节点内 / 2 集群 / 3 host 备份）；`COMM_LEVEL0/1/2` 是 A2/A3 算法在哪个粒度做 reduce；`hcclRetryEnable = "L1:1,L2:0"` 是重执行开关的作用范围。
+    控制面的两个减压手段只对 A2/A3：分组 leader 在 `rankSize > 32768` 时自动启用（按 `TOPO_MAX_GROUP_SIZE = 2048` 切组，`groupIndex = rank / TOPO_MAX_GROUP_SIZE`，`CalcGroupSizeAndRank` 见 topoinfo_detect.cc:396-404；启用条件见 topoinfo_detect.cc:641；组员连 leader、leader 连 root 见 `SendGroupLeaderPort` / `GetGroupLeader`，topoinfo_detect.cc:71、:864）；多 root 需要用户显式调 `HcclCommInitRootInfoScalable`（`isScalable` 为真时分层分支被压掉，所以两者不能叠加）。两者都只改控制面怎么凑人，不改通信域个数。分组公式：`rpr = nRanks / nRoot`、`rmr = nRanks % nRoot`，前 rmr 组各多 1 人。
+    通信域变多的四个来源（都不是 HCCL 自己拆的，而是业务按并行策略拆）：并行策略（TP / PP / DP / EP / CP / embedding 各建一个组，每卡 3–6 个）、同一进程多用途（推理的 prefill / decode 各一组）、多作业多实例（一机跑两个训练任务）、功能性子域（`HcclCreateSubCommConfig` 切子域、A5 CCU 的 `_negotiation` 内部域）。域多的代价：每域每卡一块 cclBuffer（默认 200 MB，`HCCL_BUFFSIZE`）；每域都要 bootstrap + 建 team / 通道，上千个组会把启动时间拉长；notify / QP / Jetty 按域分配；任一域建链失败整个作业起不来。实践上用子域复用父域的 rank table 与链路，而不是对每个组都重新建域。

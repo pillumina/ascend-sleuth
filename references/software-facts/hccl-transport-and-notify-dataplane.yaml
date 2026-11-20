@@ -1,0 +1,41 @@
+id: hccl-transport-and-notify-dataplane
+type: software-fact
+title: HCCL 数据面传输选择与 notify 同步：三类网口、HCCS / SDMA / RoCE / UB、transportType 取值
+summary: 判断一条通信走的是 HCCS、SDMA、RoCE 还是 UB，以及为什么跨机比机内慢、同步为什么不用 TCP 时看这条。
+
+sources:
+- type: official-doc
+  url: https://gitcode.com/cann/hcomm
+  version: hcomm master commit c7e149d（2026-11-07 提交，2026-11-16 本地核对）：src/base_comm/inc/dfx/res_pub.h、include/hcomm_res_defs.h、include/hcomm_channel.h、src/base_comm/primitives/api_c_adpt/cpu_primitives_c_adpt.cc、src/legacy/ascend910/pub_inc/externalinput_pub.h
+  fetched_at: 2026-11-16
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - A2-910B
+  - A3-910C
+  - A5-950
+  frameworks:
+  - hccl
+  categories:
+  - performance
+  - interrupt
+related_references:
+- hccl-domain-link-run-phases
+- hccl-link-state-machines
+- hccl-rankgraph-and-netlayer-model
+- hccl-op-exec-and-cluster-event-faults
+- hccl-log-key-info-fields
+status: active
+last_verified: 2026-11-16
+content:
+  claim: >-
+    TCP 只用于控制面：发现节点、交换参数、登记地址，不承载通信数据。建链分三段：阶段 A 控制面（root 起监听、rootInfo 结构经启动器带外分发、各 rank 连 root 上传自述、root 回灌全表、close），阶段 B 交换设备侧参数（仍是 socket，换成设备侧：两端交换 QP 号 / PSN / GID / MR key，或 Jetty / EID / TP，再由 HCCP 的 `HrtRaQpConnectAsync` 推到 ready），阶段 C 数据面（硬件通道）。阶段 B 的 socket 也不是数据通道，数据一个字节都不从 socket 走。
+    传输按层选：同机 Layer0 是 HCCS + SDMA，内存语义，按地址直接写对端显存，不过网卡、不过交换机、对端不参与；跨机 Layer1+ 是 RoCE v2（RC QP），网络语义，RDMA Write / Read，内核旁路、零拷贝，经 RNIC 与交换机；UB 超节点（A5）走 UB_CTP / UB_MEM / UB_RTP / UBoE；同机不同 DIE 走 HCCS_ONLY。协议取值见 `CommProtocol`：HCCS=0、ROCE=1、PCIE=2、SIO=3、UB_CTP=4、UBC_TP=5、UB_MEM=6、UBOE=7、HCCS_ONLY=8、UB_RTP=9。
+    三类「口」别混：Host NIC 给 CPU 上的进程用 TCP（可加 TLS），承担 bootstrap IP、rootinfo 探测、QP / Jetty 参数交换；Device NIC / RNIC 给 NPU 侧用 RoCE v2 / UB，承载 QP / Jetty 真正搬数据；HCCS 是 NPU ↔ NPU 的机内私有互联，内存语义由 SDMA 直接搬。后两者不是一回事——Device NIC 是网口，HCCS 是卡间直连，机内通信不经过任何网卡。
+    同步不靠 TCP：channel 里带 N 个 Notify（设备内存上的标志位，CCU 场景是 Variable / Event 寄存器），一端写完数据后向对端 Notify 写一笔，另一端轮询或等中断，数据与同步走同一条硬件链路。所以同步开销是「一次小写 + 一次等待」，不是一次 TCP 往返。
+  evidence: >-
+    协议枚举原文（include/hcomm_res_defs.h:122-134）：`COMM_PROTOCOL_RESERVED = -1`、`HCCS = 0`、`ROCE = 1`（RDMA over Converged Ethernet）、`PCIE = 2`、`SIO = 3`、`UB_CTP = 4`、`UBC_CTP = COMM_PROTOCOL_UB_CTP`（兼容旧协议名）、`UBC_TP = 5`、`UB_MEM = 6`、`UBOE = 7`、`HCCS_ONLY = 8`（一卡双DIE使用HCCS）、`UB_RTP = 9`、`UBG = COMM_PROTOCOL_UB_RTP`。DFX 传输类型 `enum DfxTransportType : uint8_t { DFX_TRANSPORT_TYPE_SDMA = 0, DFX_TRANSPORT_TYPE_RDMA = 1, DFX_TRANSPORT_TYPE_LOCAL = 2, DFX_TRANSPORT_TYPE_UB = 3, DFX_TRANSPORT_TYPE_ROCE = 4 }`（src/base_comm/inc/dfx/res_pub.h:114-118）。channel 描述里带 notify 数量与 QoS 字段：`uint32_t notifyNum; ///< channel上使用的通知消息数量`、`uint32_t queueNum`、`uint8_t tc`、`uint8_t sl`（include/hcomm_channel.h:41-56）。同步与搬运原语在 primitives 适配层：`HcommLocalCopyOnThread`（cpu_primitives_c_adpt.cc:65）、`HcommChannelNotifyRecordOnThread`（同文件:735）、`HcommChannelNotifyWaitOnThread`（:802）、`HcommWriteOnThread`（aicpu_ts_primitives_c_adpt.cc:461）。HCCL buffer 默认 200 MB：`constexpr u32 HCCL_CCL_COMM_DEFAULT_BUFFER_SIZE = 200;`（src/legacy/ascend910/pub_inc/externalinput_pub.h:37）。
+  details: >-
+    为什么不用 TCP 一直跑：需要 CPU 参与收发、内核协议栈拷贝，带宽与时延都不够；RDMA 内核旁路 + 零拷贝，一次写直达对端内存；HCCS 是专用互联，根本不跑 IP / TCP。分工是 TCP 承担低频控制（分发 rootInfo、交换 QP 与 Jetty 参数），SDMA / RDMA / UB 承担数据搬运。跨机慢的常见原因不是「交换机差」，而是收敛比 + 拥塞控制 + 路径不均。
+    运行期一侧的事实：一次 AllReduce 的顺序是参数校验与选算法 → 查资源 Context（tag 复用，首次才建 Thread / Notify / Channel）→ 把 sendbuf 拷进 HCCL Buffer（`HcommLocalCopyOnThread`，默认 200 MB 设备侧 buffer）→ 下发 AICPU Kernel → 按算法编排任务（写 / 读 + notify）→ 批量下发 descriptor（SQE 是投给 TS 或 AICPU 队列的任务描述符，WQE 是投给 QP 的工作请求，两者别混）→ 硬件搬运 → 完成队列条目（CQE）或 notify 回报 → 结果从 buffer 拷回 recvbuf。先拷进 buffer 是因为通信异步、业务可能马上复用 sendbuf，而 buffer 是固定地址的设备侧内存，硬件才能按地址搬。发给谁由算法决定：Ring 只找左右 2 个邻居（8 卡 AllReduce 是 7 步 reduce-scatter + 7 步 all-gather = 14 步）、Mesh / Fullmesh 找组内 N-1 个、HD（二分）找 log N 个、分层找机内 N-1 个 + 每机 1 个代表、AlltoAll 找所有 N-1 个。对端没有「接收线程」，数据由 SDMA / NIC 直接写进它的显存，它只在 notify 上等。
+    怎么从日志确认走的哪种传输：DFX 打点里出现 `transportType=0` 是 SDMA、`=1` 是 RDMA、`=3` 是 UB；建链阶段 A5 RoCE 看 `[HostRdmaConnection::CreateCqAndQp]` 与 `Set qp qos success by config, TC[...] SL[...]`（host_rdma_connection.cc:103、111），A2/A3 看 `linkexp initialization` 与 QP 状态日志（transport_ibverbs.cc:238、877）。想确认通道建好没看 `HcclChannelAcquire` 返回与 `CreateCqAndQp`；想确认算子有没有发下去看 `Entry-HcclAllReduce` 与 kernel launch 日志。以上文案随版本可能微调，按关键字匹配，不要匹配整行。
