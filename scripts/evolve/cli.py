@@ -65,6 +65,7 @@ from .intake import IntakeError, completeness, extract_case, extract_trace, make
 from .samples import import_pilot
 from .readback import (ReadbackError, latest_by_proposal, latest_conclusion,
                        summary as readback_summary)
+from .rsi_store import RSIStore
 from .records import ConclusionStore, ExperimentStore, RecordError
 from .runner import issue_plan, render_plan
 from .scoring import RubricError, score_rubric
@@ -987,6 +988,7 @@ def cmd_experiment_show(args: argparse.Namespace) -> int:
         "proposal": proposal,
         "conclusion": conclusion,
         "experiments": rows,
+        "history": RSIStore(base).history(proposal_id=args.proposal),
     }, ensure_ascii=False, indent=2))
     return 0
 

@@ -18,6 +18,7 @@ from evolve.policy import load_policy  # noqa: E402
 from tests.self_evolution.test_cli import run_cli  # noqa: E402
 from evolve.proposal_engine import ProposalArchive, ProposalEngine  # noqa: E402
 from evolve.readback import latest_by_proposal  # noqa: E402
+from evolve.rsi_store import RSIStore  # noqa: E402
 
 
 def _repo(root: Path):
@@ -95,6 +96,11 @@ class FlowTest(unittest.TestCase):
             self.assertEqual(exp["decision"], "accept")
             self.assertEqual(exp["proposal_snapshot"]["id"], proposal.id)
             self.assertEqual(exp["conclusion_snapshot"]["decision"], "accept")
+            events = RSIStore(Path(td)).history(proposal_id=proposal.id)
+            self.assertEqual(events[-1]["kind"], "experiment")
+            self.assertEqual(events[-1]["data"]["proposal"]["id"], proposal.id)
+            self.assertEqual(events[-1]["data"]["rollout"]["decision"], "accept")
+            self.assertEqual(len(events[-1]["data"]["rollout"]["arms"]), 2)
             self.assertTrue((Path(td) / "pilot" / "candidate-worktree").exists())
 
     def test_cli_flow_with_external_runner(self):

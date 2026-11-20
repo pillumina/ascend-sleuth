@@ -15,6 +15,7 @@ from .knowledge_usage import compare as compare_knowledge
 from .pilot import collect as pilot_collect, decide as pilot_decide, prepare as pilot_prepare
 from .source_usage import compare as compare_source
 from .records import ExperimentStore
+from .rsi_store import RSIStore
 from .proposal_engine import Proposal, ProposalArchive, ProposalEngine
 
 
@@ -62,9 +63,12 @@ def run_proposal(root: Path, proposal: Proposal, samples: List[str], output: Pat
     experiment = _experiment_record(proposal, tasks, judge, decision,
                                     result.get("conclusion") or {}, collected)
     ExperimentStore.for_base(archive.path.parent).append(experiment)
+    event = RSIStore(archive.path.parent).record_experiment(
+        proposal.to_dict(), experiment, result.get("conclusion") or {},
+        tasks, collected, decision)
     return {"candidate": proposal.candidate, "tasks": tasks, "collected": collected,
             "conclusion": result.get("conclusion"), "decision": decision,
-            "experiment": experiment}
+            "experiment": experiment, "event": event}
 
 
 def _side_scores(judge: Dict[str, Any], side: str, samples: List[str]) -> Dict[str, float]:
