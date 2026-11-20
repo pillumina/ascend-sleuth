@@ -1382,10 +1382,21 @@ def cmd_readback(args: argparse.Namespace) -> int:
         print("error: pass exactly one of --card or --proposal", file=sys.stderr)
         return 2
     try:
+        base = _evolve_base(args)
         if args.proposal:
-            record = latest_by_proposal(args.proposal, _evolve_base(args))
+            record = latest_by_proposal(args.proposal, base)
+            if record is None:
+                from .rsi_store import RSIStore
+                for event in reversed(RSIStore(base).history(proposal_id=args.proposal)):
+                    data = event.get("data") or {}
+                    if event.get("kind") == "decision":
+                        record = data.get("conclusion")
+                    elif event.get("kind") == "experiment":
+                        record = data.get("conclusion")
+                    if record:
+                        break
         else:
-            record = latest_conclusion(args.card, _evolve_base(args))
+            record = latest_conclusion(args.card, base)
     except ReadbackError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -1404,10 +1415,13 @@ def cmd_readback(args: argparse.Namespace) -> int:
         print(f"model: {data['model'] or 'unknown'}")
         print(f"cost: {data['cost'] or 'unavailable'} paired={data['cost_paired']} missing={data['cost_missing']}")
         print(f"at: {data['at']}")
+    if args.measure and not data.get("card"):
+        print("error: --measure requires a card-bound conclusion", file=sys.stderr)
+        return 2
     if args.measure:
         root = Path(args.root or ".")
         proc = subprocess.run(
-            [sys.executable, str(root / "scripts" / "ev_measure.py"), args.card,
+            [sys.executable, str(root / "scripts" / "ev_measure.py"), data["card"],
              "--run", "--timeout", str(args.measure_timeout)],
             cwd=str(root), capture_output=True, text=True, encoding="utf-8",
             errors="replace", check=False,
