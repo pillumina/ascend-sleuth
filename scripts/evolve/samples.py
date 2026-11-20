@@ -282,6 +282,9 @@ class SampleStore:
         self._write(sample)
         return sample
 
+    def admission_errors(self, sample: Sample) -> List[str]:
+        return self._admission_errors(sample)
+
     def _admission_errors(self, sample: Sample) -> List[str]:
         """准入校验的唯一实现：schema、来源、答案、用途与查重。"""
         errors = sample.errors(require_answer=True)
