@@ -403,6 +403,7 @@ def checkpoint(output: Path, judge_path: Path, policy: Dict[str, Any], *,
 def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
            reuse_index: int = 0, pool: str = "pilot",
            card: Optional[str] = None,
+           proposal: Optional[str] = None,
            base: Optional[Path] = None) -> Dict[str, Any]:
     """配对判定 + 容量检查，写 Run 与 Conclusion 记录。"""
     output = Path(output)
@@ -511,7 +512,8 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
         reuse_index=reuse_index, alpha_eff=alpha_eff,
         b=counts["b"], c=counts["c"], n=counts["n"],
         p_value=decision.p_value, delta_q=decision.delta_q,
-        cost_ratio=decision.cost_ratio, pool=pool, card=card, at=now_iso(),
+        cost_ratio=decision.cost_ratio, pool=pool, card=card,
+        proposal=proposal, at=now_iso(),
     ).validate()
     store.append(conclusion.to_dict())
     runs = record_runs(output, policy, base=base)
