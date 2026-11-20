@@ -65,9 +65,10 @@ DSH_HOME 位置、profile 名、命令行是否随包、token 是否落日志、
 | 没有上面两件、但有 `plugin_manager` | 路由二：常驻插件包（见附录） |
 | 要在装之前确认包能加载，或界面不可用 | 路由四：HTTP 脚本安装（先要有日志地址与 token） |
 
-**默认装四个包**：面板包 `dsh-sleuth-panels`、`dsh-sleuth-vllm-kb`（设置页左侧栏的「vllm-kb」一栏，
+**默认装五个包**：面板包 `dsh-sleuth-panels`、`dsh-sleuth-vllm-kb`（设置页左侧栏的「vllm-kb」一栏，
 四个 `vllm_kb_*` 工具默认关）、独立的 `dsh-sleuth-copilot`（输入框上方的诊断状态条与诊断工作台）、
-独立的 `dsh-sleuth-canvas`（左侧栏「诊断画布」整页，离线渲染 `traces/`）。路由三对后三个包各再跑一次
+独立的 `dsh-sleuth-canvas`（左侧栏「诊断画布」整页，离线渲染 `traces/`）、独立的
+`dsh-rsi-observatory`（侧栏「实验台」整页，只读 RSI store）。路由三对后四个包各再跑一次
 `add`；路由五在插件页粘贴四次；路由四用 `--all` 一次装齐；路由二用 `install_bundle` 装四次。四个包
 分开登记：装面板不会带上另外三个。状态条与诊断画布都是独立包，卸掉它们不影响面板。
 
@@ -100,6 +101,7 @@ stderr（面板包冒烟会打 `RPC 路由已注册`），以退出码为准；�
    <dsh> plugin --profile <profile> add "<仓库绝对路径>/dsh-plugins/dsh-sleuth-vllm-kb"
    <dsh> plugin --profile <profile> add "<仓库绝对路径>/dsh-plugins/dsh-sleuth-copilot"
    <dsh> plugin --profile <profile> add "<仓库绝对路径>/dsh-plugins/dsh-sleuth-canvas"
+   <dsh> plugin --profile <profile> add "<仓库绝对路径>/dsh-plugins/dsh-rsi-observatory"
    ```
 
    四条都要跑：第一条装面板，第二条装 vllm-kb（设置页左侧栏那一栏），第三条装诊断状态条

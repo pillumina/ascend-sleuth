@@ -38,6 +38,11 @@ const PANEL_PACKAGES = [
     spec: 'dsh-plugins/dsh-sleuth-canvas',
     artifacts: ['lib/client.js', 'host/index.js'],
   },
+  {
+    name: 'dsh-rsi-observatory',
+    spec: 'dsh-plugins/dsh-rsi-observatory',
+    artifacts: ['lib/client.js', 'host/index.js'],
+  },
 ]
 
 function repoRoot() {
