@@ -17,7 +17,7 @@ maintainer 只调用 `/skill:self-evolve`；本文件是内部执行参考，不
 默认组合是：
 
 - 归因、选 region 先走规则；规则不确定时才让 agent 补证据/在注册区中选；
-- 提案默认由 agent 从失败反馈写可变异区；
+- 提案默认由 agent 从失败反馈写可变异区；写之前用 `experiment request --target <t> --component <region>` 取 target-specific prompt、允许路径和输出 schema。`propose.agent` 是启发式提案节点，不是 GEPA；GEPA 是 `select.pareto + propose.agent` 的组合。baseline 只评估 seed，不产生候选。
 - 候选选择默认单候选；只有 plan 里选择搜索策略时才进入候选池/Pareto；
 - judge 独立于 proposer；
 - gate 确定性/人工，不交给 agent；
