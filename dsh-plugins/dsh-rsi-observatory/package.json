@@ -1,6 +1,6 @@
 {
   "name": "dsh-rsi-observatory",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Read-only DSH page for RSI experiments, proposals and decision history in ascend-sleuth",

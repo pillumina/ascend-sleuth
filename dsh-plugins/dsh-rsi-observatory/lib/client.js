@@ -14,9 +14,9 @@ window.__ModuleLoader__.load({
     const h = React.createElement
 
     const CHANNEL = '/rsi-observatory'
-    const PLUGIN_VERSION = '0.2.0'
+    const PLUGIN_VERSION = '0.3.0'
     const PANEL_ID = 'rsi-observatory'
-    const PANEL_LABEL = '实验台'
+    const PANEL_LABEL = '自演进实验'
 
     const TABS = [
       { id: 'overview', label: '实验概览' },
@@ -58,7 +58,7 @@ window.__ModuleLoader__.load({
       emptySource: '数据源',
       retry: '重试',
       refresh: '刷新',
-      readOnly: '只读',
+      readOnly: '只读浏览',
       experiments: '实验',
       proposals: '提案',
       noDetail: '从左侧选一条实验查看明细。',
@@ -99,6 +99,10 @@ window.__ModuleLoader__.load({
       }
       if (typeof cost === 'number') return String(cost)
       return '—'
+    }
+
+    function backendLabel(value) {
+      return { local: '本地记录', memory: '内存记录' }[String(value || '')] || String(value || '未知来源')
     }
 
     function formatAt(value) {
@@ -163,7 +167,7 @@ window.__ModuleLoader__.load({
     function ErrorState(props) {
       const message = props && props.message ? String(props.message) : '未知错误'
       return h('div', { class: 'rsi-error', role: 'alert' },
-        h('div', { class: 'rsi-error-title' }, '取数失败'),
+        h('div', { class: 'rsi-error-title' }, '读取失败'),
         h('pre', { class: 'rsi-pre rsi-error-body' }, message),
         h('div', { class: 'rsi-actions' },
           h('button', { class: 'rsi-btn', type: 'button', onClick: props && props.onRefresh }, COPY.retry),
@@ -176,8 +180,8 @@ window.__ModuleLoader__.load({
       const generatedAt = props && props.generatedAt
       return h('div', { class: 'rsi-source' },
         h('span', { class: 'rsi-badge' }, h(Dot, { tone: 'ok' }), COPY.readOnly),
-        source ? h('span', null, '数据来源：' + String(source.backend || '') + ' · ' + String(source.path || source.base || '')) : null,
-        generatedAt ? h('span', null, '生成于 ' + formatAt(generatedAt)) : null,
+        source ? h('span', null, '数据来源：' + backendLabel(source.backend) + ' · ' + String(source.path || source.base || '')) : null,
+        generatedAt ? h('span', null, '读取于 ' + formatAt(generatedAt)) : null,
       )
     }
 
@@ -556,8 +560,8 @@ window.__ModuleLoader__.load({
         return h('div', { class: 'rsi-page' }, h('div', { class: 'rsi-inner' },
           h('header', { class: 'rsi-head' },
             h('div', null,
-              h('h1', { class: 'rsi-title' }, '实验台'),
-              h('p', { class: 'rsi-sub' }, 'Ascend Sleuth · RSI 实验记录', ' · ', PLUGIN_VERSION),
+              h('h1', { class: 'rsi-title' }, '自演进实验'),
+              h('p', { class: 'rsi-sub' }, 'Ascend Sleuth · 自演进实验记录', ' · ', PLUGIN_VERSION),
             ),
           ),
           h(ErrorState, { message: error, onRefresh: refresh }),
