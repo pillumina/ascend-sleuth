@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from evolve.flow import run_proposal  # noqa: E402
 from evolve.policy import load_policy  # noqa: E402
+from tests.self_evolution.test_cli import run_cli  # noqa: E402
 from evolve.proposal_engine import ProposalArchive, ProposalEngine  # noqa: E402
 from evolve.readback import latest_by_proposal  # noqa: E402
 
@@ -90,6 +91,41 @@ class FlowTest(unittest.TestCase):
             record = latest_by_proposal(proposal.id, Path(td))
             self.assertEqual(record["decision"], "accept")
             self.assertTrue((Path(td) / "pilot" / "candidate-worktree").exists())
+
+    def test_cli_flow_with_external_runner(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"; root.mkdir(); _repo(root)
+            draft = Path(td) / "draft.json"
+            draft.write_text(json.dumps(_draft(), ensure_ascii=False), encoding="utf-8")
+            samples = []
+            for i in range(4):
+                path = Path(td) / f"S-{2000+i}.yaml"
+                path.write_text(yaml.safe_dump({
+                    "id": f"S-{2000+i}", "source": f"github/x/{i}",
+                    "input": {"title": f"S-{i}"}, "expected": {"resolution": "ok"},
+                }), encoding="utf-8")
+                samples.append(str(path))
+            judge = Path(td) / "judge.json"
+            judge.write_text(json.dumps({
+                "baseline": {str(2000+i): 0 for i in range(4)},
+                "candidate": {str(2000+i): 1 for i in range(4)},
+                "meta": {"agent": "test"},
+            }), encoding="utf-8")
+            result = run_cli(
+                "experiment", "flow", "--root", str(root),
+                "--proposal", str(draft), "--samples", *samples,
+                "--output", str(Path(td) / "pilot"), "--judge", str(judge),
+                "--runner-command", json.dumps([
+                    sys.executable, "-c",
+                    "import os,pathlib;"
+                    "pathlib.Path(os.environ['SLEUTH_TRACE']).write_text("
+                    "'session_id: '+os.environ['SLEUTH_SHORT_ID']+'\\ntrace: []\\n');"
+                    "pathlib.Path(os.environ['SLEUTH_OUT']).write_text('ok')",
+                ]),
+                "--archive", str(Path(td) / "proposals.jsonl"),
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)["decision"], "accept")
 
     def test_requires_candidate(self):
         with tempfile.TemporaryDirectory() as td:
