@@ -20,12 +20,13 @@ def _load(path: Path) -> Dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def evaluate_one(pilot: Path, base: Path) -> Dict[str, Any]:
+def evaluate_one(pilot: Path, base: Path, exploratory: bool = False) -> Dict[str, Any]:
     pilot = Path(pilot)
     tasks = _load(pilot / "tasks.json")
     judge = _load(pilot / "judge.json")
     collected = collect(pilot, judge=pilot / "judge.json")
-    result = decide(pilot, pilot / "judge.json", load_policy(None), base=base)
+    result = decide(pilot, pilot / "judge.json", load_policy(None), base=base,
+                    exploratory=exploratory)
     candidate = tasks.get("candidate") or {}
     candidate["base_rev"] = candidate.get("base_rev") or "HEAD"
     proposal = ProposalEngine(ProposalArchive(base / f"{pilot.name}.jsonl")).add({
@@ -39,7 +40,7 @@ def evaluate_one(pilot: Path, base: Path) -> Dict[str, Any]:
     scores = {str(row.get("short_id") or row.get("id")): int(judge["candidate"][str(row.get("short_id") or row.get("id"))])
               for row in tasks.get("samples") or []}
     proposal.scores = scores
-    proposal.status = "evaluated"
+    proposal.status = "evaluated" if (result.get("conclusion") or {}).get("decision") == "accept" else "rejected"
     return {"pilot": str(pilot), "proposal": proposal, "scores": scores,
             "decision": (result.get("conclusion") or {}).get("decision"),
             "conclusion": result.get("conclusion")}
@@ -49,13 +50,15 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--pilot", action="append", required=True, help="至少两个真实 pilot 目录")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--exploratory", action="store_true")
     args = parser.parse_args()
     if len(args.pilot) < 2:
         print("error: pass at least two pilots", file=sys.stderr)
         return 2
     with tempfile.TemporaryDirectory(prefix="rsi-gepa-validate-") as td:
         base = Path(td)
-        rows = [evaluate_one(Path(item), base) for item in args.pilot]
+        rows = [evaluate_one(Path(item), base, exploratory=args.exploratory)
+                for item in args.pilot]
         samples = sorted(set(rows[0]["scores"]) & set(rows[1]["scores"]))
         selected = GepaPolicy().choose([row["proposal"] for row in rows], samples)
         report = {

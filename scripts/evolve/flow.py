@@ -30,6 +30,7 @@ def run_proposal(root: Path, proposal: Proposal, samples: List[str], output: Pat
                  runner: Optional[Callable[[Dict[str, Any]], None]] = None,
                  baseline_traces: Optional[Path] = None,
                  reuse_index: Optional[int] = None,
+                 exploratory: bool = False,
                  dry_run: bool = False) -> Dict[str, Any]:
     if not proposal.candidate:
         raise FlowError("proposal has no candidate; provide draft.candidate")
@@ -52,7 +53,7 @@ def run_proposal(root: Path, proposal: Proposal, samples: List[str], output: Pat
     judge_data = _load_judge(judge, tasks)
     collected = pilot_collect(output, judge=judge)
     result = pilot_decide(output, judge, policy, reuse_index=reuse_index,
-                          proposal=proposal.id)
+                          proposal=proposal.id, exploratory=exploratory)
     decision = (result.get("conclusion") or {}).get("decision") or "unknown"
     proposal.status = decision
     proposal.decision = decision
@@ -63,7 +64,8 @@ def run_proposal(root: Path, proposal: Proposal, samples: List[str], output: Pat
         proposal.rolled_back = True
     archive.append(proposal)
     experiment = _experiment_record(proposal, tasks, judge, decision,
-                                    result.get("conclusion") or {}, collected)
+                                    result.get("conclusion") or {}, collected,
+                                    exploratory=exploratory)
     ExperimentStore.for_base(archive.path.parent).append(experiment)
     event = RSIStore(archive.path.parent).record_experiment(
         proposal.to_dict(), experiment, result.get("conclusion") or {},
@@ -135,7 +137,7 @@ def _usage_evidence(collected: Dict[str, Any], key: str, comparator) -> Optional
 
 def _experiment_record(proposal: Proposal, tasks: Dict[str, Any], judge: Path,
                        decision: str, conclusion: Dict[str, Any],
-                       collected: Dict[str, Any]) -> Dict[str, Any]:
+                       collected: Dict[str, Any], *, exploratory: bool = False) -> Dict[str, Any]:
     data = json.loads(Path(judge).read_text(encoding="utf-8"))
     samples = [str(row.get("short_id") or row.get("id")) for row in tasks.get("samples") or []]
     baseline = _side_scores(data, "baseline", samples)
@@ -160,6 +162,7 @@ def _experiment_record(proposal: Proposal, tasks: Dict[str, Any], judge: Path,
         "conclusion_snapshot": conclusion,
         "judge_meta": data.get("meta") if isinstance(data.get("meta"), dict) else None,
         "judge_sha256": hashlib.sha256(Path(judge).read_bytes()).hexdigest(),
+        "exploratory": bool(exploratory),
     }
     if proposal.component == "diagnose.knowledge_usage":
         usage = _usage_evidence(collected, "knowledge_usage", compare_knowledge)
