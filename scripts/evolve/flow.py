@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -48,6 +49,7 @@ def run_proposal(root: Path, proposal: Proposal, samples: List[str], output: Pat
     if runner is not None:
         runner(tasks)
     _reject_fallback(tasks)
+    judge_data = _load_judge(judge, tasks)
     collected = pilot_collect(output, judge=judge)
     result = pilot_decide(output, judge, policy, reuse_index=reuse_index,
                           proposal=proposal.id)
@@ -79,6 +81,28 @@ def _side_scores(judge: Dict[str, Any], side: str, samples: List[str]) -> Dict[s
     if len(values) != len(samples):
         raise FlowError(f"judge.{side} is missing samples")
     return {sample: float(raw[sample]) for sample in samples}
+
+
+def _load_judge(judge: Path, tasks: Dict[str, Any]) -> Dict[str, Any]:
+    try:
+        data = json.loads(Path(judge).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise FlowError(f"cannot read judge: {exc}") from exc
+    meta = data.get("meta") if isinstance(data.get("meta"), dict) else {}
+    if not meta.get("agent"):
+        raise FlowError("judge provenance missing: meta.agent is required")
+    samples = [str(row.get("short_id") or row.get("id"))
+               for row in tasks.get("samples") or []]
+    for side in ("baseline", "candidate"):
+        scores = data.get(side)
+        if not isinstance(scores, dict):
+            raise FlowError(f"judge.{side} must be an object")
+        for sample in samples:
+            if sample not in scores:
+                raise FlowError(f"judge.{side} missing sample {sample}")
+            if scores[sample] not in (0, 1, True, False):
+                raise FlowError(f"judge.{side}.{sample} must be 0 or 1")
+    return data
 
 
 def _reject_fallback(tasks: Dict[str, Any]) -> None:
@@ -134,6 +158,8 @@ def _experiment_record(proposal: Proposal, tasks: Dict[str, Any], judge: Path,
         "proposal": proposal.id,
         "proposal_snapshot": proposal.to_dict(),
         "conclusion_snapshot": conclusion,
+        "judge_meta": data.get("meta") if isinstance(data.get("meta"), dict) else None,
+        "judge_sha256": hashlib.sha256(Path(judge).read_bytes()).hexdigest(),
     }
     if proposal.component == "diagnose.knowledge_usage":
         usage = _usage_evidence(collected, "knowledge_usage", compare_knowledge)

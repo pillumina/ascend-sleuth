@@ -270,10 +270,12 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
     }
     if record.get("proposal"):
         result["proposal"] = str(record["proposal"])
-    for key in ("proposal_snapshot", "conclusion_snapshot"):
+    for key in ("proposal_snapshot", "conclusion_snapshot", "judge_meta"):
         value = record.get(key)
         if isinstance(value, dict):
             result[key] = value
+    if record.get("judge_sha256"):
+        result["judge_sha256"] = str(record["judge_sha256"])
     stages = record.get("stages")
     if stages is not None:
         if not isinstance(stages, dict):
