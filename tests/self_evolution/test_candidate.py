@@ -180,6 +180,38 @@ class CandidateTest(unittest.TestCase):
                     "base_rev": "HEAD", "old_text": "old\n", "new_text": "new\n",
                 })
 
+    def test_knowledge_candidate_can_add_new_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._repo(td)
+            path = root / "knowledge/inference/vllm-ascend/new-case.yaml"
+            data = {
+                "candidate_id": "C-KA-1", "target_kind": "knowledge",
+                "target_component": "knowledge.case_content",
+                "region": "knowledge.case_content", "action": "add",
+                "file": "knowledge/inference/vllm-ascend/new-case.yaml",
+                "base_rev": "HEAD",
+                "content": "id: K-NEW\nquickly_check: 新判别\n",
+            }
+            apply_to_root(root, validate_candidate(data))
+            self.assertIn("K-NEW", path.read_text(encoding="utf-8"))
+
+    def test_add_cannot_overwrite_existing_file(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._repo(td)
+            (root / "knowledge/inference/vllm-ascend").mkdir(parents=True)
+            path = root / "knowledge/inference/vllm-ascend/case.yaml"
+            path.write_text("id: K-1\n", encoding="utf-8")
+            data = {
+                "candidate_id": "C-KA-2", "target_kind": "knowledge",
+                "target_component": "knowledge.case_content",
+                "region": "knowledge.case_content", "action": "add",
+                "file": "knowledge/inference/vllm-ascend/case.yaml",
+                "base_rev": "HEAD", "content": "id: K-2\n",
+            }
+            with self.assertRaises(CandidateError):
+                apply_to_root(root, validate_candidate(data))
+            self.assertIn("K-1", path.read_text(encoding="utf-8"))
+
     def test_catalog_candidate_can_use_src_fetch_self_test(self):
         with tempfile.TemporaryDirectory() as td:
             root = self._repo(td)

@@ -124,13 +124,20 @@ def validate_candidate(data: Any) -> Dict[str, Any]:
     file = _relative_path(data.get("file"))
     if not _file_allowed(file, spec):
         raise CandidateError(f"file {file!r} is not allowed for region {region!r}")
-    old = _text(data.get("old_text"), "old_text")
-    new = _text(data.get("new_text"), "new_text")
-    markers = REGION_MARKERS.get(region, ())
-    if not any(marker.lower() in old.lower() for marker in markers):
-        raise CandidateError(f"old_text does not look like region {region!r}")
-    if old == new:
-        raise CandidateError("old_text and new_text must differ")
+    action = str(data.get("action") or "modify")
+    if action not in ("modify", "add"):
+        raise CandidateError("action must be modify or add")
+    if action == "add":
+        old = ""
+        new = _text(data.get("content"), "content")
+    else:
+        old = _text(data.get("old_text"), "old_text")
+        new = _text(data.get("new_text"), "new_text")
+        markers = REGION_MARKERS.get(region, ())
+        if not any(marker.lower() in old.lower() for marker in markers):
+            raise CandidateError(f"old_text does not look like region {region!r}")
+        if old == new:
+            raise CandidateError("old_text and new_text must differ")
     checks = _checks(data.get("checks"))
     if "py_compile" in checks and not file.endswith(".py"):
         raise CandidateError("py_compile check requires a .py file")
@@ -140,8 +147,8 @@ def validate_candidate(data: Any) -> Dict[str, Any]:
     return {
         "candidate_id": cid, "target_kind": target,
         "target_component": component, "region": region,
-        "skill": skill, "file": file, "old_text": old,
-        "new_text": new, "base_rev": base,
+        "skill": skill, "file": file, "action": action,
+        "old_text": old, "new_text": new, "base_rev": base,
         "checks": checks,
         "evidence": list(data.get("evidence") or []),
         "expected_effect": str(data.get("expected_effect") or ""),
@@ -235,7 +242,7 @@ def _run_checks(root: Path, candidate: Dict[str, Any]) -> None:
             )
 
 
-def _resolve_target(root: Path, candidate: Dict[str, Any]) -> Path:
+def _resolve_target(root: Path, candidate: Dict[str, Any], *, must_exist: bool = True) -> Path:
     root = Path(root).resolve()
     path = (root / candidate["file"]).resolve()
     try:
@@ -245,33 +252,49 @@ def _resolve_target(root: Path, candidate: Dict[str, Any]) -> Path:
     spec = REGIONS[candidate["region"]]
     if not _file_allowed(relative, spec):
         raise CandidateError("candidate file escapes its region paths")
-    if not path.exists():
+    if must_exist and not path.exists():
         raise CandidateError(f"target file does not exist: {path}")
-    if not path.is_file():
+    if not must_exist and path.exists():
+        raise CandidateError(f"target file already exists: {path}")
+    if path.exists() and not path.is_file():
         raise CandidateError(f"target is not a regular file: {path}")
     return path
 
 
 def apply_to_root(root: Path, candidate: Dict[str, Any]) -> Dict[str, Any]:
     root = Path(root).resolve()
-    path = _resolve_target(root, candidate)
-    before = path.read_text(encoding="utf-8")
-    count = before.count(candidate["old_text"])
-    if count != 1:
-        raise CandidateError(f"old_text must occur exactly once, found {count}")
-    after = before.replace(candidate["old_text"], candidate["new_text"], 1)
-    if after == before:
-        raise CandidateError("patch produced no change")
-    _validate_content(candidate, after)
-    before_sha = _sha(path)
-    path.write_text(after, encoding="utf-8")
-    try:
-        _run_checks(root, candidate)
-    except Exception:
-        path.write_text(before, encoding="utf-8")
-        raise
+    action = candidate.get("action", "modify")
+    path = _resolve_target(root, candidate, must_exist=action != "add")
+    if action == "add":
+        after = candidate["new_text"]
+        _validate_content(candidate, after)
+        before_sha = None
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(after, encoding="utf-8")
+        try:
+            _run_checks(root, candidate)
+        except Exception:
+            path.unlink(missing_ok=True)
+            raise
+    else:
+        before = path.read_text(encoding="utf-8")
+        count = before.count(candidate["old_text"])
+        if count != 1:
+            raise CandidateError(f"old_text must occur exactly once, found {count}")
+        after = before.replace(candidate["old_text"], candidate["new_text"], 1)
+        if after == before:
+            raise CandidateError("patch produced no change")
+        _validate_content(candidate, after)
+        before_sha = _sha(path)
+        path.write_text(after, encoding="utf-8")
+        try:
+            _run_checks(root, candidate)
+        except Exception:
+            path.write_text(before, encoding="utf-8")
+            raise
     return {
         "candidate_id": candidate["candidate_id"], "file": candidate["file"],
+        "action": action,
         "before_sha256": before_sha,
         "after_sha256": hashlib.sha256(after.encode("utf-8")).hexdigest(),
         "checks": list(candidate.get("checks") or []),
