@@ -30,7 +30,8 @@ class AgentAdapterTest(unittest.TestCase):
         return output
 
     def test_dsh_command_contract(self):
-        with mock.patch.object(agent_adapter.subprocess, "run") as run:
+        with mock.patch.dict(os.environ, {"DEEPSEEK_API_KEY": "test"}, clear=False), \
+                mock.patch.object(agent_adapter.subprocess, "run") as run:
             run.return_value = mock.Mock(returncode=0, stdout="report", stderr="")
             result = agent_adapter._run_agent("dsh", "diagnose", Path("."), 5)
         self.assertEqual(result, "report")
@@ -39,6 +40,13 @@ class AgentAdapterTest(unittest.TestCase):
         self.assertIn("--permission-mode", command)
         self.assertIn("workspace-write", command)
         self.assertFalse(run.call_args.kwargs.get("shell", False))
+
+    def test_dsh_preflight_requires_credential(self):
+        env = {k: v for k, v in os.environ.items()
+               if k not in ("DEEPSEEK_API_KEY", "SLEUTH_DSH_ALLOW_STORED")}
+        with mock.patch.dict(os.environ, env, clear=True):
+            with self.assertRaises(agent_adapter.AdapterError):
+                agent_adapter._run_agent("dsh", "prompt", Path("."), 5)
 
     def test_echo_writes_fallback_marker(self):
         with tempfile.TemporaryDirectory() as td:
