@@ -42,11 +42,17 @@ class RSIStore:
 
     def append(self, kind: str, data: Dict[str, Any], *,
                experiment_id: Optional[str] = None,
-               proposal_id: Optional[str] = None) -> Dict[str, Any]:
-        event = RSIEvent(kind=kind, data=data, experiment_id=experiment_id,
+               proposal_id: Optional[str] = None,
+               event_id: Optional[str] = None,
+               at: Optional[str] = None) -> Dict[str, Any]:
+        event = RSIEvent(kind=kind, data=data, event_id=event_id or "",
+                         at=at or "", experiment_id=experiment_id,
                          proposal_id=proposal_id).to_dict()
         self.backend.append(event)
         return event
+
+    def event_ids(self) -> set:
+        return {str(row.get("event_id")) for row in self.read()}
 
     def read(self, kind: Optional[str] = None) -> List[Dict[str, Any]]:
         rows = [RSIEvent.from_dict(row).to_dict() for row in self.backend.read()]

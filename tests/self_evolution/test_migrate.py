@@ -37,13 +37,14 @@ class MigrateTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             base = self._base(td)
             first = migrate_legacy(base)
-            self.assertEqual(first["counts"], {"experiments": 1, "decisions": 1,
-                                               "rollouts": 1, "skipped": 0})
+            self.assertEqual(first["counts"], {"proposals": 1, "experiments": 1,
+                                               "decisions": 1, "rollouts": 1,
+                                               "skipped": 0, "duplicates": 0})
             second = migrate_legacy(base)
             self.assertEqual(second["counts"]["skipped"], 3)
             store = RSIStore(base)
-            self.assertEqual(len(store.read()), 3)
-            events = store.history(proposal_id=first["counts"] and None) if False else store.read()
+            self.assertEqual(len(store.read()), 4)
+            events = store.read()
             experiment = [e for e in events if e["kind"] == "experiment"][0]
             self.assertEqual(experiment["data"]["rollout"]["decision"], "reject")
             self.assertEqual(experiment["data"]["proposal"]["status"], "reject")
