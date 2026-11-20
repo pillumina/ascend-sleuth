@@ -466,8 +466,50 @@ class IngestCliTest(unittest.TestCase):
             self.assertEqual(record["summary"], "manual test patch")
             self.assertEqual(record["algorithm"], "baseline")
             self.assertEqual(record["execution"], "manual")
+            self.assertEqual(record["payload"]["role"], "control")
+            self.assertFalse(record["payload"]["proposal"])
             self.assertEqual(record["eval_profile_id"], "arena")
             self.assertTrue(record["eval_ready"])
+
+    def test_experiment_propose_agent_draft_any_target(self):
+        with tempfile.TemporaryDirectory() as td:
+            draft = Path(td) / "draft.json"
+            draft.write_text(json.dumps({
+                "target_kind": "knowledge",
+                "target_component": "knowledge.case_content",
+                "summary": "补 VLLM-ASC-10892 的长请求分块判别",
+                "change": {"files": ["knowledge/inference/vllm-ascend/precision/VLLM-ASC-10892.yaml"],
+                           "diff": "quickly_check 增加 >1024 token 分块检查"},
+                "expected": "该 case 的复核命中率提升",
+                "risk": "低",
+                "rollback": "恢复原判别条件",
+            }, ensure_ascii=False), encoding="utf-8")
+            result = run_cli("experiment", "propose", "--root", td, "--draft", str(draft))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("algorithm: agent_draft", result.stdout)
+            path = Path(td) / ".s2-replay" / "evolve" / "experiments.jsonl"
+            record = json.loads(path.read_text(encoding="utf-8").splitlines()[0])
+            self.assertEqual(record["target_kind"], "knowledge")
+            self.assertEqual(record["target_component"], "knowledge.case_content")
+            self.assertEqual(record["algorithm"], "agent_draft")
+            self.assertEqual(record["execution"], "subagent")
+            self.assertEqual(record["source"], "agent_draft")
+            self.assertEqual(record["payload"]["expected"], "该 case 的复核命中率提升")
+
+    def test_agent_draft_rejects_missing_rollback(self):
+        with tempfile.TemporaryDirectory() as td:
+            draft = Path(td) / "draft.json"
+            draft.write_text(json.dumps({
+                "target_kind": "tooling",
+                "target_component": "tooling.source_fetch",
+                "summary": "缓存",
+                "change": {"files": ["scripts/src_fetch.py"]},
+                "expected": "减少抓取",
+                "risk": "低",
+            }), encoding="utf-8")
+            result = run_cli("experiment", "propose", "--root", td, "--draft", str(draft))
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("rollback", result.stderr)
 
     def test_experiment_propose_official_gepa_is_rejected(self):
         with tempfile.TemporaryDirectory() as td:

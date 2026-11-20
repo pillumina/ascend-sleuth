@@ -247,6 +247,8 @@ issue 回放未命中有三种解释：路由错、缺 case、内容错。它只
 
 ### 3.8 算法适配器与 RSI stage
 
+实验记录有两种来源：`baseline` 是对照臂，只记录 seed/包络，不产生候选；agent 可以用 `experiment propose --draft <json>` 为任意 target 提交结构化提案（target、改动、预期、风险、回滚），由 target 的评估器决定后续验证。`--draft` 只做结构校验，不代表 target-specific 改动一定可执行。
+
 自演进实验按六个节点固定算法：`attribute`、`select_region`、`select_candidate`、`propose`、`judge`、`gate`。当前注册：`attribute.trace_rule`/`attribute.agent`、`select.region_hardcount`/`select.region_agent`、`select.none`/`select.best`/`select.pareto`、`propose.none`/`propose.agent`/`propose.reflection`（兼容别名）、`judge.subagent`、`gate.paired`。默认 agent heuristic 是 `select_candidate.best` + `propose.agent`；GEPA 是 `select_candidate.pareto` + `propose.agent` 的组合。归因/选 region 先规则，规则不确定才让 agent 补证据；agent 不能把推断写成 hard，也不做最终 gate。`policy.experiment.stages` 是可覆盖的默认组合；实验记录保存解析后的 stages，禁止把算法写错节点。
 
 ### 3.9 知识使用效率

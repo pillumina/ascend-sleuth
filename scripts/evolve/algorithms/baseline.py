@@ -15,10 +15,11 @@ class BaselineOptimizer:
                 budget: Dict[str, Any]) -> Patch:
         return Patch(
             target_kind=str(target),
-            target_component="manual",
-            summary="baseline: no automatic proposal; human drafts the patch",
+            target_component="control",
+            summary="control arm: no automatic proposal; candidate must be supplied separately",
             algorithm=self.id,
             algorithm_version=self.version,
-            payload={"observations": len(observations or [])},
+            payload={"role": "control", "proposal": False,
+                     "observations": len(observations or [])},
             budget=dict(budget or {}),
         )
