@@ -167,9 +167,12 @@ def _validate_content(candidate: Dict[str, Any], text: str) -> None:
                 raise CandidateError(f"harness Python is invalid: {exc}") from exc
         elif file.endswith((".yaml", ".yml")):
             try:
-                yaml.safe_load(text)
+                doc = yaml.safe_load(text)
             except yaml.YAMLError as exc:
                 raise CandidateError(f"harness YAML is invalid: {exc}") from exc
+            if file.endswith("scheduler.yaml"):
+                if not isinstance(doc, dict) or "scheduler" not in doc:
+                    raise CandidateError("harness scheduler.yaml requires scheduler key")
         elif file.endswith(".json"):
             try:
                 json.loads(text)
