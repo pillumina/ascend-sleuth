@@ -227,11 +227,13 @@ class ProposalEngine:
             raise ProposalError("max_rounds and population must be positive")
         policy = policy or ParetoPolicy()
         rounds = 0
+        stop_reason = "rounds"
         while rounds < max_rounds and len(self.proposals) < population:
             parent = policy.choose(self.proposals, samples, self.reflected)
             if parent is None:
                 # 首次：用 seed（无父）生成；之后没有可反思候选就停。
                 if self.proposals:
+                    stop_reason = "no_parent"
                     break
                 drafts = proposer(None, [], 0)
             else:
@@ -249,11 +251,15 @@ class ProposalEngine:
                 added += 1
             rounds += 1
             if added == 0:
+                stop_reason = "no_valid"
                 break
+        if len(self.proposals) >= population:
+            stop_reason = "population"
         selected = policy.choose(self.proposals, samples, [])
         return {
             "rounds": rounds,
             "proposals": len(self.proposals),
             "selected": selected.to_dict() if selected else None,
+            "stop_reason": stop_reason,
             "archive": str(self.archive.path),
         }

@@ -14,6 +14,7 @@ tooling 补丁可以带 ``checks``：固定枚举 ``py_compile`` / ``diff_check`
 
 import hashlib
 import json
+import yaml
 import subprocess
 import sys
 from pathlib import Path
@@ -143,6 +144,35 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _validate_content(candidate: Dict[str, Any], text: str) -> None:
+    """在写入前做 target-specific 语法/结构检查；不判断语义正确性。"""
+    target = candidate["target_kind"]
+    file = candidate["file"]
+    if target == "knowledge":
+        try:
+            doc = yaml.safe_load(text)
+        except yaml.YAMLError as exc:
+            raise CandidateError(f"knowledge YAML is invalid: {exc}") from exc
+        if not isinstance(doc, dict) or not doc.get("id"):
+            raise CandidateError("knowledge YAML must be an object with id")
+    elif target == "tooling":
+        if file.endswith(".py"):
+            try:
+                compile(text, file, "exec")
+            except SyntaxError as exc:
+                raise CandidateError(f"tooling Python is invalid: {exc}") from exc
+        elif file.endswith((".yaml", ".yml")):
+            try:
+                yaml.safe_load(text)
+            except yaml.YAMLError as exc:
+                raise CandidateError(f"tooling YAML is invalid: {exc}") from exc
+        elif file.endswith(".json"):
+            try:
+                json.loads(text)
+            except json.JSONDecodeError as exc:
+                raise CandidateError(f"tooling JSON is invalid: {exc}") from exc
+
+
 def _check_commands(root: Path, candidate: Dict[str, Any]) -> List[List[str]]:
     commands: List[List[str]] = []
     for kind in candidate.get("checks") or []:
@@ -205,6 +235,7 @@ def apply_to_root(root: Path, candidate: Dict[str, Any]) -> Dict[str, Any]:
     after = before.replace(candidate["old_text"], candidate["new_text"], 1)
     if after == before:
         raise CandidateError("patch produced no change")
+    _validate_content(candidate, after)
     before_sha = _sha(path)
     path.write_text(after, encoding="utf-8")
     try:

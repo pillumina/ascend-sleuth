@@ -1653,6 +1653,14 @@ def cmd_brief(args: argparse.Namespace) -> int:
     if cost_plan:
         print("cost_plan: " + ", ".join(f"{key}={value}" for key, value in cost_plan.items()))
     print(f"conclusions: {len(conclusions)}")
+    try:
+        proposals = ProposalArchive(_evolve_base(args) / "proposals.jsonl").read()
+    except (OSError, ValueError):
+        proposals = []
+    print(f"proposals: {len(proposals)}")
+    if proposals:
+        last = proposals[-1]
+        print(f"last proposal: {last.get('status', '')} {last.get('target', '')} {last.get('id', '')}")
     capacity = plan.get("judgment_capacity") or {}
     print(f"judgment_capacity: pool_samples={capacity.get('potential', 0)} "
           f"required_b={capacity.get('required_b', 0)} "
