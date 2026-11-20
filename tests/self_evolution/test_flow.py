@@ -13,7 +13,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from evolve.flow import run_proposal  # noqa: E402
+from evolve.flow import FlowError, run_proposal  # noqa: E402
 from evolve.policy import load_policy  # noqa: E402
 from tests.self_evolution.test_cli import run_cli  # noqa: E402
 from evolve.proposal_engine import ProposalArchive, ProposalEngine  # noqa: E402
@@ -167,6 +167,34 @@ class FlowTest(unittest.TestCase):
             self.assertFalse((Path(td) / "pilot" / "candidate-worktree").exists())
             rows = ProposalArchive(Path(td) / "proposals.jsonl").read()
             self.assertTrue(rows[-1]["rolled_back"])
+
+    def test_adapter_fallback_is_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td) / "repo"; root.mkdir(); _repo(root)
+            archive = ProposalArchive(Path(td) / "proposals.jsonl")
+            proposal = ProposalEngine(archive).add(_draft())
+            sample = Path(td) / "S-4000.yaml"
+            sample.write_text(yaml.safe_dump({
+                "id": "S-4000", "source": "github/x/0",
+                "input": {"title": "S-0"}, "expected": {"resolution": "ok"},
+            }), encoding="utf-8")
+            judge = Path(td) / "judge.json"
+            judge.write_text(json.dumps({"baseline": {"4000": 0}, "candidate": {"4000": 1}}),
+                             encoding="utf-8")
+
+            def runner(tasks):
+                for arm in ("baseline", "candidate"):
+                    for row in tasks["samples"]:
+                        sid = row["short_id"]
+                        (Path(tasks["arms"][arm]["trace_dir"]) / f"{sid}.yaml").write_text(
+                            yaml.safe_dump({"adapter_fallback": True, "trace": []}),
+                            encoding="utf-8")
+                        (Path(tasks["arms"][arm]["out_dir"]) / f"{sid}.out.md").write_text(
+                            "ok", encoding="utf-8")
+
+            with self.assertRaises(FlowError):
+                run_proposal(root, proposal, [str(sample)], Path(td) / "pilot",
+                             load_policy(None), judge, archive, runner=runner)
 
     def test_requires_candidate(self):
         with tempfile.TemporaryDirectory() as td:

@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+
+import yaml
 from typing import Any, Callable, Dict, List, Optional
 
 from .experiments import ExperimentError, validate_experiment
@@ -34,6 +36,7 @@ def run_proposal(root: Path, proposal: Proposal, samples: List[str], output: Pat
                           baseline_traces=baseline_traces)
     if runner is not None:
         runner(tasks)
+    _reject_fallback(tasks)
     collected = pilot_collect(output, judge=judge)
     result = pilot_decide(output, judge, policy, reuse_index=reuse_index,
                           proposal=proposal.id)
@@ -62,6 +65,22 @@ def _side_scores(judge: Dict[str, Any], side: str, samples: List[str]) -> Dict[s
     if len(values) != len(samples):
         raise FlowError(f"judge.{side} is missing samples")
     return {sample: float(raw[sample]) for sample in samples}
+
+
+def _reject_fallback(tasks: Dict[str, Any]) -> None:
+    for sample in tasks.get("samples") or []:
+        sid = str(sample.get("short_id") or sample.get("id"))
+        for arm in tasks.get("arms") or {}:
+            path = Path(tasks["arms"][arm]["trace_dir"]) / f"{sid}.yaml"
+            if not path.exists():
+                continue
+            try:
+                doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            except yaml.YAMLError as exc:
+                raise FlowError(f"unreadable trace {path}: {exc}") from exc
+            if doc.get("adapter_fallback"):
+                raise FlowError(
+                    f"adapter fallback trace is not valid evidence: {path}")
 
 
 def _experiment_record(proposal: Proposal, tasks: Dict[str, Any], judge: Path,
