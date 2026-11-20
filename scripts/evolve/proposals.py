@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any, Dict, List, Optional
 
+from .candidate import validate_candidate
 from .contracts import Patch
 from .evaluations.registry import get_eval_profile
 from .targets.registry import get_target
@@ -151,6 +152,27 @@ def validate_draft(data: Any, target_override: Optional[str] = None) -> Patch:
             raise ProposalError("draft target_kind does not match requested target")
         target = target_override
     spec = _spec(target)
+    candidate = data.get("candidate")
+    if candidate is not None:
+        if not isinstance(candidate, dict):
+            raise ProposalError("draft.candidate must be an object")
+        candidate = validate_candidate(candidate)
+        if candidate["target_kind"] != target:
+            raise ProposalError("draft.candidate target_kind does not match draft")
+        return Patch(
+            target_kind=target, target_component=candidate["region"],
+            summary=str(data.get("summary") or "agent candidate"),
+            algorithm="agent_draft", algorithm_version="v1",
+            payload={
+                "source": "agent",
+                "candidate": candidate,
+                "change": {"files": [candidate["file"]], "diff": candidate["new_text"]},
+                "expected": str(data.get("expected") or ""),
+                "risk": str(data.get("risk") or ""),
+                "rollback": str(data.get("rollback") or ""),
+                "evidence": list(data.get("evidence") or []),
+            },
+        )
     component = str(data.get("target_component") or "")
     summary = str(data.get("summary") or "")
     expected = str(data.get("expected") or "")

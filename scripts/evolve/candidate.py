@@ -1,7 +1,8 @@
 """Candidate Patch：有界文本改动、隔离 worktree、apply/diff/rollback。
 
-支持两类工件：
+支持三类工件：
 - ``skill``：skill 文本 region，只改 ``skills/<skill>/**/*.md``；
+- ``knowledge``：case/reference 内容，只改 ``knowledge/`` 或 ``references/`` 下的 YAML；
 - ``tooling``：工具实现/路由数据，只改 region 登记的 ``paths``（如
   ``scripts/src_fetch.py``、``source-catalog.d``）。
 
@@ -21,14 +22,14 @@ from typing import Any, Dict, List
 from .regions import REGIONS
 
 
-TARGET_KINDS = ("skill", "tooling")
+TARGET_KINDS = ("skill", "knowledge", "tooling")
 FORBIDDEN_PREFIXES = (
     ".git/", ".github/", "knowledge/", "references/", "postmortems/",
     "eval/", "tests/", "docs/", "skills/", ".s2-replay/", ".worktrees/",
 )
 CHECK_TIMEOUT = 120
 CHECK_KINDS = ("py_compile", "diff_check", "src_fetch_self_test")
-MAX_TEXT = {"skill": 8000, "tooling": 20000}
+MAX_TEXT = {"skill": 8000, "knowledge": 12000, "tooling": 20000}
 TOOLING_SUFFIXES = (".py", ".yaml", ".yml", ".json")
 
 REGION_MARKERS = {
@@ -77,6 +78,8 @@ def _checks(value: Any) -> List[str]:
 
 
 def _file_allowed(file: str, region) -> bool:
+    if region.target_kind == "knowledge":
+        return file.startswith(("knowledge/", "references/")) and file.endswith((".yaml", ".yml"))
     if region.target_kind == "tooling":
         if any(file == prefix or file.startswith(prefix.rstrip("/") + "/")
                for prefix in FORBIDDEN_PREFIXES):

@@ -49,6 +49,7 @@ from .decision import Decision, DecisionResult, decide
 from .experiments import ExperimentError, validate_experiment
 from .holdout_guard import is_holdout_source, issue_numbers
 from .knowledge_usage import UsageError, compare as compare_usage, evaluate as evaluate_usage, from_trace
+from .flow import FlowError, run_proposal
 from .proposal_engine import (BestPolicy, GepaPolicy, ParetoPolicy, ProposalArchive,
                               ProposalEngine)
 from .proposals import ProposalError, request as proposal_request, validate_draft
@@ -790,6 +791,36 @@ def _agent_draft_patch(path: str, target_override=None, component_override=None,
     patch = validate_draft(data, target_override=target_override)
     patch.seed = seed
     return patch
+
+
+def cmd_experiment_flow(args: argparse.Namespace) -> int:
+    try:
+        policy = _policy_for(args)
+        draft = json.loads(Path(args.proposal).read_text(encoding="utf-8"))
+        archive_path = Path(args.archive) if args.archive else _evolve_base(args) / "proposals.jsonl"
+        archive = ProposalArchive(archive_path)
+        engine = ProposalEngine(archive)
+        proposal = engine.add(draft)
+        if proposal.status == "invalid":
+            raise FlowError("; ".join(proposal.errors))
+        command = stage_load_argv(args.runner_command)
+        result = run_proposal(
+            Path(args.root), proposal, args.samples, Path(args.output), policy,
+            Path(args.judge), archive,
+            runner=lambda tasks: stage_run(Path(args.output), command),
+            baseline_traces=Path(args.baseline_traces) if args.baseline_traces else None,
+            reuse_index=args.reuse_index,
+        )
+    except (FlowError, ProposalError, OSError, ValueError, PolicyError, PilotError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    print(json.dumps({
+        "proposal": proposal.id,
+        "decision": result["decision"],
+        "conclusion": result["conclusion"],
+        "archive": str(archive_path),
+    }, ensure_ascii=False, indent=2))
+    return 0
 
 
 def cmd_experiment_search(args: argparse.Namespace) -> int:
@@ -1956,6 +1987,20 @@ def build_parser() -> argparse.ArgumentParser:
     exp_gate.add_argument("--baseline", default=None, help="tooling gate：基线 tool usage JSON")
     exp_gate.add_argument("--candidate", default=None, help="tooling gate：候选 tool usage JSON")
     exp_gate.set_defaults(func=cmd_experiment_gate)
+    exp_flow = experiment_sub.add_parser(
+        "flow", help="提案 → candidate → pilot → runner → judge → gate → archive")
+    exp_flow.add_argument("--root", required=True)
+    exp_flow.add_argument("--proposal", required=True)
+    exp_flow.add_argument("--samples", nargs="+", required=True)
+    exp_flow.add_argument("--output", required=True)
+    exp_flow.add_argument("--judge", required=True)
+    exp_flow.add_argument("--runner-command", required=True, help="JSON argv")
+    exp_flow.add_argument("--baseline-traces", default=None)
+    exp_flow.add_argument("--archive", default=None)
+    exp_flow.add_argument("--policy", default=None)
+    exp_flow.add_argument("--reuse-index", type=int, default=0)
+    exp_flow.set_defaults(func=cmd_experiment_flow)
+
     exp_search = experiment_sub.add_parser(
         "search", help="用已产出的候选做校验、评分、策略选择并归档")
     exp_search.add_argument("--root", default=None)

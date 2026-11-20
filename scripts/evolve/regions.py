@@ -45,12 +45,12 @@ REGIONS: Dict[str, RegionSpec] = {
         description="知识检索顺序、读索引/全文时机、候选数、reference 查询与停止条件；不改 case 内容/schema",
     ),
     "knowledge.case_content": RegionSpec(
-        id="knowledge.case_content", skill="knowledge",
+        id="knowledge.case_content", skill="knowledge", target_kind="knowledge",
         components=("case_content", "case_miss", "wrong_case"),
         description="单条 case 的内容/判别力；走 rubric 与人工审",
     ),
     "knowledge.reference_content": RegionSpec(
-        id="knowledge.reference_content", skill="knowledge",
+        id="knowledge.reference_content", skill="knowledge", target_kind="knowledge",
         components=("reference_content", "reference_miss"),
         description="reference 词条的事实/范围；走 rubric 与人工审",
     ),

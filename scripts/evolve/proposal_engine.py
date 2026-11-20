@@ -39,6 +39,7 @@ class Proposal:
     risk: str = ""
     rollback: str = ""
     evidence: List[str] = field(default_factory=list)
+    candidate: Optional[Dict[str, Any]] = None
     status: str = "candidate"
     scores: Dict[str, float] = field(default_factory=dict)
     feedback: Dict[str, str] = field(default_factory=dict)
@@ -50,7 +51,9 @@ class Proposal:
             "summary": self.summary, "artifact_kind": self.artifact_kind,
             "artifact": self.artifact, "parent": self.parent,
             "expected": self.expected, "risk": self.risk, "rollback": self.rollback,
-            "evidence": list(self.evidence), "status": self.status,
+            "evidence": list(self.evidence),
+            "candidate": dict(self.candidate) if self.candidate else None,
+            "status": self.status,
             "scores": dict(self.scores), "feedback": dict(self.feedback),
             "errors": list(self.errors), "at": now_iso(),
         }
@@ -95,6 +98,7 @@ def proposal_from_draft(proposal_id: str, draft: Dict[str, Any],
         draft=draft, parent=parent, expected=payload.get("expected") or "",
         risk=payload.get("risk") or "", rollback=payload.get("rollback") or "",
         evidence=list(payload.get("evidence") or []),
+        candidate=payload.get("candidate"),
     )
     proposal.errors = codec_errors(proposal)
     return proposal
