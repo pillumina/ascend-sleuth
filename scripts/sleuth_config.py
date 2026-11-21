@@ -117,6 +117,8 @@ def load_config(root: Optional[Path] = None, path: Optional[Path] = None) -> Dic
     for name, value in profiles.items():
         if not isinstance(value, dict):
             raise ConfigError(f"evolution.profiles.{name} 必须是映射")
+        if not isinstance(value.get("experiment", {}), dict):
+            raise ConfigError(f"evolution.profiles.{name}.experiment 必须是映射")
     if not isinstance(evolution.get("store"), dict):
         raise ConfigError("evolution.store 必须是映射")
     sources = evolution.get("pipeline_config") or []
