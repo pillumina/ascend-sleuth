@@ -245,8 +245,8 @@ content:
 `python3 scripts/log_skill_exec.py --skill to-reference --products "<ref-id>(active),..." --reason "<一句话：归纳 N case / 新增家族>" --source <来源> --tokens <估算>`
 
 词条产出、出最终报告前，执行一次伴随演进评估（`read skills/evolve-check/SKILL.md`
-遵循）：本轮发现可跨词条归纳的共性（T1）、新错误码家族首次入表需扩覆盖（T5）、
-或提取/归类环节有流程摩擦（T3/T4）时，**只记录信号**，交给后续显式
+遵循）：本轮发现可跨词条归纳的共性、新错误码家族首次入表需扩覆盖、
+或提取/归类环节有流程摩擦时，**只记录信号**，交给后续显式
 `/skill:self-evolve` 分诊；收尾不产 EV 卡、不跑 RSI。无信号则报告加一行"evolve-check：无演进
 信号"。这是流程默认收尾，**不需要用户另说"改进系统"**——演进由数据触发，像人
 学习。产出与流程报告一并给出。

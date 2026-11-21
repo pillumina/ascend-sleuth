@@ -41,7 +41,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import kb_sync  # noqa: E402  （知识库同步；失败不阻塞建单）
+try:
+    import kb_sync  # noqa: E402  （知识库同步；失败不阻塞建单）
+except Exception:  # 最小环境缺 PyYAML 等依赖时，同步降级但不挡建单
+    kb_sync = None
 from exec_log_path import resolve_traces  # noqa: E402  （运行时件锚主检出，同 shared_dir.py）
 from evolve.harness_usage import model_of, tokens_of  # noqa: E402  （模型名与 token 只从 DSH 会话记录读）
 
@@ -93,6 +96,9 @@ def kb_rev_of(root: Path) -> tuple[str, bool | None]:
 
 def sync_of(root: Path, *, no_sync: bool = False, no_network: bool = False) -> dict:
     """调 kb_sync；`--no-sync` 与 `--print-only` 只读本机状态，不联网。"""
+    if kb_sync is None:
+        return {"ok": False, "merge": "none", "reason": "unavailable",
+                "offline": True, "remote": "", "branch": ""}
     settings, config, config_error = kb_sync.load_settings(root)
     cfg = settings["sync"]
     if no_sync or no_network:
@@ -319,6 +325,10 @@ def main() -> int:
 
     if args.dry_run_env:
         kb, _dirty = kb_rev_of(root)
+        if kb_sync is None:
+            print("kb_sync: unavailable（缺少 PyYAML；不联网）")
+            print("traces 目录: " + str(resolve_traces(root)))
+            return 0
         settings, config, _problem = kb_sync.load_settings(root)
         cfg = settings["sync"]
         print("harness_session: " + (session or "（取不到）" + "——" + why))

@@ -96,7 +96,6 @@ detached HEAD 不自动合并——合并会改当前检出的 HEAD，而 worktr
 
 from __future__ import annotations
 
-import yaml
 import argparse
 import json
 import os
@@ -406,17 +405,33 @@ def _cooling_down(state: dict) -> bool:
 
 def deployment_sync_mode(root: Path) -> str:
     """只读 `sleuth.config.yaml` 的 `sync.mode`；其它段写坏不影响离线声明。"""
-    import sleuth_config as SC
-    path = Path(root) / SC.CONFIG_NAME
+    path = Path(root) / "sleuth.config.yaml"
     if not path.is_file():
         return "auto"
     try:
-        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    except (OSError, yaml.YAMLError):
+        text = path.read_text(encoding="utf-8")
+    except OSError:
         return "auto"
-    sync = doc.get("sync") if isinstance(doc, dict) else None
-    mode = sync.get("mode") if isinstance(sync, dict) else None
-    return "offline" if str(mode or "").strip().lower() == "offline" else "auto"
+    try:
+        import yaml
+        doc = yaml.safe_load(text) or {}
+        sync = doc.get("sync") if isinstance(doc, dict) else None
+        mode = sync.get("mode") if isinstance(sync, dict) else None
+        return "offline" if str(mode or "").strip().lower() == "offline" else "auto"
+    except Exception:
+        # 最小环境或 YAML 语法坏时只按缩进找 sync.mode，保证 offline 不被吞。
+        in_sync = False
+        for line in text.splitlines():
+            if re.match(r"^sync:\s*(?:#.*)?$", line):
+                in_sync = True
+                continue
+            if in_sync and line.strip() and not line.startswith((" ", "\t", "#")):
+                break
+            if in_sync:
+                match = re.match(r"^\s+mode:\s*[\"']?([^\"'#\s]+)", line)
+                if match:
+                    return "offline" if match.group(1).lower() == "offline" else "auto"
+        return "auto"
 
 def run_git(args, cwd: Path, timeout: float):
     """跑一条 git 命令。stdout/stderr 一律按 UTF-8 解码。"""
