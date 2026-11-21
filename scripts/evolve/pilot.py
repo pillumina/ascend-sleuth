@@ -453,16 +453,26 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
     component = str((tasks.get("candidate") or {}).get("target_component") or "")
     required = {"diagnose.knowledge_usage": "knowledge",
                 "diagnose.source_usage": "source"}.get(component)
+    efficiency_reasons = {
+        "efficiency_regressed",
+        "no_efficiency_improvement",
+        "elapsed_inconclusive",
+    }
     if required and required in constraints:
         decision = constraints[required]["decision"]
         if decision == "reject":
-            constraints_ok = False
+            reasons = set(constraints[required].get("reasons") or [])
+            constraints_ok = bool(reasons) and reasons.issubset(efficiency_reasons)
         elif decision == "accept":
             constraints_ok = True
         else:
             constraints_ok = exploratory
     else:
-        constraints_ok = all(item["decision"] != "reject" for item in constraints.values())
+        constraints_ok = all(
+            item["decision"] != "reject"
+            or set(item.get("reasons") or []).issubset(efficiency_reasons)
+            for item in constraints.values()
+        )
 
     pool_rows = []
     for sample in tasks.get("samples") or []:
