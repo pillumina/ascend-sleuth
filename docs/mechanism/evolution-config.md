@@ -44,6 +44,25 @@ sync:
 
 `evolution.policy` 是评估策略的唯一入口；`profiles` 只覆盖差异，不再单独维护 `policy-latency.yaml`。
 
+### 2.1 策略字段
+
+| 配置键 | 允许值 | 默认 | 含义 |
+|---|---|---|---|
+| `objective.primary_metric` | `case_hit` / `root_cause` / `rubric` | `case_hit` | 主指标；决定质量路径 |
+| `decision.alpha` | 0–1 | 0.10 | 显著性阈值，越小越严格 |
+| `samples.field_evaluation` | 正整数 | 9 | 主评估最小样本数 |
+| `samples.core_regression` | 正整数 | 30 | core 回归目标数 |
+| `samples.test` | 正整数 | 4 | test 集目标数 |
+| `samples.split` | `hash` / `group` | `hash` | 测试集切分方式 |
+| `cost.primary_cost_metric` | `tokens` / `tool_calls` / `rounds` / `elapsed_time` | `tokens` | 主成本维度 |
+| `cost.maximum_cost_increase_ratio` | ≥0 | 0.10 | 允许的成本上涨比例（公式里的 B） |
+| `cost.minimum_cost_improvement` | ≥0 | 0.10 | 成本路径要求的最小下降比例（公式里的 ε） |
+| `cost.max_quality_drop` | ≥0 | 0 | 允许的主指标非劣容差（公式里的 δ） |
+| `autonomy.default` | `A0`–`A5` | `A2` | 内部审批档位；A2 是 batch PR 人审 |
+| `autonomy.auto_merge.enabled` | true/false | false | A3 是否允许自动合并；false 时 A3 降 A2 |
+
+旧键 `primary`、`field_eval`、`primary_dimension`、`B`、`epsilon`、`delta` 仍可被 legacy 读取，但新配置不再新增。
+
 ## 2 角色边界
 
 | role | 本地产生 | 不产生 | 适用 |

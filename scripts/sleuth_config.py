@@ -141,6 +141,41 @@ def load_config(root: Optional[Path] = None, path: Optional[Path] = None) -> Dic
     return cfg
 
 
+POLICY_KEY_ALIASES = {
+    "objective.primary_metric": "objective.primary",
+    "cost.primary_cost_metric": "cost.primary_dimension",
+    "cost.maximum_cost_increase_ratio": "cost.B",
+    "cost.minimum_cost_improvement": "cost.epsilon",
+    "cost.max_quality_drop": "cost.delta",
+    "samples.field_evaluation": "samples.field_eval",
+}
+COST_VALUE_ALIASES = {
+    "elapsed_time": "time",
+    "tool_calls": "calls",
+}
+
+
+def _normalize_policy(raw: Dict[str, Any]) -> Dict[str, Any]:
+    def walk(value: Any, prefix: str = "") -> Any:
+        if not isinstance(value, dict):
+            return value
+        out: Dict[str, Any] = {}
+        for key, item in value.items():
+            path = f"{prefix}.{key}" if prefix else str(key)
+            target = POLICY_KEY_ALIASES.get(path)
+            if target:
+                target_key = target.rsplit(".", 1)[-1]
+                out[target_key] = walk(item, target)
+            else:
+                out[key] = walk(item, path)
+        return out
+    normalized = walk(copy.deepcopy(raw))
+    cost = normalized.get("cost")
+    if isinstance(cost, dict) and cost.get("primary_dimension") in COST_VALUE_ALIASES:
+        cost["primary_dimension"] = COST_VALUE_ALIASES[cost["primary_dimension"]]
+    return normalized
+
+
 def policy_for(config: Dict[str, Any], profile: Optional[str] = None) -> Dict[str, Any]:
     evolution = config.get("evolution") or {}
     policy = copy.deepcopy(evolution.get("policy") or {})
@@ -149,7 +184,7 @@ def policy_for(config: Dict[str, Any], profile: Optional[str] = None) -> Dict[st
         if profile not in profiles:
             raise ConfigError(f"未知策略 profile {profile!r}；可选 {sorted(profiles)}")
         policy = _deep_merge(policy, profiles[profile])
-    return policy
+    return _normalize_policy(policy)
 
 
 def store_for(config: Dict[str, Any]) -> Dict[str, Any]:

@@ -1,15 +1,23 @@
-# 唯一部署配置：角色、策略、成本 profile、RSI store、同步模式。
-# 旧 deployment.yaml / eval/policy*.yaml / store.yaml 只作兼容读取。
+# 唯一部署配置：角色、评估策略、成本 profile、RSI store、知识库同步。
+# 旧 deployment.yaml / eval/policy*.yaml / .s2-replay/evolve/store.yaml 只作兼容读取。
+# 完整字段说明见 docs/mechanism/evolution-config.md；本文件只写一个部署的实际取值。
 schema: sleuth-config-v1
+
 deployment:
   name: ascend-sleuth
+
 evolution:
+  # maintainer：有真实样本/runner/judge，可跑 RSI；signal-only：只记信号；off：关闭演进记录。
   role: maintainer
+
   store:
+    # local：JSONL 文件；memory：仅进程内（测试/演练）。
     backend: local
     path: .s2-replay/evolve/rsi-events.jsonl
+
   policy:
     autonomy:
+      # A0–A5 是内部审批档位；数字越大自动化越高。A2 是默认的 batch PR 人审档。
       default: A2
       overrides:
         docs.non_normative: A3
@@ -17,29 +25,46 @@ evolution:
         feedback.candidate: A3
         feedback.pool: A2
       auto_merge:
+        # true 才允许 A3 自动合并；false 时 A3 降为 A2。
         enabled: false
+
     objective:
-      primary: case_hit
+      # 主指标：case_hit（命中 case）/ root_cause（根因一致）/ rubric（评分）。
+      primary_metric: case_hit
+      # 任一不通过即拒绝；允许追加自定义约束名。
       hard_constraints:
-      - safety
-      - fix
-      - regression
-      - test
+        - safety
+        - fix
+        - regression
+        - test
+
     decision:
+      # paired_binary：同一批样本上的二元配对判定。
       method: paired_binary
-      alpha: 0.1
+      # 显著性阈值，越小越严格。
+      alpha: 0.10
+
     samples:
+      # 各阶段的最小样本数；field_evaluation 是主评估样本数。
       core_regression: 30
-      field_eval: 9
+      field_evaluation: 9
       test: 4
+      # 抽测试集的切分方式：hash（按内容稳定切分）/ group（按组切分）。
       split: hash
+      # 可选：按 stratum 名覆盖该层目标数，例如 {"inference": 4}。
       strata: {}
+
     cost:
-      primary_dimension: tokens
+      # 主成本：tokens / tool_calls / rounds / elapsed_time。
+      primary_cost_metric: tokens
+      # 计费口径：billed / uncached / out / uncached_out / cache_read / calls / rounds / ms / time。
       budget_metric: billed
-      B: 0.1
-      epsilon: 0.1
-      delta: 0
+      # 允许的最大成本上涨比例（0.10 = 最多贵 10%）。
+      maximum_cost_increase_ratio: 0.10
+      # 成本路径要求的最小下降比例（0.10 = 至少便宜 10%）。
+      minimum_cost_improvement: 0.10
+      # 质量非劣边界；0 表示不允许质量下降。
+      max_quality_drop: 0
       runs:
         max_pairs: 9
         max_tokens: null
@@ -48,9 +73,11 @@ evolution:
         regression_pairs: 6
         regression_full_pairs: 30
         benchmark_runs: 3
+
     experiment:
       target: skill
       algorithm: baseline
+      # 七环节使用的实现；值是 stages registry 的 id。
       stages:
         attribute: attribute.trace_rule
         select_region: select.region_hardcount
@@ -60,14 +87,19 @@ evolution:
         gate: gate.paired
       budget: {}
       seed: 0
+
     rubrics:
       case_version: case-v1
       reference_version: ref-v1
-      threshold: 0.7
+      threshold: 0.70
       double_label: 10
+
   profiles:
     latency:
       cost:
-        primary_dimension: time
+        # 延迟优先 profile：只覆盖主成本，不改变其余策略。
+        primary_cost_metric: elapsed_time
+
 sync:
+  # auto：允许联网 fetch；offline：只读本地。
   mode: auto
