@@ -31,6 +31,7 @@ def run_proposal(root: Path, proposal: Proposal, samples: List[str], output: Pat
                  baseline_traces: Optional[Path] = None,
                  reuse_index: Optional[int] = None,
                  exploratory: bool = False,
+                 card: Optional[str] = None,
                  dry_run: bool = False) -> Dict[str, Any]:
     if not proposal.candidate:
         raise FlowError("proposal has no candidate; provide draft.candidate")
@@ -54,6 +55,8 @@ def run_proposal(root: Path, proposal: Proposal, samples: List[str], output: Pat
                                  if line.startswith("-") and not line.startswith("---")),
             }
             proposal.artifact["base_rev"] = (proposal.candidate or {}).get("base_rev")
+            if card:
+                proposal.artifact["ev_card"] = str(card)
         except Exception:
             pass
     if dry_run:
@@ -69,7 +72,7 @@ def run_proposal(root: Path, proposal: Proposal, samples: List[str], output: Pat
     judge_data = _load_judge(judge, tasks)
     collected = pilot_collect(output, judge=judge)
     result = pilot_decide(output, judge, policy, reuse_index=reuse_index,
-                          proposal=proposal.id, exploratory=exploratory)
+                          proposal=proposal.id, card=card, exploratory=exploratory)
     decision = (result.get("conclusion") or {}).get("decision") or "unknown"
     proposal.status = decision
     proposal.decision = decision
@@ -81,7 +84,7 @@ def run_proposal(root: Path, proposal: Proposal, samples: List[str], output: Pat
     archive.append(proposal)
     experiment = _experiment_record(proposal, tasks, judge, decision,
                                     result.get("conclusion") or {}, collected,
-                                    exploratory=exploratory)
+                                    exploratory=exploratory, card=card)
     ExperimentStore.for_base(archive.path.parent).append(experiment)
     event = RSIStore(archive.path.parent).record_experiment(
         proposal.to_dict(), experiment, result.get("conclusion") or {},
@@ -211,7 +214,8 @@ def _sample_context(tasks: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def _experiment_record(proposal: Proposal, tasks: Dict[str, Any], judge: Path,
                        decision: str, conclusion: Dict[str, Any],
-                       collected: Dict[str, Any], *, exploratory: bool = False) -> Dict[str, Any]:
+                       collected: Dict[str, Any], *, exploratory: bool = False,
+                       card: Optional[str] = None) -> Dict[str, Any]:
     data = json.loads(Path(judge).read_text(encoding="utf-8"))
     samples = [str(row.get("short_id") or row.get("id")) for row in tasks.get("samples") or []]
     baseline = _side_scores(data, "baseline", samples)
@@ -233,6 +237,7 @@ def _experiment_record(proposal: Proposal, tasks: Dict[str, Any], judge: Path,
         "eval_ready": False,
         "summary": proposal.summary,
         "proposal": proposal.id,
+        "ev_card": card,
         "proposal_snapshot": proposal.to_dict(),
         "conclusion_snapshot": conclusion,
         "judge_meta": data.get("meta") if isinstance(data.get("meta"), dict) else None,

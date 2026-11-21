@@ -302,6 +302,8 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
     }
     if record.get("proposal"):
         result["proposal"] = str(record["proposal"])
+    if record.get("ev_card"):
+        result["ev_card"] = str(record["ev_card"])
     if exploratory:
         result["exploratory"] = True
     for key in ("proposal_snapshot", "conclusion_snapshot", "judge_meta"):
