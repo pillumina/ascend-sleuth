@@ -70,17 +70,17 @@ def next_id(root: Path) -> str:
 
 
 class DeploymentGate(Exception):
-    """部署声明不允许产卡（record-only / off）。调用方要把它翻成可照做的提示。"""
+    """部署角色不允许产卡（signal-only / off）。调用方要把它翻成可照做的提示。"""
 
 
 def make_new(root: Path, force: bool = False) -> Path:
     if not force:
         import evolve_mode as EM
-        mode, source = EM.read_mode(root)   # 声明写坏时抛 ModeError，调用方翻成提示
-        if mode != "full":
+        role, source = EM.read_role(root)   # 配置写坏时抛 ModeError，调用方翻成提示
+        if role != "maintainer":
             raise DeploymentGate(
-                f"本部署 evolution.mode={mode}（{source}）：不产卡。"
-                f"记录观察请用 python3 scripts/evolve_intake.py record（它自动写信号台账）；"
+                f"本部署 role={source}：不在收尾自动产卡。"
+                f"记录观察请用 python3 scripts/evolve_intake.py record（信号台账）；"
                 f"演练或确需本地建档再加 --force。")
     cid = next_id(root)
     tpl = root / TEMPLATE

@@ -227,7 +227,7 @@ reference 由流程里的**缺口**触发（**不是第四检索层**：不参�
 - **停止原因（收尾写一次）**：顶层 `stop_reason` 记这一单为什么停（`resolved_confirmed` / `halted_ask_user` / `budget_exhausted` / `escalated_tier3` / `abandoned` / `unknown`）。停止点是探索策略的一部分，不记它以后就判断不了当时该不该停在这里；漏写按未记录统计。
 - **vllm-kb 开没开**：只看工具目录。主组是 `vllm_kb_code` / `vllm_kb_fix` / `vllm_kb_doc`（DSH 里由 `vllm-kb-tools` 行控制）；`vllm_kb_ocr` 有独立一行（`vllm-kb-ocr`），可以只开主组不开它。建 session 时按主组在不在写顶层 `external_evidence`（`'on'` / `'off'`，加引号），一次写定。不要用探端点判断开关——那是可达性。
 - **知识库版本**：建 session 时写顶层 `kb_rev`（`python3 scripts/kb_rev.py` 的末行 = 检出 HEAD 短 sha），**一次写定、之后不改**。它记的是"这一单跑在哪一版 `knowledge/` 上"：跨机接手时接手方要拿它比对本机版本（不一致意味着候选集与 case id 可能对不上，接手侧会看到提示），事后误诊归因也要它（"当时为什么没命中"取决于当时库里有什么）。拿不到 git 就写 `unknown`，别编值。
-- **trace 边界（只记诊断轨迹 + 误诊归因，别混自演进）**：用户中途提出的**流程改进/设计讨论**不是本诊断输入（自演进信号）——走 `traces/evidence/<session_id>/<session_id>_evnote.md`（渐进式披露，正常定位不披露，真要改 SKILL/脚本时才升级为 EV 卡）；`attribution` 执行错归因**仅限"确实影响本次结论"**，纯流程改进走 EV 卡。**别把改进讨论写成 trace 的 user/agent 事件**，也别用 `source_analysis` 记 skill 编辑。
+- **trace 边界（只记诊断轨迹 + 误诊归因，别混自演进）**：用户中途提出的**流程改进/设计讨论**不是本诊断输入（自演进信号）——走 `traces/evidence/<session_id>/<session_id>_evnote.md`（渐进式披露，正常定位不披露，真要改 SKILL/脚本时先记信号）；`attribution` 执行错归因**仅限"确实影响本次结论"**，纯流程改进走信号台账。**别把改进讨论写成 trace 的 user/agent 事件**，也别用 `source_analysis` 记 skill 编辑。
 
 > 完整细节（`KNOWN_ACTIONS` 词表、外部事实获取落盘、agent 事件两层、零执行评估所需的三项记录、反馈闭环格式、词表同步纪律）见 `references/diagnosis-trace.md`。trace 是误诊归因的唯一依据：误诊先读 trace 断 **case 错**（改库）还是**执行错**（改 skill）。不写 trace → 无法归因 → 可能改坏正确的 case。
 
@@ -263,5 +263,5 @@ reference 由流程里的**缺口**触发（**不是第四检索层**：不参�
 - 不要连续尝试第三个 case——**两次 fix 未解决**即转人工（误诊保护的串联保护；候选被排除不计入）
 - 不要把全量 profiler 灌进 context——裁剪到相关 rank + 栈尾
 - 不要用 interrupt 的 grep 思路建 precision 的 quickly_check（category 形态不同）
-- **不要直接改本 skill / triage / reference 等会进诊断上下文的资产——改进动作必须先记录**：把观察交给 `python3 scripts/evolve_intake.py record …`（按部署声明落卡或落台账，别直接调 `ev_proposal.py --new`）再涉及。诊断中发现的流程改进（执行错/摩擦）走 `attribution`（执行错归因喂 component_tally）或 EV 卡（主动设计改进），**不混入本诊断 trace**。
+- **不要直接改本 skill / triage / reference 等会进诊断上下文的资产——改进动作先记录信号**：把观察交给 `python3 scripts/evolve_intake.py record …`；收尾不产 EV 卡、不跑 RSI。诊断中发现的流程改进（执行错/摩擦）走 `attribution`（执行错归因喂 component_tally），行为质量候选留给显式的 `/skill:self-evolve` 分诊，**不混入本诊断 trace**。
 - 被打断 → `/skill:resume-diagnosis`

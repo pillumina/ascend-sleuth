@@ -2,9 +2,9 @@
 
 钉住四件事——它们是「任何部署都不丢信号」的全部依据：
 
-1. 分流只由部署声明决定：full → 卡骨架（source_signals / target 已填），record-only → 台账，off → 不落；
+1. 分流只由部署角色决定：maintainer / signal-only → 信号台账，off → 不落；
 2. 载荷先于分流校验：证据太短、target 指不到、缺出处都拒收（记录层的质量下限）；
-3. 卡路径有硬门：非 full 部署直接调 `ev_proposal.py --new` 会被拒（--force 是逃生口）；
+3. 非 maintainer 部署直接调 `ev_proposal.py --new` 会被拒（--force 是逃生口）；
 4. 台账有生命周期：new → triaged / dropped，export 默认不导 dropped。
 """
 

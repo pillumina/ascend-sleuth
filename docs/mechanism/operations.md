@@ -35,7 +35,7 @@
 | 每周批审收尾的检查 | 系统自动 | 知识库的覆盖缺口与结构问题 |
 | 深度轮（全库观测） | 人显式要求 | 跨轮聚合：归因聚类、容量、重跑未做的条目、指标漂移 |
 
-伴随评估是内容执行的收尾动作，不构成独立目标。用户下的是内容目标（沉淀、补 case、诊断）时，该流程收尾自动执行 `evolve-check`。只有深度全库体检（没有内容目标）才走会话协议，由 `/skill:self-evolve` 承载。
+内容流程收尾只执行 `evolve-check`，它只记录信号，不产 EV 卡、不跑 RSI、不跑验证门。只有用户显式发起深度全库体检时，才走 `/skill:self-evolve`；深度轮只分诊候选，不自动执行 RSI。
 
 部署可以声明演进角色：`sleuth.config.yaml` 的 `evolution.role`，读端 `scripts/evolve_mode.py`。`maintainer` 先落信号，行为质量进 RSI、内容缺口进 ingest，不自动产 EV 卡；`signal-only` 只落信号、不跑实验；`off` 只留一条跳过记录。只做内容沉淀的下游部署用 `signal-only`：本地卡号会与上游号段重号，冲突无法机械解决。
 
@@ -112,7 +112,7 @@
 | 看完整 metrics 体检 | `python3 scripts/evolve.py health --json`（只读；`--check` 有 fail 退出 1，broken 退出 2；不带 `--check` 的读数命令仍退出 0，与 `metrics_health.py` 一致） |
 | 记录一个 baseline 提案 | `python3 scripts/evolve.py experiment propose --target skill --component <组件> --summary <一句话>`（只写本地实验记录，不跑模型、不合入） |
 | 查看本地实验记录 | `python3 scripts/evolve.py experiment records --limit 10` |
-| 记录 subagent 对照实验 | `/skill:self-evolve` 的 `references/experiment.md` 产 `result.json`，再 `experiment record --file result.json` |
+| 记录 subagent 对照实验 | 显式进入 RSI：`experiment request` → `experiment flow` → `experiment show` |
 | agent-native GEPA | 状态机 `scripts/agent_gepa.py`；不接官方 gepa 库，不依赖外部 endpoint |
 | 增量 trace 归因 | `python3 scripts/evolve.py traces sync`；`traces status` 看 snapshot/状态 |
 | 知识使用效率 | `python3 scripts/evolve.py knowledge-usage evaluate/compare`；只读 usage JSON，不改 case |
@@ -257,7 +257,7 @@ S2 校准集的 selection 与 test 分离是规模条件：池子撑不起两半
 
 ### 5.1 已落地
 
-- 三个入口：`skills/evolve-check/SKILL.md`（伴随评估）、`skills/self-evolve/SKILL.md`（深度轮）、`skills/knowledge-groom/SKILL.md`（每周批审）。
+- 三个入口：`skills/evolve-check/SKILL.md`（只记信号）、`skills/self-evolve/SKILL.md`（深度分诊）、`skills/knowledge-groom/SKILL.md`（每周批审）；重型 RSI 只由显式选择候选后进入。
 - 部署级演进模式：`sleuth.config.yaml` 的 `evolution.role` 与 `scripts/evolve_mode.py`。
 - 积压水位、合入点回写与单一分子实现：`scripts/ev_proposal.py --waterline`、`--mark-merged --from-prs`。
 - 内容流程执行记录与聚合进 timeline。

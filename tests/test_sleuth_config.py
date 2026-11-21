@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""单一配置 sleuth.config.yaml 的读取、profile、legacy 兼容与 store 优先级。"""
+"""单一配置 sleuth.config.yaml 的读取、profile、流水线与 store 优先级。"""
 
 import tempfile
 import unittest

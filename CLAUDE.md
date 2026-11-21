@@ -20,7 +20,7 @@ This is a **knowledge/skills repo** — there is no build, no lint, no test suit
 |------|---------|-----------|------|
 | **诊断闭环** | 每次问题（分钟级） | `diagnose`（被打断则 `resume-diagnosis`） | 修复建议 + `traces/<session>.yaml` |
 | **沉淀闭环** | 定位结束 / 定期批量 | `to-postmortem`、`to-reference`、`issue-ingest` | `postmortems/inbox/` 草稿 → groom 升格为 case / reference |
-| **演进闭环** | 内容流程收尾 / 全库体检轮 | `evolve-check`（伴随）、`self-evolve`（深度轮） | EV 卡 → 执行 → 验证 → 攒批 PR（人审） |
+| **演进闭环** | 内容流程收尾 / 全库体检轮 | `evolve-check`（只记信号）、`self-evolve`（只分诊） | signal → 分诊 → 确定性修复 / 内容 / 显式 RSI / 高风险 EV 授权 → PR |
 
 三者共用一条链：前两个产生数据，演进读数据改机制，改完回落。**机制地图、权威归属（每件事由哪篇文档说了算）与周度 runbook 在 `docs/mechanism/rsi-mechanism.md`——那是自演进元机制的唯一技术入口**。
 
@@ -96,7 +96,7 @@ Golden-case 回归套件在 `eval/golden/`：公开仓只放构造示例，真�
 
 - **门禁分级（改哪里测哪里，不机械全量）**与判据强度：`docs/guide/eval.md`。
 - **封存对照集** `eval/holdout.yaml` 按内容哈希钉住（`scripts/holdout.py --check`，CI `holdout-integrity`）：改内容或删除即红，合法改需维护者 `--reseal` 且 PR 带 `holdout-change` 标签。**强度注意**：哈希是硬门，但"谁有权 reseal"在 CODEOWNERS 落实前是半硬（有写权限者仍可打标签），别读成"已有人把关"。
-- **评审把手**：EV 卡的 `predicted_effect.measure` 给"一条命令 + 期望"，`python3 scripts/ev_measure.py <卡号> --run` 打印实测并判三态。它证明**效果**，不证明价值。
+- **评审把手**：RSI 实验的 measure 给“一条命令 + 期望”；高风险 EV 卡只记录授权/决策，不替代 RSI 或 PR。`python3 scripts/ev_measure.py <卡号> --run` 对历史卡仍只证明效果，不证明价值。
 
 ## Multi-agent collaboration (worktree 约束)
 

@@ -124,6 +124,20 @@ flowchart TD
 - **PR**：真正落地。
 - **EV 卡**：不是实验结果的别名。新流程只在高风险或 RSI 覆盖不到时保留轻量授权记录；历史卡只读。
 
+### 3.1 谁在什么时候做什么
+
+| 阶段 | 触发 | 执行者 | 产物 |
+|---|---|---|---|
+| signal | 内容流程收尾 | `evolve-check` | `proposals/signals/` |
+| 分诊 | 用户显式发起深度轮 | `self-evolve` | 分类后的候选队列 |
+| 确定性 bug | 分诊或现场发现 | agent | 回归测试 + PR |
+| 内容缺口 | 分诊 | 内容 skill | case / reference / ingest |
+| 行为质量 | 用户选中候选后显式发起 | RSI | proposal → experiment → decision |
+| 高风险授权 | 规范/协议/权限/自动合并边界 | 人审 + agent | 轻量 EV 卡 |
+| 落地 | accept 或修复完成 | agent + 人审 | PR |
+
+`evolve-check` 和 `self-evolve` 都不自动执行 RSI；`self-evolve` 只生产候选，不生产结论。
+
 ## 4 确定性 bug 不走 RSI
 
 代码 bug 有确定 oracle：
