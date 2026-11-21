@@ -1,0 +1,68 @@
+# 自演进评估循环的可调策略（唯一调参入口）。
+#
+# 默认值对应设计文档 2026-11-17-self-evolution-design.md §12。加载时递归校验
+# 未知键与非法枚举；未知键报错，不静默忽略。哈希写进结论的 versions.policy。
+#
+# 不进这里的：状态机、安全门、test 只从 core 抽、根因硬约束、答案可见性。
+# 那些是评估协议，改动要升协议版本。
+
+autonomy:
+  default: A2
+  overrides:
+    docs.non_normative: A3
+    docs.normative: A1
+    feedback.candidate: A3
+    feedback.pool: A2
+  auto_merge:
+    enabled: false
+
+objective:
+  primary: case_hit
+  hard_constraints: [safety, fix, regression, test]
+
+decision:
+  method: paired_binary
+  alpha: 0.10
+
+samples:
+  core_regression: 30
+  field_eval: 9
+  test: 4
+  split: hash
+  strata: {}
+
+# 延迟优先 profile：仅用于显式 latency 实验，不替代 eval/policy.yaml。
+# 质量仍由 paired_binary 判定；成本由 elapsed_ms 主导。
+cost:
+  primary_dimension: time
+  budget_metric: billed
+  B: 0.10
+  epsilon: 0.10
+  delta: 0
+  runs:
+    max_pairs: 9
+    max_tokens: null
+    early_stop: true
+    baseline_reuse: true
+    regression_pairs: 6
+    regression_full_pairs: 30
+    benchmark_runs: 3
+
+experiment:
+  target: skill
+  algorithm: baseline
+  stages:
+    attribute: attribute.trace_rule
+    select_region: select.region_hardcount
+    select_candidate: select.best
+    propose: propose.agent
+    judge: judge.subagent
+    gate: gate.paired
+  budget: {}
+  seed: 0
+
+rubrics:
+  case_version: case-v1
+  reference_version: ref-v1
+  threshold: 0.7
+  double_label: 10

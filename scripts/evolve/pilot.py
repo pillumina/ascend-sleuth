@@ -495,6 +495,8 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
 
     cost_cfg = policy.get("cost") or {}
     dimension = str(cost_cfg.get("primary_dimension") or "tokens")
+    cost_field = {"time": "elapsed_ms", "calls": "tool_calls", "rounds": "tool_calls"}.get(
+        dimension, dimension)
     base_rows = {row["sample_id"]: row for row in collect["arms"]["baseline"]}
     cand_rows = {row["sample_id"]: row for row in collect["arms"]["candidate"]}
     cost_dimensions = {}
@@ -515,7 +517,7 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
                 "candidate": sum(pair[1] for pair in pairs),
                 "paired": len(pairs),
             }
-    chosen = cost_dimensions.get(dimension) or cost_dimensions.get("tokens")
+    chosen = cost_dimensions.get(cost_field) or cost_dimensions.get("tokens")
     cost_b = chosen["baseline"] if chosen else None
     cost_c = chosen["candidate"] if chosen else None
     cost_paired = chosen["paired"] if chosen else 0

@@ -14,7 +14,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement
 
     const CHANNEL = '/rsi-observatory'
-    const PLUGIN_VERSION = '0.5.0'
+    const PLUGIN_VERSION = '0.6.0'
     const PANEL_ID = 'rsi-observatory'
     const PANEL_LABEL = '自演进实验'
 
@@ -92,10 +92,12 @@ window.__ModuleLoader__.load({
     function formatCost(conclusion) {
       const cost = conclusion && conclusion.cost
       if (!cost || typeof cost !== 'object') return '—'
-      const tokens = cost.tokens
-      if (tokens && typeof tokens === 'object') {
+      const primary = conclusion.metrics && conclusion.metrics.cost_primary
+      const item = (primary && cost[primary]) || cost.tokens
+      if (item && typeof item === 'object') {
         const paired = typeof cost.paired === 'number' ? cost.paired : null
-        return String(tokens.candidate) + ' 词元' + (paired !== null ? ' · ' + paired + ' 对' : '')
+        const label = ({ tokens: '词元', time: '耗时', calls: '工具调用' }[primary] || '词元')
+        return String(item.candidate) + ' ' + label + (paired !== null ? ' · ' + paired + ' 对' : '')
       }
       if (typeof cost === 'number') return String(cost)
       return '—'

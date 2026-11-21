@@ -121,6 +121,7 @@ test('判定与缺口的文案映射保留未知枚举原值', () => {
   assert.equal(t.pairedText({ b: 1, c: 0, n: 9 }), '候选胜 1 · 对照胜 0 · 样本 9')
   assert.equal(t.formatCost(detailFixture.conclusion), '980000 词元 · 9 对')
   assert.equal(t.formatCost({}), '—')
+  assert.equal(t.formatCost({ cost: { time: { baseline: 10, candidate: 2 }, paired: 1 }, metrics: { cost_primary: 'time' } }), '2 耗时 · 1 对')
   assert.equal(t.eventKinds(detailFixture.history).join(','), 'experiment')
 })
 
