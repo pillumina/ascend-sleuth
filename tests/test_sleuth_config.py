@@ -1,0 +1,94 @@
+# -*- coding: utf-8 -*-
+"""单一配置 sleuth.yaml 的读取、profile、legacy 兼容与 store 优先级。"""
+
+import tempfile
+import unittest
+from pathlib import Path
+import sys
+
+import yaml
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import sleuth_config as SC  # noqa: E402
+from evolve.policy import load_config_policy  # noqa: E402
+from evolve.store import StoreConfig  # noqa: E402
+
+
+class SleuthConfigTest(unittest.TestCase):
+    def test_unified_config_carries_role_policy_store_sync(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "sleuth.yaml").write_text(yaml.safe_dump({
+                "schema": SC.SCHEMA,
+                "evolution": {
+                    "role": "signal-only",
+                    "store": {"backend": "memory"},
+                    "policy": {"decision": {"alpha": 0.05}},
+                    "profiles": {"latency": {"cost": {"primary_dimension": "time"}}},
+                },
+                "sync": {"mode": "offline"},
+            }), encoding="utf-8")
+            cfg = SC.load_config(root)
+            self.assertEqual(SC.role(cfg), "signal-only")
+            self.assertEqual(SC.sync_mode(cfg), "offline")
+            self.assertEqual(SC.store_for(cfg)["backend"], "memory")
+            self.assertEqual(load_config_policy(cfg)["decision"]["alpha"], 0.05)
+            self.assertEqual(load_config_policy(cfg, "latency")["cost"]["primary_dimension"], "time")
+
+    def test_legacy_deployment_still_loads(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "deployment.yaml").write_text(
+                'evolution:\n  mode: "record-only"\nsync:\n  mode: "offline"\n', encoding="utf-8")
+            cfg = SC.load_config(root)
+            self.assertEqual(SC.role(cfg), "signal-only")
+            self.assertEqual(SC.sync_mode(cfg), "offline")
+            self.assertIn("legacy", cfg["_source"])
+
+    def test_unified_wins_over_legacy(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "deployment.yaml").write_text('evolution:\n  mode: "full"\n', encoding="utf-8")
+            (root / "sleuth.yaml").write_text(yaml.safe_dump({
+                "schema": SC.SCHEMA,
+                "evolution": {"role": "off"},
+            }), encoding="utf-8")
+            self.assertEqual(SC.role(SC.load_config(root)), "off")
+
+    def test_unknown_top_level_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "sleuth.yaml").write_text(yaml.safe_dump({
+                "schema": SC.SCHEMA, "unexpected": True,
+            }), encoding="utf-8")
+            with self.assertRaises(SC.ConfigError):
+                SC.load_config(root)
+
+    def test_unknown_profile_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "sleuth.yaml").write_text(yaml.safe_dump({
+                "schema": SC.SCHEMA, "evolution": {"role": "off"},
+            }), encoding="utf-8")
+            cfg = SC.load_config(root)
+            with self.assertRaises(SC.ConfigError):
+                SC.policy_for(cfg, "missing")
+
+    def test_store_config_reads_unified_path(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            base = root / ".s2-replay" / "evolve"
+            base.mkdir(parents=True)
+            (root / "sleuth.yaml").write_text(yaml.safe_dump({
+                "schema": SC.SCHEMA,
+                "evolution": {"store": {"backend": "local", "path": ".s2-replay/evolve/events.jsonl"}},
+            }), encoding="utf-8")
+            cfg = StoreConfig.load(base)
+            self.assertEqual(cfg.backend, "local")
+            self.assertTrue(str(cfg.options["path"]).endswith("events.jsonl"))
+
+
+if __name__ == "__main__":
+    unittest.main()

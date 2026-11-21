@@ -352,21 +352,26 @@ def check_evolution(root: Path):
     能分开。声明写坏只挡演进流程，不挡诊断与沉淀，所以记降级而不是阻断。
     """
     try:
-        from evolve_mode import read_mode, ModeError
+        from evolve_mode import read_role, ModeError
     except Exception as e:
         return {"id": "evolution", "label": "演进模式", "kind": "policy", "state": DEGRADE,
                 "detail": f"读不出声明（{e.__class__.__name__}）",
                 "fix": "确认 scripts/evolve_mode.py 在（缺文件时收尾读不到部署模式）"}
     try:
-        mode, source = read_mode(root)
+        role, source = read_role(root)
+        if role is None:
+            from evolve_mode import read_mode
+            mode, source = read_mode(root)
+        else:
+            mode = {"maintainer": "full", "signal-only": "record-only", "off": "off"}[role]
     except ModeError as e:
         return {"id": "evolution", "label": "演进模式", "kind": "policy", "state": DEGRADE,
                 "detail": f"声明写坏：{e}",
                 "note": "收尾检查会停下来问人，不会自己挑一档跑",
-                "fix": "改 deployment.yaml 的 evolution.mode 为 full / record-only / off 之一"}
+                "fix": "改 sleuth.yaml 的 evolution.role 为 maintainer / signal-only / off 之一"}
     meaning = {
-        "full": "照常产卡并攒批进 PR",
-        "record-only": "只记信号不产卡（内网 fork 的预期形态）",
+        "full": "维护者部署：信号分诊后可跑 RSI 实验；EV 卡只作高风险授权",
+        "record-only": "只记信号，不产卡、不跑实验（本地/内网 fork）",
         "off": "不做收尾检查",
     }[mode]
     return {"id": "evolution", "label": "演进模式", "kind": "policy", "state": OK,

@@ -37,35 +37,35 @@ description: >
 地位）。如果一轮内容执行本身就是自演进深度轮的一部分（self-evolve 驱动），跳过本
 协议（深度轮已含观测）。
 
-**触发受部署声明约束**：这个部署要不要产卡由仓库根 `deployment.yaml` 的
-`evolution.mode` 决定（第 0 步读），不由本协议自己决定。只做内容沉淀的下游部署设
-`record-only`：信号照记，卡不产——本地卡号会与上游号段重号，合并时无法机械解决。
+**触发受部署声明约束**：这个部署要不要记录、记录到哪一层由仓库根 `sleuth.yaml` 的
+`evolution.role` 决定（第 0 步读），不由本协议自己决定。只做内容沉淀的下游部署设
+`signal-only`：信号照记，卡不产——本地卡号会与上游号段重号，合并时无法机械解决。
 
 ## 评估步骤（先扫信号，无信号即止）
 
 **第 0 步：读部署声明**（先于一切，一行命令）：
 
 ```
-python3 scripts/evolve_mode.py --json      # → {"mode": "full" | "record-only" | "off", "source": "<来源>"}
+python3 scripts/evolve_mode.py --json      # → {"role": "maintainer" | "signal-only" | "off", "source": "<来源>"}
 ```
 
-| mode | 本协议怎么执行 |
+| role | 本协议怎么执行 |
 |---|---|
-| `full` | 照第 1～4 步执行 |
-| `record-only` | 第 1、2 步照做；第 3 步不产卡、不查重、不跑验证门，只把命中的信号写进台账 `proposals/signals/`（见第 3 步的 record-only 分支）；第 4 步照落记录 |
+| `maintainer` | 第 1～2 步扫信号；行为质量进 RSI，内容缺口进 ingest；不自动产 EV 卡 |
+| `signal-only` | 第 1、2 步照做；第 3 步不产卡、不查重、不跑验证门，只把命中的信号写进台账 `proposals/signals/`（见第 3 步的 signal-only 分支）；第 4 步照落记录 |
 | `off` | 不做第 1～3 步；收尾说明只写一行（"跳过，按部署声明"），并落一条 skip 记录（不落的话，"没跑"与"跑了无信号"在数据上无法区分） |
 
-- 脚本退出码 2 = 声明写坏（取值不在词表、YAML 解析失败、有文件但缺 `evolution.mode`）。
+- 脚本退出码 2 = 声明写坏（取值不在词表、YAML 解析失败、有文件但缺 `evolution.role`）。
   把报错原文给用户，**不要自己挑一档继续跑**——静默降级会让"这个部署在演进"与
   "这个部署关掉了演进"在数据上混为一谈（原则十）。
-- 缺省（仓库根无 `deployment.yaml`）= `full`。`source` 要写进收尾说明，读的人才知道
-  这一轮按哪档跑的、依据在哪（`deployment.yaml` / 环境变量 / 缺省）。
+- 缺省（仓库根无 `sleuth.yaml`）= `maintainer`。`source` 要写进收尾说明，读的人才知道
+  这一轮按哪档跑的、依据在哪（`sleuth.yaml` / 环境变量 / 缺省）。
 - 环境变量 `ASCEND_SLEUTH_EVOLUTION` 优先于文件，只用于临时覆盖（演练、CI、一次运行），
-  不是团队声明：要长期改这个部署的行为，改 `deployment.yaml` 并提交。
+  不是团队声明：要长期改这个部署的行为，改 `sleuth.yaml` 并提交。
 - **用户说"这个部署不要产卡 / 只做沉淀"时**，不要让对方手改 YAML：跑
-  `python3 scripts/evolve_mode.py --set record-only`，并说明两件事——写的是仓库根的
-  `deployment.yaml`（提交后对该仓所有 agent 生效，未提交时只在本工作区生效），以及之后
-  机制缺口该怎么交（MR 描述或 issue）。要恢复说 `--set full`。
+  `python3 scripts/evolve_mode.py --set signal-only`，并说明两件事——写的是仓库根的
+  `sleuth.yaml`（提交后对该仓所有 agent 生效，未提交时只在本工作区生效），以及之后
+  机制缺口该怎么交（MR 描述或 issue）。要恢复说 `--set maintainer`。
 
 **第 1 步：读本轮执行现场**（不重扫全库、不读 case 全文——token 预算，原则九）：
 
@@ -108,7 +108,9 @@ python3 scripts/evolve_mode.py --json      # → {"mode": "full" | "record-only"
 
 **第 3 步：产卡 + 自行验证（有信号时，agent 自动完成，不等用户）**：
 
-> **记录动作统一走入口脚本**：本步不直接调 `ev_proposal.py --new`（非 `full` 部署会被它拒绝），而是把观察交给：
+> 目标态下，EV 卡只用于高风险授权或 RSI 覆盖不到的改动；确定性 bug 走回归测试，内容缺口走 ingest，行为质量走 RSI。以下产卡步骤作为高风险/历史兼容读法。
+
+> **记录动作统一走入口脚本**：本步不直接调 `ev_proposal.py --new`（非 `maintainer` 部署会被它拒绝），而是把观察交给：
 >
 > ```
 > python3 scripts/evolve_intake.py record --signal T10 --signal-text "自审发现的缺口" \
@@ -117,9 +119,9 @@ python3 scripts/evolve_mode.py --json      # → {"mode": "full" | "record-only"
 >   --source <上游 skill>
 > ```
 >
-> 它按部署声明分流：`full` 落一张预填好的卡骨架（`source_signals` 已填，`measure` 留空待设计），`record-only` 落 `proposals/signals/`（一条信号一个文件，同内容自动累加次数），`off` 不落。载荷先于分流固定，所以任何模式都不会丢信号。
+> 它按部署角色分流：`maintainer` 先落信号台账（`source_signals` / target 已填），由分诊决定 RSI 或内容路线；`signal-only` 落 `proposals/signals/`；`off` 不落。载荷先于分流固定，所以任何角色都不会丢信号。
 >
-> `record-only` 下到此为止：查重、验证门、judgement 整段跳过；收尾说明给出台账条数，提示拿批的人跑 `python3 scripts/evolve_signals.py export` 生成可粘贴的 issue / MR 描述。**不做实验、不写预测**——已跑过的命令可以写进 `--evidence`，没跑过的不许编。
+> `signal-only` 下到此为止：查重、验证门、judgement 整段跳过；收尾说明给出台账条数，提示拿批的人跑 `python3 scripts/evolve_signals.py export` 生成可粘贴的 issue / MR 描述。**不做实验、不写预测**——已跑过的命令可以写进 `--evidence`，没跑过的不许编。
 
 1. **先读候选水位**（产卡前的机械检查，别靠自觉）：`python3 scripts/ev_proposal.py --waterline`
    ——输出「待回写/待合入 N（上限 20）」，**超限退 1**；退 1 时本轮**只记信号不产卡**，先消化积压
@@ -230,21 +232,21 @@ python3 scripts/evolve_mode.py --json      # → {"mode": "full" | "record-only"
      --tokens <估算>
    ```
    无信号时 `--products` 留空、`--reason` 写"收尾无演进信号"（面板据此单列 no-signal 计数）。
-   非 `full` 的两种模式用各自的原因串，**不要复用"无演进信号"**——否则面板会把
+   非 `maintainer` 的两种模式用各自的原因串，**不要复用"无演进信号"**——否则面板会把
    "这个部署不产卡"读成"这条流程没有可改进点"：
-   - `record-only`：`--reason "收尾检查（record-only）：命中 T# …，按部署声明不产卡"`，
+   - `signal-only`：`--reason "收尾检查（signal-only）：命中 T# …，按部署声明不产卡"`，
      `--products` 留空；
    - `off`：`--reason "收尾检查（off）：按部署声明跳过"`，`--products` 留空。
    落完自查本地不变量：`python3 scripts/verify_exec_log.py --check`（seq 唯一/字段齐全）。
    该脚本**不进 CI**——exec-log 是 `.gitignore` 运行时件，CI 上文件不存在，进 CI 只会空转。
 
-2. 出说明（`full` 之外要带上模式与来源，读的人才知道这一轮为什么没有卡）：
+2. 出说明（`maintainer` 之外要带上模式与来源，读的人才知道这一轮为什么没有卡）：
 
 ```
 evolve-check：产出 EV-xxxx（补 case，S2 replay 佐证缺口）→ agent 判断采纳（validated）
 或：evolve-check：无演进信号（本轮无新增数据/无流程摩擦/无覆盖缺口）
-或：evolve-check：record-only（来源：deployment.yaml），命中 T10；不产卡，建议写进 MR/issue
-或：evolve-check：跳过（来源：deployment.yaml，mode=off）
+或：evolve-check：signal-only（来源：sleuth.yaml），命中 T10；不产卡，建议写进 MR/issue
+或：evolve-check：跳过（来源：sleuth.yaml，role=off）
 ```
 
 ## 与 self-evolve 的分工
@@ -272,7 +274,7 @@ evolve-check：产出 EV-xxxx（补 case，S2 replay 佐证缺口）→ agent �
 
 - 不为产卡而产卡：无信号即止；候选水位超限时只记信号不产卡；
 - 不代替用户下内容目标：本协议只回答"这次做完能否更好"，不决定"下次做什么"；
-- 不越过部署声明：`record-only` 下不产卡、不跑验证门，`off` 下不执行检查（第 0 步）；
+- 不越过部署声明：`signal-only` 下不产卡、不跑验证门，`off` 下不执行检查（第 0 步）；
   声明写坏时停下来问人，不自己挑一档；
 - 不碰客户现场、不做批量改库（那是 self-evolve 深度轮 + 人审的范围）。
 
@@ -281,7 +283,7 @@ evolve-check：产出 EV-xxxx（补 case，S2 replay 佐证缺口）→ agent �
 | 能力 | 工具/入口 |
 |---|---|
 | 读部署声明（第 0 步） | `scripts/evolve_mode.py`（`--json` 取 mode+source；缺文件 = full，写坏 exit 2） |
-| 写信号台账（第 3 步 record-only） | `scripts/evolve_signals.py add / list / export`（一条信号一个文件，内容哈希命名） |
+| 写信号台账（第 3 步 signal-only） | `scripts/evolve_signals.py add / list / export`（一条信号一个文件，内容哈希命名） |
 | 读本轮执行现场（第 1 步） | `scripts/tail_exec_log.py`（确定性入口；文件缺失/空表 = 正常退化，exit 0） |
 | 落收尾记录（第 4 步） | `scripts/log_skill_exec.py --skill evolve-check` + 自查 `scripts/verify_exec_log.py --check` |
 | 查重/产卡骨架 | `scripts/ev_proposal.py --list / --new` |

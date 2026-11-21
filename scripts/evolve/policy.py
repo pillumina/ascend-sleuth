@@ -1,6 +1,6 @@
 """可调策略：默认值、加载校验、规范化哈希与自动化档位解析。
 
-``eval/policy.yaml`` 是唯一调参入口。加载时递归校验未知键与非法枚举，
+``sleuth.yaml`` 的 ``evolution.policy`` 是唯一调参入口；旧路径仅兼容。加载时递归校验未知键与非法枚举，
 未知键直接报错，不静默忽略；哈希只覆盖影响判定的内容，写进结论的
 ``versions.policy``。
 """
@@ -27,7 +27,7 @@ BUDGET_METRICS = ("billed", "uncached", "out", "uncached_out", "cache_read",
                   "calls", "rounds", "ms", "time")
 HARD_CONSTRAINT_NAMES = tuple(DEFAULT_METRICS) + ("regression", "test")
 
-# RFC §12 默认值；和 tracked 的 eval/policy.yaml 保持一致，测试会比对。
+# RFC §12 默认值；和 tracked 的 sleuth.yaml evolution.policy 保持一致，测试会比对。
 DEFAULTS: Dict[str, Any] = {
     "autonomy": {
         "default": "A2",
@@ -316,26 +316,7 @@ def validate_policy(policy: Dict[str, Any]) -> None:
         raise PolicyError("; ".join(errors))
 
 
-def load_policy(path: Optional[Path] = None) -> Dict[str, Any]:
-    """读取并校验策略；``path=None`` 返回内置默认值。
-
-    文件里的键与默认值深合并，因此部分策略文件也可用；未知键在合并前
-    拦下，避免把拼写错误带进判定。
-    """
-    if path is None:
-        policy = copy.deepcopy(DEFAULTS)
-        validate_policy(policy)
-        return policy
-    policy_path = Path(path)
-    if not policy_path.exists():
-        raise PolicyError(f"policy file not found: {policy_path}")
-    try:
-        text = policy_path.read_text(encoding="utf-8")
-        raw = yaml.safe_load(text)
-    except yaml.YAMLError as exc:
-        raise PolicyError(f"policy YAML is invalid: {exc}") from exc
-    except (OSError, UnicodeDecodeError) as exc:
-        raise PolicyError(f"cannot read policy file {policy_path}: {exc}") from exc
+def _load_raw(raw: Any, source: str) -> Dict[str, Any]:
     if raw is None:
         raw = {}
     if not isinstance(raw, dict):
@@ -346,6 +327,34 @@ def load_policy(path: Optional[Path] = None) -> Dict[str, Any]:
     policy = _deep_merge(DEFAULTS, raw)
     validate_policy(policy)
     return policy
+
+
+def load_config_policy(config: Dict[str, Any], profile: Optional[str] = None) -> Dict[str, Any]:
+    """从 sleuth.yaml 的 evolution.policy + profile 读取策略。"""
+    import sleuth_config as SC
+    try:
+        raw = SC.policy_for(config, profile)
+    except SC.ConfigError as exc:
+        raise PolicyError(str(exc)) from exc
+    return _load_raw(raw, str(config.get("_source") or SC.CONFIG_NAME))
+
+
+def load_policy(path: Optional[Path] = None) -> Dict[str, Any]:
+    """读取并校验策略；``path=None`` 返回内置默认值。"""
+    if path is None:
+        policy = copy.deepcopy(DEFAULTS)
+        validate_policy(policy)
+        return policy
+    policy_path = Path(path)
+    if not policy_path.exists():
+        raise PolicyError(f"policy file not found: {policy_path}")
+    try:
+        raw = yaml.safe_load(policy_path.read_text(encoding="utf-8"))
+    except yaml.YAMLError as exc:
+        raise PolicyError(f"policy YAML is invalid: {exc}") from exc
+    except (OSError, UnicodeDecodeError) as exc:
+        raise PolicyError(f"cannot read policy file {policy_path}: {exc}") from exc
+    return _load_raw(raw, str(policy_path))
 
 
 def canonical_json(policy: Dict[str, Any]) -> str:

@@ -139,7 +139,7 @@ run:
   trace_ref: traces/2026-11-17-....yaml
 ```
 
-版本坐标必须带 `algorithm`/`algorithm_version`；算法实验还带 `budget`/`seed`。手工 baseline 写 `algorithm: baseline`、`algorithm_version: manual`；不写算法身份的结论不能用于 GEPA/AEL 对照。`metrics` 是开放字典，缺数据的维度记 `null`，不补 `false` 或 0。`cost` 拿不到写 `null`，不写 0。回放必须带 `harness_session`，否则成本挂不到样本。指标的角色与方向写在 `eval/policy.yaml`，新增维度先在策略里注册。
+版本坐标必须带 `algorithm`/`algorithm_version`；算法实验还带 `budget`/`seed`。手工 baseline 写 `algorithm: baseline`、`algorithm_version: manual`；不写算法身份的结论不能用于 GEPA/AEL 对照。`metrics` 是开放字典，缺数据的维度记 `null`，不补 `false` 或 0。`cost` 拿不到写 `null`，不写 0。回放必须带 `harness_session`，否则成本挂不到样本。指标的角色与方向写在 `sleuth.yaml 的 evolution.policy`，新增维度先在策略里注册。
 
 ```yaml
 conclusion:
@@ -172,7 +172,7 @@ conclusion:
 
 判定时协议、策略、基线知识库与模型必须相同；候选知识与候选改动可以不同，但差异必须等于候选补丁。两个知识库版本都要记：基线是 HEAD 短 sha；候选是 HEAD，或候选 worktree 有未提交补丁时的 `<base>+patch:<补丁哈希>`；worktree 已失效记 `unknown`。
 
-两项记录的变更方式不同：改协议要单独走一次评审并升版本，旧结论标上当时的版本；改策略写在 `eval/policy.yaml`，加载时校验未知键、非法枚举与缺失字段，哈希写进 `versions.policy`。改过的策略与旧结论不可直接比较。
+两项记录的变更方式不同：改协议要单独走一次评审并升版本，旧结论标上当时的版本；改策略写在 `sleuth.yaml 的 evolution.policy`，加载时校验未知键、非法枚举与缺失字段，哈希写进 `versions.policy`。改过的策略与旧结论不可直接比较。
 
 ### 3.5 存储与写入规则
 
@@ -285,7 +285,7 @@ schema 在 `metrics/skill-exec-log.yaml`，只追加；`scripts/log_skill_exec.p
 | 指标与 timeline | `scripts/metrics_snapshot.py`、`scripts/build_timeline.py`、`scripts/verify_metrics.py`、`metrics/gates.yaml` |
 | 条目使用记录 | `scripts/trace_entry_activity.py`、`scripts/build_entry_activity.py`、`scripts/verify_entry_activity.py` |
 | 结算 | `scripts/settle_trace_feedback.py`、`scripts/settle_s2_feedback.py` |
-| 样本池、判定与样本队列（v1） | [evaluation.md](evaluation.md)；`scripts/evolve.py`（`policy` / `sample` / `judge` / `brief`）、`scripts/evolve/`、`eval/policy.yaml` |
+| 样本池、判定与样本队列（v1） | [evaluation.md](evaluation.md)；`scripts/evolve.py`（`policy` / `sample` / `judge` / `brief`）、`scripts/evolve/`、`sleuth.yaml 的 evolution.policy` |
 | 结论与执行记录（v1） | `.s2-replay/evolve/conclusions.jsonl`、`runs.jsonl` |
 | 共享路径 | `python3 scripts/shared_dir.py <名字>` |
 | 状态与代码入口总表 | [status.md](status.md) |

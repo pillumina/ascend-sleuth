@@ -28,7 +28,10 @@ from pathlib import Path
 
 import yaml
 
+import sleuth_config as SC
+
 MODES = ("full", "record-only", "off")
+SET_CHOICES = ("full", "record-only", "off", "maintainer", "signal-only")
 
 ENV_VAR = "ASCEND_SLEUTH_EVOLUTION"
 
@@ -82,6 +85,9 @@ def parse_mode(raw, source: str) -> str:
             f'写 full / record-only / off 之一；要 off 就加引号：mode: "off"，或改用 --set 生成。'
         )
     value = str(raw).strip()
+    value = SC.ROLE_ALIASES.get(value, value)
+    if value in ("maintainer", "signal-only"):
+        return {"maintainer": "full", "signal-only": "record-only"}[value]
     if value not in MODES:
         raise ModeError(
             f"{source} 的 evolution.mode 是 {value!r}，不在词表 {list(MODES)} 里。"
@@ -90,11 +96,26 @@ def parse_mode(raw, source: str) -> str:
     return value
 
 
-def read_mode(root: Path):
-    """→ (mode, source)。source 是给人看的中文来源说明，收尾说明要照抄。"""
+def read_role(root: Path):
+    """→ (role, source)。新配置优先；旧 deployment.yaml 仍作兼容。"""
     env = os.environ.get(ENV_VAR, "").strip()
     if env:
-        return parse_mode(env, f"环境变量 {ENV_VAR}"), f"环境变量 {ENV_VAR}"
+        return SC.ROLE_ALIASES.get(parse_mode(env, f"环境变量 {ENV_VAR}"),
+                                   parse_mode(env, f"环境变量 {ENV_VAR}")), f"环境变量 {ENV_VAR}"
+    try:
+        cfg = SC.load_config(root)
+    except SC.ConfigError as exc:
+        raise ModeError(str(exc)) from exc
+    if cfg.get("_source") != "legacy（deployment.yaml / eval/policy*.yaml / store.yaml）":
+        return SC.role(cfg), str(cfg.get("_source") or SC.CONFIG_NAME)
+    return None, "legacy"
+
+
+def read_mode(root: Path):
+    """→ (mode, source)。对外保持旧三值；新配置 role 映射到旧词表。"""
+    role, source = read_role(root)
+    if role is not None:
+        return {"maintainer": "full", "signal-only": "record-only", "off": "off"}[role], source
 
     path = Path(root) / DECL_REL
     if not path.is_file():
@@ -114,23 +135,34 @@ def read_mode(root: Path):
 
 
 def write_mode(root: Path, mode: str) -> Path:
-    path = Path(root) / DECL_REL
-    path.write_text(TEMPLATE.format(mode=mode), encoding="utf-8")
+    path = Path(root) / SC.CONFIG_NAME
+    if path.is_file():
+        raw = SC._read_yaml(path)
+        raw.setdefault("schema", SC.SCHEMA)
+        raw.setdefault("evolution", {})
+        raw["evolution"]["role"] = SC.ROLE_ALIASES.get(mode, mode)
+        path.write_text(yaml.safe_dump(raw, allow_unicode=True, sort_keys=False, width=1000),
+                        encoding="utf-8")
+        return path
+    path.write_text(
+        "schema: {}\nevolution:\n  role: {}\n".format(
+            SC.SCHEMA, SC.ROLE_ALIASES.get(mode, mode)),
+        encoding="utf-8")
     return path
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="读/写部署级演进模式（deployment.yaml）")
+    ap = argparse.ArgumentParser(description="读/写部署演进角色（sleuth.yaml）")
     ap.add_argument("--root", type=Path, default=None, help="仓库根（默认当前检出的顶层）")
     ap.add_argument("--json", action="store_true", help="输出 JSON：{mode, source}")
-    ap.add_argument("--set", choices=MODES, default=None, help="写入部署声明")
+    ap.add_argument("--set", choices=SET_CHOICES, default=None, help="写入配置角色")
     args = ap.parse_args(argv)
 
     root = args.root or repo_root()
     try:
         if args.set:
             path = write_mode(root, args.set)
-            print(f"已写入 {path}：evolution.mode={args.set}")
+            print(f"已写入 {path}：evolution.role={SC.ROLE_ALIASES.get(args.set, args.set)}")
             print("git 里会显示为未提交改动；提交后对该仓的所有检出与所有 agent 生效。")
             return 0
         mode, source = read_mode(root)
@@ -138,10 +170,14 @@ def main(argv=None):
         print(f"✗ {e}", file=sys.stderr)
         return 2
 
+    try:
+        role, _ = read_role(root)
+    except ModeError:
+        role = None
     if args.json:
-        print(json.dumps({"mode": mode, "source": source}, ensure_ascii=False))
+        print(json.dumps({"mode": mode, "role": role, "source": source}, ensure_ascii=False))
     else:
-        print(f"mode={mode}（来源：{source}）")
+        print(f"role={role or mode} mode={mode}（来源：{source}）")
     return 0
 
 

@@ -35,10 +35,10 @@
 说「这个部署只沉淀、不要产卡」，或者直接跑：
 
 ```
-python3 scripts/evolve_mode.py --set record-only
+python3 scripts/evolve_mode.py --set signal-only
 ```
 
-它写仓库根的 `deployment.yaml`（每部署一份、不参与合并）。提交后对这个仓的所有检出与所有 agent 生效；没提交时只有本工作区生效。之后内容流程收尾仍然检查信号、仍然落执行记录，但不产卡、不跑验证门：观察统一交给 `python3 scripts/evolve_intake.py record …`，它按声明落信号台账 `proposals/signals/`（一条信号一个文件，随 PR 提交）。
+它写仓库根的 `sleuth.yaml`（每部署一份、不参与合并）。提交后对这个仓的所有检出与所有 agent 生效；没提交时只有本工作区生效。之后内容流程收尾仍然检查信号、仍然落执行记录，但不产卡、不跑验证门：观察统一交给 `python3 scripts/evolve_intake.py record …`，它按声明落信号台账 `proposals/signals/`（一条信号一个文件，随 PR 提交）。
 
 把台账交给上游的方式：
 
@@ -50,7 +50,7 @@ python3 scripts/evolve_signals.py export --out signals.md --since 2026-10-01
 
 导出的是纯 Markdown：每条信号一节，带组件、证据、建议、出处与出现次数。贴到 issue 或 MR 描述里即可；上游维护者按它产卡并验证。
 
-看当前生效的值与来源：`python3 scripts/evolve_mode.py`（`doctor` 的「演进模式」那一行也是同一读数）。改回去用 `--set full`；环境变量 `ASCEND_SLEUTH_EVOLUTION` 可临时覆盖一次运行，不当团队声明。
+看当前生效的值与来源：`python3 scripts/evolve_mode.py`（`doctor` 的「演进模式」那一行也是同一读数）。改回去用 `--set maintainer`；环境变量 `ASCEND_SLEUTH_EVOLUTION` 可临时覆盖一次运行，不当团队声明。
 
 ### 边界：系统会改什么、不会做什么
 
@@ -59,7 +59,7 @@ self-evolving 覆盖三层，全都改（下表列每一层做什么、何时给
 | 层 | 系统会做什么 | 何时给你看 |
 |---|---|---|
 | 知识内容（case/reference） | 补 case、修 typo、调版本区间、沉淀新知识 | 每个改动有记录 + 验证，攒进最终 PR（全自动模式）或轮末 PR（关键人审模式） |
-| 流程/skill（diagnose/groom 等实现、triage 分支、脚本） | 提出改动、实验验证、按数据驱动推进 | 同上：每个改动源于一张 idea 卡、有独立验证与 commit |
+| 流程/skill（diagnose/groom 等实现、triage 分支、脚本） | 提出改动、实验验证、按数据驱动推进 | 每个改动有信号/RSI 证据；高风险另做授权，最终合入 PR |
 | 工作流本身（机制、指标口径） | 提出演进 idea、实验 | 永远你审（双签）：指标口径只能人改，这是红线 |
 
 以为系统「不会改 skill」是误解，它会改。归因事件（诊断发现流程某步骤反复出错）指向时，它起草改进、过验证门、进 PR 经你批准后合入。self-evolving 的「self」指系统自己提出并验证改进（数据驱动、可追溯、有实验证据），不是无人监督地乱改。

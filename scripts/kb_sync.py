@@ -84,7 +84,7 @@ detached HEAD 不自动合并——合并会改当前检出的 HEAD，而 worktr
   config   file | default
   enabled  true / false（settings 的 sync.enabled；--show 也照实给）
           只拦自动路径：--check 与带 --force 的手动路径不看它，结果里仍照实上报
-  offline  true / false（deployment.yaml 声明 sync.mode: offline）
+  offline  true / false（sleuth.yaml 声明 sync.mode: offline）
   identity_remote     归属仓远端名（默认 origin）
   identity_url        归属仓解析到的 URL；取不到为空串
   identity_explicit   settings 里是否显式写了 identity.remote
@@ -404,11 +404,14 @@ def _cooling_down(state: dict) -> bool:
 # ---------------------------------------------------------------- 部署声明
 
 def deployment_sync_mode(root: Path) -> str:
-    """`deployment.yaml` 的 `sync.mode` → `auto` / `offline`；读不出按 auto。
-
-    没有 PyYAML 时退回按缩进读 `sync:` 段——离线声明必须在最小环境里也生效，
-    否则会朝一个明确声明不可达的远端发 fetch。
-    """
+    """`sleuth.yaml` 的 `sync.mode`（旧 deployment.yaml 兼容）→ auto / offline。"""
+    try:
+        import sleuth_config as SC
+        config = SC.load_config(Path(root))
+        if config.get("_source") != "legacy（deployment.yaml / eval/policy*.yaml / store.yaml）":
+            return "offline" if SC.sync_mode(config) == "offline" else "auto"
+    except (ImportError, Exception):
+        pass
     path = Path(root) / "deployment.yaml"
     if not path.is_file():
         return "auto"
@@ -1113,7 +1116,7 @@ def render_show(result: dict) -> str:
         source += f"；{result['config_error']}"
     lines = [f"知识库同步（{source}）"]
     if result.get("offline"):
-        lines.append("  同步状态  离线（deployment.yaml 声明 sync.mode: offline）")
+        lines.append("  同步状态  离线（sleuth.yaml 声明 sync.mode: offline）")
     elif not result.get("enabled", True):
         lines.append("  同步状态  已关闭（sync.enabled = false）")
     else:
@@ -1155,7 +1158,7 @@ def render_show(result: dict) -> str:
 
 def render_sync(result: dict) -> str:
     if result.get("offline"):
-        return "deployment.yaml 声明 sync.mode: offline，未联网。"
+        return "sleuth.yaml 声明 sync.mode: offline，未联网。"
     if result.get("reason") == "disabled":
         return "sync.enabled 为 false，未联网。"
     if result.get("skipped"):

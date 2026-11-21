@@ -96,7 +96,7 @@ class PackageLayoutTest(unittest.TestCase):
             set(),
         )
         self.assertTrue((ROOT / "scripts" / "evolve.py").exists())
-        self.assertTrue((ROOT / "eval" / "policy.yaml").exists())
+        self.assertTrue((ROOT / "sleuth.yaml").exists())
 
     def test_wrapper_is_thin(self):
         text = (ROOT / "scripts" / "evolve.py").read_text(encoding="utf-8")

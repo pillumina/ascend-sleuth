@@ -65,10 +65,10 @@ class HelpAndPolicyCliTest(unittest.TestCase):
     def test_policy_check_unknown_key_fails(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            (root / "eval").mkdir()
-            text = (ROOT / "eval" / "policy.yaml").read_text(encoding="utf-8")
-            (root / "eval" / "policy.yaml").write_text(
-                text + "\nsurprise: true\n", encoding="utf-8")
+            import yaml
+            cfg = yaml.safe_load((ROOT / "sleuth.yaml").read_text(encoding="utf-8"))
+            cfg["evolution"]["policy"]["surprise"] = True
+            (root / "sleuth.yaml").write_text(yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
             result = run_cli("policy", "check", "--root", td)
             self.assertEqual(result.returncode, 1)
             self.assertIn("unknown policy key", result.stderr)

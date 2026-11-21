@@ -127,7 +127,7 @@ python3 scripts/issue_filter.py --state ingest-state.json \
 `python3 scripts/log_skill_exec.py --skill issue-ingest --products "<本轮产出 case id(submitted),...>" --reason "<一句话：拉取 N/评估 K/沉淀 M>" --source issue-ingest --tokens <估算>`
 
 沉淀完成、出最终报告前，执行一次伴随演进评估（`read skills/evolve-check/SKILL.md`
-遵循；**先按它的第 0 步读部署声明，`record-only` / `off` 下不产卡**）：对照它的触发条件表看本轮现场——同族沉淀满三条（记信号，**不在这里归纳**）、新 issue
+遵循；**先按它的第 0 步读部署声明，`signal-only` / `off` 下不产卡**）：对照它的触发条件表看本轮现场——同族沉淀满三条（记信号，**不在这里归纳**）、新 issue
 类型/新错误码无覆盖、拉取/评估环节有重复手动动作或流程摩擦。**内容动作直接执行、不产卡**：
 补 case 走 `/skill:to-postmortem`。**归纳 reference 只在 case 已升格入库后做**——本管道直接
 升格的批次可当轮做；落在 inbox 等周批的只记信号，由 `knowledge-groom` 的 R8 执行

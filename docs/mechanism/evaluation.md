@@ -158,7 +158,7 @@ $$
 | reference | 事实准确、来源、适用范围、可复用、不过度概括 | 人工 rubric，0–2 分一项 |
 | trace | 证据链、流程步骤、工具使用、追问与纠偏、成本 | 人工 rubric 加自动，0–2 分一项，成本另记 |
 
-任一维度 0 分即退回；总分阈值写在 `eval/policy.yaml`。rubric 由两位评审各评一遍，分歧由维护者裁决；双标 10–20 条，一致率到 0.7 再扩池。诊断对象的维度另有一套：路由、命中、根因、修复、安全、成本、追问负担、覆盖，各自带测量方式与判定角色。
+任一维度 0 分即退回；总分阈值写在 `sleuth.yaml 的 evolution.policy`。rubric 由两位评审各评一遍，分歧由维护者裁决；双标 10–20 条，一致率到 0.7 再扩池。诊断对象的维度另有一套：路由、命中、根因、修复、安全、成本、追问负担、覆盖，各自带测量方式与判定角色。
 
 主指标每次改动只选一个，事前定好。角色只有四种：主指标、约束指标（不能比改前差超过预设容差）、硬约束（安全、回归、测试集，不通过直接拒绝）、次要指标与读数（成本、追问负担、覆盖）。
 
@@ -195,7 +195,7 @@ $$
 
 接受是评估结果，合入由授权等级决定（[rsi-mechanism.md](rsi-mechanism.md)）。效率类改动把主指标换成成本指标：主指标变好、质量非劣、G 通过即接受。
 
-v1 已能按策略直接判一次二元配对：`python3 scripts/evolve.py judge --b <候选独家命中> --c <基线独家命中> --n <配对样本数>`，可选带成本；阈值读 `eval/policy.yaml`，加 `--record` 时结论追加进 `.s2-replay/evolve/conclusions.jsonl`。
+v1 已能按策略直接判一次二元配对：`python3 scripts/evolve.py judge --b <候选独家命中> --c <基线独家命中> --n <配对样本数>`，可选带成本；阈值读 `sleuth.yaml 的 evolution.policy`，加 `--record` 时结论追加进 `.s2-replay/evolve/conclusions.jsonl`。
 
 judge 本身也要校准：同一批样本让两个独立评分员各打 0/1，跑 `python3 scripts/evolve.py judge-calibration --a A.json --b B.json`。默认门槛 raw ≥ 0.8、Cohen's κ ≥ 0.6；不过门槛的 judge 只能提名，不能单独支撑 accept。
 
@@ -299,7 +299,7 @@ python3 scripts/evolve.py knowledge-usage compare --baseline base.json --candida
 
 `pilot prepare` 只收 field/探索样本：`purpose=test` 或 `regression` 的封存样本会被拒绝，来源命中 `eval/holdout.yaml` 的样本也会被拒绝，避免拿终判集或封存对照集调参；regression 只用于硬回退，不参与 pilot 对照。
 
-成本控制：`eval/policy.yaml` 的 `cost.runs.max_pairs` / `max_tokens` / `early_stop` 写进 `tasks.json` 的 `budget` 与 `stop_rules`；每跑完一对样本跑 `pilot checkpoint`，若 `b + 剩余 < required_b`（futility）或预算用完，就停，不再跑满全部样本。早停只用于停止无望的实验，不用于提前 accept。
+成本控制：`sleuth.yaml 的 evolution.policy` 的 `cost.runs.max_pairs` / `max_tokens` / `early_stop` 写进 `tasks.json` 的 `budget` 与 `stop_rules`；每跑完一对样本跑 `pilot checkpoint`，若 `b + 剩余 < required_b`（futility）或预算用完，就停，不再跑满全部样本。早停只用于停止无望的实验，不用于提前 accept。
 
 baseline 复用：`pilot prepare --baseline-traces <dir>` 会把已有的 `traces/` 与 `out/` 复制进 pilot 的 baseline 目录，只让外部 runner 跑 candidate；缺任一条会整体拒绝，`tasks.budget.baseline_reused` 与 `baseline_source` 记录来源。复用要求模型、知识库和输入没变，不能拿旧版本冒充当前 baseline；`baseline.json` 里有 `base_rev` 时和 candidate 的 `base_rev` 比对，不一致直接拒绝。
 
@@ -370,7 +370,7 @@ python3 scripts/evolve.py tool-usage compare --baseline base.json --candidate ca
 
 `evaluations/registry.py` 把 target 映射到 `EvalProfile`，`implemented` 只表示当前有没有端到端 scorer/gate，不表示有真实数据。未接的 target 仍可记录 baseline Patch，但 `experiment propose` 会打印 `eval_ready: false` 并警告“记录但不 gate-ready”；不把目标分发误当评测完成。
 
-knowledge 的 rubric 评分是确定性算分：`rubric.dimensions` 是维度名列表或对象；`threshold` 由 `eval/policy.yaml` 的 `rubrics.threshold` 决定（当前 0.7），不在 scorer 里另写一份。每维只接受 0/1/2，任一维 0 即退回；缺维度不当 0 补，分数不可计算，`score` 显示 unavailable。入口只接受 target 允许的 object_type（knowledge 只收 case/reference）：
+knowledge 的 rubric 评分是确定性算分：`rubric.dimensions` 是维度名列表或对象；`threshold` 由 `sleuth.yaml 的 evolution.policy` 的 `rubrics.threshold` 决定（当前 0.7），不在 scorer 里另写一份。每维只接受 0/1/2，任一维 0 即退回；缺维度不当 0 补，分数不可计算，`score` 显示 unavailable。入口只接受 target 允许的 object_type（knowledge 只收 case/reference）：
 
 ```bash
 python3 scripts/evolve.py experiment gate --target knowledge --sample K-1 \
@@ -408,7 +408,7 @@ python3 scripts/evolve.py experiment gate --target tooling \
 ### 5.1 已落地
 
 - 配对检验、复用折减、三态结论与影响记录：`scripts/eval_arena.py --gate`；自检进 CI（job `arena-gate-rule`）。
-- v1 判定器与策略：`scripts/evolve/decision.py`、`statistics.py`、`policy.py`；`evolve.py judge`、`policy check/show`；`eval/policy.yaml` 是唯一调参入口。
+- v1 判定器与策略：`scripts/evolve/decision.py`、`statistics.py`、`policy.py`；`evolve.py judge`、`policy check/show`；`sleuth.yaml 的 evolution.policy` 是唯一调参入口。
 - 池按吸收状态分流、吸收状态在运行期重判：`--build-pool` 与 `absorption_rev`；非诊断样本剔出命中率、结论一致率与配对。
 - 适配器层与旧脚本薄壳：`scripts/evolve/adapters/` 已落地；旧脚本仍是实现源，适配器只做包装，不复制评分与派发规则；`judge-stats` 对跨池和吸收失效有守卫。
 - 无回归范围、`ground_truth` 与重放版本写进影响记录。
@@ -441,7 +441,7 @@ python3 scripts/evolve.py experiment gate --target tooling \
 | issue 回放结算进 case | `scripts/settle_s2_feedback.py` |
 | 保留测试集与 golden 全量回归 | `eval/holdout.yaml`、`scripts/holdout.py --check`；`scripts/replay_golden.py` |
 | 重放版本 | `scripts/kb_rev.py`、`replay_revs` |
-| 评估协议与策略 | `eval/policy.yaml`（唯一调参入口） |
+| 评估协议与策略 | `sleuth.yaml 的 evolution.policy`（唯一调参入口） |
 | 判定池与回归池 | `.s2-replay/arena/pool-val.yaml`、`pool-val-absorbed.yaml` |
 | 影响记录 | `.s2-replay/arena/impact.yaml` |
 | 判据读数与状态 | [status.md](status.md) |

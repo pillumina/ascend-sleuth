@@ -7,10 +7,11 @@
 本脚本把这条策略收进结构：
 
     调用方（任何 skill）→ evolve_intake record <观察载荷>
-                              │ 读 deployment.yaml 的 evolution.mode
-                              ├─ full        → 预填一张卡骨架（source_signals/target 已填，measure 留空）
-                              ├─ record-only → 写 proposals/signals/<部署>-<哈希>.yaml
+                              │ 读 sleuth.yaml 的 evolution.role
+                              ├─ maintainer  → 写信号台账，上游分诊后走 RSI
+                              ├─ signal-only → 写 proposals/signals/<部署>-<哈希>.yaml
                               └─ off         → 不落盘，只打印一行
+                              （旧 deployment.yaml 的 full 仍兼容为产卡骨架）
 
 ## 为什么采集在分流之前
 
@@ -118,7 +119,13 @@ def _prefill_card(path: Path, *, signal: str, signal_text: str, target: str, evi
 def record(root: Path, *, signal: str, signal_text: str, target: str, evidence: str,
            trajectory, suggested: str = "", source: str = "evolve-check",
            session: str = "", force: bool = False) -> dict:
-    mode, mode_source = EM.read_mode(root)
+    role, mode_source = EM.read_role(root)
+    if role is None:
+        mode, mode_source = EM.read_mode(root)
+    else:
+        # 新角色语义：maintainer 也先把观察落成信号；是否提升为 RSI 提案由
+        # 上游分诊决定，不再自动产 EV 卡。旧 deployment.yaml 仍走 legacy full。
+        mode = "off" if role == "off" else "record-only"
     errors = validate(root, target, evidence, trajectory)
     if errors:
         raise ValueError("；".join(errors))

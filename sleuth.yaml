@@ -1,0 +1,73 @@
+# 唯一部署配置：角色、策略、成本 profile、RSI store、同步模式。
+# 旧 deployment.yaml / eval/policy*.yaml / store.yaml 只作兼容读取。
+schema: sleuth-config-v1
+deployment:
+  name: ascend-sleuth
+evolution:
+  role: maintainer
+  store:
+    backend: local
+    path: .s2-replay/evolve/rsi-events.jsonl
+  policy:
+    autonomy:
+      default: A2
+      overrides:
+        docs.non_normative: A3
+        docs.normative: A1
+        feedback.candidate: A3
+        feedback.pool: A2
+      auto_merge:
+        enabled: false
+    objective:
+      primary: case_hit
+      hard_constraints:
+      - safety
+      - fix
+      - regression
+      - test
+    decision:
+      method: paired_binary
+      alpha: 0.1
+    samples:
+      core_regression: 30
+      field_eval: 9
+      test: 4
+      split: hash
+      strata: {}
+    cost:
+      primary_dimension: tokens
+      budget_metric: billed
+      B: 0.1
+      epsilon: 0.1
+      delta: 0
+      runs:
+        max_pairs: 9
+        max_tokens: null
+        early_stop: true
+        baseline_reuse: true
+        regression_pairs: 6
+        regression_full_pairs: 30
+        benchmark_runs: 3
+    experiment:
+      target: skill
+      algorithm: baseline
+      stages:
+        attribute: attribute.trace_rule
+        select_region: select.region_hardcount
+        select_candidate: select.best
+        propose: propose.agent
+        judge: judge.subagent
+        gate: gate.paired
+      budget: {}
+      seed: 0
+    rubrics:
+      case_version: case-v1
+      reference_version: ref-v1
+      threshold: 0.7
+      double_label: 10
+  profiles:
+    latency:
+      cost:
+        primary_dimension: time
+sync:
+  mode: auto

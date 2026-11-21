@@ -60,7 +60,7 @@ from .stage import (StageError, judge as stage_judge, load_argv as stage_load_ar
 from .source_usage import SourceUsageError, compare as compare_source_usage, evaluate as evaluate_source_usage, from_trace as source_from_trace
 from .tool_usage import ToolUsageError, compare as compare_tool_usage, evaluate as evaluate_tool_usage, from_trace as tool_from_trace
 from .quality import QualityError, load_quality
-from .policy import PolicyError, load_policy, policy_hash, resolve_autonomy
+from .policy import PolicyError, load_config_policy, load_policy, policy_hash, resolve_autonomy
 from .intake import IntakeError, completeness, extract_case, extract_trace, make_sample
 from .samples import import_pilot
 from .readback import (ReadbackError, latest_by_proposal, latest_conclusion,
@@ -151,10 +151,14 @@ def cmd_policy_autonomy(args: argparse.Namespace) -> int:
 
 
 def cmd_policy_check(args: argparse.Namespace) -> int:
-    path = _root(args) / "eval" / "policy.yaml"
     try:
-        policy = load_policy(path)
-    except PolicyError as exc:
+        import sleuth_config as SC
+        root = Path(getattr(args, "root", None) or Path.cwd())
+        cfg = SC.load_config(root)
+        if cfg.get("_source", "").startswith("legacy") and not (root / "eval" / "policy.yaml").exists():
+            raise PolicyError(f"policy file not found: no {SC.CONFIG_NAME} and no eval/policy.yaml under {root}")
+        policy = load_config_policy(cfg, getattr(args, "profile", None))
+    except (PolicyError, SC.ConfigError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     print("policy: ok")
@@ -164,9 +168,8 @@ def cmd_policy_check(args: argparse.Namespace) -> int:
 
 
 def cmd_policy_show(args: argparse.Namespace) -> int:
-    path = _root(args) / "eval" / "policy.yaml"
     try:
-        policy = load_policy(path)
+        policy = _policy_for(args)
     except PolicyError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -599,23 +602,21 @@ def _judge_policy(path: Optional[str]) -> Dict[str, Any]:
 
 
 def _policy_for(args: argparse.Namespace) -> Dict[str, Any]:
-    """策略读取顺序：显式 ``--policy`` → ``--root/eval/policy.yaml`` → 当前检出。
-
-    ``--root`` 在样本命令里是本地运行件根，但测试与隔离用临时检出也把策略放在
-    ``<root>/eval/policy.yaml``；两条都看，显式路径优先。
-    """
+    """策略读取顺序：显式 ``--policy`` → ``<root>/sleuth.yaml`` 的 evolution.policy。"""
     explicit = getattr(args, "policy", None)
     if explicit:
         return _judge_policy(explicit)
-    root = getattr(args, "root", None)
-    candidates = []
-    if root:
-        candidates.append(Path(root) / "eval" / "policy.yaml")
-    candidates.append(Path("eval") / "policy.yaml")
-    for candidate in candidates:
-        if candidate.exists():
-            return load_policy(candidate)
-    return _judge_policy(None)
+    import sleuth_config as SC
+    root = Path(getattr(args, "root", None) or Path.cwd())
+    try:
+        config = SC.load_config(root)
+        return load_config_policy(config, getattr(args, "profile", None))
+    except (SC.ConfigError, Exception) as exc:
+        # 旧测试/隔离目录没有 sleuth.yaml 时，legacy 配置也会落到这里；
+        # 真正读不了才退回内置默认值。
+        if isinstance(exc, (SC.ConfigError,)):
+            return _judge_policy(None)
+        raise
 
 
 def _decide_from_args(args: argparse.Namespace, b: int, c: int,
@@ -1854,7 +1855,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     policy = sub.add_parser("policy", help="策略文件检查/展示")
     policy_sub = policy.add_subparsers(dest="policy_command", required=True)
-    check = policy_sub.add_parser("check", help="校验 eval/policy.yaml")
+    check = policy_sub.add_parser("check", help="校验 sleuth.yaml 的 evolution.policy")
     check.add_argument("--root", default=".", help="检出根目录（默认 .）")
     check.set_defaults(func=cmd_policy_check)
     show = policy_sub.add_parser("show", help="打印合并默认值后的策略")
@@ -1863,7 +1864,7 @@ def build_parser() -> argparse.ArgumentParser:
     autonomy = policy_sub.add_parser("autonomy", help="按 target_component 解析自动档位")
     autonomy.add_argument("--root", default=".", help="检出根目录（默认 .）")
     autonomy.add_argument("--component", required=True)
-    autonomy.add_argument("--policy", default=None, help="策略路径（默认 eval/policy.yaml）")
+    autonomy.add_argument("--policy", default=None, help="策略文件路径（默认 sleuth.yaml 的 evolution.policy）")
     autonomy.set_defaults(func=cmd_policy_autonomy)
     sample = sub.add_parser("sample", help="样本队列与生命周期")
     sample_sub = sample.add_subparsers(dest="sample_command", required=True)
@@ -2015,7 +2016,7 @@ def build_parser() -> argparse.ArgumentParser:
     draw.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
     draw.add_argument("--size", type=int, default=None,
                       help="抽几条（默认读 policy.samples.test）")
-    draw.add_argument("--policy", default=None, help="策略路径（默认 eval/policy.yaml）")
+    draw.add_argument("--policy", default=None, help="策略文件路径（默认 sleuth.yaml 的 evolution.policy）")
     draw.add_argument("--actor", default="maintainer")
     draw.add_argument("--reason", default="")
     draw.set_defaults(func=cmd_sample_draw_test)
@@ -2082,7 +2083,7 @@ def build_parser() -> argparse.ArgumentParser:
     judge.add_argument("--n", type=int, required=True, help="配对样本总数")
     judge.add_argument("--cost-b", type=float, default=None)
     judge.add_argument("--cost-c", type=float, default=None)
-    judge.add_argument("--policy", default=None, help="策略路径（默认 eval/policy.yaml）")
+    judge.add_argument("--policy", default=None, help="策略文件路径（默认 sleuth.yaml 的 evolution.policy）")
     judge.add_argument("--k", type=int, default=0, help="同一评估池复用序号")
     judge.add_argument("--root", default=None, help="结论记录本地根（默认锚主检出）")
     judge.add_argument("--record", action="store_true",
@@ -2104,7 +2105,7 @@ def build_parser() -> argparse.ArgumentParser:
     judge_stats.add_argument("--candidate", required=True, help="候选 stats YAML")
     judge_stats.add_argument("--cost-b", type=float, default=None)
     judge_stats.add_argument("--cost-c", type=float, default=None)
-    judge_stats.add_argument("--policy", default=None, help="策略路径（默认 eval/policy.yaml）")
+    judge_stats.add_argument("--policy", default=None, help="策略文件路径（默认 sleuth.yaml 的 evolution.policy）")
     judge_stats.add_argument("--k", type=int, default=0, help="同一评估池复用序号")
     judge_stats.add_argument("--root", default=None, help="结论记录本地根（默认锚主检出）")
     judge_stats.add_argument("--record", action="store_true",
@@ -2212,6 +2213,7 @@ def build_parser() -> argparse.ArgumentParser:
     exp_flow.add_argument("--baseline-traces", default=None)
     exp_flow.add_argument("--archive", default=None)
     exp_flow.add_argument("--policy", default=None)
+    exp_flow.add_argument("--profile", default=None, help="sleuth.yaml 的成本 profile")
     exp_flow.add_argument("--reuse-index", type=int, default=None)
     exp_flow.set_defaults(func=cmd_experiment_flow)
 

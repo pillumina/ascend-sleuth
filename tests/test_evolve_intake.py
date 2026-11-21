@@ -62,6 +62,14 @@ class IntakeTest(unittest.TestCase):
         self.assertIn("products/X-1(submitted)", text)
         self.assertIn("measure", text)          # 测度仍留空待设计
 
+    def test_maintainer_config_writes_signal_not_card(self):
+        (self.root / "sleuth.yaml").write_text(
+            'schema: sleuth-config-v1\nevolution:\n  role: maintainer\n', encoding="utf-8")
+        res = EI.record(self.root, **GOOD)
+        self.assertEqual(res["mode"], "record-only")
+        self.assertTrue(str(res["path"]).endswith(".yaml"))
+        self.assertNotIn("ideas", str(res["path"]))
+
     def test_record_only_writes_signal(self):
         self.decl("record-only")
         res = EI.record(self.root, **GOOD)

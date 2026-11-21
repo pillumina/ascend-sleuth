@@ -10,10 +10,12 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import yaml  # noqa: E402
 
+import sleuth_config as SC  # noqa: E402
 from evolve.policy import (  # noqa: E402
     DEFAULTS,
     PolicyError,
     canonical_hash,
+    load_config_policy,
     load_policy,
     policy_hash,
     resolve_autonomy,
@@ -32,7 +34,7 @@ class PolicyLoadTest(unittest.TestCase):
         return path
 
     def test_tracked_policy_matches_defaults(self):
-        loaded = load_policy(ROOT / "eval" / "policy.yaml")
+        loaded = load_config_policy(SC.load_config(ROOT))
         self.assertEqual(loaded, DEFAULTS)
 
     def test_missing_file_fails(self):

@@ -20,14 +20,26 @@ class StoreConfig:
     def load(cls, base: Path) -> "StoreConfig":
         base = Path(base)
         data: Dict[str, Any] = {}
+        try:
+            import sleuth_config as SC
+            config = SC.load_config(base.parent.parent)
+            if config.get("_source") != "legacy（deployment.yaml / eval/policy*.yaml / store.yaml）":
+                data = SC.store_for(config)
+                if data.get("path"):
+                    data = dict(data)
+                    data["path"] = str(Path(config["_root"]) / data["path"])
+        except (ImportError, Exception):
+            data = {}
         path = base / "store.yaml"
-        if path.exists():
+        if not data and path.exists():
             raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
             if not isinstance(raw, dict):
                 raise ValueError(f"{path} must contain an object")
             data = raw
         backend = os.environ.get("SLEUTH_RSI_STORE_BACKEND") or str(data.get("backend") or "local")
         options = data.get("options") if isinstance(data.get("options"), dict) else {}
+        if data.get("path"):
+            options = {**options, "path": data["path"]}
         if os.environ.get("SLEUTH_RSI_STORE_PATH"):
             options = {**options, "path": os.environ["SLEUTH_RSI_STORE_PATH"]}
         return cls(backend=backend, options=dict(options))

@@ -101,7 +101,7 @@ skill 可以被所有人调用；它只做流程与建议，不授予写权限�
    `scripts/ev_proposal.py --list`——同 trajectory/同 target 已有在池卡 → 合并；同
    target_component 历史结局（被改过/回滚过/有 rejected 结论）先读其 decisions，不重复
    被拒方案（`python3 scripts/ev_proposal.py --impact [组件]` 一次查全组件×尝试×结局）；
-2. 落记录：把观察交给 `python3 scripts/evolve_intake.py record …`（`full` 落预填骨架，`record-only`
+2. 落记录：把观察交给 `python3 scripts/evolve_intake.py record …`（`maintainer` 落预填骨架，`signal-only`
    落信号台账，`off` 不落）→ 产卡时补字段（layer / hypothesis / predicted_effect / validation /
    risk / principle_refs；`source_signals` 与 `target_component` 已由 intake 填好）。
    **同组件有 rejected / superseded 先例时必填 `alternatives`**（选项 + 否决理由 + 证据）：
@@ -181,7 +181,7 @@ dual 双签 + kb/high-risk，步骤级小调 review。
 ## 边界（不做）
 
 - 内容目标不进本 skill（路由到内容 skill + evolve-check）；
-- **不越过部署声明**：开工前跑 `python3 scripts/evolve_mode.py --json`。`record-only` 部署
+- **不越过部署声明**：开工前跑 `python3 scripts/evolve_mode.py --json`。`signal-only` 部署
   （只做内容沉淀的下游部署）照做观测与报告，但**不产卡、不跑验证门**——候选写进信号台账
   `proposals/signals/`（`scripts/evolve_signals.py add`），理由同 /skill:evolve-check 第 0 步
   （本地卡号会与上游号段重号）；`off` 部署不执行深度轮，报告说明按部署声明跳过；
