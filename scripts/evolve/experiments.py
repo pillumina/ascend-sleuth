@@ -243,18 +243,27 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
                 raise ExperimentError(f"paired.{name} must be a non-negative integer")
         if n < b + c:
             raise ExperimentError("paired.n must be >= paired.b + paired.c")
-        if b <= c:
-            raise ExperimentError("accept requires paired.b > paired.c")
-        p_value = exact_mcnemar_ge(b, c)
-        alpha = paired.get("alpha_eff", 0.1)
-        if not isinstance(alpha, (int, float)) or isinstance(alpha, bool) or not 0 < alpha <= 0.1:
-            raise ExperimentError("paired.alpha_eff must be in (0, 0.1]")
-        if p_value > alpha:
-            raise ExperimentError(
-                f"accept requires exact paired p={p_value:.4f} <= alpha_eff={alpha}"
-            )
-        if candidate["score"] <= baseline["score"]:
-            raise ExperimentError("accept requires candidate.score > baseline.score")
+        snapshot = record.get("conclusion_snapshot")
+        snapshot = snapshot if isinstance(snapshot, dict) else {}
+        primary = (snapshot.get("metrics") or {}).get("cost_primary")
+        ratio = snapshot.get("cost_ratio")
+        cost_path = (
+            isinstance(primary, str) and primary != "tokens"
+            and isinstance(ratio, (int, float)) and 0 <= ratio <= 0.9
+        )
+        if b <= c and not cost_path:
+            raise ExperimentError("accept requires paired.b > paired.c or a cost-path conclusion")
+        if not cost_path:
+            p_value = exact_mcnemar_ge(b, c)
+            alpha = paired.get("alpha_eff", 0.1)
+            if not isinstance(alpha, (int, float)) or isinstance(alpha, bool) or not 0 < alpha <= 0.1:
+                raise ExperimentError("paired.alpha_eff must be in (0, 0.1]")
+            if p_value > alpha:
+                raise ExperimentError(
+                    f"accept requires exact paired p={p_value:.4f} <= alpha_eff={alpha}"
+                )
+            if candidate["score"] <= baseline["score"]:
+                raise ExperimentError("accept requires candidate.score > baseline.score")
     spec = get_target(target)
     if execution == "subagent":
         profile_id = record.get("eval_profile_id")
