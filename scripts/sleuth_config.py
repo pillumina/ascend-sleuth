@@ -106,10 +106,17 @@ def load_config(root: Optional[Path] = None, path: Optional[Path] = None) -> Dic
     if not isinstance(evolution, dict):
         raise ConfigError(f"{config_path} 的 evolution 必须是映射")
     evolution["role"] = _normalize_role(evolution.get("role"), str(config_path))
-    if not isinstance(evolution.get("policy"), dict):
+    policy = evolution.get("policy")
+    if not isinstance(policy, dict):
         raise ConfigError("evolution.policy 必须是映射")
-    if not isinstance(evolution.get("profiles"), dict):
+    if not isinstance(policy.get("experiment", {}), dict):
+        raise ConfigError("evolution.policy.experiment 必须是映射")
+    profiles = evolution.get("profiles")
+    if not isinstance(profiles, dict):
         raise ConfigError("evolution.profiles 必须是映射")
+    for name, value in profiles.items():
+        if not isinstance(value, dict):
+            raise ConfigError(f"evolution.profiles.{name} 必须是映射")
     if not isinstance(evolution.get("store"), dict):
         raise ConfigError("evolution.store 必须是映射")
     sources = evolution.get("pipeline_config") or []

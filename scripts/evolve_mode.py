@@ -100,16 +100,32 @@ def read_mode(root: Path):
 
 
 def _set_role_text(text: str, role: str) -> str:
-    """按行替换 role，保留整份配置的注释与排版。"""
-    escaped = role
-    pattern = re.compile(r"^(\s*role:\s*)([^#\n]*?)(\s*#.*)?$", re.MULTILINE)
-    if pattern.search(text):
-        return pattern.sub(lambda m: f'{m.group(1)}"{escaped}"{m.group(3) or ""}', text, count=1)
-    evo = re.search(r"^evolution:\s*(?:#.*)?$", text, re.MULTILINE)
-    if evo:
-        insert = evo.end()
-        return text[:insert] + f'\n  role: "{escaped}"' + text[insert:]
-    return text.rstrip() + f'\nevolution:\n  role: "{escaped}"\n'
+    """按行替换 evolution.role，保留注释与排版。"""
+    lines = text.splitlines(keepends=True)
+    evo_idx = None
+    for i, line in enumerate(lines):
+        if re.match(r"^evolution:\s*(?:#.*)?$", line.rstrip("\n")):
+            evo_idx = i
+            break
+        if re.match(r"^evolution:\s*\{\s*\}\s*(?:#.*)?$", line.rstrip("\n")):
+            indent = line[:len(line) - len(line.lstrip())]
+            lines[i] = f"{indent}evolution:\n{indent}  role: \"{role}\"\n"
+            return "".join(lines)
+    if evo_idx is None:
+        return text.rstrip() + f'\nevolution:\n  role: "{role}"\n'
+    end_idx = len(lines)
+    for j in range(evo_idx + 1, len(lines)):
+        if lines[j].strip() and not lines[j].startswith((" ", "\t", "#")):
+            end_idx = j
+            break
+    for j in range(evo_idx + 1, end_idx):
+        match = re.match(r"^(\s*)role:\s*([^#\n]*?)(\s*#.*)?$", lines[j].rstrip("\n"))
+        if match:
+            lines[j] = f'{match.group(1)}role: "{role}"{match.group(3) or ""}\n'
+            return "".join(lines)
+    insert_at = evo_idx + 1
+    lines.insert(insert_at, f'  role: "{role}"\n')
+    return "".join(lines)
 
 
 def write_mode(root: Path, mode: str) -> Path:

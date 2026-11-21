@@ -96,6 +96,7 @@ detached HEAD 不自动合并——合并会改当前检出的 HEAD，而 worktr
 
 from __future__ import annotations
 
+import yaml
 import argparse
 import json
 import os
@@ -404,13 +405,18 @@ def _cooling_down(state: dict) -> bool:
 # ---------------------------------------------------------------- 部署声明
 
 def deployment_sync_mode(root: Path) -> str:
-    """`sleuth.config.yaml` 的 `sync.mode` → auto / offline。"""
-    try:
-        import sleuth_config as SC
-        config = SC.load_config(Path(root))
-        return "offline" if SC.sync_mode(config) == "offline" else "auto"
-    except (ImportError, SC.ConfigError):
+    """只读 `sleuth.config.yaml` 的 `sync.mode`；其它段写坏不影响离线声明。"""
+    import sleuth_config as SC
+    path = Path(root) / SC.CONFIG_NAME
+    if not path.is_file():
         return "auto"
+    try:
+        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return "auto"
+    sync = doc.get("sync") if isinstance(doc, dict) else None
+    mode = sync.get("mode") if isinstance(sync, dict) else None
+    return "offline" if str(mode or "").strip().lower() == "offline" else "auto"
 
 def run_git(args, cwd: Path, timeout: float):
     """跑一条 git 命令。stdout/stderr 一律按 UTF-8 解码。"""

@@ -317,6 +317,13 @@ class FetchTest(ConfiguredCase):
         self.assertEqual(doc["reason"], "timeout")
         self.assertFalse(any("fetch" in call for call in calls))
 
+    def test_offline_survives_unrelated_config_error(self):
+        (self.repo / "sleuth.config.yaml").write_text(
+            'schema: sleuth-config-v1\nsync:\n  mode: "offline"\n'
+            'evolution:\n  pipeline_config: [config/rsi/missing.yaml]\n',
+            encoding="utf-8")
+        self.assertEqual(kb_sync.deployment_sync_mode(self.repo), "offline")
+
     def test_offline_declaration_does_not_fetch(self):
         (self.repo / "sleuth.config.yaml").write_text(
             'schema: sleuth-config-v1\nsync:\n  mode: "offline"\n', encoding="utf-8")

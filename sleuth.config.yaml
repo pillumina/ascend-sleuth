@@ -11,8 +11,8 @@ schema: sleuth-config-v1
 
 # 部署标识（只用于展示/记录来源）。
 deployment:
-  # 部署名，只用于展示和记录来源；不同克隆可用不同名字。
-  name: ascend-sleuth
+  # 部署名，用于指标/信号记录来源；留空则用主检出目录名。
+  name: ""
 
 evolution:
   # 部署角色：
@@ -50,7 +50,7 @@ evolution:
       overrides:
         # 非规范文档（说明、指南）允许低风险自动合并。
         docs.non_normative: supervised_auto
-        # 规范文档、机制文档必须逐项人审（A1）。
+        # 规范文档、机制文档必须逐项人审。
         docs.normative: propose
         # 反馈集候选未进池时可按 supervised_auto 自动处理。
         feedback.candidate: supervised_auto
