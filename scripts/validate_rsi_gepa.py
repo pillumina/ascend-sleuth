@@ -20,12 +20,15 @@ def _load(path: Path) -> Dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def evaluate_one(pilot: Path, base: Path, exploratory: bool = False) -> Dict[str, Any]:
+def evaluate_one(pilot: Path, base: Path, exploratory: bool = False,
+                 primary_dimension: str = "tokens") -> Dict[str, Any]:
     pilot = Path(pilot)
     tasks = _load(pilot / "tasks.json")
     judge = _load(pilot / "judge.json")
     collected = collect(pilot, judge=pilot / "judge.json")
-    result = decide(pilot, pilot / "judge.json", load_policy(None), base=base,
+    policy = load_policy(None)
+    policy["cost"]["primary_dimension"] = primary_dimension
+    result = decide(pilot, pilot / "judge.json", policy, base=base,
                     exploratory=exploratory)
     candidate = tasks.get("candidate") or {}
     candidate["base_rev"] = candidate.get("base_rev") or "HEAD"
@@ -51,13 +54,15 @@ def main() -> int:
     parser.add_argument("--pilot", action="append", required=True, help="至少两个真实 pilot 目录")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--exploratory", action="store_true")
+    parser.add_argument("--primary-dimension", default="tokens")
     args = parser.parse_args()
     if len(args.pilot) < 2:
         print("error: pass at least two pilots", file=sys.stderr)
         return 2
     with tempfile.TemporaryDirectory(prefix="rsi-gepa-validate-") as td:
         base = Path(td)
-        rows = [evaluate_one(Path(item), base, exploratory=args.exploratory)
+        rows = [evaluate_one(Path(item), base, exploratory=args.exploratory,
+                              primary_dimension=args.primary_dimension)
                 for item in args.pilot]
         samples = sorted(set(rows[0]["scores"]) & set(rows[1]["scores"]))
         selected = GepaPolicy().choose([row["proposal"] for row in rows], samples)
