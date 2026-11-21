@@ -5,9 +5,9 @@
 # 为什么单列一个脚本：三处各自解析 sleuth.config.yaml 会各自漂移，所以解析只做一次。
 #
 # 取值与优先级（先命中先用）：
-#   1. 环境变量 ASCEND_SLEUTH_EVOLUTION —— 临时覆盖（CI、演练、一次运行），不是团队声明
-#   2. 仓库根 sleuth.config.yaml 的 evolution.role —— 部署声明，随 PR 走
-#   3. 缺省 full —— 与未引入这份声明时的行为一致
+#   1. 环境变量 ASCEND_SLEUTH_EVOLUTION —— 临时覆盖（CI、演练、一次运行）
+#   2. 仓库根 sleuth.config.yaml 的 evolution.role —— 部署声明
+#   3. 无配置时内置默认值 maintainer
 #
 # 写坏（取值不在词表内、YAML 解析失败、文件存在但缺 evolution.mode）时报错退出：
 # 不猜、不静默降级——静默降级到 off 会让"这个部署在演进"与"这个部署关掉了演进"
@@ -21,11 +21,10 @@
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
-
-import yaml
 
 import sleuth_config as SC
 
@@ -34,19 +33,6 @@ SET_CHOICES = ("full", "record-only", "off", "maintainer", "signal-only")
 
 ENV_VAR = "ASCEND_SLEUTH_EVOLUTION"
 
-TEMPLATE = """\
-# 部署级声明（每部署一份、不参与合并：两仓同名时保留本仓那份）。
-#
-# 谁读：scripts/evolve_mode.py —— evolve-check 收尾检查、self-evolve 深度轮、doctor。
-# 取值：
-#   full        照常产 EV 卡并攒批进 PR（上游默认）
-#   record-only 仍然扫信号、仍然落执行记录，但不产卡、不跑验证门；
-#               需要改行为面的信号写进收尾说明，由 MR 描述或 issue 交上游
-#   off         不做收尾检查（仍落一条 skip 记录，让"没跑"与"跑了无信号"可区分）
-# 值带引号写：YAML 会把不带引号的 off / on 读成布尔（解析侧对 False 兜成 off，True 报错）。
-evolution:
-  mode: "{mode}"
-"""
 
 
 def repo_root(start: Path = None) -> Path:
@@ -88,7 +74,7 @@ def parse_mode(raw, source: str) -> str:
     if value not in MODES:
         raise ModeError(
             f"{source} 的 evolution.mode 是 {value!r}，不在词表 {list(MODES)} 里。"
-            f"改成其中之一，或删掉该键走缺省（full）。"
+            f"改成 maintainer / signal-only / off 之一。"
         )
     return value
 
@@ -113,19 +99,28 @@ def read_mode(root: Path):
     return {"maintainer": "full", "signal-only": "record-only", "off": "off"}[role], source
 
 
+def _set_role_text(text: str, role: str) -> str:
+    """按行替换 role，保留整份配置的注释与排版。"""
+    escaped = role
+    pattern = re.compile(r"^(\s*role:\s*)([^#\n]*?)(\s*#.*)?$", re.MULTILINE)
+    if pattern.search(text):
+        return pattern.sub(lambda m: f'{m.group(1)}"{escaped}"{m.group(3) or ""}', text, count=1)
+    evo = re.search(r"^evolution:\s*(?:#.*)?$", text, re.MULTILINE)
+    if evo:
+        insert = evo.end()
+        return text[:insert] + f'\n  role: "{escaped}"' + text[insert:]
+    return text.rstrip() + f'\nevolution:\n  role: "{escaped}"\n'
+
+
 def write_mode(root: Path, mode: str) -> Path:
     path = Path(root) / SC.CONFIG_NAME
+    role = SC.ROLE_ALIASES.get(mode, mode)
     if path.is_file():
-        raw = SC._read_yaml(path)
-        raw.setdefault("schema", SC.SCHEMA)
-        raw.setdefault("evolution", {})
-        raw["evolution"]["role"] = SC.ROLE_ALIASES.get(mode, mode)
-        path.write_text(yaml.safe_dump(raw, allow_unicode=True, sort_keys=False, width=1000),
-                        encoding="utf-8")
+        text = path.read_text(encoding="utf-8")
+        path.write_text(_set_role_text(text, role), encoding="utf-8")
         return path
     path.write_text(
-        "schema: {}\nevolution:\n  role: {}\n".format(
-            SC.SCHEMA, SC.ROLE_ALIASES.get(mode, mode)),
+        "schema: {}\nevolution:\n  role: \"{}\"\n".format(SC.SCHEMA, role),
         encoding="utf-8")
     return path
 

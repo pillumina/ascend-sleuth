@@ -593,9 +593,6 @@ def cmd_replay_collect(args: argparse.Namespace) -> int:
 def _judge_policy(path: Optional[str]) -> Dict[str, Any]:
     if path:
         return load_policy(Path(path))
-    default = Path("eval") / "policy.yaml"
-    if default.exists():
-        return load_policy(default)
     return load_policy(None)
 
 
@@ -609,12 +606,8 @@ def _policy_for(args: argparse.Namespace) -> Dict[str, Any]:
     try:
         config = SC.load_config(root)
         return load_config_policy(config, getattr(args, "profile", None))
-    except (SC.ConfigError, Exception) as exc:
-        # 旧测试/隔离目录没有 sleuth.config.yaml 时，legacy 配置也会落到这里；
-        # 真正读不了才退回内置默认值。
-        if isinstance(exc, (SC.ConfigError,)):
-            return _judge_policy(None)
-        raise
+    except SC.ConfigError as exc:
+        raise PolicyError(str(exc)) from exc
 
 
 def _decide_from_args(args: argparse.Namespace, b: int, c: int,

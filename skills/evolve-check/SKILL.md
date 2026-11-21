@@ -282,7 +282,7 @@ evolve-check：产出 EV-xxxx（补 case，S2 replay 佐证缺口）→ agent �
 
 | 能力 | 工具/入口 |
 |---|---|
-| 读部署声明（第 0 步） | `scripts/evolve_mode.py`（`--json` 取 mode+source；缺文件 = full，写坏 exit 2） |
+| 读部署声明（第 0 步） | `scripts/evolve_mode.py`（`--json` 取 role+source；无配置用内置默认，写坏 exit 2） |
 | 写信号台账（第 3 步 signal-only） | `scripts/evolve_signals.py add / list / export`（一条信号一个文件，内容哈希命名） |
 | 读本轮执行现场（第 1 步） | `scripts/tail_exec_log.py`（确定性入口；文件缺失/空表 = 正常退化，exit 0） |
 | 落收尾记录（第 4 步） | `scripts/log_skill_exec.py --skill evolve-check` + 自查 `scripts/verify_exec_log.py --check` |

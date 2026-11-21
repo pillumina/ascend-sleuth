@@ -3,7 +3,7 @@
 # sleuth.config.yaml 的 evolution.pipeline_config 列表。
 pipelines:
   default:
-    description: 七环节全开：规则归因、区域选择、best 候选、agent 提案、subagent judge、paired gate。
+    description: 六个环节全开：规则归因、区域选择、best 候选、agent 提案、subagent judge、paired gate。
     stages:
       attribute: attribute.trace_rule
       select_region: select.region_hardcount

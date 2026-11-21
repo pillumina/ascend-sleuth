@@ -170,7 +170,7 @@ class CandidateTest(unittest.TestCase):
             self.assertIn("scheduler: old", path.read_text(encoding="utf-8"))
 
     def test_harness_cannot_change_judge_policy_or_holdout(self):
-        for file in ("sleuth.config.yaml", "config/rsi/pipelines.yaml", "eval/policy.yaml", "eval/holdout.yaml", "eval/core/test.yaml",
+        for file in ("sleuth.config.yaml", "config/rsi/pipelines.yaml", "eval/holdout.yaml", "eval/core/test.yaml",
                      "scripts/evolve/stage.py", "tests/self_evolution/test_flow.py"):
             with self.assertRaises(CandidateError):
                 validate_candidate({

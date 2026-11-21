@@ -36,6 +36,8 @@ sync:
 
 `evolution.policy` 是评估策略的唯一入口；`profiles` 只覆盖差异，不再单独维护 `policy-latency.yaml`。
 
+## 2 策略与选项
+
 ### 2.1 策略字段
 
 | 配置键 | 允许值 | 默认 | 含义 |
@@ -50,18 +52,18 @@ sync:
 | `cost.maximum_cost_increase_ratio` | ≥0 | 0.10 | 允许的成本上涨比例（公式里的 B） |
 | `cost.minimum_cost_improvement` | ≥0 | 0.10 | 成本路径要求的最小下降比例（公式里的 ε） |
 | `cost.max_quality_drop` | ≥0 | 0 | 允许的主指标非劣容差（公式里的 δ） |
-| `autonomy.default` | `observe` / `propose` / `batch_review` / `supervised_auto` / `policy_auto` / `full_auto` | `batch_review` | 审批档位；内部映射 A0–A5 |
+| `autonomy.default` | `observe` / `propose` / `batch_review` / `supervised_auto` / `policy_auto` / `full_auto` | `batch_review` | 审批档位 |
 | `autonomy.auto_merge.enabled` | true/false | false | `supervised_auto` 是否允许自动合并；false 时降为 `batch_review` |
 
 审批档位与 RFC 的对应：
 
 ```text
-observe          A0  只观察、出报告
-propose          A1  提出改动，逐项人审
-batch_review     A2  批量实验，按批人审（默认）
-supervised_auto  A3  低风险自动合并，周审计
-policy_auto      A4  在预设边界内调整
-full_auto        A5  全自动（本期不做）
+observe          只观察、出报告
+propose          提出改动，逐项人审
+batch_review     批量实验，按批人审（默认）
+supervised_auto  低风险自动合并，周审计
+policy_auto      在预设边界内调整
+full_auto        全自动（本期不做）
 ```
 
 配置只写这些名称；不存在旧键读取路径。
@@ -82,7 +84,7 @@ evolution:
 # config/rsi/pipelines.yaml
 pipelines:
   default:
-    description: 七环节全开
+    description: 六个环节全开
     stages: { attribute: attribute.trace_rule, ... }
   no_proposal:
     description: 消融“提案”环节

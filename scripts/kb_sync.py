@@ -409,8 +409,8 @@ def deployment_sync_mode(root: Path) -> str:
         import sleuth_config as SC
         config = SC.load_config(Path(root))
         return "offline" if SC.sync_mode(config) == "offline" else "auto"
-    except (ImportError, Exception):
-        raise
+    except (ImportError, SC.ConfigError):
+        return "auto"
 
 def run_git(args, cwd: Path, timeout: float):
     """跑一条 git 命令。stdout/stderr 一律按 UTF-8 解码。"""

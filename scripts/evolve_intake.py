@@ -117,7 +117,7 @@ def _prefill_card(path: Path, *, signal: str, signal_text: str, target: str, evi
 
 def record(root: Path, *, signal: str, signal_text: str, target: str, evidence: str,
            trajectory, suggested: str = "", source: str = "evolve-check",
-           session: str = "", force: bool = False) -> dict:
+           session: str = "") -> dict:
     role, mode_source = EM.read_role(root)
     # 目标态：maintainer 先把观察落成信号；是否提升为 RSI 由分诊决定。
     mode = "off" if role == "off" else "record-only"
@@ -135,23 +135,14 @@ def record(root: Path, *, signal: str, signal_text: str, target: str, evidence: 
         return {"mode": mode, "mode_source": mode_source, "path": r["path"],
                 "occurrences": r["doc"]["occurrences"]}
 
-    # full：预填卡骨架。--force 让演练与测试能在非 full 部署里走通这条路。
-    if not force:
-        import ev_proposal as EP
-        p = EP.make_new(root)
-    else:
-        import ev_proposal as EP
-        p = EP.make_new(root, force=True)
-    _prefill_card(p, signal=signal, signal_text=signal_text, target=target,
-                  evidence=evidence, trajectory=trajectory, suggested=suggested)
-    return {"mode": mode, "mode_source": mode_source, "path": p}
+    raise AssertionError(f"unreachable mode: {mode}")
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="演进记录入口：采集 → 按部署声明分流")
     ap.add_argument("--root", type=Path, default=None, help="仓库根（默认当前检出顶层）")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    r = sub.add_parser("record", help="记录一条演进观察（卡或台账由部署声明决定）")
+    r = sub.add_parser("record", help="记录一条演进观察（信号台账）")
     r.add_argument("--signal", required=True, help="信号编号或自由文本（如 T10）")
     r.add_argument("--signal-text", default="", help="信号的中文含义")
     r.add_argument("--target", required=True, help="要改的组件：仓库内路径或组件名")
@@ -160,7 +151,6 @@ def main(argv=None):
     r.add_argument("--suggested", default="", help="建议动作（可选）")
     r.add_argument("--source", default="evolve-check", help="来源 skill")
     r.add_argument("--session", default="", help="会话 id（如有）")
-    r.add_argument("--force", action="store_true", help="演练/测试：非 full 部署也产卡骨架")
 
     args = ap.parse_args(argv)
     root = (args.root or repo_root()).resolve()
@@ -168,10 +158,9 @@ def main(argv=None):
     try:
         res = record(root, signal=args.signal, signal_text=args.signal_text, target=args.target,
                      evidence=args.evidence, trajectory=args.trajectory,
-                     suggested=args.suggested, source=args.source, session=args.session,
-                     force=args.force)
+                     suggested=args.suggested, source=args.source, session=args.session)
     except EM.ModeError as e:
-        print(f"✗ 部署声明写坏：{e}", file=sys.stderr)
+        print(f"✗ 配置角色写坏：{e}", file=sys.stderr)
         return 2
     except ValueError as e:
         print(f"✗ {e}", file=sys.stderr)

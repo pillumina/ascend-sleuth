@@ -38,28 +38,28 @@ evolution:
   # 评估/审批策略；下面每个键都有允许值与默认值。
   policy:
     autonomy:
-      # 审批档位（内部映射 RFC #506 的 A0–A5）：
-      #   observe         A0 只观察、出报告
-      #   propose         A1 提出改动，逐项人审
-      #   batch_review    A2 批量实验，按批人审（默认）
-      #   supervised_auto A3 低风险自动合并，周审计
-      #   policy_auto     A4 在预设边界内调整
-      #   full_auto       A5 全自动（本期不做）
+      # 审批档位（RFC #506 的模式名）：
+      #   observe         只观察、出报告
+      #   propose         提出改动，逐项人审
+      #   batch_review    批量实验，按批人审（默认）
+      #   supervised_auto 低风险自动合并，周审计
+      #   policy_auto     在预设边界内调整
+      #   full_auto       全自动（本期不做）
       default: batch_review
       # 按 target_component 精确匹配覆盖默认档；未命中沿用 default。
       overrides:
-        # 非规范文档（说明、指南）允许低风险自动合并（A3）。
+        # 非规范文档（说明、指南）允许低风险自动合并。
         docs.non_normative: supervised_auto
         # 规范文档、机制文档必须逐项人审（A1）。
         docs.normative: propose
-        # 反馈集候选未进池时可按 A3 自动处理。
+        # 反馈集候选未进池时可按 supervised_auto 自动处理。
         feedback.candidate: supervised_auto
-        # 反馈集进评估池必须按批人审（A2）。
+        # 反馈集进评估池必须按批人审。
         feedback.pool: batch_review
 
       auto_merge:
-        # 只有 true 才允许 supervised_auto（A3）自动合并；
-        # false 时 A3 降为 batch_review（A2）。
+        # 只有 true 才允许 supervised_auto自动合并；
+        # false 时 supervised_auto 降为 batch_review。
         enabled: false
 
     # 目标与硬约束；先定目标，再谈分数。
@@ -143,7 +143,7 @@ evolution:
       target: skill
       # 候选生成算法；baseline 表示对照/基线。
       algorithm: baseline
-      # stages 使用内置 registry 默认；需要覆盖时再加 stages 映射（高级配置）。
+      # stages 由 evolution.pipeline 的预设提供；这里不再覆盖。
       # 实验预算覆盖；{} 表示使用上面的 samples/cost 默认。
       budget: {}
       # 随机种子；用于可复现实验。

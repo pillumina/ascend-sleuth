@@ -68,6 +68,18 @@ class ReadModeTest(unittest.TestCase):
         with self.assertRaises(EM.ModeError):
             EM.read_mode(self.root)
 
+    def test_set_preserves_comments_and_quotes_off(self):
+        path = self.root / SC.CONFIG_NAME
+        path.write_text(
+            '# keep this\nschema: sleuth-config-v1\nevolution:\n'
+            '  role: "maintainer"  # why\n  store: {}\n', encoding="utf-8")
+        EM.write_mode(self.root, "off")
+        text = path.read_text(encoding="utf-8")
+        self.assertIn("# keep this", text)
+        self.assertIn("# why", text)
+        self.assertIn('role: "off"', text)
+        self.assertEqual(EM.read_mode(self.root)[0], "off")
+
     def test_set_roundtrips(self):
         EM.write_mode(self.root, "record-only")
         self.assertEqual(EM.read_mode(self.root)[0], "record-only")

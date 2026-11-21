@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""单一部署配置（sleuth.config.yaml）的读取、校验与旧配置兼容。
+"""单一部署配置（sleuth.config.yaml）的读取与校验。
 
 新用户只维护仓库根的 sleuth.config.yaml：部署角色、自演进策略、成本 profile、
 RSI store 与同步模式都在这一份文件里。没有旧文件 fallback；
@@ -125,7 +125,10 @@ def load_config(root: Optional[Path] = None, path: Optional[Path] = None) -> Dic
             raise ConfigError(f"pipeline_config 逃出仓库根：{rel}") from exc
         if not path.is_file():
             raise ConfigError(f"pipeline_config 文件不存在：{path}")
-    if cfg["sync"].get("mode") not in SYNC_MODES:
+    sync = cfg.get("sync")
+    if not isinstance(sync, dict):
+        raise ConfigError("sync 必须是映射，例如 sync: {mode: auto}")
+    if sync.get("mode") not in SYNC_MODES:
         raise ConfigError(f"sync.mode 必须是 {list(SYNC_MODES)} 之一")
     cfg["_source"] = str(config_path)
     cfg["_root"] = str(root)

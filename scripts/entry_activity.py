@@ -171,6 +171,14 @@ def deployment(root: Path) -> str:
     env = (os.environ.get("ASCEND_SLEUTH_DEPLOYMENT") or "").strip()
     if env:
         return env
+    try:
+        import sleuth_config as SC
+        config = SC.load_config(Path(root))
+        name = ((config.get("deployment") or {}).get("name") or "").strip()
+        if name:
+            return name
+    except (ImportError, Exception):
+        pass
     main = main_checkout(Path(root))
     return Path(main or root).resolve().name
 
