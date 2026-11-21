@@ -16,11 +16,13 @@
 | 每周批审 | [operations.md](operations.md) 3.3 | 已落地 | `ls skills/knowledge-groom/SKILL.md` |
 | 信号台账（下游部署的收尾交接） | [signals/README.md](../../proposals/signals/README.md) | 已落地 | `python3 scripts/evolve_signals.py list` |
 | 演进记录入口 `evolve_intake` 与信号生命周期 | [evolve-check/SKILL.md](../../skills/evolve-check/SKILL.md) 第 3 步 | 已落地 | `python3 scripts/evolve_intake.py record --help` |
-| 改进项的过程档案、状态机与卡 schema 校验 | [records.md](records.md) 3.1 | 已落地 | `python3 scripts/verify_proposals.py --check` |
+| 改进项的过程档案、状态机与卡 schema 校验（含 `status_lag`，与面板同一判断） | [records.md](records.md) 3.1 | 已落地 | `python3 scripts/verify_proposals.py --check`；`grep -n "状态滞后" scripts/verify_proposals.py` |
 | 知识层分级 `authorization` 取 auto / review / dual | [records.md](records.md) 3.1、[operations.md](operations.md) 3.2 | 已落地 | `grep -h "^authorization:" proposals/ideas/*.yaml \| sort \| uniq -c` |
 | `predicted_effect.measure` 强制 | [records.md](records.md) 3.1 | 已落地 | `grep -n "MEASURE_CUTOVER" scripts/verify_proposals.py` |
+| `validated` 必须有 PASS 的卡内实测证据 | [records.md](records.md) 3.1 | 已落地 | `grep -n "MEASURE_EVIDENCE_CUTOVER" scripts/verify_proposals.py`；`python3 scripts/ev_measure.py <卡号> --run --record` |
+| 判断面：内容看产出物与 PR、行为质量看 RSI 结论、高风险看 EV 卡 | [rsi-mechanism.md](rsi-mechanism.md) 3.2、[records.md](records.md) 2 | 已落地 | `grep -n "行为质量" docs/mechanism/rsi-mechanism.md`；`grep -n "高风险" docs/mechanism/rsi-mechanism.md` |
 | `target_component` 生效日检查 | [records.md](records.md) 3.1 | 已落地 | `grep -n "TARGET_CUTOVER" scripts/verify_proposals.py` |
-| 评审把手与判定三态（符合、被证伪、无法判定；声明不可度量是合法退化） | [records.md](records.md) 3.1 | 已落地 | `python3 scripts/ev_measure.py --run`；`--audit` 盘全库缺口与存量豁免 |
+| 评审把手与判定三态（符合、被证伪、无法判定；声明不可度量是合法退化） | [records.md](records.md) 3.1 | 已落地 | `python3 scripts/ev_measure.py --run --record`；`--audit` 盘全库缺口与存量豁免 |
 | 改进项影响视图 `--impact` 与替换链字段 | [records.md](records.md) 3.1 | 已落地 | `python3 scripts/ev_proposal.py --impact`；`grep -n "supersedes:" examples/sample-idea.yaml` |
 | 卡的成本侧字段 `actual_cost` | [records.md](records.md) 3.1 | 已落地 | `grep -n "actual_cost" docs/mechanism/records.md` |
 | 积压量水位、上限判据与超限停产 | [operations.md](operations.md) 3.2 | 已落地 | `python3 scripts/ev_proposal.py --waterline`；`grep -n "backlog_over" proposals/gates.yaml` |
@@ -28,7 +30,7 @@
 | 成本的分子统计单一实现 `has_merge_pointer` | [operations.md](operations.md) 3.2 | 已落地 | `grep -n "has_merge_pointer" scripts/ev_proposal.py` |
 | 会话状态文件的保存位置与 gitignore 规则 | [operations.md](operations.md) 3.2 | 已落地 | `grep -n "proposals/sessions" .gitignore` |
 | 长期保护判据、元层判决器与四层指标校验 | [operations.md](operations.md) 3.2、3.3 | 已落地 | `ls proposals/gates.yaml scripts/evolution_health.py`；`python3 scripts/verify_metrics.py --check` |
-| 体检器三态退出码：`--check` 时 0 全评过无越界、1 有违反、2 有判据未评；不带 `--check` 恒为 0 | [evaluation.md](evaluation.md) 3.5 | 已落地 | `grep -n "exit_code = 2 if" scripts/evolution_health.py` |
+| 体检器三态退出码：`--check` 时 0 全评过无越界、1 有违反、2 结构坏了或只有数据缺口（结论不可用）；`--usable` 只问结论可不可用 | [evaluation.md](evaluation.md) 3.5 | 已落地 | `grep -n "verdict = \"incomplete\"" scripts/evolution_health.py` |
 | 记录不陈旧（观测记录进 CI）与硬性检查的负例断言 | [evaluation.md](evaluation.md) 3.5 | 已落地 | `python3 scripts/eval_scorecard.py --check`；`grep -n "负例" scripts/rehearse_evolve_loop.py` |
 | 冻结对照样本按内容哈希固定 | [evaluation.md](evaluation.md) 5.1 | 已落地 | `python3 scripts/holdout.py --check` |
 | issue 回放校准集、判定池吸收分流与运行期重判 | [evaluation.md](evaluation.md) 3.7 | 已落地 | `ls eval/s2/vllm-ascend.yaml`；`grep -n "absorption_rev" scripts/eval_arena.py` |
@@ -64,7 +66,7 @@
 | arena 分数进 timeline | [evaluation.md](evaluation.md) 5.2 | 蓝图 | 样本规模达标（带分母） |
 | arena 判定池扩容 | [evaluation.md](evaluation.md) 5.2 | 蓝图 | 规模或数据触发 |
 | 评估策略与判定器 | [evaluation.md](evaluation.md) 3.5 | 已落地 | `python3 scripts/evolve.py policy check`；`python3 scripts/evolve.py judge --help` |
-| A0-A5 自动档位解析（按 target_component；A3 无 auto-merge 降 A2） | [evaluation.md](evaluation.md) 3.8 | 已落地 | `python3 scripts/evolve.py policy autonomy --component docs.non_normative` |
+| 审批档位解析（`observe` / `propose` / `batch_review` / `supervised_auto` / `policy_auto` / `full_auto`；实验路径按 `target_component`；无 auto-merge 时 `supervised_auto` 降 `batch_review`；卡上 authorization 尚未交叉校验） | [evaluation.md](evaluation.md) 3.8 | 已落地 | `python3 scripts/evolve.py policy autonomy --component docs.non_normative` |
 | judge 双标校准（一致率与 κ 门槛） | [evaluation.md](evaluation.md) 3.5 | 已落地 | `python3 scripts/evolve.py judge-calibration --help` |
 | 样本、执行、结论的 v1 契约与样本队列 | [records.md](records.md) 3.2、3.3 | 已落地 | `python3 scripts/evolve.py sample --help`；`python3 scripts/evolve.py brief` |
 | tooling 自演进：目标、可改区、候选补丁、评测与门禁 | [evaluation.md](evaluation.md) 3.10.1 | 已落地 | `python3 scripts/evolve.py tool-usage --help`；`grep -n "tooling.source_fetch" scripts/evolve/regions.py` |
@@ -86,7 +88,10 @@
 | pilot 样本注册进本地队列 | [evaluation.md](evaluation.md) 3.9 | 已落地 | `python3 scripts/evolve.py sample import-pilot --help` |
 | 已闭环 case 回流样本（trace / postmortem，完整性与跨集查重） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/evolve.py sample new --from trace --help`；`python3 scripts/evolve.py sample status --help` |
 | 样本队列复核动作（通过 / 退回 / 升 core，失败在队列内显示） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `grep -n "ev-sample-action" dsh-plugins/ev-panel/panel-host.js` |
-| 记录端口层 | [records.md](records.md) 3.6 | 已落地 | `grep -n "class .*Protocol" scripts/evolve/ports.py` |
+| 记录端口层（六个 Protocol + `TraceSource`） | [records.md](records.md) 3.6 | 已落地 | `grep -n "class .*Protocol" scripts/evolve/ports.py scripts/evolve/trace_source.py` |
+| runner 的任务文件不含答案与样本路径；judge 单独拿 `judge-input.json` | [evaluation.md](evaluation.md) 3.8 | 已落地 | `grep -n "judge-input.json" scripts/evolve/stage.py` |
+| 版本坐标用 `knowledge/` 内容哈希 | [records.md](records.md) 3.4 | 已落地 | `python3 scripts/kb_rev.py --content`；`grep -n "content_rev" scripts/evolve/pilot.py` |
+| `exploratory` 不把小池提升成 accept；未校准 judge 不 accept | [evaluation.md](evaluation.md) 3.8 | 已落地 | `grep -n "acceptance_scope" scripts/evolve/pilot.py` |
 | 适配器层与旧脚本薄壳 | [records.md](records.md) 3.6 | 已落地 | `ls scripts/evolve/adapters`；`python3 scripts/evolve.py replay --help`；`python3 scripts/evolve.py sample import-s2 --help` |
 | core 样本与 `eval/core/samples/`（test + regression） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `ls eval/core/samples`；`python3 scripts/evolve.py sample export-core --help` |
 | 观察窗超时降级态 `unconfirmed_valid` / `unconfirmed` | [operations.md](operations.md) 5.2 | 蓝图 | 现场反馈断供真实持续两期以上；此前用「标存疑加提醒人」 |

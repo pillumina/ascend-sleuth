@@ -36,7 +36,7 @@
 flowchart LR
     DX["诊断环<br/>每次出问题<br/>产出：修复建议 + 诊断记录"]
     CJ["沉淀环<br/>定位结束或每周批量<br/>产出：审核后的知识条目"]
-    YJ["演进环<br/>内容流程收尾或全库体检<br/>产出：signal → 分诊 → 改动/实验 → PR"]
+    YJ["演进环<br/>内容流程收尾或全库体检<br/>产出：signal → 归类/候选 → 改动/实验 → PR"]
     KB[("知识库")]
     DX -.->|"命中、未命中、流程摩擦"| YJ
     CJ -.->|"覆盖缺口、重复动作"| YJ
@@ -52,15 +52,15 @@ flowchart LR
 
 ### 3.2 一轮演进
 
-一轮演进先分诊，再决定走哪条路：
+一轮演进先把信号归类并排优先级（下文简称分诊），再决定走哪条路：
 
 1. 收尾记录。内容流程收尾时，`evolve-check` 只对照信号表写 `proposals/signals/`；没有信号只留一行记录。不产卡、不跑 RSI。
-2. 深度分诊。用户显式发起 `self-evolve` 后，聚合信号并归入五类：确定性 bug、内容缺口、行为质量、高风险授权、观察。深度轮只输出候选队列，不执行实验。
+2. 深度归类与候选。用户显式发起 `self-evolve` 后，聚合信号并归入五类：确定性 bug、内容缺口、行为质量、高风险授权、观察。这一步只做归类、排优先级和候选输出，不执行实验，不写结论，不产卡。
 3. 确定性 bug。能复现、有确定 oracle 的，写最小回归测试并直接进 PR；不走 RSI。
 4. 内容缺口。交给内容 skill（case / reference / ingest），不走 RSI。
 5. 行为质量。用户选中候选后，显式进入 RSI：proposal → 真实样本 experiment → decision。没有真实样本、runner、judge 不进入。
-6. 高风险授权。规范文档、评估协议、权限、自动合并边界等改动，用轻量 EV 卡记录授权与回滚；卡不替代实验，也不替代 PR。
-7. 合入。接受的改动进 PR，由人审合入；reject / insufficient 保留结论，不补仪式记录。
+6. 高风险授权。规范文档、评估协议、权限、自动合并边界等改动，用轻量 EV 卡记录授权与回滚；卡不替代实验，也不替代 PR。卡标 `validated` 前必须跑一次 `ev_measure --run --record`，PASS 写进卡的 `measure_evidence`；没跑的卡只能算待办。
+7. 合入。接受的改动进 PR，由人审合入；reject / insufficient 保留结论，不补仪式记录。没有 field 样本、外部 trace 或 `impact.yaml` 时，回归冒烟可以跑，质量判定停在小池并记 `insufficient`；数据缺口记 `unknown`，不盖住已能动作的违反。
 
 演进能改的对象只有五类，每类都配了护栏：
 
@@ -76,11 +76,46 @@ flowchart LR
 
 误诊归因的事件写进诊断记录（`case_error` 或 `execution_error`，可带组件 ID）；深度轮或季度自评需要时，用 `scripts/component_tally.py` 现聚合失败簇，没有常驻表。
 
-### 3.3 角色
+### 3.3 参与的人
 
-角色按权限分，不按谁在执行。答案可见性写在接口层，不靠提示词约定。
+日常只有两类人：
 
-| 角色 | 能做什么 | 不能做什么 |
+| 用户 | 做什么 | 不做什么 |
+|---|---|---|
+| 诊断 / 沉淀工程师 | 用 diagnose 定位问题；把确认的结论沉淀成 case / reference；通过 trace 回报现场结果 | 不需要跑 `self-evolve` 或 experiment；不需要理解 RSI 记录 |
+| 演进维护者 | 显式发起 `self-evolve`，从候选里选一条；对行为质量跑 experiment、读 conclusion；审 PR 与高风险授权 | 不替工程师做诊断或沉淀；不自动改知识内容 |
+
+部署 owner 只维护 `sleuth.config.yaml` 与同步模式，不参与每次判定，不算日常使用者。
+
+`self-evolve` 里的“分诊”只指三件事：归类、排优先级、产出候选。它不跑 experiment，不写 conclusion，不产 EV 卡，也不改知识。用户从它那里拿到的是“这一轮有哪些可做的事、建议先做哪条”，不是“哪条改动已经通过”。
+
+```mermaid
+flowchart LR
+  subgraph E[诊断 / 沉淀工程师]
+    D[diagnose] --> T[本地 trace]
+    T --> C[case / reference]
+    C --> P1[PR]
+    T -.-> S[signal 台账]
+  end
+  subgraph M[演进维护者]
+    S --> SE[self-evolve<br/>归类与候选]
+    SE --> L[候选清单]
+    L -->|内容缺口| C
+    L -->|确定性 bug| F[回归测试 + PR]
+    L -->|行为质量| X[experiment]
+    X --> J[conclusion]
+    J --> P2[PR]
+    L -->|高风险| K[EV 卡]
+  end
+```
+
+图里只有两类使用者。工程师那条线不依赖 `self-evolve`；维护者那条线从信号开始，选完候选才进入 experiment 或 PR。
+
+### 3.3.1 系统组件角色
+
+下面这些不是用户角色，是系统内部职责；它们按权限分开，避免执行方看到答案或自己给自己判分。
+
+| 组件角色 | 能做什么 | 不能做什么 |
 |---|---|---|
 | 执行器 | 准备诊断回放、跑诊断、收集结果、成本与轨迹 | 不能看评估集的答案；不能写结论 |
 | 评分器 | 按答案或 rubric 给诊断、case、reference、trace 打分 | 不能改知识库；不能写结论 |
@@ -88,7 +123,7 @@ flowchart LR
 | 改动起草 | 根据信号写 RSI proposal、检查命令、回退路径 | 不能看评估集答案；不能决定留不留 |
 | 评估器 | 比较基线与候选，给出结论 | 不能改内容；不能决定合入 |
 | 周读数 | 汇总评估记录与指标，给出本周动作 | 不能写评估记录 |
-| 人 | 标答案、定协议与策略、决定合入、处理高风险 | 不替 agent 跑实验 |
+| 维护者 | 标答案、定协议与策略、决定合入、处理高风险 | 不替 agent 跑实验 |
 
 评估集的答案对改动起草与归因器隐藏；反馈集的答案开放；测试集的答案只在最终判定时使用。这条权限边界比任何提示词纪律都重要。
 
@@ -146,5 +181,5 @@ flowchart LR
 
 - 诊断与沉淀两个环内部的执行规则：在 `skills/diagnose/`、`skills/to-postmortem/`、`skills/to-reference/`、`skills/knowledge-groom/` 的正文里。
 - 知识库内容本身（`knowledge/`、`references/`、`postmortems/`）：入口见各自的说明。
-- 设计与取舍的完整论证：在 `proposals/2026-11-17-self-evolution-design.md` 与附录里；那两份是档案，不作为执行依据。
+- 在线与离线评估的边界：见 [evaluation.md](evaluation.md) 2.1；配置与角色边界见 [evolution-config.md](evolution-config.md)。
 - 每一面的行文规则：[writing-norms.md](../spec/writing-norms.md)，内部术语见 [terminology.md](../spec/terminology.md)。

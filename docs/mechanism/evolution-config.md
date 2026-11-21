@@ -129,9 +129,9 @@ flowchart TD
 | 阶段 | 触发 | 执行者 | 产物 |
 |---|---|---|---|
 | signal | 内容流程收尾 | `evolve-check` | `proposals/signals/` |
-| 分诊 | 用户显式发起深度轮 | `self-evolve` | 分类后的候选队列 |
-| 确定性 bug | 分诊或现场发现 | agent | 回归测试 + PR |
-| 内容缺口 | 分诊 | 内容 skill | case / reference / ingest |
+| 归类与候选 | 用户显式发起深度轮 | `self-evolve` | 分类后的候选队列 |
+| 确定性 bug | 归类或现场发现 | agent | 回归测试 + PR |
+| 内容缺口 | 归类 | 内容 skill | case / reference / ingest |
 | 行为质量 | 用户选中候选后显式发起 | RSI | proposal → experiment → decision |
 | 高风险授权 | 规范/协议/权限/自动合并边界 | 人审 + agent | 轻量 EV 卡 |
 | 落地 | accept 或修复完成 | agent + 人审 | PR |

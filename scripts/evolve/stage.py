@@ -22,7 +22,9 @@ from .decision import required_exclusive_wins
 from .holdout_guard import HoldoutError, is_holdout_source, issue_numbers
 from .pilot import _short_id, checkpoint as pilot_checkpoint, collect as pilot_collect
 from .pilot import decide as pilot_decide, _judge_counts
-from .contracts import now_iso
+from .contracts import Conclusion, PROTOCOL_VERSION, Version, now_iso
+from .kb_content import content_rev
+from .policy import policy_hash
 from .records import ConclusionStore
 
 
@@ -97,6 +99,7 @@ def _select_samples(root: Path, stage: str, policy: Dict[str, Any],
             "path": str((Path(root) / "eval" / "core" / "samples" / f"{sample.id}.yaml")),
             "purpose": sample.purpose,
             "source": sample.source,
+            "input": sample.input,
             "expected": sample.expected,
         })
     return rows
@@ -239,8 +242,8 @@ def plan(root: Path, stage: str, output: Path, policy: Dict[str, Any],
         },
         "runner": {
             "env": ["SLEUTH_STAGE", "SLEUTH_SAMPLE_ID", "SLEUTH_SHORT_ID",
-                    "SLEUTH_ARM", "SLEUTH_TRACE", "SLEUTH_OUT", "SLEUTH_ROOT",
-                    "SLEUTH_OUTPUT"],
+                    "SLEUTH_INPUT", "SLEUTH_ARM", "SLEUTH_TRACE", "SLEUTH_OUT",
+                    "SLEUTH_ROOT", "SLEUTH_OUTPUT"],
             "contract": "command must write SLEUTH_TRACE and SLEUTH_OUT for one rollout",
         },
     }
@@ -253,6 +256,17 @@ def plan(root: Path, stage: str, output: Path, policy: Dict[str, Any],
             sid = row["short_id"]
             shutil.copyfile(trace_dir / f"{sid}.yaml", output / "baseline" / "traces" / f"{sid}.yaml")
             shutil.copyfile(out_dir / f"{sid}.out.md", output / "baseline" / "out" / f"{sid}.out.md")
+    # 执行方只拿输入；答案与样本文件路径都不进 tasks.json，避免 runner 顺着路径读 expected。
+    judge_input = {row["short_id"]: row.pop("expected", None) for row in rows}
+    for row in rows:
+        # test 阶段仍会走 pilot_decide；池身份沿用样本文件字节，先算好摘要再删路径。
+        try:
+            row["digest"] = hashlib.sha256(Path(row["path"]).read_bytes()).hexdigest()
+        except (KeyError, OSError):
+            row["digest"] = "unknown"
+        row.pop("path", None)
+    (output / "judge-input.json").write_text(
+        json.dumps(judge_input, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (output / "tasks.json").write_text(json.dumps(tasks, ensure_ascii=False, indent=2) + "\n",
                                       encoding="utf-8")
     return tasks
@@ -289,6 +303,7 @@ def run(output: Path, command: List[str], timeout: float = 600.0,
                 "SLEUTH_STAGE": tasks["stage"],
                 "SLEUTH_SAMPLE_ID": str(sample["id"]),
                 "SLEUTH_SHORT_ID": sid,
+                "SLEUTH_INPUT": json.dumps(sample.get("input") or {}, ensure_ascii=False),
                 "SLEUTH_ARM": arm,
                 "SLEUTH_TRACE": str(trace),
                 "SLEUTH_OUT": str(out),
@@ -356,9 +371,14 @@ def judge(output: Path, agent: str = "dsh", timeout: float = 300.0,
                 raise StageError(f"cannot judge missing output: {arm}/{sid}")
             score_path = output / "judge" / f"{arm}-{sid}.json"
             env = dict(os.environ)
+            judge_input = {}
+            judge_input_path = output / "judge-input.json"
+            if judge_input_path.exists():
+                judge_input = json.loads(judge_input_path.read_text(encoding="utf-8"))
             env.update({
                 "SLEUTH_OUT": str(out),
-                "SLEUTH_EXPECTED": json.dumps(sample.get("expected"), ensure_ascii=False),
+                "SLEUTH_EXPECTED": json.dumps(
+                    judge_input.get(sid, sample.get("expected")), ensure_ascii=False),
                 "SLEUTH_JUDGE": str(score_path),
                 "SLEUTH_SAMPLE_ID": str(sample["id"]),
                 "SLEUTH_ARM": arm,
@@ -378,7 +398,7 @@ def judge(output: Path, agent: str = "dsh", timeout: float = 300.0,
 
 def report(output: Path, stage: str, judge_path: Path,
            policy: Dict[str, Any], *, card: Optional[str] = None,
-           update_stage: bool = False) -> Dict[str, Any]:
+           update_stage: bool = False, record: bool = False) -> Dict[str, Any]:
     output = Path(output)
     tasks = json.loads((output / "tasks.json").read_text(encoding="utf-8"))
     if stage != tasks.get("stage"):
@@ -429,12 +449,38 @@ def report(output: Path, stage: str, judge_path: Path,
             raise StageError(f"regression judge missing: {sid}")
         if not scores[sid]:
             failed.append(sid)
-    return {
+    result = {
         "stage": stage,
         "passed": not failed,
         "n": len(tasks.get("samples") or []),
         "failed": failed,
     }
+    if record:
+        # 回归只证明“原来能过的没有变坏”，不是质量判定；记录成 insufficient，防止被读成 accept。
+        root = Path(tasks.get("root") or ".")
+        version = Version(
+            protocol=PROTOCOL_VERSION,
+            policy=policy_hash(policy),
+            base_kb=content_rev(root),
+            candidate_kb=content_rev(root),
+            candidate=str(tasks.get("candidate_id") or "HEAD"),
+            model="unknown",
+            algorithm="smoke_runner",
+            algorithm_version="manual",
+        ).validate()
+        conclusion = Conclusion(
+            decision="insufficient",
+            reason="regression 冒烟：只证明回归门可跑，不是质量判定",
+            metrics={"regression_passed": bool(result["passed"]),
+                     "n": result["n"], "smoke": True,
+                     "acceptance_scope": "smoke"},
+            versions=version,
+            pool="regression-smoke",
+            at=now_iso(),
+        ).validate()
+        ConclusionStore.for_root(root).append(conclusion.to_dict())
+        result["recorded"] = "conclusion"
+    return result
 
 
 def load_argv(raw: str) -> List[str]:

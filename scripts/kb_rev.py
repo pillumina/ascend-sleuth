@@ -26,6 +26,7 @@ import sys
 from pathlib import Path
 
 from _stdio import pin_utf8_stdio
+from evolve.kb_content import content_rev
 
 UNKNOWN = "unknown"
 
@@ -62,12 +63,22 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="知识库版本（写入 trace 的 kb_rev 字段）")
     ap.add_argument("--root", default=None, help="检出根目录（默认：本脚本上两级）")
     ap.add_argument("--json", action="store_true", help="只吐 JSON")
+    ap.add_argument("--content", action="store_true",
+                    help="取 knowledge/ 的内容哈希（评测版本坐标用），不取 HEAD 短 sha")
     args = ap.parse_args()
 
     root = Path(args.root).resolve() if args.root else Path(__file__).resolve().parent.parent
     if not root.is_dir():
         print(f"kb_rev: 目录不存在 {root}", file=sys.stderr)
         return 2
+    if args.content:
+        token = content_rev(root)
+        if args.json:
+            print(json.dumps({"kb_content_rev": token, "root": str(root)},
+                             ensure_ascii=False))
+        else:
+            print(f"知识库内容版本（knowledge/ 内容哈希）：{token}")
+        return 0
     rev, dirty, source = kb_rev(root)
     if args.json:
         print(json.dumps(

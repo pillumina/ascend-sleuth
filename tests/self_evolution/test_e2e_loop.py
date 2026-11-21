@@ -90,6 +90,9 @@ class E2ELoopTest(unittest.TestCase):
         cand_path = Path(tmp.name) / "candidate.json"
         cand_path.write_text(json.dumps(candidate), encoding="utf-8")
         prepare(root, cand_path, samples, output)
+        tasks = json.loads((output / "tasks.json").read_text(encoding="utf-8"))
+        self.assertTrue(all("path" not in row for row in tasks["samples"]))
+        self.assertTrue(all(len(row.get("digest", "")) == 64 for row in tasks["samples"]))
         short_ids = ("1001", "1002", "1003", "1004")
         for arm in ("baseline", "candidate"):
             for index, sid in enumerate(short_ids):
@@ -102,6 +105,7 @@ class E2ELoopTest(unittest.TestCase):
         judge = {
             "baseline": {sid: 0 for sid in judged},
             "candidate": {sid: 1 for sid in judged},
+            "meta": {"agent": "test", "calibration": {"passed": True}},
         }
         judge_path = Path(tmp.name) / "judge.json"
         judge_path.write_text(json.dumps(judge), encoding="utf-8")
@@ -145,6 +149,41 @@ class E2ELoopTest(unittest.TestCase):
         self.assertFalse(third.get("duplicate"))
         fourth = decide(output, judge_path, policy, reuse_index=2)
         self.assertFalse(fourth.get("duplicate"))
+
+    def test_exploratory_small_pool_cannot_accept(self):
+        root, output, collected, result, judge_path = self._run(
+            "tooling",
+            {"region": "tooling.source_fetch", "file": "scripts/src_fetch.py",
+             "old": "def fetch(ref):\n    return ref\n",
+             "new": "def fetch(ref):\n    return ref.strip()\n",
+             "checks": ["py_compile"]},
+            hits={"baseline": 0, "candidate": 0},
+        )
+        policy = yaml.safe_load((root / "eval" / "policy.yaml").read_text(encoding="utf-8"))
+        policy["samples"]["field_eval"] = 9
+        again = decide(output, judge_path, policy, reuse_index=99, exploratory=True)
+        self.assertEqual(again["conclusion"]["decision"], "insufficient")
+        self.assertIn("capacity_short", again["conclusion"]["reason"])
+        self.assertEqual(again["conclusion"]["metrics"]["acceptance_scope"], "exploratory")
+
+    def test_uncalibrated_judge_cannot_accept(self):
+        root, output, collected, result, judge_path = self._run(
+            "tooling",
+            {"region": "tooling.source_fetch", "file": "scripts/src_fetch.py",
+             "old": "def fetch(ref):\n    return ref\n",
+             "new": "def fetch(ref):\n    return ref.strip()\n",
+             "checks": ["py_compile"]},
+            hits={"baseline": 0, "candidate": 0},
+        )
+        data = json.loads(judge_path.read_text(encoding="utf-8"))
+        data["meta"] = {"agent": "test"}
+        judge_path.write_text(json.dumps(data), encoding="utf-8")
+        policy = yaml.safe_load((root / "eval" / "policy.yaml").read_text(encoding="utf-8"))
+        policy["samples"]["field_eval"] = 4
+        (output.parent / "conclusions.jsonl").unlink(missing_ok=True)
+        again = decide(output, judge_path, policy, reuse_index=0)
+        self.assertEqual(again["conclusion"]["decision"], "insufficient")
+        self.assertIn("未校准", again["conclusion"]["reason"])
 
     def test_prepare_reuses_baseline_traces(self):
         tmp = tempfile.TemporaryDirectory()

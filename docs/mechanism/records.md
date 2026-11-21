@@ -47,6 +47,7 @@ predicted_effect: {metric: 组件执行错率, from: 0.6, to: "<0.3", measure: {
 validation: {method: golden_replay, success_criteria: golden 无回归且归因簇不再增长, rollback: revert}
 actual_cost: null                # validated 后必填 {tokens, source}
 decisions: []                    # 只追加：proposal / action / eval / decision 四类
+measure_evidence: []             # 只追加：每次 ev_measure --run --record 追加 PASS/FAIL 与 exit
 ```
 
 字段分两组。一组是执行契约，回答四个问题：
@@ -71,10 +72,11 @@ decisions: []                    # 只追加：proposal / action / eval / decisi
 2. 终态卡必须有判断记录。`validated`、`rejected`、`superseded` 的卡，`decisions` 里必须有对应结论与所依据的评估数据；缺了是审计缺口。
 3. `validated` 后 `actual_cost` 必填。没有实际成本记录的卡不可审计。
 4. `supersedes` 与 `superseded_by` 构成替换链；同一时刻每个 `target_component` 至多一张 `validated` 卡。
+5. 已有 `type: decision` 却仍停在 `in_experiment` 是状态滞后；CI 与面板都报同一件事，状态必须推进到终态。
 
 终态是 agent 依据合入前可得的验证做出的判断。现场有效性（工程师回报）在合入后的观察窗里结算，结果作为追加记录写回卡，不改变卡状态。
 
-必填字段清单以 `scripts/verify_proposals.py` 的 `REQUIRED` 为唯一事实源（`grep -n "^REQUIRED" scripts/verify_proposals.py`）。`target_component` 与 `predicted_effect.measure` 各有生效日检查，日期只写在脚本的 `TARGET_CUTOVER` 与 `MEASURE_CUTOVER` 常量里，本文不重复。存量卡豁免强制要求，缺口由 `python3 scripts/ev_measure.py --audit` 报出，不静默跳过。
+必填字段清单以 `scripts/verify_proposals.py` 的 `REQUIRED` 为唯一事实源（`grep -n "^REQUIRED" scripts/verify_proposals.py`）。`target_component`、`predicted_effect.measure` 与 `measure_evidence` 各有生效日检查，日期只写在脚本的 `TARGET_CUTOVER`、`MEASURE_CUTOVER`、`MEASURE_EVIDENCE_CUTOVER` 常量里，本文不重复。存量卡豁免强制要求；预测口径缺口由 `ev_measure.py --audit` 报出，新卡的实测证据缺口由 `verify_proposals.py --check` 报出，不静默跳过。
 
 脱敏：卡进 git 时只含聚合值与证据引用（记录路径加事件索引、issue 号加段落号），不含现场原文。原文留在本地 `traces/evidence/`；跨机器或对外分享时证据降级为摘要，并在卡上标注缺失的部分。
 
@@ -158,12 +160,12 @@ conclusion:
 |---|---|---|
 | 评估协议 | `protocol` | 样本分层、答案可见性、结论含义；改了它旧结论不可比 |
 | 可调策略 | `policy` | 主指标、阈值、样本量、成本预算、测试集划分 |
-| 基线知识库 | `base_kb` | 改动前检出的 HEAD 短 sha（`kb_rev` 同口径） |
-| 候选知识库 | `candidate_kb` | 候选 worktree 的 HEAD；有未提交补丁时写成 `<base>+patch:<补丁哈希>`，worktree 失效记 `unknown` |
+| 基线知识库 | `base_kb` | 改动前 `knowledge/` 的内容哈希（`python3 scripts/kb_rev.py --content`；HEAD 短 sha 只留给 trace 的 `kb_rev`） |
+| 候选知识库 | `candidate_kb` | 候选 worktree 的 `knowledge/` 内容哈希；有未提交补丁时再带 `+patch:<补丁哈希>`，worktree 失效记 `unknown` |
 | 候选改动 | `candidate` | 候选 id；pilot 的补丁在隔离 worktree 内未提交，差异由 `candidate_kb` 的 patch 哈希标识 |
 | 模型 | `model` | provider、model、思考等级；trace 的 `model`、非 DSH agent 写入的显式值，或 `harness_session` 对应的 DSH 会话记录；取不到写 `unknown` |
 
-判定时协议、策略、基线知识库与模型必须相同；候选知识与候选改动可以不同，但差异必须等于候选补丁。两个知识库版本都要记：基线是 HEAD 短 sha；候选是 HEAD，或候选 worktree 有未提交补丁时的 `<base>+patch:<补丁哈希>`；worktree 已失效记 `unknown`。
+判定时协议、策略、基线知识库与模型必须相同；候选知识与候选改动可以不同，但差异必须等于候选补丁。两个知识库版本都要记：基线是 `knowledge/` 的内容哈希；候选是候选 worktree 的内容哈希，有未提交补丁时再带 `+patch:<补丁哈希>`；worktree 已失效记 `unknown`。
 
 两项记录的变更方式不同：改协议要单独走一次评审并升版本，旧结论标上当时的版本；改策略写在 `sleuth.config.yaml 的 evolution.policy`，加载时校验未知键、非法枚举与缺失字段，哈希写进 `versions.policy`。改过的策略与旧结论不可直接比较。
 
@@ -211,7 +213,7 @@ conclusion:
 
 三条约定。权限在接口层强制：执行器拿到的样本不含答案，评分器与评估器拿到的含答案，归因与起草拿到的是反馈集。缺数据返回 `unknown`，不返回 0 或空字符串。错误只保留四类——数据缺失、版本不一致、评审不可用、结果格式错误——统一映射到 `unknown`，不吞异常。
 
-端口层已在 `scripts/evolve/ports.py` 定义五个 Protocol：样本源、执行器、评分器、记录存储、周读数。归因器、改动起草、评估器与现场来源还只有设计，没有对应 Protocol；适配器层（`scripts/evolve/adapters/`）已落地，旧脚本仍保留为完整实现，适配器只做临时/演进期的薄包装；归因器、改动起草、评估器与现场来源仍只有设计。完整设计见 `proposals/2026-11-17-self-evolution-design.md` 第 5.5 节，那里是档案，不作为执行依据。
+端口层在 `scripts/evolve/ports.py` 定义六个 Protocol：样本源、执行器、评分器、优化器、记录存储、周读数；本地 trace 读取另有 `TraceSource`（`scripts/evolve/trace_source.py`）。归因、改动起草与判定是领域函数（`trace_attribution.py`、`proposal_engine.py`、`decision.py`），不是可替换端口。适配器层（`scripts/evolve/adapters/`）只包旧脚本，旧脚本仍是完整实现。
 
 ### 3.7 内容流程的执行记录
 
@@ -243,8 +245,9 @@ schema 在 `metrics/skill-exec-log.yaml`，只追加；`scripts/log_skill_exec.p
 
 ### 5.1 已落地
 
-- 卡 schema 与生命周期完整性校验、两道生效日检查：`scripts/verify_proposals.py --check`（CI job `proposal-audit`）、`MEASURE_CUTOVER`、`TARGET_CUTOVER`；豁免缺口由 `ev_measure.py --audit` 报出。
-- 评审把手与替换链：`python3 scripts/ev_measure.py <卡号> --run` 打印命令、实测与退出码；`supersedes` 与 `superseded_by` 已进 schema。
+- 卡 schema 与生命周期完整性校验、三道生效日检查：`scripts/verify_proposals.py --check`（CI job `proposal-audit`）、`MEASURE_CUTOVER`、`TARGET_CUTOVER`、`MEASURE_EVIDENCE_CUTOVER`；预测口径缺口由 `ev_measure.py --audit` 报出，新卡实测证据缺口由 `verify_proposals.py --check` 报出。
+- 评审把手与替换链：`python3 scripts/ev_measure.py <卡号> --run --record` 打印命令、实测与退出码，并把这次实测追加进卡的 `measure_evidence`；`supersedes` 与 `superseded_by` 已进 schema。
+- `validated` 的实测门：生效日后的卡标 `validated` 必须有一条同命令的 PASS `measure_evidence`；只写 `measure.reason` 的卡不能标 `validated`。存量卡不追溯，缺口由 `verify_proposals.py --check` 报出。
 - v1 数据契约与命令：`scripts/evolve/` 的 `contracts.py`、`object_types.py`、`metrics.py`、`statistics.py`、`decision.py`、`pools.py`、`policy.py`、`samples.py`、`records.py`、`ports.py`；CLI 子命令 `policy`（check / show）、`sample`（new / list / check / review / promote / retire / set-purpose / absorb / draw-test）、`judge`、`brief`；结论与执行记录追加进 `.s2-replay/evolve/`。
 - 指标校验与执行记录：`scripts/verify_metrics.py --check`；执行记录的 schema、写入、校验、读取与聚合进 timeline。
 - 条目使用记录的源与生成物、`merge=union`、行级去重：见 [diagnosis-observability.md](diagnosis-observability.md)。
@@ -272,7 +275,7 @@ schema 在 `metrics/skill-exec-log.yaml`，只追加；`scripts/log_skill_exec.p
 |---|---|
 | 卡 schema 与校验 | `scripts/verify_proposals.py`（`REQUIRED` / `TARGET_CUTOVER` / `MEASURE_CUTOVER`）、`examples/sample-idea.yaml` |
 | 卡的影响视图与水位 | `scripts/ev_proposal.py --impact`、`--waterline`、`--mark-merged --from-prs` |
-| 预测实测 | `scripts/ev_measure.py --run`、`--audit`、`metrics/ev-measure-log.yaml` |
+| 预测实测 | `scripts/ev_measure.py --run --record`、`--audit`、`metrics/ev-measure-log.yaml`、卡内 `measure_evidence` |
 | 卡库聚合与审计缺口 | `scripts/ev_board_data.py` |
 | 执行记录 | `scripts/log_skill_exec.py`、`scripts/verify_exec_log.py`、`scripts/tail_exec_log.py`、`scripts/exec_log_path.py` |
 | 指标与 timeline | `scripts/metrics_snapshot.py`、`scripts/build_timeline.py`、`scripts/verify_metrics.py`、`metrics/gates.yaml` |

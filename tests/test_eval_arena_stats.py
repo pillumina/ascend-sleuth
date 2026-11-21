@@ -95,6 +95,13 @@ class GateArgValidationTest(unittest.TestCase):
         self.assertIn("--self-test", p.stderr, "缺数据时要说清该怎么走，而不是报与真因无关的错")
 
 
+class EmptyStatsGateTest(unittest.TestCase):
+    def test_empty_stats_is_insufficient_not_reject(self):
+        result = ea.decide({}, {}, 0.1)
+        self.assertEqual(result["verdict"], "insufficient")
+        self.assertIn("没有已评分样本", result["reason"])
+
+
 if __name__ == "__main__":
     unittest.main()
 

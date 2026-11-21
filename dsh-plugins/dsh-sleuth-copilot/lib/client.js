@@ -140,7 +140,8 @@ window.__ModuleLoader__.load({
       'action.copySediment': '复制沉淀指令',
       'action.copyPromote': '复制升格指令',
       'action.copyFeedback': '复制回报指令',
-      'action.copySample': '复制候选样本指令',
+      'action.addEval': '加入评测集',
+      'action.addEvalNote': '生成候选样本，先 dry-run；不自动 active',
       'action.openSession': '切到该诊断的会话',
       'action.closeMenu': '关闭菜单',
       'waiting': '在等',
@@ -556,6 +557,7 @@ window.__ModuleLoader__.load({
       'sel.scopeSelected': '所选 {n} 项',
       'sel.menuEmpty': '所选没有可执行的批次动作。',
       'sel.sedimentSelected': '沉淀所选 {n} 单',
+      'sel.sampleSelected': '加入评测集 {n} 单',
       'sel.sedimentAll': '沉淀当前筛选 {n} 单',
       'sel.copyList': '复制所选清单',
       'sel.copyDone': '已复制 {n} 项的清单',
@@ -738,7 +740,8 @@ window.__ModuleLoader__.load({
       'action.copySediment': 'Copy sediment command',
       'action.copyPromote': 'Copy promote command',
       'action.copyFeedback': 'Copy outcome command',
-      'action.copySample': 'Copy sample intake command',
+      'action.addEval': 'Add to eval set',
+      'action.addEvalNote': 'Create candidate samples; dry-run only, never auto-active',
       'action.openSession': 'Open the diagnosis session',
       'action.closeMenu': 'Close menu',
       'waiting': 'Waiting for',
@@ -1153,6 +1156,7 @@ window.__ModuleLoader__.load({
       'sel.scopeSelected': '{n} selected',
       'sel.menuEmpty': 'No batch action applies to this selection.',
       'sel.sedimentSelected': 'Sediment {n} selected',
+      'sel.sampleSelected': 'Add {n} to eval set',
       'sel.sedimentAll': 'Sediment {n} in this filter',
       'sel.copyList': 'Copy selection list',
       'sel.copyDone': 'Copied {n} rows',
@@ -2616,8 +2620,18 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
     }
 
     function sampleDraft(row) {
-      return '用 /eval-ingest 从 ' + traceSource(row) + ' 生成候选样本，'
-        + '先跑 sample new --from trace --dry-run 看完整性与查重'
+      return '用 /eval-ingest 从 ' + traceSource(row) + ' 生成候选评测样本，'
+        + '先跑 sample new --from trace --dry-run --json 看状态与查重；'
+        + '不要自动 active，等我确认根因与修复。'
+    }
+
+    function sampleBatchDraft(rows) {
+      const list = (rows || []).filter((item) => item && item.file)
+      const lines = list.map((item) => '- ' + traceSource(item)
+        + '（' + String(item.sessionId || '') + '）').join('\n')
+      return '用 /eval-ingest 批量从以下已闭环 trace 生成候选评测样本：\n' + lines + '\n'
+        + '逐条先跑 sample new --from trace --dry-run --json；汇总完整性与查重后给我确认；'
+        + '不要自动 active，等我确认根因与修复。'
     }
 
     // 能不能起沉淀：看「这单还没沉淀、有内容、不是已有 case 覆盖的单」，不看 agent 有没有
@@ -3691,6 +3705,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         label: tr('action.handoff'),
         onSelect: () => fillAndClose(handoffDraft(row)),
       })
+      if (row && ['resolved', 'escalated', 'archived'].includes(row.status)) {
+        instructItems.push({
+          key: 'sample',
+          label: tr('action.addEval'),
+          note: tr('action.addEvalNote'),
+          onSelect: () => fillAndClose(sampleDraft(row)),
+        })
+      }
       groups.push({ key: 'instruct', title: tr('group.instruct'), items: instructItems })
 
       const settleItems = []
@@ -3841,13 +3863,6 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         label: tr('action.copyResume'),
         onSelect: () => copyItem({ text: resumeDraft(row) }),
       }]
-      if (row && ['resolved', 'escalated', 'archived'].includes(row.status)) {
-        copyItems.push({
-          key: 'sample-copy',
-          label: tr('action.copySample'),
-          onSelect: () => copyItem({ text: sampleDraft(row) }),
-        })
-      }
       groups.push({ key: 'copy', title: tr('group.copy'), items: copyItems })
 
       const navItems = []
@@ -7114,6 +7129,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       // 不按固定顺序：否则选了一行 groom 就会把三行 PR 的主操作抢走。
       const selDiagRows = view === 'diagnosis' ? selRows : []
       const selDiagSed = selDiagRows.filter((item) => canStartSediment(item))
+      const selDiagSample = selDiagRows.filter((item) => item
+        && ['resolved', 'escalated', 'archived'].includes(item.status))
       const selDraftRows = view === 'sediment' ? selRows : []
       const selUndoRows = selDraftRows.filter((item) => item && item.undo && item.undo.available)
       const selKindRows = (kind) => selDraftRows.filter((item) => sedPrimaryKey(item) === kind)
@@ -7154,6 +7171,11 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           else copySelList()
           return
         }
+        if (kind === 'sample') {
+          if (selDiagSample.length) fillDraft(sampleBatchDraft(selDiagSample))
+          else copySelList()
+          return
+        }
         if (kind === 'copy') { copySelList(); return }
         if (kind === 'invalid') { removeInvalidSelection(); return }
         if (kind === 'undo') {
@@ -7181,7 +7203,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       function runSelPrimary() {
         if (view === 'diagnosis') {
           if (staleBlocked && selDiagSed.length) { flash(tr('sel.stale')); return }
-          runSelAction(selDiagSed.length ? 'sediment' : 'copy')
+          if (selDiagSed.length) runSelAction('sediment')
+          else if (selDiagSample.length) runSelAction('sample')
+          else runSelAction('copy')
           return
         }
         if (!selPrimary) { copySelList(); return }
@@ -7190,9 +7214,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
       function selPrimaryLabel() {
         if (view === 'diagnosis') {
-          return selDiagSed.length
-            ? tr('sel.sedimentSelected', { n: selDiagSed.length })
-            : tr('sel.copyList')
+          if (selDiagSed.length) return tr('sel.sedimentSelected', { n: selDiagSed.length })
+          if (selDiagSample.length) return tr('sel.sampleSelected', { n: selDiagSample.length })
+          return tr('sel.copyList')
         }
         if (!selPrimary) return tr('sel.copyList')
         const n = selPrimary.rows.length
@@ -7207,6 +7231,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       if (view === 'diagnosis') {
         if (selDiagSed.length) {
           batchMenuItems.push({ key: 'sediment', label: tr('sel.sedimentSelected', { n: selDiagSed.length }), run: () => runSelAction('sediment') })
+        }
+        if (selDiagSample.length) {
+          batchMenuItems.push({ key: 'sample', label: tr('sel.sampleSelected', { n: selDiagSample.length }), run: () => runSelAction('sample') })
         }
         batchMenuItems.push({ key: 'copy', label: tr('sel.copyList'), run: () => runSelAction('copy') })
       } else {

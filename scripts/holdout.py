@@ -138,6 +138,13 @@ def covered_cells(root: Path):
 def cmd_check(root: Path) -> int:
     doc = load_manifest(root)
     if doc is None:
+        fixtures = sorted((root / GOLDEN).glob("*.fixture.yaml"))
+        if fixtures:
+            print(f"holdout --check: 未找到 {MANIFEST}，但 {GOLDEN}/ 有 {len(fixtures)} 条夹具——"
+                  "对照集没有封存清单，无法判断量尺有没有被改过")
+            print("  → 由维护者执行 python3 scripts/holdout.py --reseal --all 建立清单；"
+                  "没有清单时 --check 不得静默通过。")
+            return 1
         print(f"未找到 {MANIFEST}——跳过（对照集未建立）")
         return 0
     entries = entries_of(doc)

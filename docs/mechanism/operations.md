@@ -35,7 +35,7 @@
 | 每周批审收尾的检查 | 系统自动 | 知识库的覆盖缺口与结构问题 |
 | 深度轮（全库观测） | 人显式要求 | 跨轮聚合：归因聚类、容量、重跑未做的条目、指标漂移 |
 
-内容流程收尾只执行 `evolve-check`，它只记录信号，不产 EV 卡、不跑 RSI、不跑验证门。只有用户显式发起深度全库体检时，才走 `/skill:self-evolve`；深度轮只分诊候选，不自动执行 RSI。
+内容流程收尾只执行 `evolve-check`，它只记录信号，不产 EV 卡、不跑 RSI、不跑验证门。只有用户显式发起深度全库体检时，才走 `/skill:self-evolve`；深度轮只归类候选，不自动执行 RSI。
 
 部署可以声明演进角色：`sleuth.config.yaml` 的 `evolution.role`，读端 `scripts/evolve_mode.py`。`maintainer` 先落信号，行为质量进 RSI、内容缺口进 ingest，不自动产 EV 卡；`signal-only` 只落信号、不跑实验；`off` 只留一条跳过记录。只做内容沉淀的下游部署用 `signal-only`：本地卡号会与上游号段重号，冲突无法机械解决。
 
@@ -45,7 +45,7 @@
 
 | 模式 | 用户语义 | 各授权级别怎么处理 | 人审时机 |
 |---|---|---|---|
-| `default`（默认） | 自动跑，关键改动攒批给我审 | `auto` 即时合入；`review` 与 `dual` 攒批 | 轮末或批边界，提一个批 PR |
+| `default`（默认） | 自动跑，关键改动攒批给我审 | `auto` 只在 `auto_merge.enabled=true` 时自动合入，当前为 false，按 `review` 批审；`review` 与 `dual` 攒批 | 轮末或批边界，提一个批 PR |
 | `hands-off` | 我信这个 scope 的判断，全自动跑，做完给我 PR 审 | 三个级别都按预授权连续执行，事中不打断 | 目标完成或批边界，提一个批 PR |
 
 不指定时按 `default`。`hands-off` 需要明确要求，并且有三条硬前提：每个行为改动有 signal/RSI 证据（高风险另有授权卡）；每个改动独立 commit、可以逐条 revert；验证先于合入。
@@ -56,7 +56,7 @@
 
 | 级别 | 适用 | 合入方式 | 补充 |
 |---|---|---|---|
-| `auto` | 低风险、可逆、可机械验证 | 自动合入，仍产生完整的 PR 与 commit，CI 是强制检查 | 月度抽审，发现错误就回滚并撤销该类授权 |
+| `auto` | 低风险、可逆、可机械验证 | 只有 `auto_merge.enabled=true` 时自动合入；当前不启用，按 `review` 批审 | 月度抽审，发现错误就回滚并撤销该类授权 |
 | `review` | 判断性、中风险 | 人审合入 | 审一条约 30 秒 |
 | `dual` | 高风险、结构、不可逆 | 双签合入 | 改 active reference、triage 结构、skill 骨架、新 skill 立项走这一级 |
 
@@ -107,7 +107,7 @@
 | 批量拉取上游 issue | `/skill:issue-ingest` |
 | 补 issue 评测样本 | `/skill:eval-ingest`（底层 `sample ingest-issues`；补答案用 `sample set-answer`，审候选用 `sample review`） |
 | 跑一次体检 | `python3 scripts/evolution_health.py` |
-| 评审一项改进 | `python3 scripts/ev_measure.py <卡号> --run` |
+| 评审一项改进 | `python3 scripts/ev_measure.py <卡号> --run --record`（PASS 写进卡的 `measure_evidence`；会改 tracked 卡，在 worktree 里跑并随 PR 提交） |
 | 查看算法适配器 | `python3 scripts/evolve.py experiment list`；按 target 解析用 `experiment resolve --target skill` |
 | 看完整 metrics 体检 | `python3 scripts/evolve.py health --json`（只读；`--check` 有 fail 退出 1，broken 退出 2；不带 `--check` 的读数命令仍退出 0，与 `metrics_health.py` 一致） |
 | 记录一个 baseline 提案 | `python3 scripts/evolve.py experiment propose --target skill --component <组件> --summary <一句话>`（只写本地实验记录，不跑模型、不合入） |
@@ -125,7 +125,11 @@
 
 只跑新增样本，不每周跑全量；判定那一次才跑全量。读数包含六项：可评样本数、最近一次全量回放的命中率、单次回放成本、距上次收尾检查的天数、未执行的检查命令数、内容体检的越界项。没测过的项写「未测」，不补零。
 
+在线评估只产生现场读数与信号，离线评估才在固定样本池上判 conclusion；两者之间的样本晋升要复核，边界见 [evaluation.md](evaluation.md) 2.1。
+
 维护者每周只看一个入口：`python3 scripts/evolve.py run`（面板或脚本用 `--json`）。它不跑模型、不写库，只根据样本队列、结论、`sleuth.config.yaml 的 evolution.policy` 和 metrics 给出 `next_actions`：候选待审、field 评估样本不足、test 不足或未抽、尚无结论、core 回归不足；同时给出 candidate/field/test 计数、按 `stratum` 的分层计数与 warnings（例如候选缺答案、某层 test 不足）。`samples.strata` 配每层目标；`draw-test` 按目标层补齐。
+
+没有 field 反馈、外部 trace 或 `impact.yaml` 时，读数里的缺项记 `unknown`，不补 0；回归冒烟仍可跑（`stage plan/run/report --record`），质量判定停在小池并记 `insufficient`。新卡标 `validated` 前必须先跑一次 `ev_measure --run --record`，没跑的卡只能算待办。
 
 trace 归因的幂等状态在 `.s2-replay/evolve/trace-state.json`：键是 `(source_id, trace_id, content_sha256, attribution_schema)`；同内容同 schema 跳过，trace 内容变化或 schema 升级才重算。`snapshot_id` 由当前活跃 trace 集合再哈希，用来判断状态是否对应当前 trace 集。`traces sync` 会把归因组件映射到 `regions.py` 的可变异区；没有匹配就空，不猜。未来 collector 实现 `TraceSource` 并换 `source_id`，不复制归因/状态机。
 
@@ -257,7 +261,7 @@ S2 校准集的 selection 与 test 分离是规模条件：池子撑不起两半
 
 ### 5.1 已落地
 
-- 三个入口：`skills/evolve-check/SKILL.md`（只记信号）、`skills/self-evolve/SKILL.md`（深度分诊）、`skills/knowledge-groom/SKILL.md`（每周批审）；重型 RSI 只由显式选择候选后进入。
+- 三个入口：`skills/evolve-check/SKILL.md`（只记信号）、`skills/self-evolve/SKILL.md`（归类与候选）、`skills/knowledge-groom/SKILL.md`（每周批审）；重型 RSI 只由显式选择候选后进入。
 - 部署级演进模式：`sleuth.config.yaml` 的 `evolution.role` 与 `scripts/evolve_mode.py`。
 - 积压水位、合入点回写与单一分子实现：`scripts/ev_proposal.py --waterline`、`--mark-merged --from-prs`。
 - 内容流程执行记录与聚合进 timeline。
@@ -293,7 +297,7 @@ S2 校准集的 selection 与 test 分离是规模条件：池子撑不起两半
 | 积压水位与合入点 | `scripts/ev_proposal.py --waterline`、`--mark-merged --from-prs` |
 | 周读数 | `scripts/metrics_snapshot.py --kind live`、`scripts/build_timeline.py` |
 | 体检 | `scripts/evolution_health.py`、`proposals/gates.yaml` |
-| 评审把手 | `scripts/ev_measure.py --run`、`--audit` |
+| 评审把手 | `scripts/ev_measure.py --run --record`、`--audit` |
 | 执行记录 | `scripts/log_skill_exec.py`、`scripts/tail_exec_log.py` |
 | 归因聚合 | `scripts/component_tally.py` |
 | 会话与任务状态 | `proposals/sessions/`、`proposals/tasks/`（运行时件） |

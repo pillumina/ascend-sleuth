@@ -148,6 +148,12 @@ def decide_binary(
         cost_path=cost_path,
     )
 
+    if constraints_ok is None:
+        return DecisionResult(
+            decision=Decision.INSUFFICIENT,
+            reason="约束指标数据不足，无法判断是否通过",
+            **base,
+        )
     if not constraints_ok:
         return DecisionResult(
             decision=Decision.REJECT,
@@ -244,6 +250,8 @@ def decide_cost_primary(
         cost_path=(ratio is not None and non_inferior and ratio <= 1 - epsilon),
         quality_non_inferior=non_inferior,
     )
+    if constraints_ok is None:
+        return DecisionResult(decision=Decision.INSUFFICIENT, reason="约束指标数据不足，无法判断是否通过", **base)
     if not constraints_ok:
         return DecisionResult(decision=Decision.REJECT, reason="硬约束或回归检查不通过", **base)
     if ratio is None:

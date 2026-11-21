@@ -67,6 +67,30 @@ class StageTest(unittest.TestCase):
             self.assertTrue(reported["passed"])
             self.assertEqual(reported["n"], 1)
 
+    def test_smoke_runner_records_insufficient_conclusion(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._root(td)
+            out = Path(td) / "out"
+            policy = load_policy(None)
+            plan(root, "regression", out, policy, limit=1)
+            result = run(out, [sys.executable, str(ROOT / "scripts" / "smoke_runner.py")])
+            self.assertEqual(result["completed"], 1)
+            trace = yaml.safe_load(
+                (out / "candidate" / "traces" / "1001.yaml").read_text(encoding="utf-8"))
+            self.assertTrue(trace["smoke"])
+            judge = Path(td) / "judge.json"
+            judge.write_text(json.dumps({"candidate": {"1001": 1},
+                                         "meta": {"agent": "echo"}}), encoding="utf-8")
+            reported = report(out, "regression", judge, policy, record=True)
+            self.assertTrue(reported["passed"])
+            self.assertEqual(reported["recorded"], "conclusion")
+            line = (root / ".s2-replay" / "evolve" / "conclusions.jsonl").read_text(
+                encoding="utf-8").strip().splitlines()[-1]
+            conclusion = json.loads(line)
+            self.assertEqual(conclusion["decision"], "insufficient")
+            self.assertEqual(conclusion["pool"], "regression-smoke")
+            self.assertTrue(conclusion["metrics"]["smoke"])
+
     def test_regression_failure_is_reported(self):
         with tempfile.TemporaryDirectory() as td:
             root = self._root(td)
@@ -80,6 +104,18 @@ class StageTest(unittest.TestCase):
             reported = report(out, "regression", judge, policy)
             self.assertFalse(reported["passed"])
             self.assertEqual(reported["failed"], ["1001"])
+
+    def test_tasks_do_not_carry_expected(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._root(td)
+            out = Path(td) / "out"
+            plan(root, "regression", out, load_policy(None), limit=1)
+            tasks = json.loads((out / "tasks.json").read_text(encoding="utf-8"))
+            self.assertNotIn("expected", tasks["samples"][0])
+            self.assertNotIn("path", tasks["samples"][0])
+            self.assertEqual(len(tasks["samples"][0].get("digest", "")), 64)
+            judge_input = json.loads((out / "judge-input.json").read_text(encoding="utf-8"))
+            self.assertEqual(judge_input["1001"], {"resolution": "ok"})
 
     def test_test_stage_selects_four(self):
         with tempfile.TemporaryDirectory() as td:

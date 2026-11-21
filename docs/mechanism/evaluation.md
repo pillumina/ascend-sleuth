@@ -27,6 +27,55 @@
 
 命令链只有三条：`--build-pool` 从校准集派生池，`--stats` 出分与逐条判决向量，`--gate` 做配对比较并写影响记录。读完本节就该知道池分几类、判定池与回归池怎么分；后面每一节不引入本节没出现过的构件名。
 
+### 2.1 在线评估与离线评估
+
+在线评估读现场：诊断、内容流程、现场反馈产生 trace、成本与使用记录。它没有固定样本，答案也不一定可得；用途是发现信号、看趋势、找覆盖缺口，不能直接判 `accept`。
+
+离线评估读固定评估池：样本有来源、有 `expected` 或 rubric，基线与候选在同一批样本上跑。它产出 conclusion，可决定 accept / insufficient / reject；test 集只用于终判。
+
+| 维度 | 在线评估 | 离线评估 |
+|---|---|---|
+| 数据 | 本地 trace、现场反馈、entry activity、timeline | `eval/core`、field 候选、issue 回放、golden、holdout |
+| 触发 | 每次诊断或内容流程 | 维护者发起 experiment / replay / stage |
+| 答案 | 多数没有，只有现场回报 | 必须有 `expected` 或 rubric |
+| 用途 | 发现信号、监控、补样候选 | 判定、回归、终判 |
+| 结论 | 只记读数与信号，不判 accept | conclusion 四值 |
+| 入口 | `diagnose`、`evolve-check`、`self-evolve` 归类与候选 | `experiment flow`、`pilot`、`stage`、`eval_arena`、`s2_replay` |
+
+`self-evolve` 是跨轮观测与候选入口，不是离线评估。这里的“分诊”只指归类、排优先级、产出候选，不执行实验、不写 conclusion。真正跑对照的是 `experiment flow`、`pilot`、`stage`、`eval_arena` 或 `s2_replay`。
+
+在线到离线只走一条晋升路径：现场 trace 或 issue 先成为候选样本（`sample new --from trace`、`sample import-s2`、`eval-ingest`），补来源、脱敏、`expected` 或 rubric，经维护者复核后才进入评估池。没有复核的现场数据不能直接当评估样本，也不能用评估集的答案反写改动。
+
+```mermaid
+flowchart LR
+  subgraph ONLINE["在线：现场"]
+    DX["诊断 / 内容流程"] --> TR["本地 trace"]
+    TR --> FB["现场反馈 / entry activity"]
+    FB --> MET["metrics / timeline"]
+    MET --> SE["self-evolve 归类与候选"]
+  end
+  subgraph OFFLINE["离线：判定"]
+    ISS["issue / eval-ingest"] --> CAND["候选样本"]
+    CAND --> REV{"维护者复核"}
+    REV --> POOL["field / core 评估池"]
+    POOL --> EXP["experiment / replay / stage"]
+    EXP --> CONC["conclusion"]
+  end
+  SE -->|"候选 / 信号"| CAND
+  TR -->|"sample new --from trace"| CAND
+  CONC --> PR["PR"]
+  ONLINE -.->|"只晋升派生件，不搬原始 trace"| OFFLINE
+```
+
+这张图里两条边界：
+
+- 在线只产出信号与候选，不产出 conclusion；离线只消费复核后的样本，不直接读原始 trace。
+- `self-evolve` 在在线侧归类，不在离线侧判定；把 `self-evolve` 当离线评估入口会绕开样本复核与答案隔离。
+
+当前实现没有自动把在线 trace 晋升成共享样本；晋升由人触发、脚本校验。这是有意的数据边界，不是链路遗漏。若要让在线闭环自动补样，需要先解决脱敏、答案确认与本地数据出域的治理问题。
+
+行为质量的 conclusion 写在本地 `.s2-replay`，PR 内看不到；评审只能看改动与卡，不能只凭 PR 复核 conclusion。合并到离线判断前，结论要先绑定到卡或另行导出。
+
 ## 3 完整机制
 
 ### 3.1 评估对象
@@ -101,6 +150,20 @@ flowchart TD
 ```
 
 - holdout 隔离是硬检查：`ingest-issues`、`import-s2`、`sample new/review/promote` 会按 `eval/holdout.yaml` 的 fixture issue 号拒绝或跳过；holdout 样本不进入候选池、不参与演进。`source_id`、`list_issues`、`fetch_issue`。GitHub 是默认实现；`local` 读本地 JSON/YAML 导出（含 body），用 `--source local --cache <path>`。新增 GitCode 等源只实现这个 Protocol 并登记进 `registry.py`，过滤、建候选、state 仍走同一条管线；`source_id` 是 state 分区键，也是候选 `source` 的前缀。
+
+#### 3.3.2 评估集怎么被使用
+
+评估集不是一个自动跑的后台任务；它是一组 active 样本，由维护者按用途选择命令。
+
+| 样本 | 用途 | 入口 |
+|---|---|---|
+| active/field 的 evaluation 样本 | 行为质量对照 | `experiment flow` 的 `--samples`，或 `pilot prepare --samples` 后接 runner / judge / `pilot decide` |
+| active/core 的 test 样本 | 终判 | `stage plan --stage test` → `stage run` → `stage judge` → `stage report` |
+| active/core 的 regression 样本 | 不回归 | `stage plan --stage regression` → `stage run` → `stage judge` → `stage report` |
+| `eval/s2` 校准集 | issue 回放与门控 | `s2_replay` 或 `eval_arena --build-pool/--stats/--gate` |
+| golden / holdout | 回归与封存对照 | `eval_scorecard.py`、`holdout.py` |
+
+知识库里的 case 不是评估样本。case 要变成样本，走 `sample new --from postmortem --case <path>`；诊断 trace 走 `sample new --from trace`；issue 走 `eval-ingest` / `sample ingest-issues`。它们都先产生 candidate，补 `expected`、脱敏并 `review` 后才成为 active/field；只有 `active/evaluation` 才能进 experiment，`test` 只从 core 抽。
 
 诊断标注由 agent 预标、维护者抽检，抽检覆盖每周新增样本的两成或两条，取大。case 与 reference 先做 10–20 条双标与裁决，再定 rubric 阈值。trace 先全审 10 条，再抽检。自动标注只做提名，不能直接当答案。
 
@@ -193,6 +256,8 @@ $$
 | `reject` | 主指标变差、约束或硬约束不通过、或成本超预算且主指标没有提升 | 回滚或关闭 |
 | `unknown` | 数据不全、版本不一致、评审不可用 | 记待办，不猜 |
 
+缺数据不是失败：没有 field 样本、外部 trace 或 `impact.yaml` 时，回归冒烟可以跑，质量判定停在小池并记 `insufficient`；体检器把数据缺口记 `unknown`，不盖住已经能动作的违反。反过来，低样本量也不能用 `exploratory` 提升成 `accept`。
+
 接受是评估结果，合入由授权等级决定（[rsi-mechanism.md](rsi-mechanism.md)）。效率类改动把主指标换成成本指标：主指标变好、质量非劣、G 通过即接受。
 
 v1 已能按策略直接判一次二元配对：`python3 scripts/evolve.py judge --b <候选独家命中> --c <基线独家命中> --n <配对样本数>`，可选带成本；阈值读 `sleuth.config.yaml 的 evolution.policy`，加 `--record` 时结论追加进 `.s2-replay/evolve/conclusions.jsonl`。
@@ -227,7 +292,7 @@ tokens 分 uncached、cache_read、cache_write、out、billed 五类，并记 `c
 - `weak_accept`：无回归且有提升，但证据不足，或缺逐条判决向量；改动可以留，但不能据此把卡判 validated；
 - `reject`：有回归、无提升，或基线与候选的池哈希不同。
 
-`--gate` 的退出码是数据约定，不是命令成败：0 表示结论成立且已写影响记录（三种结论都算成立）；1 表示读文件失败或池结构错；2 表示用法或输入问题（缺参、把回归池当判定池）；3 表示池已不新鲜，结论作废、影响记录不写。
+`--gate` 的退出码是数据约定，不是命令成败：0 表示结论成立且已写影响记录（三种结论都算成立）；1 表示读文件失败或池结构错；2 表示用法或输入问题（缺参、把回归池当判定池）；3 表示池已不新鲜或两侧没有已评分样本，结论作废、影响记录不写。
 
 评分有三个分母规则，都是实测得出的：
 
@@ -253,7 +318,7 @@ RSI 存储层分三层：`store.models` 定义事件模型，`store.ports.Backen
 
 `agent_adapter --agent dsh` 只指 dsh CLI headless，不是 DSH Desktop；Desktop 本身是 agent，提案/实验应在会话内用 subagent 编排，不需要启动 Desktop 子进程。Claude/Codex 只有在 CLI 是标准做法时才走外部命令；它们的提案仍写回同一个 ProposalPort/RSIStore。
 
-提案引擎在 `scripts/evolve/proposal_engine.py`：`Proposal` 统一表示 target、artifact、分数、反馈与来源；`ProposalEngine` 负责校验、评分、候选池、搜索策略和归档；`ProposalArchive` 写 `.s2-replay/evolve/proposals.jsonl`。策略有 `best`、`pareto`、`gepa`；GEPA 是 `GepaPolicy`（Pareto）+ 反思 proposer 的组合，不是引擎本身。`ProposalEngine` 的选择层直接复用 `selectors`，旧的 `agent_gepa.py` 状态机只是 skill 兼容 adapter，不再有第二套 Pareto 选择。`experiment search --scenario` 用已产出的候选做校验、评分、策略选择和归档；真实生成仍由 agent 走 `experiment request` → `--draft`。真实 pilot 轨迹可以用 `python3 scripts/validate_rsi_replay.py --pilot <pilot-dir>` 重放；两个真实 pilot 可以用 `python3 scripts/validate_rsi_gepa.py --pilot A --pilot B` 跑一次 GEPA 选择报告；`validate_rsi_full_flow.py --pilot --sample [--exploratory]` 用真实候选轨迹走完整 flow：copy 到临时目录，重跑 collect/decide，输出每个 stage 的 evidence/partial/fail、agent heuristic 可用性和 GEPA 候选池缺口。`experiment flow --card EV-YYYY-NNN` 可把行为面实验绑定到 EV 卡；内容面实验不产卡。`experiment flow --exploratory` 是明确标注的降级验收：允许 usage 约束 insufficient、允许 rsi-events 记录 exploratory accept，但不得当作生产通过；`--dry-run` 只准备 candidate/pilot tasks 和隔离 worktree，不跑 runner/judge；`experiment flow` 把带 `candidate` 的提案接进 pilot：prepare → 外部 runner → judge → gate → archive；没有 candidate 的提案会被拒绝。candidate apply 前做 target-specific 结构检查：knowledge YAML 必须可解析且有 id，tooling `.py` 必须可编译，harness 的 Python/YAML/JSON 必须可解析，scheduler.yaml 还必须带 scheduler 键；坏内容不会写入工作区。`brief` 现在也读 proposals archive 和 experiments，并在事件流有数据时优先用事件流，显示 events/提案数/实验数和最后一条状态。flow 判定时把提案编号写进 Conclusion（`proposal` 字段），`readback --proposal <id>` 可以先按提案回读判定；投影没有时回退到 experiment/decision 事件。`--measure` 只接受带 card 的结论，避免把 None 传给 ev_measure。DSH adapter 在启动 headless 前检查 `DEEPSEEK_API_KEY`；没有 key 时直接报错，可用 `SLEUTH_DSH_ALLOW_STORED=1` 放行已存凭据。flow 与 pilot 在缺 trace/out、`collect.complete=false` 时拒绝进入判定；pilot 的 accept 还要求 `n >= samples.field_eval`，小池只能 `insufficient`；knowledge/source usage 目标还要求对应 usage 约束为 accept，insufficient 不再放行。flow 读取 judge 时要求 `meta.agent`、每个样本两侧 0/1 分数，并把 judge meta/文件哈希写入实验记录。flow 与 pilot.collect 都拒绝 `adapter_fallback` trace，adapter 没写真实 trace 时不能进 judge。flow 在非 accept 判定时回滚 candidate worktree，并把 `rolled_back` 写进 Proposal；accept 保留工作区供审。flow 还会写一条 ExperimentStore 记录，带 `proposal`、baseline/candidate 均分、paired 证据，以及 proposal/conclusion 快照；knowledge/source usage target 会从 pilot.collect 的 usage 记录生成 `knowledge_usage`/`source_usage` 证据；`experiment records` 能看到 proposal 编号；`experiment gate --target skill` 已委托 `eval_arena.py --gate`（baseline/candidate stats、component、alpha），不再报“no gate wired”；`experiment show --proposal <id>` 把 proposal、conclusion、experiment 三份记录合成一个 JSON 视图；`store history --proposal/--experiment` 直接查事件历史；proposal/conclusion 文件缺失时回退到 experiment 行里的快照。knowledge/source usage 这类 target 仍要求自己的 usage 证据，缺证据的 accept 会被 validator 拒绝。
+提案引擎在 `scripts/evolve/proposal_engine.py`：`Proposal` 统一表示 target、artifact、分数、反馈与来源；`ProposalEngine` 负责校验、评分、候选池、搜索策略和归档；`ProposalArchive` 写 `.s2-replay/evolve/proposals.jsonl`。策略有 `best`、`pareto`、`gepa`；GEPA 是 `GepaPolicy`（Pareto）+ 反思 proposer 的组合，不是引擎本身。`ProposalEngine` 的选择层直接复用 `selectors`，旧的 `agent_gepa.py` 状态机只是 skill 兼容 adapter，不再有第二套 Pareto 选择。`experiment search --scenario` 用已产出的候选做校验、评分、策略选择和归档；真实生成仍由 agent 走 `experiment request` → `--draft`。真实 pilot 轨迹可以用 `python3 scripts/validate_rsi_replay.py --pilot <pilot-dir>` 重放；两个真实 pilot 可以用 `python3 scripts/validate_rsi_gepa.py --pilot A --pilot B` 跑一次 GEPA 选择报告；`validate_rsi_full_flow.py --pilot --sample [--exploratory]` 用真实候选轨迹走完整 flow：copy 到临时目录，重跑 collect/decide，输出每个 stage 的 evidence/partial/fail、agent heuristic 可用性和 GEPA 候选池缺口。`experiment flow --card EV-YYYY-NNN` 可把行为面实验绑定到 EV 卡；内容面实验不产卡。`experiment flow --exploratory` 是明确标注的降级验收：允许 usage 约束 insufficient，但结论只能记 `insufficient` 或 `reject`，不得把 `exploratory` 提升成 `accept`；judge 未校准（`calibration.passed` 不为 true）时也不能 accept；`--dry-run` 只准备 candidate/pilot tasks 和隔离 worktree，不跑 runner/judge；`experiment flow` 把带 `candidate` 的提案接进 pilot：prepare → 外部 runner → judge → gate → archive；没有 candidate 的提案会被拒绝。candidate apply 前做 target-specific 结构检查：knowledge YAML 必须可解析且有 id，tooling `.py` 必须可编译，harness 的 Python/YAML/JSON 必须可解析，scheduler.yaml 还必须带 scheduler 键；坏内容不会写入工作区。`brief` 现在也读 proposals archive 和 experiments，并在事件流有数据时优先用事件流，显示 events/提案数/实验数和最后一条状态。flow 判定时把提案编号写进 Conclusion（`proposal` 字段），`readback --proposal <id>` 可以先按提案回读判定；投影没有时回退到 experiment/decision 事件。`--measure` 只接受带 card 的结论，避免把 None 传给 ev_measure。DSH adapter 在启动 headless 前检查 `DEEPSEEK_API_KEY`；没有 key 时直接报错，可用 `SLEUTH_DSH_ALLOW_STORED=1` 放行已存凭据。flow 与 pilot 在缺 trace/out、`collect.complete=false` 时拒绝进入判定；pilot 的 accept 还要求 `n >= samples.field_eval`，小池只能 `insufficient`；knowledge/source usage 目标还要求对应 usage 约束为 accept，insufficient 不再放行。flow 读取 judge 时要求 `meta.agent`、每个样本两侧 0/1 分数，并把 judge meta/文件哈希写入实验记录。flow 与 pilot.collect 都拒绝 `adapter_fallback` trace，adapter 没写真实 trace 时不能进 judge。flow 在非 accept 判定时回滚 candidate worktree，并把 `rolled_back` 写进 Proposal；accept 保留工作区供审。flow 还会写一条 ExperimentStore 记录，带 `proposal`、baseline/candidate 均分、paired 证据，以及 proposal/conclusion 快照；knowledge/source usage target 会从 pilot.collect 的 usage 记录生成 `knowledge_usage`/`source_usage` 证据；`experiment records` 能看到 proposal 编号；`experiment gate --target skill` 已委托 `eval_arena.py --gate`（baseline/candidate stats、component、alpha），不再报“no gate wired”；`experiment show --proposal <id>` 把 proposal、conclusion、experiment 三份记录合成一个 JSON 视图；`store history --proposal/--experiment` 直接查事件历史；proposal/conclusion 文件缺失时回退到 experiment 行里的快照。knowledge/source usage 这类 target 仍要求自己的 usage 证据，缺证据的 accept 会被 validator 拒绝。
 
 `propose.agent` 是**提案节点的一种实现**，不是整条 RSI 算法。它按 target 的 ProposalPort 生成结构化草案：先跑 `experiment request --target <t> --component <region>` 拿提示、允许路径与输出 schema，再由 agent 写 draft；`baseline` 只作对照臂，不提案。GEPA 是 `select.pareto + propose.agent` 的节点组合，`select`、`judge`、`gate` 各自还有独立实现；不要把“启发式 agent 提案”等同于“GEPA 或整条自演进管线”。
 
@@ -311,7 +376,7 @@ test 门禁：`stage report --stage test` 要求 `candidate_id` 不是 `HEAD`、
 
 regression 预算：`cost.runs.regression_pairs` 默认 6，`regression_full_pairs` 默认 30；常规候选先跑受影响子集，高风险或发版前才跑满。
 
-test / regression runner：`stage plan --stage test|regression` 生成任务，`stage run` 按外部 command 执行每个样本/arm，`stage report` 对 test 走 exact gate、对 regression 走硬失败；`--update-stage` 会在 test 报告后把 `eval/core/test-stage.yaml` 标成 `complete`。test 只用 `test-stage.yaml` 的 `selected`，regression 默认取 `regression_pairs` 条，`--full` 取全量。command 通过环境变量拿到 `SLEUTH_TRACE` / `SLEUTH_OUT` 等路径，必须写出这两个文件；runner 本身不调用模型。仓库提供一个参考 adapter：`python3 scripts/agent_adapter.py --agent dsh` 默认走 DSH headless，`--agent claude` 走 Claude Code，`--agent echo` 只用于冒烟，`--agent command` 读 `SLEUTH_AGENT_CMD`。stage plan 会拒绝来源命中 `eval/holdout.yaml` 的 test/regression 样本。
+test / regression runner：`stage plan --stage test|regression` 生成任务，`stage run` 按外部 command 执行每个样本/arm，`stage report` 对 test 走 exact gate、对 regression 走硬失败；`--update-stage` 会在 test 报告后把 `eval/core/test-stage.yaml` 标成 `complete`；`--record` 会在 regression 报告后写一条 `insufficient` 结论（`pool=regression-smoke`），供 readback 与零数据冒烟使用。执行方从 `tasks.json` 只拿到输入，样本路径也不进任务文件；答案在 `judge-input.json`，运行环境应只让 judge 读输出目录。test 只用 `test-stage.yaml` 的 `selected`，regression 默认取 `regression_pairs` 条，`--full` 取全量。command 通过环境变量拿到 `SLEUTH_TRACE` / `SLEUTH_OUT` 等路径，必须写出这两个文件；runner 本身不调用模型。仓库提供一个参考 adapter：`python3 scripts/agent_adapter.py --agent dsh` 默认走 DSH headless，`--agent claude` 走 Claude Code，`--agent echo` 只用于冒烟，`--agent command` 读 `SLEUTH_AGENT_CMD`。stage plan 会拒绝来源命中 `eval/holdout.yaml` 的 test/regression 样本。
 
 judge：`stage judge --output <dir> --agent dsh --calibration <json>` 对每个样本/arm 调一次 judge adapter，写出带 `meta.agent` 与 `meta.calibration` 的 `judge.json`；`stage report --stage test` 拒绝没有来源或校准未通过的 judge。adapter 没写 trace 时生成的 fallback trace 一律拒绝，生产路径没有放行开关。
 
@@ -390,7 +455,7 @@ python3 scripts/evolve.py experiment gate --target tooling \
 
 | 情形 | 行为 | 细则 |
 |---|---|---|
-| 池不新鲜（`absorption_rev` 对不上），或池文件没有该字段 | 前者不出结论、退出码 3、不写影响记录；后者按未校验放行，两条命令都写明新鲜度无法校验 | 3.7 |
+| 池不新鲜（`absorption_rev` 对不上），或两侧没有已评分样本 | 不出结论、退出码 3、不写影响记录；池文件没有 `absorption_rev` 时按未校验放行，两条命令都写明新鲜度无法校验 | 3.7 |
 | stats 没记逐行样本 id | `--gate` 写明判定时刻无法重算，沿用 `--stats` 那一刻的读数 | 3.7 |
 | 吸收判据没有输入（`case_prefix` 零匹配） | `--build-pool` 仍退出 0，警告写到 stderr | 3.7 |
 | 缺逐条判决向量、或基线与候选的池哈希不同 | 前者结论上限降为 `weak_accept`；后者判 `reject`，理由写跨池不可比 | 3.7 |

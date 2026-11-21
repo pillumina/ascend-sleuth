@@ -2069,7 +2069,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(findButton(await t.settle(), '更多操作'))
   const view = await t.settle()
   expect('更多操作：复制续接与固定仍在菜单里', view.text.includes('复制续接指令') && view.text.includes('固定到状态条'))
-  expect('更多操作：未收尾单不出现复制候选样本指令', !view.text.includes('复制候选样本指令'))
+  expect('更多操作：未收尾单不出现加入评测集', !view.text.includes('加入评测集'))
   click(findButton(view, '固定到状态条'))
   const pinnedView = await t.settle()
   const prefs = JSON.parse(storage.get(PREFS_KEY))
@@ -4682,7 +4682,11 @@ function clickWith(node, extra) {
   await t.settle()
   click(findButton(await t.settle(), '更多操作'))
   const view = await t.settle()
-  expect('更多操作：已闭环单有复制候选样本指令', view.text.includes('复制候选样本指令'))
+  expect('更多操作：已闭环单有加入评测集', view.text.includes('加入评测集'))
+  click(findButtonContains(view, '加入评测集'))
+  await t.settle()
+  expect('更多操作：加入评测集自动填入输入框', t.drafts.length === 1
+    && String(t.drafts[0]).includes('sample new --from trace --dry-run'), JSON.stringify(t.drafts))
 }
 
 {

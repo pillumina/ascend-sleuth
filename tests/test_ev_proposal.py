@@ -139,7 +139,8 @@ class WaterlineTest(unittest.TestCase):
 
     def test_counts_pending_without_pointer(self):
         self.assertEqual(ep.waterline(self.root, 20), 0)   # 3 < 20 → 未超限
-        self.assertEqual(ep.waterline(self.root, 3), 1)    # 3 >= 3 → 超限（退 1）
+        self.assertEqual(ep.waterline(self.root, 3), 0)    # 恰好等于上限不算超（与 backlog_over 的 > 同口径）
+        self.assertEqual(ep.waterline(self.root, 2), 1)    # 3 > 2 → 超限（退 1）
         self.assertEqual(ep.waterline(self.root, 4), 0)
 
 

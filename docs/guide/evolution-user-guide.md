@@ -53,13 +53,13 @@ python3 scripts/evolve_signals.py export
 python3 scripts/evolve_signals.py mark <id> --status triaged|dropped|promoted --note "..."
 ```
 
-## 3 深度轮：只分诊，不执行
+## 3 深度轮：只归类与候选，不执行
 
-你说“跑一轮自演进 / 看看有什么可改进的”，进入 `self-evolve`。深度轮做观测与分诊，不自动跑实验：
+你说“跑一轮自演进 / 看看有什么可改进的”，进入 `self-evolve`。深度轮做观测与归类，不自动跑实验：
 
 ```text
 聚合信号
-  → 分诊：确定性 bug / 内容缺口 / 行为候选 / 高风险 / 观察
+  → 归类：确定性 bug / 内容缺口 / 行为候选 / 高风险 / 观察
   → 输出候选队列
   → 停，等你选择
 ```
@@ -121,7 +121,7 @@ evolution:
 
 | role | 收尾 | 深度轮 | RSI |
 |---|---|---|---|
-| `maintainer` | 记信号 | 可分诊行为候选 | 可显式跑 |
+| `maintainer` | 记信号 | 可归类行为候选 | 可显式跑 |
 | `signal-only` | 记信号 | 只读本地观察 | 不跑 |
 | `off` | 跳过记录 | 不跑 | 不跑 |
 
@@ -136,7 +136,7 @@ python3 scripts/evolve_mode.py --set signal-only
 ## 7 干预与回滚
 
 - 想停：让 agent 停止当前轮；已写信号保留。
-- 想换方向：改本轮目标，已分诊的候选可标 `dropped`。
+- 想换方向：改本轮目标，已归类的候选可标 `dropped`。
 - 想回滚：代码改动走 revert；RSI 结论保留原 decision，不篡改历史。
 - 想关演进：设 `role: off`，只留跳过记录。
 

@@ -56,7 +56,7 @@
 #
 # 退出码：0 = 判定成立并已写账本（accept / weak_accept / reject 都算"判定成立"——判词是
 # 数据，不是命令失败；把它报成非零会让"测量结果为否"和"测量没法做"混成一个信号）；
-# 1 = 读文件失败或池结构错；2 = 用法/输入问题（缺参、回归池）；3 = 池不新鲜，判词作废。
+# 1 = 读文件失败或池结构错；2 = 用法/输入问题（缺参、回归池）；3 = 池不新鲜或两侧没有已评分样本，判词作废。
 #
 # 接受判据（v2：配对 + 复用折减）——**薄弱环节是接受者，不是提议者**。
 #   v1 的规则是"同一个小池子上分数涨了就接受"。反复对同一个池做接受决定，是一串不受控的
@@ -387,6 +387,12 @@ def decide(base_stats, cand_stats, alpha_eff):
     def ge(a, x):
         return a is None or x is None or a >= x
 
+    if all(value is None for value in (hit_b, hit_c, route_b, route_c, rc_b, rc_c)):
+        return {"verdict": "insufficient", "reason": "两侧都没有已评分样本，无法判定",
+                "no_regression": None, "improved": None, "paired": None,
+                "baseline": {"hit": hit_b, "route_ok": route_b, "rc_match": rc_b},
+                "candidate": {"hit": hit_c, "route_ok": route_c, "rc_match": rc_c}}
+
     no_regr = ge(hit_c, hit_b) and ge(route_c, route_b) and ge(rc_c, rc_b)
     improved = ((hit_c is not None and hit_b is not None and hit_c > hit_b)
                 or (route_c is not None and route_b is not None and route_c > route_b))
@@ -670,6 +676,14 @@ def cmd_gate(root, baseline_file, candidate_file, component, cand_ref, note, alp
         elif rc.get("recomputed") is False:
             print(f"eval_arena: {side} 的 stats 没记逐行样本 id（judged_ids 落地前的产物）——"
                   f"判定时刻无法重算，沿用 --stats 那一刻的读数。", file=sys.stderr)
+
+    for side, s in (("baseline", b), ("candidate", c)):
+        metrics = (s or {}).get("metrics") or {}
+        if not any(_rate(metrics.get(key)) is not None
+                   for key in ("hit", "route_ok", "rc_match")):
+            print(f"eval_arena: {side} 没有已评分样本——无法判定；本次不写影响账本。",
+                  file=sys.stderr)
+            return 3
 
     imp = root / IMPACT_REL
     ledger = load(imp) if imp.exists() else {"_comment": "arena 影响账本（append-only）",

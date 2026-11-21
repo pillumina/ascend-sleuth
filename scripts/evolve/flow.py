@@ -197,14 +197,8 @@ def _stage_reports(proposal: Proposal, tasks: Dict[str, Any], judge_data: Dict[s
 def _sample_context(tasks: Dict[str, Any]) -> List[Dict[str, Any]]:
     context = []
     for row in tasks.get("samples") or []:
-        title = ""
-        path = row.get("path")
-        if path:
-            try:
-                doc = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
-                title = str(((doc.get("input") or {}).get("title")) or "")
-            except (OSError, yaml.YAMLError):
-                title = ""
+        # tasks 已去样本路径；标题从 input 读，避免为了展示再打开含答案的样本文件。
+        title = str(((row.get("input") or {}).get("title")) or "")
         context.append({
             "id": str(row.get("short_id") or row.get("id") or ""),
             "title": title,

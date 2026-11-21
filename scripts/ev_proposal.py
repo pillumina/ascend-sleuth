@@ -252,7 +252,7 @@ def mark_merged(root: Path, pr, card_ids, all_pending: bool, dry_run: bool):
 # 设计处（orchestration §2.4）把「候选水位上限」标为蓝图态，启用条件是"候选积压真实发生
 # （>20 在池）"。实测该条件早已满足（积压单调上升到数十张、日均产卡近十张），而 skill 正文
 # 那句"水位超限时只记信号不产卡"没有数值也没有读数——规则只在 prose 里，等于没有。
-# 本命令把它变成一条可机械读取的读数 + 退出码：≥上限退 1（下游按"只记信号不产卡"处理）。
+# 本命令把它变成一条可机械读取的读数 + 退出码：>上限退 1（下游按"只记信号不产卡"处理）。
 WATERLINE_DEFAULT = 20
 
 # --from-prs 的 PR 列表深度：批量回写要够回溯到旧批。与水位上限（候选张数上限）不是一回事，
@@ -274,7 +274,8 @@ def waterline(root: Path, limit: int, as_json: bool = False):
             in_pool.append(cid)
         elif status == "validated" and not _has_any_ref(f.read_text(encoding="utf-8")):
             pending.append(cid)
-    over = len(pending) >= limit
+    # 与 proposals/gates.yaml 的 backlog_over（op: ">"）同一口径：恰好等于上限不算超。
+    over = len(pending) > limit
     if as_json:
         print(json.dumps({"limit": limit, "pending_review": len(pending), "in_pool": len(in_pool),
                           "over": over, "pending_ids": pending, "in_pool_ids": in_pool},

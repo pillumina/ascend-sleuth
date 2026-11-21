@@ -1,7 +1,7 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
 //   dsh-plugins/ascend-panel/panel-client.js  (sha256:ddd85e79a637)
-//   dsh-plugins/ev-panel/panel-client.js  (sha256:c0ce0e209f67)
+//   dsh-plugins/ev-panel/panel-client.js  (sha256:cff735e45f4a)
 //   dsh-plugins/sleuth-console/console-client.js  (sha256:2405b5ea8495)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -5158,7 +5158,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       id: 'ev-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ev-panel/panel-client.js (sha256:c0ce0e209f67) 原文开始 ----
+// ---- dsh-plugins/ev-panel/panel-client.js (sha256:cff735e45f4a) 原文开始 ----
 // ev-panel client —— 自演进看板（conversation.view 第三个 tab「自演进」）
 // 数据经 host.call('ev-board-load') 从 scripts/ev_board_data.py 汇总；
 // 单卡全文经 host.call('ev-idea-detail') 点开时才拉（列表页只带摘要）。
@@ -6186,6 +6186,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       clean: { label: '本期无阻塞项', color: 'var(--c-green)', acc: 'var(--acc-green)', cls: 'ok' },
       violations: { label: '有判据被违反', color: 'var(--c-amber)', acc: 'var(--acc-amber)', cls: 'warn' },
       broken: { label: '体检器失效', color: 'var(--c-purple)', acc: 'var(--acc-purple)', cls: 'broken' },
+      incomplete: { label: '数据缺口，结论不可用', color: 'var(--c-amber)', acc: 'var(--acc-amber)', cls: 'warn' },
     }
 
     // 预测实测记录：`ev_measure.py --run` 的执行次数与结果分布。这一层原先没有观测面

@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Optional
 from .candidate import create_workspace, validate_candidate
 from .contracts import PROTOCOL_VERSION, Conclusion, Run, Version, now_iso
 from .decision import decide_binary, required_exclusive_wins
+from .kb_content import content_rev
 from .knowledge_usage import compare as compare_knowledge
 from .harness_usage import read_session
 from .knowledge_usage import from_trace as knowledge_from_trace
@@ -75,7 +76,8 @@ def _read_samples(paths: List[str], root: Optional[Path] = None) -> List[Dict[st
                 f"(source={data.get('source')})"
             )
         out.append({"id": str(data["id"]), "short_id": _short_id(str(data["id"])),
-                    "path": str(Path(path).resolve()), "expected": data.get("expected")})
+                    "path": str(Path(path).resolve()), "input": data.get("input"),
+                    "expected": data.get("expected")})
     short_ids = [item["short_id"] for item in out]
     if len(set(short_ids)) != len(short_ids):
         raise PilotError("sample short_id collision; use unique issue ids")
@@ -156,6 +158,16 @@ def prepare(root: Path, candidate_path: Path, samples: List[str],
                  "candidate": {"root": str(workspace), "trace_dir": str(output / "candidate" / "traces"),
                                "out_dir": str(output / "candidate" / "out")},
              }}
+    judge_input = {row["short_id"]: row.pop("expected", None) for row in sample_rows}
+    for row in sample_rows:
+        # 池身份沿用旧口径（样本文件字节），但路径不再进 tasks；先算好摘要再删路径。
+        try:
+            row["digest"] = hashlib.sha256(Path(row["path"]).read_bytes()).hexdigest()
+        except (KeyError, OSError):
+            row["digest"] = "unknown"
+        row.pop("path", None)
+    (output / "judge-input.json").write_text(
+        json.dumps(judge_input, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     (output / "tasks.json").write_text(json.dumps(tasks, ensure_ascii=False, indent=2) + "\n",
                                       encoding="utf-8")
     for arm in ("baseline", "candidate"):
@@ -283,14 +295,12 @@ def version_for(tasks: Dict[str, Any], policy: Dict[str, Any],
     arms = tasks.get("arms") or {}
     base_root = (arms.get("baseline") or {}).get("root") or "."
     candidate_root = (arms.get("candidate") or {}).get("root") or "."
-    base_kb = _git_rev(Path(base_root))
+    # 版本坐标用 knowledge/ 的内容哈希，不用 HEAD：同一提交下的未提交 case 改动也要能被区分。
+    base_kb = content_rev(Path(base_root))
+    candidate_kb = content_rev(Path(candidate_root))
     patch = _worktree_patch(Path(candidate_root))
-    if patch == "unknown":
-        candidate_kb = "unknown"
-    elif patch == "":
-        candidate_kb = base_kb
-    else:
-        candidate_kb = f"{base_kb}+patch:{patch}"
+    if candidate_kb != "unknown" and patch not in ("", "unknown"):
+        candidate_kb = f"{candidate_kb}+patch:{patch}"
     version = Version(
         protocol=PROTOCOL_VERSION,
         policy=policy_hash(policy),
@@ -465,22 +475,41 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
             constraints_ok = bool(reasons) and reasons.issubset(efficiency_reasons)
         elif decision == "accept":
             constraints_ok = True
+        elif set(constraints[required].get("reasons") or []).issubset(efficiency_reasons):
+            # 效率没改善不是硬失败；质量路径仍可判。真正的数据缺口才记 unknown。
+            constraints_ok = True
         else:
-            constraints_ok = exploratory
+            constraints_ok = None
     else:
-        constraints_ok = all(
-            item["decision"] != "reject"
-            or set(item.get("reasons") or []).issubset(efficiency_reasons)
+        hard_fail = any(
+            item["decision"] == "reject"
+            and not set(item.get("reasons") or []).issubset(efficiency_reasons)
             for item in constraints.values()
         )
+        unknown = any(
+            item["decision"] in ("insufficient", "unknown")
+            and not set(item.get("reasons") or []).issubset(efficiency_reasons)
+            for item in constraints.values()
+        )
+        if hard_fail:
+            constraints_ok = False
+        elif unknown:
+            constraints_ok = None
+        else:
+            constraints_ok = True
 
     pool_rows = []
     for sample in tasks.get("samples") or []:
         sid = str(sample.get("short_id") or sample.get("id"))
-        try:
-            digest = hashlib.sha256(Path(sample["path"]).read_bytes()).hexdigest()
-        except (KeyError, OSError):
-            digest = "unknown"
+        digest = sample.get("digest")
+        if not digest:
+            try:
+                digest = hashlib.sha256(
+                    json.dumps(sample.get("input") or {}, ensure_ascii=False,
+                               sort_keys=True).encode("utf-8")
+                ).hexdigest()
+            except (KeyError, OSError):
+                digest = "unknown"
         pool_rows.append(f"{sid}:{digest}")
     pool_hash = hashlib.sha256("\n".join(sorted(pool_rows)).encode("utf-8")).hexdigest()[:12]
     store = ConclusionStore.for_base(Path(base) if base else output.parent)
@@ -517,7 +546,9 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
                 "candidate": sum(pair[1] for pair in pairs),
                 "paired": len(pairs),
             }
-    chosen = cost_dimensions.get(cost_field) or cost_dimensions.get("tokens")
+    # 只认策略声明的主成本维度；缺了就是 null，不静默回退到 tokens。回退会把
+    # "没测这个维度"读成"这个维度没变"，进而让只看成本的路径误判。
+    chosen = cost_dimensions.get(cost_field)
     cost_b = chosen["baseline"] if chosen else None
     cost_c = chosen["candidate"] if chosen else None
     cost_paired = chosen["paired"] if chosen else 0
@@ -532,20 +563,18 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
     )
     result = decision.decision.value
     reason = decision.reason
-    min_pairs = 1 if exploratory else int(
+    min_pairs = int(
         (tasks.get("budget") or {}).get("min_pairs")
         or (policy.get("samples") or {}).get("field_eval") or 0)
-    if exploratory and result in ("insufficient", "reject") and counts["c"] == 0 and counts["n"] > 0:
-        cost_ratio = getattr(decision, "cost_ratio", None)
-        if result == "insufficient" or (
-                cost_ratio is not None
-                and cost_ratio < 1.0):
-            result = "accept"
-            reason = ("exploratory accept: usage constraint not production-grade; "
-                      f"cost_ratio={cost_ratio} (b={counts['b']}, c={counts['c']}, n={counts['n']})")
+    if result == "accept":
+        calibration = (judge.get("meta") or {}).get("calibration")
+        if not (isinstance(calibration, dict) and calibration.get("passed") is True):
+            result = "insufficient"
+            reason = "judge 未校准（calibration.passed 不为 true）：accept 需要先完成双标校准"
     if counts["n"] < min_pairs:
         result = "insufficient"
         reason = f"capacity_short: n={counts['n']} < min_pairs={min_pairs}"
+    acceptance_scope = "exploratory" if exploratory else "production"
     version = version_for(tasks, policy, model=models_from_collect(collect))
     for record in store.read():
         if (
@@ -571,6 +600,7 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
             "cost_primary": dimension,
             "cost_dimensions": cost_dimensions,
             "main_metric": "resolution",
+            "acceptance_scope": acceptance_scope,
             "judge": (judge.get("meta") if isinstance(judge.get("meta"), dict) else None),
             "budget": {
                 "max_pairs": int((tasks.get("budget") or {}).get("max_pairs")

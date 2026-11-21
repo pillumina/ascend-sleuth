@@ -51,9 +51,9 @@ gates:
     dimension: runnable_never_measured
     op: ">"
     value: 0
-    title: 预测未复现
-    meaning: "已声明可复现判据（measure 含 command 与期望）但从未执行过 ev_measure.py --run 的卡数。本判据只统计判据命令是否被执行，不判断预测对错。"
-    action: "复核这些卡片时执行一次：python3 scripts/ev_measure.py <卡号> --run。执行记录写入 metrics/ev-measure-log.yaml。"
+    title: 预测未执行
+    meaning: "已声明可复现判据（measure 含 command 与期望）但从未执行过 ev_measure.py --run 的卡数。本判据只统计判据命令是否被执行，不判断预测对错；没跑不等于被证伪。"
+    action: "复核这些卡片时执行一次：python3 scripts/ev_measure.py <卡号> --run --record。执行记录写入 metrics/ev-measure-log.yaml。"
 
   - id: evidence_stale
     dimension: external_verification_stall

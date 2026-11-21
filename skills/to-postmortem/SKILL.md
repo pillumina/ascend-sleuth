@@ -160,6 +160,10 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
 无信号则报告加一行"evolve-check：无演进信号"。这是流程默认收尾，**不需要用户另说
 "改进系统"**——演进由数据触发，像人学习。产出与流程报告一并给出。
 
+## 评测集回流（可选）
+
+这条 case 若要进入评测集，本 skill 不建 sample；转 `/skill:eval-ingest`，用 `sample new --from postmortem --case <path>` 先 dry-run。它只产 candidate，补答案并复核后才 active；任何 harness 都能调用，不依赖 DSH。
+
 ## 为什么是这个体系的核心
 
 团队不能统一 agent 时，知识注入入口必须与诊断工具解耦。`/to-postmortem` 是这个解耦的实现——任何工具的对话都能沉淀。别期望团队成员额外写文档，agent 提取、人审批，成本从 20 分钟降到 30 秒。

@@ -33,6 +33,8 @@
 #
 # 记账流程（改完夹具/跑完回放后）：更新 fixture 头注的「回放结果」行 → `--build` → 连同夹具一起提交。
 
+from __future__ import annotations
+
 import argparse
 import hashlib
 import re
