@@ -14,7 +14,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement
 
     const CHANNEL = '/rsi-observatory'
-    const PLUGIN_VERSION = '0.4.0'
+    const PLUGIN_VERSION = '0.5.0'
     const PANEL_ID = 'rsi-observatory'
     const PANEL_LABEL = '自演进实验'
 
@@ -299,6 +299,7 @@ window.__ModuleLoader__.load({
       const experiment = props.experiment || {}
       const gates = conclusion.metrics && conclusion.metrics.constraints
       const constraints = gates && typeof gates === 'object' ? gates : null
+      const costDims = conclusion.metrics && conclusion.metrics.cost_dimensions
       const rows = [
         ['结论', decisionLabel(experiment.decision)],
         ['原因', String(conclusion.reason || '—')],
@@ -321,6 +322,18 @@ window.__ModuleLoader__.load({
             return h('li', { key: name },
               constraintLabel(name) + '：' + decisionLabel(item.decision)
                 + (item.paired !== undefined ? ' · ' + String(item.paired) + ' 对样本' : ''),
+            )
+          })),
+        ) : null,
+        costDims && typeof costDims === 'object' ? h('div', { class: 'rsi-sub' },
+          h('h4', { class: 'rsi-h4' }, '成本明细'),
+          h('ul', { class: 'rsi-list-plain' }, Object.keys(costDims).map(function (name) {
+            const item = costDims[name] || {}
+            const ratio = item.baseline ? (item.candidate / item.baseline) : null
+            return h('li', { key: name },
+              ({ tokens: '词元', elapsed_ms: '耗时', tool_calls: '工具调用', full_body_reads: '全文读取' }[name] || name)
+                + '：对照 ' + String(item.baseline) + ' / 候选 ' + String(item.candidate)
+                + (ratio === null ? '' : ' · 比值 ' + ratio.toFixed(3)),
             )
           })),
         ) : null,
