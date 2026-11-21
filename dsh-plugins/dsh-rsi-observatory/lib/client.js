@@ -14,7 +14,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement
 
     const CHANNEL = '/rsi-observatory'
-    const PLUGIN_VERSION = '0.7.1'
+    const PLUGIN_VERSION = '0.8.0'
     const PANEL_ID = 'rsi-observatory'
     const PANEL_LABEL = '自演进实验'
 
@@ -160,9 +160,8 @@ window.__ModuleLoader__.load({
     function stageSummary(stage) {
       const text = String((stage && stage.summary) || '')
       if (String(stage && stage.id) === 'gate') {
-        return text.replace(/^(accept|reject|insufficient)\b/, function (value) {
-          return decisionLabel(value)
-        })
+        const key = (text.match(/^(accept|reject|insufficient)\b/) || [])[1]
+        return key ? decisionLabel(key) + ' · 结论详情见下方' : text
       }
       return text
     }
@@ -233,8 +232,8 @@ window.__ModuleLoader__.load({
           return h('li', { key: item.proposalId },
             h('button', {
               class: 'rsi-row', type: 'button',
-              'aria-current': String(selectedKey) === String(item.eventId) ? 'true' : 'false',
-              onClick: function () { onSelect(String(item.eventId || '')) },
+              'aria-current': String(selectedKey) === String(item.proposalId) ? 'true' : 'false',
+              onClick: function () { onSelect(String(item.proposalId || '')) },
             },
             h('span', { class: 'rsi-row-line' },
               h(Dot, { tone: tone }),
@@ -245,6 +244,7 @@ window.__ModuleLoader__.load({
               item.target ? ' · ' + String(item.target) : '',
               ' · ' + decisionLabel(item.decision),
             ),
+            item.problem ? h('span', { class: 'rsi-row-problem' }, '问题：' + String(item.problem)) : null,
             h('span', { class: 'rsi-row-meta' }, '实验 ' + String((item.experimentIds || []).length) + ' 次 · ' + formatAt(item.at)),
             ),
           )
@@ -266,6 +266,7 @@ window.__ModuleLoader__.load({
               item.target ? ' · ' + String(item.target) : '',
               ' · ' + decisionLabel(item.decision),
             ),
+            item.problem ? h('span', { class: 'rsi-row-problem' }, '问题：' + String(item.problem)) : null,
             h('span', { class: 'rsi-row-meta' }, formatAt(item.at)),
             ),
           )
@@ -334,6 +335,25 @@ window.__ModuleLoader__.load({
       )
     }
 
+    function verdictSentence(decision, conclusion) {
+      const key = String(decision || '')
+      const reason = String((conclusion && conclusion.reason) || '')
+      if (key === 'accept') return '候选通过：质量没有变差，主成本下降达到要求。'
+      if (key === 'reject') if (reason.includes('硬约束')) return '候选未通过：硬约束或回归检查没有通过。'
+      if (key === 'reject') return '候选未通过：质量或成本没有达到门槛。'
+      if (key === 'insufficient') return '证据不足：现有样本还不足以判断这条候选是否更好。'
+      return '这条实验还没有结论。'
+    }
+
+    function reasonSentence(conclusion) {
+      const reason = String((conclusion && conclusion.reason) || '')
+      if (!reason) return '没有记录原因。'
+      if (reason.startsWith('主指标非劣')) return '质量没有变差，主成本下降达到要求。'
+      if (reason.includes('硬约束')) return '硬约束或回归检查没有通过，不能接受。'
+      if (reason.startsWith('没有方向不一致')) return '没有成对差异，质量证据不足。'
+      return reason
+    }
+
     function DecisionPanel(props) {
       const conclusion = props.conclusion || {}
       const experiment = props.experiment || {}
@@ -342,7 +362,7 @@ window.__ModuleLoader__.load({
       const costDims = conclusion.metrics && conclusion.metrics.cost_dimensions
       const rows = [
         ['结论', decisionLabel(experiment.decision)],
-        ['原因', String(conclusion.reason || '—')],
+        ['原因', reasonSentence(conclusion)],
         ['成对比较', pairedText(experiment.paired)],
         ['显著性', conclusion.p_value === undefined || conclusion.p_value === null ? '—' : String(conclusion.p_value)],
         ['判定阈值', conclusion.alpha_eff === undefined || conclusion.alpha_eff === null ? '—' : String(conclusion.alpha_eff)],
@@ -350,34 +370,38 @@ window.__ModuleLoader__.load({
         ['成本', formatCost(conclusion)],
       ]
       return h('div', { class: 'rsi-card' },
-        h('h3', { class: 'rsi-h3' }, '判定'),
-        h('dl', { class: 'rsi-kv' }, rows.map(function (row) {
-          return h('div', { class: 'rsi-kv-row', key: row[0] },
-            h('dt', null, row[0]), h('dd', null, row[1]))
-        })),
-        constraints ? h('div', { class: 'rsi-sub' },
-          h('h4', { class: 'rsi-h4' }, '约束检查'),
-          h('ul', { class: 'rsi-list-plain' }, Object.keys(constraints).map(function (name) {
-            const item = constraints[name] || {}
-            return h('li', { key: name },
-              constraintLabel(name) + '：' + decisionLabel(item.decision)
-                + (item.paired !== undefined ? ' · ' + String(item.paired) + ' 对样本' : ''),
-            )
+        h('h3', { class: 'rsi-h3' }, '结论'),
+        h('p', { class: 'rsi-verdict-copy' }, verdictSentence(experiment.decision, conclusion)),
+        h('details', { class: 'rsi-fold rsi-decision-details' },
+          h('summary', null, '看判定细节'),
+          h('dl', { class: 'rsi-kv' }, rows.map(function (row) {
+            return h('div', { class: 'rsi-kv-row', key: row[0] },
+              h('dt', null, row[0]), h('dd', null, row[1]))
           })),
-        ) : null,
-        costDims && typeof costDims === 'object' ? h('div', { class: 'rsi-sub' },
-          h('h4', { class: 'rsi-h4' }, '成本明细'),
-          h('ul', { class: 'rsi-list-plain' }, Object.keys(costDims).map(function (name) {
-            const item = costDims[name] || {}
-            const ratio = item.baseline ? (item.candidate / item.baseline) : null
-            return h('li', { key: name },
-              ({ tokens: '词元', elapsed_ms: '耗时', tool_calls: '工具调用', full_body_reads: '全文读取' }[name] || name)
-                + '：对照 ' + (name === 'elapsed_ms' ? formatDuration(item.baseline) : compactNumber(item.baseline))
-                + ' / 候选 ' + (name === 'elapsed_ms' ? formatDuration(item.candidate) : compactNumber(item.candidate))
-                + (ratio === null ? '' : ' · 比值 ' + ratio.toFixed(2)),
-            )
-          })),
-        ) : null,
+          constraints ? h('div', { class: 'rsi-sub' },
+            h('h4', { class: 'rsi-h4' }, '约束检查'),
+            h('ul', { class: 'rsi-list-plain' }, Object.keys(constraints).map(function (name) {
+              const item = constraints[name] || {}
+              return h('li', { key: name },
+                constraintLabel(name) + '：' + decisionLabel(item.decision)
+                  + (item.paired !== undefined ? ' · ' + String(item.paired) + ' 对样本' : ''),
+              )
+            })),
+          ) : null,
+          costDims && typeof costDims === 'object' ? h('div', { class: 'rsi-sub' },
+            h('h4', { class: 'rsi-h4' }, '成本明细'),
+            h('ul', { class: 'rsi-list-plain' }, Object.keys(costDims).map(function (name) {
+              const item = costDims[name] || {}
+              const ratio = item.baseline ? (item.candidate / item.baseline) : null
+              return h('li', { key: name },
+                ({ tokens: '词元', elapsed_ms: '耗时', tool_calls: '工具调用', full_body_reads: '全文读取' }[name] || name)
+                  + '：对照 ' + (name === 'elapsed_ms' ? formatDuration(item.baseline) : compactNumber(item.baseline))
+                  + ' / 候选 ' + (name === 'elapsed_ms' ? formatDuration(item.candidate) : compactNumber(item.candidate))
+                  + (ratio === null ? '' : ' · 比值 ' + ratio.toFixed(2)),
+              )
+            })),
+          ) : null,
+        ),
       )
     }
 
@@ -388,8 +412,16 @@ window.__ModuleLoader__.load({
       if (!baseline || !candidate) return null
       const ids = Object.keys(baseline)
       if (!ids.length) return null
+      const context = {}
+      for (const item of record.sample_context || []) {
+        if (item && item.id) context[String(item.id)] = String(item.title || '')
+      }
       return h('div', { class: 'rsi-card' },
         h('h3', { class: 'rsi-h3' }, '逐样本评分'),
+        h('p', { class: 'rsi-explainer' },
+          '对照是没有改技能的原流程，候选是改了技能后的流程。',
+          '“正确”表示独立评审认为输出解决了样本问题；“变化”是候选相对对照的结果。',
+        ),
         h('div', {
           class: 'rsi-table-wrap', tabIndex: 0, role: 'region',
           'aria-label': '逐样本评分表',
@@ -397,19 +429,23 @@ window.__ModuleLoader__.load({
           h('table', { class: 'rsi-table' },
             h('caption', { class: 'rsi-caption' }, '同一批样本在对照与候选下的结果'),
             h('thead', null, h('tr', null,
-              h('th', { scope: 'col' }, '样本'),
+              h('th', { scope: 'col' }, '样本 / 问题'),
               h('th', { scope: 'col' }, '对照'),
               h('th', { scope: 'col' }, '候选'),
               h('th', { scope: 'col' }, '变化'),
             )),
             h('tbody', null, ids.map(function (id) {
               const delta = candidate[id] - baseline[id]
+              const title = context[id]
               return h('tr', { key: id },
-                h('th', { scope: 'row' }, String(id)),
+                h('th', { scope: 'row', class: 'rsi-sample-cell' },
+                  h('span', { class: 'rsi-sample-id' }, String(id)),
+                  title ? h('span', { class: 'rsi-sample-title' }, title) : null,
+                ),
                 h('td', null, baseline[id] === 1 ? '正确' : '错误'),
                 h('td', null, candidate[id] === 1 ? '正确' : '错误'),
                 h('td', { class: delta > 0 ? 'rsi-good' : (delta < 0 ? 'rsi-bad' : 'rsi-muted') },
-                  delta > 0 ? '变好' : (delta < 0 ? '变差' : '不变')),
+                  delta > 0 ? '修好' : (delta < 0 ? '变差' : '不变')),
               )
             })),
           ),
@@ -568,6 +604,39 @@ window.__ModuleLoader__.load({
 
     // ---- 整页 ------------------------------------------------------------------
 
+    function ProposalDetail(props) {
+      const proposal = props.proposal || {}
+      const linked = props.experiments || []
+      const problem = linked.map(function (item) { return item.problem }).find(Boolean) || ''
+      return h('div', null,
+        h('div', { class: 'rsi-exp-head' },
+          h('div', null,
+            h('h2', { class: 'rsi-h2' }, String(proposal.title || '改动提案')),
+            h('p', { class: 'rsi-meta' }, '提案编号 ' + String(proposal.proposalId || '—')
+              + (proposal.component ? ' · ' + String(proposal.component) : '')),
+          ),
+          h('div', { class: 'rsi-verdict' }, '只读提案'),
+        ),
+        problem ? h('p', { class: 'rsi-problem-line' }, '要解决的问题：' + String(problem)) : null,
+        h('p', { class: 'rsi-scope' },
+          '提案 = 一条待验证的改动；实验 = 把提案放到真实样本上跑一次对照。'),
+        h(ProposalPanel, { proposal: proposal }),
+        h('div', { class: 'rsi-card' },
+          h('h3', { class: 'rsi-h3' }, '关联实验'),
+          linked.length ? h('div', { class: 'rsi-link-list' }, linked.map(function (item) {
+            return h('button', {
+              key: item.eventId, class: 'rsi-link-row', type: 'button',
+              onClick: function () { props.onOpen(item.eventId) },
+            },
+            h('span', { class: 'rsi-link-title' }, String(item.title || item.problem || '未命名实验')),
+            h('span', { class: 'rsi-link-meta' }, decisionLabel(item.decision)
+              + ' · ' + formatAt(item.at)),
+            )
+          })) : h('p', { class: 'rsi-hint' }, '这条提案还没有关联实验。'),
+        ),
+      )
+    }
+
     function Page(props) {
       const sessionId = props && props.sessionId ? String(props.sessionId) : ''
       const [phase, setPhase] = React.useState('loading')
@@ -609,6 +678,10 @@ window.__ModuleLoader__.load({
       }, [sessionId, refreshTick])
 
       React.useEffect(function () {
+        if (mode === 'proposals') {
+          setDetailPhase('ready')
+          return undefined
+        }
         if (!selectedKey) {
           setDetail(null)
           setDetailPhase('idle')
@@ -629,7 +702,7 @@ window.__ModuleLoader__.load({
             setDetailError(String((failure && failure.message) || failure))
           })
         return function () { alive = false }
-      }, [selectedKey, sessionId, refreshTick])
+      }, [selectedKey, sessionId, refreshTick, mode])
 
       function refresh() {
         setRefreshTick(function (value) { return value + 1 })
@@ -655,6 +728,11 @@ window.__ModuleLoader__.load({
       const empty = phase === 'ready' && experiments.length === 0 && proposals.length === 0
       const active = experiments.find(function (item) { return String(item.eventId) === String(selectedKey) })
         || experiments[0]
+      const activeProposal = proposals.find(function (item) { return String(item.proposalId) === String(selectedKey) })
+        || proposals[0]
+      const linkedExperiments = activeProposal
+        ? experiments.filter(function (item) { return String(item.proposalId) === String(activeProposal.proposalId) })
+        : []
       const conclusion = (detail && detail.conclusion) || {}
       const rollout = (detail && detail.rollout) || {}
       const record = (detail && detail.record) || {}
@@ -697,7 +775,16 @@ window.__ModuleLoader__.load({
           ),
           h('main', { class: 'rsi-main' },
             phase === 'loading' ? h('div', { class: 'rsi-text' }, COPY.loading) : null,
-            !active ? h('div', { class: 'rsi-text' }, COPY.noDetail) : h('div', null,
+            mode === 'proposals'
+              ? (activeProposal
+                ? h(ProposalDetail, {
+                  proposal: activeProposal, experiments: linkedExperiments,
+                  onOpen: function (eventId) { setMode('experiments'); setSelectedKey(eventId); setTab('overview') },
+                })
+                : h('div', { class: 'rsi-text' }, COPY.noProposal))
+              : null,
+            mode === 'experiments' && !active ? h('div', { class: 'rsi-text' }, COPY.noDetail) : null,
+            mode === 'experiments' && active ? h('div', null,
               h('div', { class: 'rsi-exp-head' },
                 h('div', null,
                   h('h2', { class: 'rsi-h2' }, String(active.title || '(未命名实验)')),
@@ -714,6 +801,10 @@ window.__ModuleLoader__.load({
                   h('span', { class: 'rsi-hint' }, formatAt(active.at)),
                 ),
               ),
+              h('p', { class: 'rsi-scope' },
+                '一次实验 = 一条候选改动，在同一批真实样本上与未改流程做对照。'),
+              active.problem ? h('p', { class: 'rsi-problem-line' },
+                '要解决的问题：' + String(active.problem)) : null,
               h(Gaps, { gaps: (detail && detail.gaps) || active.gaps || [] }),
               detailPhase === 'error'
                 ? h(ErrorState, { message: detailError, onRefresh: refresh })
@@ -760,7 +851,7 @@ window.__ModuleLoader__.load({
                       }) : null,
                     ),
                 ),
-            ),
+            ) : null,
           ),
         ),
       ))
@@ -858,6 +949,8 @@ window.__ModuleLoader__.load({
         text-overflow:ellipsis}
       .rsi-row-meta{display:block;margin-top:4px;font-size:11px;color:var(--dsw-alias-label-secondary);
         white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .rsi-row-problem{display:block;margin-top:4px;font-size:10.5px;line-height:1.4;
+        color:var(--dsw-alias-label-secondary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .rsi-list-empty{padding:16px 8px;font-size:12px;color:var(--dsw-alias-label-secondary)}
       .rsi-main{min-width:0}
       .rsi-exp-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
@@ -884,6 +977,20 @@ window.__ModuleLoader__.load({
       .rsi-section-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 8px}
       .rsi-h3{margin:0 0 10px;font-size:13px;font-weight:650;letter-spacing:0;color:var(--dsw-alias-label-primary)}
       .rsi-h4{margin:12px 0 6px;font-size:12px;font-weight:650}
+      .rsi-verdict-copy{margin:0 0 10px;font-size:13px;line-height:1.6}
+      .rsi-scope{margin:10px 0 0;font-size:11.5px;line-height:1.55;color:var(--dsw-alias-label-secondary)}
+      .rsi-problem-line{margin:12px 0 0;padding:10px 12px;border-left:3px solid var(--rsi-warn);
+        border-radius:0 8px 8px 0;background:color-mix(in srgb,var(--rsi-warn) 7%,transparent);
+        font-size:12.5px;line-height:1.55}
+      .rsi-link-list{display:grid;gap:6px}
+      .rsi-link-row{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;
+        padding:9px 10px;border:1px solid var(--rsi-border);border-radius:8px;background:var(--rsi-surface);
+        color:inherit;font:inherit;text-align:left;cursor:pointer}
+      .rsi-link-row:hover{background:color-mix(in srgb,currentColor 4%,transparent)}
+      .rsi-link-title{font-size:12.5px;font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;
+        white-space:nowrap}
+      .rsi-link-meta{font-size:11px;color:var(--dsw-alias-label-secondary);white-space:nowrap}
+      .rsi-decision-details{margin-top:4px}
       .rsi-stages{list-style:none;margin:0 0 18px;padding:0}
       .rsi-stage{position:relative}
       .rsi-stage:not(:last-child)::after{content:"";position:absolute;left:18px;top:38px;bottom:-2px;
@@ -924,6 +1031,11 @@ window.__ModuleLoader__.load({
       .rsi-table thead th{position:sticky;top:0;z-index:1;background:var(--rsi-surface-raised);
         color:var(--dsw-alias-label-secondary);font-weight:600}
       .rsi-table tbody th{font-weight:550;background:var(--rsi-surface)}
+      .rsi-sample-cell{max-width:360px}
+      .rsi-sample-id{display:block;font-weight:650}
+      .rsi-sample-title{display:block;margin-top:2px;font-size:10.5px;line-height:1.35;font-weight:400;
+        color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere}
+      .rsi-explainer{margin:0 0 10px;font-size:11.5px;line-height:1.6;color:var(--dsw-alias-label-secondary)}
       .rsi-table tr:last-child th,.rsi-table tr:last-child td{border-bottom:0}
       .rsi-good{color:var(--rsi-ok);font-weight:600}
       .rsi-bad{color:var(--rsi-bad);font-weight:600}
@@ -1001,7 +1113,8 @@ window.__ModuleLoader__.load({
         .rsi-table,.rsi-table tbody,.rsi-table tr,.rsi-table th,.rsi-table td{display:block}
         .rsi-table tr{border-bottom:1px solid var(--rsi-border);padding:9px 12px}
         .rsi-table tr:last-child{border-bottom:0}
-        .rsi-table tbody th{background:none;padding:2px 0 6px;font-weight:650}
+        .rsi-table tbody th{background:none;padding:2px 0 6px;font-weight:650;max-width:none}
+        .rsi-sample-title{white-space:normal}
         .rsi-table td{padding:2px 0;border:0;display:flex;justify-content:space-between;gap:12px}
         .rsi-table td::before{color:var(--dsw-alias-label-secondary);font-size:11px}
         .rsi-table td:nth-child(2)::before{content:"对照"}
@@ -1074,7 +1187,7 @@ window.__ModuleLoader__.load({
     }
 
     plugin.__test = {
-      Page, CatalogList, EmptyState, ErrorState, SourceBar, SummaryStrip, StageTrack,
+      Page, ProposalDetail, CatalogList, EmptyState, ErrorState, SourceBar, SummaryStrip, StageTrack,
       DecisionPanel, RolloutBlock, SampleScores, ProposalPanel, HistoryList, Gaps, DetailTabs,
       decisionLabel, decisionTone, gapLabel, formatScore, formatCost, formatAt, pairedText,
       stageSummary, eventKinds,

@@ -310,6 +310,19 @@ def validate_experiment(record: Any) -> Dict[str, Any]:
             result[key] = value
     if record.get("judge_sha256"):
         result["judge_sha256"] = str(record["judge_sha256"])
+    sample_context = record.get("sample_context")
+    if sample_context is not None:
+        if not isinstance(sample_context, list):
+            raise ExperimentError("sample_context must be a list")
+        cleaned = []
+        for item in sample_context:
+            if not isinstance(item, dict):
+                raise ExperimentError("each sample_context item must be an object")
+            sid = item.get("id")
+            if not isinstance(sid, str) or not sid.strip():
+                raise ExperimentError("sample_context.id is required")
+            cleaned.append({"id": sid, "title": str(item.get("title") or "")})
+        result["sample_context"] = cleaned
     stage_reports = record.get("stage_reports")
     if stage_reports is not None:
         if not isinstance(stage_reports, list):

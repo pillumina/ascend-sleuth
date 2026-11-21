@@ -191,6 +191,24 @@ def _stage_reports(proposal: Proposal, tasks: Dict[str, Any], judge_data: Dict[s
     ]
 
 
+def _sample_context(tasks: Dict[str, Any]) -> List[Dict[str, Any]]:
+    context = []
+    for row in tasks.get("samples") or []:
+        title = ""
+        path = row.get("path")
+        if path:
+            try:
+                doc = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+                title = str(((doc.get("input") or {}).get("title")) or "")
+            except (OSError, yaml.YAMLError):
+                title = ""
+        context.append({
+            "id": str(row.get("short_id") or row.get("id") or ""),
+            "title": title,
+        })
+    return context
+
+
 def _experiment_record(proposal: Proposal, tasks: Dict[str, Any], judge: Path,
                        decision: str, conclusion: Dict[str, Any],
                        collected: Dict[str, Any], *, exploratory: bool = False) -> Dict[str, Any]:
@@ -206,6 +224,7 @@ def _experiment_record(proposal: Proposal, tasks: Dict[str, Any], judge: Path,
         "execution": "subagent",
         "decision": decision,
         "samples": samples,
+        "sample_context": _sample_context(tasks),
         "baseline": {"score": sum(baseline.values()) / len(baseline),
                      "samples": samples, "per_sample": baseline},
         "candidate": {"score": sum(candidate.values()) / len(candidate),

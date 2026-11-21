@@ -320,6 +320,13 @@ def build_list(rows: List[Dict[str, Any]], source: Dict[str, Any]) -> Dict[str, 
         experiment_id = str(row.get("experiment_id") or "")
         proposal_id = str(row.get("proposal_id") or proposal.get("id") or "")
         at = str(row.get("at") or "")
+        context = experiment.get("sample_context")
+        context = context if isinstance(context, list) else []
+        problem = ""
+        for item in context:
+            if isinstance(item, dict) and text_of(item.get("title")):
+                problem = text_of(item.get("title"))
+                break
         experiments.append({
             "eventId": str(row.get("event_id") or ""),
             "at": at,
@@ -327,6 +334,8 @@ def build_list(rows: List[Dict[str, Any]], source: Dict[str, Any]) -> Dict[str, 
             "proposalId": proposal_id,
             "title": (text_of(proposal.get("summary")) or text_of(experiment.get("summary"))
                       or "(未命名实验)"),
+            "problem": problem,
+            "sampleContext": context,
             "target": text_of(proposal.get("target")) or text_of(experiment.get("target_kind")),
             "component": (text_of(proposal.get("component"))
                           or text_of(experiment.get("target_component"))),
@@ -344,6 +353,7 @@ def build_list(rows: List[Dict[str, Any]], source: Dict[str, Any]) -> Dict[str, 
             item = {
                 "proposalId": proposal_id,
                 "title": text_of(proposal.get("summary")) or "(未命名提案)",
+                "problem": problem,
                 "target": text_of(proposal.get("target")),
                 "component": text_of(proposal.get("component")),
                 "eventId": str(row.get("event_id") or ""),

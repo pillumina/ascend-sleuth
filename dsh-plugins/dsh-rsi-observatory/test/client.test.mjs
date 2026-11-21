@@ -119,7 +119,7 @@ test('判定与缺口的文案映射保留未知枚举原值', () => {
   assert.equal(t.formatScore(0.3333), '0.33')
   assert.equal(t.formatScore(null), '—')
   assert.equal(t.pairedText({ b: 1, c: 0, n: 9 }), '候选胜 1 · 对照胜 0 · 样本 9')
-  assert.equal(t.stageSummary({ id: 'gate', summary: 'accept · ok' }), '通过 · ok')
+  assert.equal(t.stageSummary({ id: 'gate', summary: 'accept · ok' }), '通过 · 结论详情见下方')
   assert.equal(t.formatCost(detailFixture.conclusion), '98万 词元 · 9 对样本')
   assert.equal(t.formatCost({}), '—')
   assert.equal(t.formatCost({ cost: { time: { baseline: 10, candidate: 2 }, paired: 1 }, metrics: { cost_primary: 'time' } }), '2 毫秒 · 1 对样本')
@@ -231,6 +231,36 @@ test('逐样本评分与已记录环节直接来自实验记录', () => {
   }))
   assert.match(stageText, /有记录/)
   assert.match(stageText, /逐样本评分如下/)
+})
+
+test('提案视图显示问题与关联实验，不再复用实验概览', () => {
+  const { plugin } = loadPlugin()
+  const t = plugin.__test
+  const text = textOf(t.ProposalDetail({
+    proposal: { proposalId: 'P-1', title: '让 310P 支持优先于 triton 残留', component: 'diagnose.routing_hints' },
+    experiments: [{
+      eventId: 'E-1', proposalId: 'P-1', title: '验证候选',
+      problem: '310P 无法识别 Ascend310P3', decision: 'accept', at: '2026-11-21T08:10:00+00:00',
+    }],
+    onOpen() {},
+  }))
+  assert.match(text, /让 310P 支持优先于 triton 残留/)
+  assert.match(text, /310P 无法识别 Ascend310P3/)
+  assert.match(text, /关联实验/)
+})
+
+test('逐样本评分解释判定标准并显示问题标题', () => {
+  const { plugin } = loadPlugin()
+  const text = textOf(plugin.__test.SampleScores({
+    record: {
+      baseline: { per_sample: { 8186: 0 } },
+      candidate: { per_sample: { 8186: 1 } },
+      sample_context: [{ id: '8186', title: "[Bug]: Cannot find option named 'Ascend310P3'!" }],
+    },
+  }))
+  assert.match(text, /对照是没有改技能的原流程/)
+  assert.match(text, /解决了样本问题/)
+  assert.match(text, /Cannot find option named/)
 })
 
 test('提案面板给出改动文件、预期与回滚', () => {
