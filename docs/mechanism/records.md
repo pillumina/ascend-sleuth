@@ -63,18 +63,11 @@ decisions: []                    # 只追加：proposal / action / eval / decisi
 | `verification` | 验证数据、测法、观察窗长度；落到 `validation.method` 与 `success_criteria` | 不可证伪的变更不该合入 |
 | `rollback` | 回滚方式：revert、分支丢弃或配置开关 | 变更不可逆 |
 
-另一组是审计链：`source_signals[].trajectory` 记问题在哪一段记录里，`decisions` 记谁在何时依据哪份证据判断什么。`status` 只有四个取值，产卡即执行，没有待办态：
-
-| 取值 | 含义 |
-|---|---|
-| `in_experiment` | 产卡即执行。识别信号且方案成形才产卡 |
-| `validated` | 采纳。改动保留，进批提交与 PR |
-| `rejected` | 不采纳。试了不行，结论留在卡里 |
-| `superseded` | 换方向。被新的卡替代，`superseded_by` 指过去 |
+另一组是审计链：`source_signals[].trajectory` 记问题在哪一段记录里，`decisions` 记谁在何时依据哪份证据判断什么。高风险 EV 卡只在授权时创建，不是普通改动的默认对象。
 
 四条完整性规则：
 
-1. 产卡即执行。有信号但方案未成形或数据未齐时不产卡，信号记进会话报告，条件到了再产。想法清单不进卡库。
+1. 普通 signal 不产卡；只有高风险授权或历史归档才创建 EV 卡。行为质量改动走 RSI，不要求卡。
 2. 终态卡必须有判断记录。`validated`、`rejected`、`superseded` 的卡，`decisions` 里必须有对应结论与所依据的评估数据；缺了是审计缺口。
 3. `validated` 后 `actual_cost` 必填。没有实际成本记录的卡不可审计。
 4. `supersedes` 与 `superseded_by` 构成替换链；同一时刻每个 `target_component` 至多一张 `validated` 卡。

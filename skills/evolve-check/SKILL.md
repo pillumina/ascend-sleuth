@@ -67,7 +67,7 @@ python3 scripts/tail_exec_log.py
 
 ```bash
 python3 scripts/evolve_intake.py record \
-  --signal T10 --signal-text "机制缺口的一句话" \
+  --signal mechanism-gap --signal-text "机制缺口的一句话" \
   --target "<仓库内路径或组件名>" \
   --evidence "<本轮可复核的现象>" \
   --trajectory "<trace / 产出 id / 命令结果>" \

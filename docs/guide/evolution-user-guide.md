@@ -36,7 +36,7 @@
 信号是观察，不是方案：
 
 ```text
-signal: T10
+signal: mechanism-gap
 target: skills/diagnose/SKILL.md
 evidence: 本轮两次走同一兜底路径
 trajectory: trace / 命令 / 产出 id
