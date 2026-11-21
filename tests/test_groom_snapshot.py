@@ -144,7 +144,7 @@ class SnapshotTest(unittest.TestCase):
         self.assertNotIn("sync.enabled", (meta.get("fetch_error") or ""))
 
     def test_deployment_sync_offline_skips_fetch(self):
-        (self.repo / "deployment.yaml").write_text('sync:\n  mode: "offline"\n',
+        (self.repo / "sleuth.config.yaml").write_text('schema: sleuth-config-v1\nsync:\n  mode: "offline"\n',
                                                    encoding="utf-8")
         git(self.repo, "remote", "set-url", "origin", str(Path(self.tmp.name) / "missing.git"))
         meta, rc = build_snapshot(self.repo, snapshot_dir=self.snaps)

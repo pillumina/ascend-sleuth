@@ -345,7 +345,7 @@ def check_index(root: Path):
 
 
 def check_evolution(root: Path):
-    """部署级演进模式（deployment.yaml）。这是策略声明，不是环境缺陷。
+    """部署级演进角色（sleuth.config.yaml）。这是策略声明，不是环境缺陷。
 
     为什么放进体检：内网 fork 的预期形态是 `record-only`（只记信号不产卡）。不显示时，
     用户在收尾报告里只看到"没有卡"，会以为演进坏了；显示后，"按声明不产卡"与"演进失败"
@@ -473,7 +473,7 @@ def check_kb_sync(root: Path):
 
     if mode == "offline":
         return {"id": "kb-sync", "label": "知识库同步", "kind": "data", "state": OK,
-                "detail": "offline —— deployment.yaml 声明 sync.mode: offline，不联网",
+                "detail": "offline —— sleuth.config.yaml 声明 sync.mode: offline，不联网",
                 "note": "trace_begin / kb_drift 不会 fetch；trace 记 kb_sync: off",
                 "fix": ""}
     if not config_sync.get("enabled", True):

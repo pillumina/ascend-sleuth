@@ -404,45 +404,13 @@ def _cooling_down(state: dict) -> bool:
 # ---------------------------------------------------------------- 部署声明
 
 def deployment_sync_mode(root: Path) -> str:
-    """`sleuth.config.yaml` 的 `sync.mode`（旧 deployment.yaml 兼容）→ auto / offline。"""
+    """`sleuth.config.yaml` 的 `sync.mode` → auto / offline。"""
     try:
         import sleuth_config as SC
         config = SC.load_config(Path(root))
-        if config.get("_source") != "legacy（deployment.yaml / eval/policy*.yaml / store.yaml）":
-            return "offline" if SC.sync_mode(config) == "offline" else "auto"
+        return "offline" if SC.sync_mode(config) == "offline" else "auto"
     except (ImportError, Exception):
-        pass
-    path = Path(root) / "deployment.yaml"
-    if not path.is_file():
-        return "auto"
-    try:
-        from _yaml import load_text
-        doc = load_text(path.read_text(encoding="utf-8")) or {}
-        sync = doc.get("sync") if isinstance(doc, dict) else None
-        mode = str((sync or {}).get("mode") or "").strip().lower() if isinstance(sync, dict) else ""
-        return "offline" if mode == "offline" else "auto"
-    except Exception:
-        pass
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return "auto"
-    in_sync = False
-    for line in lines:
-        if re.match(r"^sync:\s*(#.*)?$", line):
-            in_sync = True
-            continue
-        if not in_sync:
-            continue
-        if line and not line.startswith((" ", "\t")):
-            break
-        match = re.match(r"\s+mode:\s*[\"']?([A-Za-z-]+)", line)
-        if match:
-            return "offline" if match.group(1).lower() == "offline" else "auto"
-    return "auto"
-
-
-# ---------------------------------------------------------------- git 读操作
+        raise
 
 def run_git(args, cwd: Path, timeout: float):
     """跑一条 git 命令。stdout/stderr 一律按 UTF-8 解码。"""
@@ -748,7 +716,7 @@ def local_snapshot(root: Path, remote: str, branch: str, *, timeout: float = DEF
 
     `identity` 是 settings 的归属仓（`{"remote", "explicit"}`，缺省按 origin 且未显式）；
     `same_repo` 拿它的 URL 与 `remote` 的 URL 比。`enabled` 由调用方从 settings 的 sync 段
-    带进来，`offline` 就地读 deployment.yaml；两者只读本地文件，`--show` 因此能给出真实
+    带进来，`offline` 就地读 sleuth.config.yaml；两者只读本地文件，`--show` 因此能给出真实
     状态而不联网。关闭或离线时 `ok: false` 并写对应 reason，但仍照常算落后数与改动面
     （面板要显示"落后多少、为什么没同步"）。`ignore_disabled=True` 时不因关闭写 reason
     （`--check` 与带 `--force` 的手动路径用），`enabled` 字段仍照实上报。

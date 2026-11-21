@@ -2,12 +2,11 @@
 # evolve_mode.py —— 部署级演进模式的唯一读取入口
 #
 # 谁读：evolve-check 第 0 步（收尾检查）、self-evolve 深度轮、doctor。
-# 为什么单列一个脚本：三处各自解析 deployment.yaml 会各自漂移（本仓有过写侧与校验侧
-# 各持一份词表的教训），所以解析只在这里做一次。
+# 为什么单列一个脚本：三处各自解析 sleuth.config.yaml 会各自漂移，所以解析只做一次。
 #
 # 取值与优先级（先命中先用）：
 #   1. 环境变量 ASCEND_SLEUTH_EVOLUTION —— 临时覆盖（CI、演练、一次运行），不是团队声明
-#   2. 仓库根 deployment.yaml 的 evolution.mode —— 团队声明，随 PR 走
+#   2. 仓库根 sleuth.config.yaml 的 evolution.role —— 部署声明，随 PR 走
 #   3. 缺省 full —— 与未引入这份声明时的行为一致
 #
 # 写坏（取值不在词表内、YAML 解析失败、文件存在但缺 evolution.mode）时报错退出：
@@ -15,7 +14,7 @@
 # 在数据上无法区分（原则十）。
 #
 # 用法：
-#   python3 scripts/evolve_mode.py                    # 一行：mode=record-only（来源：deployment.yaml）
+#   python3 scripts/evolve_mode.py                    # 一行：role=maintainer（来源：sleuth.config.yaml）
 #   python3 scripts/evolve_mode.py --json             # {"mode": ..., "source": ...}
 #   python3 scripts/evolve_mode.py --set record-only  # 写部署声明（git 里显示为未提交改动）
 
@@ -34,8 +33,6 @@ MODES = ("full", "record-only", "off")
 SET_CHOICES = ("full", "record-only", "off", "maintainer", "signal-only")
 
 ENV_VAR = "ASCEND_SLEUTH_EVOLUTION"
-
-DECL_REL = Path("deployment.yaml")
 
 TEMPLATE = """\
 # 部署级声明（每部署一份、不参与合并：两仓同名时保留本仓那份）。
@@ -97,41 +94,23 @@ def parse_mode(raw, source: str) -> str:
 
 
 def read_role(root: Path):
-    """→ (role, source)。新配置优先；旧 deployment.yaml 仍作兼容。"""
+    """→ (role, source)。只读 sleuth.config.yaml；环境变量可临时覆盖。"""
     env = os.environ.get(ENV_VAR, "").strip()
     if env:
-        return SC.ROLE_ALIASES.get(parse_mode(env, f"环境变量 {ENV_VAR}"),
-                                   parse_mode(env, f"环境变量 {ENV_VAR}")), f"环境变量 {ENV_VAR}"
+        mode = parse_mode(env, f"环境变量 {ENV_VAR}")
+        role = {"full": "maintainer", "record-only": "signal-only", "off": "off"}[mode]
+        return role, f"环境变量 {ENV_VAR}"
     try:
-        cfg = SC.load_config(root)
+        config = SC.load_config(Path(root))
+        return SC.role(config), str(config.get("_source") or SC.CONFIG_NAME)
     except SC.ConfigError as exc:
         raise ModeError(str(exc)) from exc
-    if cfg.get("_source") != "legacy（deployment.yaml / eval/policy*.yaml / store.yaml）":
-        return SC.role(cfg), str(cfg.get("_source") or SC.CONFIG_NAME)
-    return None, "legacy"
 
 
 def read_mode(root: Path):
-    """→ (mode, source)。对外保持旧三值；新配置 role 映射到旧词表。"""
+    """→ (mode, source)。对外保持旧三值；role 映射到旧词表。"""
     role, source = read_role(root)
-    if role is not None:
-        return {"maintainer": "full", "signal-only": "record-only", "off": "off"}[role], source
-
-    path = Path(root) / DECL_REL
-    if not path.is_file():
-        return "full", "缺省（无 deployment.yaml）"
-
-    try:
-        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    except yaml.YAMLError as e:
-        raise ModeError(f"{DECL_REL} 解析失败：{e}") from e
-
-    if not isinstance(doc, dict):
-        raise ModeError(f"{DECL_REL} 顶层不是映射（应为 evolution: {{mode: ...}}）")
-    evolution = doc.get("evolution")
-    if not isinstance(evolution, dict) or "mode" not in evolution:
-        raise ModeError(f"{DECL_REL} 存在但缺少 evolution.mode——补上，或删掉该文件走缺省（full）")
-    return parse_mode(evolution["mode"], str(DECL_REL)), str(DECL_REL)
+    return {"maintainer": "full", "signal-only": "record-only", "off": "off"}[role], source
 
 
 def write_mode(root: Path, mode: str) -> Path:

@@ -1,6 +1,6 @@
 """可调策略：默认值、加载校验、规范化哈希与自动化档位解析。
 
-``sleuth.yaml`` 的 ``evolution.policy`` 是唯一调参入口；旧路径仅兼容。加载时递归校验未知键与非法枚举，
+``sleuth.config.yaml`` 的 ``evolution.policy`` 是唯一调参入口；旧路径仅兼容。加载时递归校验未知键与非法枚举，
 未知键直接报错，不静默忽略；哈希只覆盖影响判定的内容，写进结论的
 ``versions.policy``。
 """
@@ -27,7 +27,7 @@ BUDGET_METRICS = ("billed", "uncached", "out", "uncached_out", "cache_read",
                   "calls", "rounds", "ms", "time")
 HARD_CONSTRAINT_NAMES = tuple(DEFAULT_METRICS) + ("regression", "test")
 
-# RFC §12 默认值；和 tracked 的 sleuth.yaml evolution.policy 保持一致，测试会比对。
+# RFC §12 默认值；和 tracked 的 sleuth.config.yaml evolution.policy 保持一致，测试会比对。
 DEFAULTS: Dict[str, Any] = {
     "autonomy": {
         "default": "A2",
@@ -330,7 +330,7 @@ def _load_raw(raw: Any, source: str) -> Dict[str, Any]:
 
 
 def load_config_policy(config: Dict[str, Any], profile: Optional[str] = None) -> Dict[str, Any]:
-    """从 sleuth.yaml 的 evolution.policy + profile 读取策略。"""
+    """从 sleuth.config.yaml 的 evolution.policy + profile 读取策略。"""
     import sleuth_config as SC
     try:
         raw = SC.policy_for(config, profile)

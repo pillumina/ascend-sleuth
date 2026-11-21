@@ -318,8 +318,8 @@ class FetchTest(ConfiguredCase):
         self.assertFalse(any("fetch" in call for call in calls))
 
     def test_offline_declaration_does_not_fetch(self):
-        (self.repo / "deployment.yaml").write_text(
-            'evolution:\n  mode: "full"\nsync:\n  mode: "offline"\n', encoding="utf-8")
+        (self.repo / "sleuth.config.yaml").write_text(
+            'schema: sleuth-config-v1\nsync:\n  mode: "offline"\n', encoding="utf-8")
         real = kb_sync.run_git
         calls = []
 
@@ -382,8 +382,8 @@ class FetchTest(ConfiguredCase):
         self.assertFalse(any("fetch" in call for call in calls))
 
     def test_show_reports_offline_declaration_without_fetching(self):
-        (self.repo / "deployment.yaml").write_text(
-            'evolution:\n  mode: "full"\nsync:\n  mode: "offline"\n', encoding="utf-8")
+        (self.repo / "sleuth.config.yaml").write_text(
+            'schema: sleuth-config-v1\nsync:\n  mode: "offline"\n', encoding="utf-8")
         real = kb_sync.run_git
         calls = []
 
@@ -1099,8 +1099,8 @@ class CheckModeTest(ConfiguredCase):
 
     def test_check_is_silent_when_offline(self):
         self.write_settings({"enabled": False})
-        (self.repo / "deployment.yaml").write_text(
-            'evolution:\n  mode: "full"\nsync:\n  mode: "offline"\n', encoding="utf-8")
+        (self.repo / "sleuth.config.yaml").write_text(
+            'schema: sleuth-config-v1\nsync:\n  mode: "offline"\n', encoding="utf-8")
         real = kb_sync.run_git
         calls = []
 

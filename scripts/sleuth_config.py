@@ -2,9 +2,8 @@
 """单一部署配置（sleuth.config.yaml）的读取、校验与旧配置兼容。
 
 新用户只维护仓库根的 sleuth.config.yaml：部署角色、自演进策略、成本 profile、
-RSI store 与同步模式都在这一份文件里。旧的 deployment.yaml、
-eval/policy*.yaml、.s2-replay/evolve/store.yaml 只在没有 sleuth.config.yaml 时
-作为 legacy fallback 读取，不再作为新入口。
+RSI store 与同步模式都在这一份文件里。没有旧文件 fallback；
+没有 sleuth.config.yaml 时使用内置默认值。
 """
 
 from __future__ import annotations
@@ -51,7 +50,7 @@ def _deep_merge(base: Any, override: Any) -> Any:
 def find_root(start: Optional[Path] = None) -> Path:
     start = Path(start or Path.cwd()).resolve()
     for candidate in (start, *start.parents):
-        if (candidate / CONFIG_NAME).is_file() or (candidate / "deployment.yaml").is_file():
+        if (candidate / CONFIG_NAME).is_file():
             return candidate
     return start
 
@@ -84,34 +83,13 @@ def _normalize_role(value: Any, source: str) -> str:
     return role
 
 
-def _legacy(root: Path) -> Dict[str, Any]:
-    cfg = copy.deepcopy(DEFAULTS)
-    evo = cfg["evolution"]
-    decl = root / "deployment.yaml"
-    if decl.is_file():
-        doc = _read_yaml(decl)
-        evo["role"] = _normalize_role((doc.get("evolution") or {}).get("mode", "full"),
-                                      "deployment.yaml")
-        if (doc.get("sync") or {}).get("mode"):
-            cfg["sync"]["mode"] = str(doc["sync"]["mode"])
-    policy_path = root / "eval" / "policy.yaml"
-    if policy_path.is_file():
-        evo["policy"] = _read_yaml(policy_path)
-    latency = root / "eval" / "policy-latency.yaml"
-    if latency.is_file():
-        evo["profiles"] = {"latency": _read_yaml(latency)}
-    store = root / ".s2-replay" / "evolve" / "store.yaml"
-    if store.is_file():
-        evo["store"] = _read_yaml(store)
-    return cfg
-
 
 def load_config(root: Optional[Path] = None, path: Optional[Path] = None) -> Dict[str, Any]:
     root = Path(root or find_root()).resolve()
     config_path = Path(path) if path else root / CONFIG_NAME
     if not config_path.is_file():
-        cfg = _legacy(root)
-        cfg["_source"] = "legacy（deployment.yaml / eval/policy*.yaml / store.yaml）"
+        cfg = copy.deepcopy(DEFAULTS)
+        cfg["_source"] = "built-in defaults（无 sleuth.config.yaml）"
         cfg["_root"] = str(root)
         return cfg
     raw = _read_yaml(config_path)
@@ -134,6 +112,19 @@ def load_config(root: Optional[Path] = None, path: Optional[Path] = None) -> Dic
         raise ConfigError("evolution.profiles 必须是映射")
     if not isinstance(evolution.get("store"), dict):
         raise ConfigError("evolution.store 必须是映射")
+    sources = evolution.get("pipeline_config") or []
+    if isinstance(sources, str):
+        sources = [sources]
+    if not isinstance(sources, list):
+        raise ConfigError("evolution.pipeline_config 必须是字符串或字符串列表")
+    for rel in sources:
+        path = (root / str(rel)).resolve()
+        try:
+            path.relative_to(root)
+        except ValueError as exc:
+            raise ConfigError(f"pipeline_config 逃出仓库根：{rel}") from exc
+        if not path.is_file():
+            raise ConfigError(f"pipeline_config 文件不存在：{path}")
     if cfg["sync"].get("mode") not in SYNC_MODES:
         raise ConfigError(f"sync.mode 必须是 {list(SYNC_MODES)} 之一")
     cfg["_source"] = str(config_path)
@@ -206,9 +197,38 @@ def policy_for(config: Dict[str, Any], profile: Optional[str] = None) -> Dict[st
     return _normalize_policy(policy)
 
 
+def _load_pipeline_sources(config: Dict[str, Any]) -> Dict[str, Any]:
+    root = Path(config.get("_root") or ".")
+    evolution = config.get("evolution") or {}
+    sources = evolution.get("pipeline_config") or []
+    if isinstance(sources, str):
+        sources = [sources]
+    if not isinstance(sources, list):
+        raise ConfigError("evolution.pipeline_config 必须是字符串或字符串列表")
+    merged: Dict[str, Any] = {}
+    for rel in sources:
+        path = (root / str(rel)).resolve()
+        try:
+            path.relative_to(root.resolve())
+        except ValueError as exc:
+            raise ConfigError(f"pipeline_config 逃出仓库根：{rel}") from exc
+        if not path.is_file():
+            raise ConfigError(f"pipeline_config 文件不存在：{path}")
+        doc = _read_yaml(path)
+        pipelines = doc.get("pipelines")
+        if not isinstance(pipelines, dict):
+            raise ConfigError(f"{path} 必须包含 pipelines 映射")
+        merged = _deep_merge(merged, pipelines)
+    return merged
+
+
+def pipeline_names(config: Dict[str, Any]) -> list:
+    return sorted(_load_pipeline_sources(config))
+
+
 def pipeline_for(config: Dict[str, Any], name: Optional[str] = None) -> Dict[str, Any]:
     evolution = config.get("evolution") or {}
-    pipelines = evolution.get("pipelines") or {}
+    pipelines = _load_pipeline_sources(config)
     selected = name or evolution.get("pipeline") or "default"
     if not pipelines:
         return {"name": "default", "description": "built-in stage defaults", "stages": {}}
@@ -263,7 +283,7 @@ def main(argv=None):
         "store": store_for(cfg),
         "profiles": sorted((cfg.get("evolution") or {}).get("profiles") or {}),
         "pipeline": pipeline["name"],
-        "pipelines": sorted((cfg.get("evolution") or {}).get("pipelines") or {}),
+        "pipelines": pipeline_names(cfg),
     }
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))

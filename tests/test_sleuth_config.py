@@ -61,46 +61,38 @@ class SleuthConfigTest(unittest.TestCase):
     def test_pipeline_preset_extends_default(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
+            (root / "config" / "rsi").mkdir(parents=True)
+            (root / "config" / "rsi" / "pipelines.yaml").write_text(yaml.safe_dump({
+                "pipelines": {
+                    "default": {"stages": {
+                        "attribute": "attribute.trace_rule",
+                        "select_region": "select.region_hardcount",
+                        "select_candidate": "select.best",
+                        "propose": "propose.agent",
+                        "judge": "judge.subagent",
+                        "gate": "gate.paired",
+                    }},
+                    "no_proposal": {"extends": "default",
+                                    "stages": {"propose": "propose.none"}},
+                },
+            }), encoding="utf-8")
             (root / "sleuth.config.yaml").write_text(yaml.safe_dump({
                 "schema": SC.SCHEMA,
                 "evolution": {
                     "role": "maintainer",
                     "pipeline": "no_proposal",
-                    "pipelines": {
-                        "default": {"stages": {
-                            "attribute": "attribute.trace_rule",
-                            "select_region": "select.region_hardcount",
-                            "select_candidate": "select.best",
-                            "propose": "propose.agent",
-                            "judge": "judge.subagent",
-                            "gate": "gate.paired",
-                        }},
-                        "no_proposal": {"extends": "default",
-                                        "stages": {"propose": "propose.none"}},
-                    },
+                    "pipeline_config": ["config/rsi/pipelines.yaml"],
                 },
             }), encoding="utf-8")
             policy = load_config_policy(SC.load_config(root))
             self.assertEqual(policy["experiment"]["stages"]["propose"], "propose.none")
             self.assertEqual(policy["experiment"]["stages"]["judge"], "judge.subagent")
 
-    def test_legacy_deployment_still_loads(self):
+    def test_config_file_wins_over_nothing(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            (root / "deployment.yaml").write_text(
-                'evolution:\n  mode: "record-only"\nsync:\n  mode: "offline"\n', encoding="utf-8")
-            cfg = SC.load_config(root)
-            self.assertEqual(SC.role(cfg), "signal-only")
-            self.assertEqual(SC.sync_mode(cfg), "offline")
-            self.assertIn("legacy", cfg["_source"])
-
-    def test_unified_wins_over_legacy(self):
-        with tempfile.TemporaryDirectory() as td:
-            root = Path(td)
-            (root / "deployment.yaml").write_text('evolution:\n  mode: "full"\n', encoding="utf-8")
             (root / "sleuth.config.yaml").write_text(yaml.safe_dump({
-                "schema": SC.SCHEMA,
-                "evolution": {"role": "off"},
+                "schema": SC.SCHEMA, "evolution": {"role": "off"},
             }), encoding="utf-8")
             self.assertEqual(SC.role(SC.load_config(root)), "off")
 

@@ -11,7 +11,6 @@
                               ├─ maintainer  → 写信号台账，上游分诊后走 RSI
                               ├─ signal-only → 写 proposals/signals/<部署>-<哈希>.yaml
                               └─ off         → 不落盘，只打印一行
-                              （旧 deployment.yaml 的 full 仍兼容为产卡骨架）
 
 ## 为什么采集在分流之前
 
@@ -120,12 +119,8 @@ def record(root: Path, *, signal: str, signal_text: str, target: str, evidence: 
            trajectory, suggested: str = "", source: str = "evolve-check",
            session: str = "", force: bool = False) -> dict:
     role, mode_source = EM.read_role(root)
-    if role is None:
-        mode, mode_source = EM.read_mode(root)
-    else:
-        # 新角色语义：maintainer 也先把观察落成信号；是否提升为 RSI 提案由
-        # 上游分诊决定，不再自动产 EV 卡。旧 deployment.yaml 仍走 legacy full。
-        mode = "off" if role == "off" else "record-only"
+    # 目标态：maintainer 先把观察落成信号；是否提升为 RSI 由分诊决定。
+    mode = "off" if role == "off" else "record-only"
     errors = validate(root, target, evidence, trajectory)
     if errors:
         raise ValueError("；".join(errors))

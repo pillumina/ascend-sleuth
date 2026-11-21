@@ -49,20 +49,11 @@ class IntakeTest(unittest.TestCase):
         self.tmp.cleanup()
 
     def decl(self, mode):
-        (self.root / "deployment.yaml").write_text(
-            f'evolution:\n  mode: "{mode}"\n', encoding="utf-8")
+        role = {"full": "maintainer", "record-only": "signal-only", "off": "off"}[mode]
+        (self.root / "sleuth.config.yaml").write_text(
+            f'schema: sleuth-config-v1\nevolution:\n  role: {role}\n', encoding="utf-8")
 
-    def test_full_writes_prefilled_card(self):
-        self.decl("full")
-        res = EI.record(self.root, **GOOD)
-        self.assertEqual(res["mode"], "full")
-        text = res["path"].read_text(encoding="utf-8")
-        self.assertIn("target_component: skills/evolve-check/SKILL.md", text)
-        self.assertIn("signal: T10", text)
-        self.assertIn("products/X-1(submitted)", text)
-        self.assertIn("measure", text)          # 测度仍留空待设计
-
-    def test_maintainer_config_writes_signal_not_card(self):
+    def test_maintainer_writes_signal_not_card(self):
         (self.root / "sleuth.config.yaml").write_text(
             'schema: sleuth-config-v1\nevolution:\n  role: maintainer\n', encoding="utf-8")
         res = EI.record(self.root, **GOOD)
@@ -130,13 +121,15 @@ class GateAndLifecycleTest(unittest.TestCase):
             os.environ["ASCEND_SLEUTH_EVOLUTION"] = self._saved
         self.tmp.cleanup()
 
-    def test_new_blocked_under_record_only(self):
-        (self.root / "deployment.yaml").write_text('evolution:\n  mode: "record-only"\n', encoding="utf-8")
+    def test_new_blocked_under_signal_only(self):
+        (self.root / "sleuth.config.yaml").write_text(
+            'schema: sleuth-config-v1\nevolution:\n  role: signal-only\n', encoding="utf-8")
         with self.assertRaises(EP.DeploymentGate):
             EP.make_new(self.root)
 
     def test_new_force_bypasses_gate(self):
-        (self.root / "deployment.yaml").write_text('evolution:\n  mode: "record-only"\n', encoding="utf-8")
+        (self.root / "sleuth.config.yaml").write_text(
+            'schema: sleuth-config-v1\nevolution:\n  role: signal-only\n', encoding="utf-8")
         p = EP.make_new(self.root, force=True)
         self.assertTrue(p.exists())
 

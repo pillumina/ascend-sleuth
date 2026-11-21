@@ -68,7 +68,7 @@ python3 scripts/doctor.py --json   # 面板或脚本消费
 - 降级项不挡流程时不要顺手修。一次只动一项，修完重跑，否则下一轮分不清是谁改好了。
 - **「演进模式」那一行是部署声明，不是缺陷**。`signal-only` 属于正常项（只做内容沉淀的部署的
   预期形态：只记信号不产卡），不要为了让它变绿去改成 `maintainer`。声明写坏时它报降级，修的是
-  `sleuth.yaml` 里的 `evolution.role`，不是体检器。
+  `sleuth.config.yaml` 里的 `evolution.role`，不是体检器。
 
 ## 它不负责什么
 

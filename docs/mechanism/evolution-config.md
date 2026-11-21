@@ -1,19 +1,12 @@
 # 演进配置：一份 sleuth.config.yaml
 
-这篇说明自演进相关的部署配置、角色边界和迁移。新用户只维护仓库根的 `sleuth.config.yaml`；旧文件只作兼容读取。
+这篇说明自演进相关的部署配置、角色边界和流水线组合。只维护仓库根的 `sleuth.config.yaml`；不存在旧格式兼容迁移。
 
-## 1 为什么合并
+## 1 为什么是一份
 
-过去配置分散在四个地方：
+自演进配置只在仓库根 `sleuth.config.yaml`。角色、评估策略、成本 profile、RSI store、同步模式、流水线声明都从这里进入；流水线预设本身放独立的 `config/rsi/pipelines.yaml`，避免主配置被 stage 组合膨胀。
 
-```text
-deployment.yaml             部署角色、同步模式
-eval/policy.yaml            评估策略
-eval/policy-latency.yaml    延迟 profile
-.s2-replay/evolve/store.yaml RSI store
-```
-
-同一个部署要改一种行为，需要同时记住四个文件、四套校验和四处文档。`sleuth.config.yaml` 把这些收成一份：
+`sleuth.config.yaml` 是唯一入口：
 
 ```yaml
 schema: sleuth-config-v1
@@ -30,13 +23,12 @@ evolution:
 
   policy:
     decision: { alpha: 0.10 }
-    samples: { field_eval: 9 }
-    cost: { primary_dimension: tokens }
-    # 其余策略键与旧 eval/policy.yaml 相同
+    samples: { field_evaluation: 9 }
+    cost: { primary_cost_metric: tokens }
 
   profiles:
     latency:
-      cost: { primary_dimension: time }
+      cost: { primary_cost_metric: elapsed_time }
 
 sync:
   mode: auto                # auto | offline
@@ -72,36 +64,36 @@ policy_auto      A4  在预设边界内调整
 full_auto        A5  全自动（本期不做）
 ```
 
-旧键 `primary`、`field_eval`、`primary_dimension`、`B`、`epsilon`、`delta` 仍可被 legacy 读取，但新配置不再新增。
+配置只写这些名称；不存在旧键读取路径。
 
 ### 2.2 流水线预设与消融
 
-`evolution.pipeline` 选择预设；`evolution.pipelines` 定义可复用的 stage 组合。`extends` 只覆盖差异，便于做消融：
+流水线预设不放主配置，单独放 `config/rsi/pipelines.yaml`；主配置只声明加载哪些文件和选哪个预设：
 
 ```yaml
-pipeline: default
+# sleuth.config.yaml
+evolution:
+  pipeline: default
+  pipeline_config:
+    - config/rsi/pipelines.yaml
+```
+
+```yaml
+# config/rsi/pipelines.yaml
 pipelines:
   default:
+    description: 七环节全开
     stages: { attribute: attribute.trace_rule, ... }
   no_proposal:
+    description: 消融“提案”环节
     extends: default
     stages: { propose: propose.none }
 ```
 
-- 每个 stage 点的实现仍由 `scripts/evolve/stages.py` registry 校验；
-- `experiment.stages` 不再写进用户配置，由预设解析后注入内部 policy；
-- 消融时只改 `pipeline`，同一份候选/样本可以跑不同预设；
-- 预设名、stage id 与描述必须一起写，避免再次出现裸代号。
-
-## 2 角色边界
-
-| role | 本地产生 | 不产生 | 适用 |
-|---|---|---|---|
-| `maintainer` | 信号、RSI proposal、experiment、decision、PR | 不把所有行为改动自动变成 EV 卡 | 有真实样本、runner、judge 的维护者仓 |
-| `signal-only` | 信号台账、本地执行记录 | EV 卡、RSI 实验、验证门 | 用户本地、内网 fork、只做内容沉淀的部署 |
-| `off` | 一条跳过记录 | 其他演进记录 | 明确关闭演进的部署 |
-
-`signal-only` 不阻止普通工程修复：确定性代码 bug 仍然用回归测试 + PR 修，模式只管演进记录。
+- `pipeline_config` 按顺序合并，后面的文件可覆盖或追加预设；
+- `extends` 只覆盖差异，适合消融矩阵；
+- 每个 stage 点由 `scripts/evolve/stages.py` registry 校验；
+- 用户不写实现 id，只选预设名；内部 policy 由预设解析后注入。
 
 ## 3 信号、提案、实验、卡、PR
 
@@ -141,28 +133,22 @@ flowchart TD
 
 只有“没有确定 oracle、需要样本对照”的行为质量改动才走 RSI。
 
-## 5 迁移
+## 5 配置组合，不做迁移
 
-旧配置仍能被读取，但只作 fallback：
-
-```text
-deployment.yaml evolution.mode: full        -> role: maintainer
-deployment.yaml evolution.mode: record-only -> role: signal-only
-deployment.yaml evolution.mode: off         -> role: off
-eval/policy.yaml                            -> evolution.policy
-eval/policy-latency.yaml                    -> evolution.profiles.latency
-.s2-replay/evolve/store.yaml                -> evolution.store
-```
-
-读取优先级：
+没有旧配置读取分支。主配置只做三件事：
 
 ```text
-sleuth.config.yaml
-  > deployment.yaml / eval/policy*.yaml / store.yaml（legacy）
-  > 内置默认值
+声明角色与 store
+选择策略 profile
+声明 pipeline 文件与预设
 ```
 
-`deployment.yaml` 与 `eval/policy*.yaml` 已标记 deprecated；新部署不要再新增这些文件。
+策略 profile 只覆盖 `evolution.policy` 的差异；pipeline 文件只定义 stage 组合；两者分开，避免主配置膨胀。新增消融实验时：
+
+1. 新建 `config/rsi/<experiment>.yaml`；
+2. 在其中定义 `pipelines.<name>`，可用 `extends`；
+3. 把文件加进 `evolution.pipeline_config`；
+4. 把 `evolution.pipeline` 改成要跑的名字。
 
 ## 6 校验
 

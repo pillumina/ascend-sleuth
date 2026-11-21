@@ -155,8 +155,6 @@ def cmd_policy_check(args: argparse.Namespace) -> int:
         import sleuth_config as SC
         root = Path(getattr(args, "root", None) or Path.cwd())
         cfg = SC.load_config(root)
-        if cfg.get("_source", "").startswith("legacy") and not (root / "eval" / "policy.yaml").exists():
-            raise PolicyError(f"policy file not found: no {SC.CONFIG_NAME} and no eval/policy.yaml under {root}")
         policy = load_config_policy(cfg, getattr(args, "profile", None))
     except (PolicyError, SC.ConfigError) as exc:
         print(f"error: {exc}", file=sys.stderr)

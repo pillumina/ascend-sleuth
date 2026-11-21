@@ -1,9 +1,9 @@
 # ============================================================================
 # ascend-sleuth 唯一部署配置
 #
-# 新用户只改这一份文件；旧的 deployment.yaml / eval/policy.yaml /
-# eval/policy-latency.yaml / .s2-replay/evolve/store.yaml 只作兼容读取。
-# 字段的完整说明与迁移见 docs/mechanism/evolution-config.md。
+# 只改这一份文件；没有旧格式读取分支。
+# 字段说明见 docs/mechanism/evolution-config.md；流水线预设见
+# config/rsi/pipelines.yaml。
 # ============================================================================
 
 # 配置 schema 版本；当前只支持 sleuth-config-v1。
@@ -29,29 +29,12 @@ evolution:
     # local 后端的文件路径；相对仓库根目录。
     path: .s2-replay/evolve/rsi-events.jsonl
 
-  # 实验流水线预设：同名 pipeline 可作为消融实验；stage id 来自 stages.py registry。
-  # 日常工作用 default；做消融时只改 pipeline 名，不动其余评估策略。
+  # 实验流水线预设：本文件不内嵌 stage id；默认预设与消融预设放在
+  # config/rsi/pipelines.yaml，可追加自定义文件并在这里声明。
   pipeline: default
-  pipelines:
-    default:
-      description: 七环节全开：规则归因、区域选择、best 候选、agent 提案、subagent judge、paired gate。
-      stages:
-        attribute: attribute.trace_rule
-        select_region: select.region_hardcount
-        select_candidate: select.best
-        propose: propose.agent
-        judge: judge.subagent
-        gate: gate.paired
-    no_proposal:
-      description: 消融“提案”环节：保留评估，propose 使用 propose.none，测试没有提案时下游是否仍可判定。
-      extends: default
-      stages:
-        propose: propose.none
-    no_selection:
-      description: 消融“候选选择”环节：select_candidate 使用 select.none，只评估当前 skill。
-      extends: default
-      stages:
-        select_candidate: select.none
+  pipeline_config:
+    - config/rsi/pipelines.yaml
+
   # 评估/审批策略；下面每个键都有允许值与默认值。
   policy:
     autonomy:
@@ -132,11 +115,11 @@ evolution:
       #   billed / uncached / out / uncached_out / cache_read /
       #   calls / rounds / ms / time
       budget_metric: billed
-      # 允许的最大成本上涨比例；0.10 = 最多贵 10%（公式里的 B）。
+      # 允许的最大成本上涨比例；0.10 = 最多贵 10%。
       maximum_cost_increase_ratio: 0.10
-      # 成本路径要求的最小下降比例；0.10 = 至少便宜 10%（公式里的 ε）。
+      # 成本路径要求的最小下降比例；0.10 = 至少便宜 10%。
       minimum_cost_improvement: 0.10
-      # 主指标允许的非劣容差；0 = 不允许质量下降（公式里的 δ）。
+      # 主指标允许的非劣容差；0 = 不允许质量下降。
       max_quality_drop: 0
       runs:
         # 一次 pilot 的配对样本上限。

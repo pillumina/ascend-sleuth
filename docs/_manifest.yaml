@@ -81,7 +81,7 @@ docs:
     purpose: "旧链接入口（保留以免旧链接失效）：内容已并入 mechanism/rsi-mechanism.md，本文只是一页指路，不要在此续写"
   - path: docs/mechanism/evolution-config.md
     layer: mechanism
-    purpose: 自演进配置的唯一入口：sleuth.yaml 的角色、policy、profile、store、sync、迁移与信号/RSI/EV 边界
+    purpose: 自演进配置的唯一入口：sleuth.config.yaml 的角色、policy、profile、store、sync、pipeline 组合与信号/RSI/EV 边界
   - path: docs/mechanism/rsi-acceptance.md
     layer: mechanism
     purpose: RSI 真实数据验收记录：样本、候选、A/B gate、full flow、store 缺口与插件验证结论
