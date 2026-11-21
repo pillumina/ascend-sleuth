@@ -17,13 +17,16 @@ evolution:
 
   policy:
     autonomy:
-      # A0–A5 是内部审批档位；数字越大自动化越高。A2 是默认的 batch PR 人审档。
-      default: A2
+      # 审批档位（专业名称，内部映射到 RFC 的 A0–A5）：
+      # observe=只观察 / propose=逐项提议 / batch_review=按批人审（默认，A2）/
+      # supervised_auto=低风险自动合并（A3，需 auto_merge）/ policy_auto=边界内自调 /
+      # full_auto=全自动（本期不做）。
+      default: batch_review
       overrides:
-        docs.non_normative: A3
-        docs.normative: A1
-        feedback.candidate: A3
-        feedback.pool: A2
+        docs.non_normative: supervised_auto
+        docs.normative: propose
+        feedback.candidate: supervised_auto
+        feedback.pool: batch_review
       auto_merge:
         # true 才允许 A3 自动合并；false 时 A3 降为 A2。
         enabled: false
@@ -77,14 +80,7 @@ evolution:
     experiment:
       target: skill
       algorithm: baseline
-      # 七环节使用的实现；值是 stages registry 的 id。
-      stages:
-        attribute: attribute.trace_rule
-        select_region: select.region_hardcount
-        select_candidate: select.best
-        propose: propose.agent
-        judge: judge.subagent
-        gate: gate.paired
+      # stages 使用内置 registry 默认；要覆盖时再加 stages 映射（高级配置，见配置文档）。
       budget: {}
       seed: 0
 

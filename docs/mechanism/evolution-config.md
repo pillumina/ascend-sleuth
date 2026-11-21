@@ -58,8 +58,19 @@ sync:
 | `cost.maximum_cost_increase_ratio` | ≥0 | 0.10 | 允许的成本上涨比例（公式里的 B） |
 | `cost.minimum_cost_improvement` | ≥0 | 0.10 | 成本路径要求的最小下降比例（公式里的 ε） |
 | `cost.max_quality_drop` | ≥0 | 0 | 允许的主指标非劣容差（公式里的 δ） |
-| `autonomy.default` | `A0`–`A5` | `A2` | 内部审批档位；A2 是 batch PR 人审 |
-| `autonomy.auto_merge.enabled` | true/false | false | A3 是否允许自动合并；false 时 A3 降 A2 |
+| `autonomy.default` | `observe` / `propose` / `batch_review` / `supervised_auto` / `policy_auto` / `full_auto` | `batch_review` | 审批档位；内部映射 A0–A5 |
+| `autonomy.auto_merge.enabled` | true/false | false | `supervised_auto` 是否允许自动合并；false 时降为 `batch_review` |
+
+审批档位与 RFC 的对应：
+
+```text
+observe          A0  只观察、出报告
+propose          A1  提出改动，逐项人审
+batch_review     A2  批量实验，按批人审（默认）
+supervised_auto  A3  低风险自动合并，周审计
+policy_auto      A4  在预设边界内调整
+full_auto        A5  全自动（本期不做）
+```
 
 旧键 `primary`、`field_eval`、`primary_dimension`、`B`、`epsilon`、`delta` 仍可被 legacy 读取，但新配置不再新增。
 

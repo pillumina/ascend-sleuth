@@ -37,6 +37,27 @@ class SleuthConfigTest(unittest.TestCase):
             self.assertEqual(load_config_policy(cfg)["decision"]["alpha"], 0.05)
             self.assertEqual(load_config_policy(cfg, "latency")["cost"]["primary_dimension"], "time")
 
+    def test_autonomy_professional_names_map_to_rfc_levels(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "sleuth.yaml").write_text(yaml.safe_dump({
+                "schema": SC.SCHEMA,
+                "evolution": {
+                    "role": "maintainer",
+                    "policy": {
+                        "autonomy": {
+                            "default": "batch_review",
+                            "overrides": {"docs.normative": "propose",
+                                          "docs.non_normative": "supervised_auto"},
+                        },
+                    },
+                },
+            }), encoding="utf-8")
+            policy = load_config_policy(SC.load_config(root))
+            self.assertEqual(policy["autonomy"]["default"], "A2")
+            self.assertEqual(policy["autonomy"]["overrides"]["docs.normative"], "A1")
+            self.assertEqual(policy["autonomy"]["overrides"]["docs.non_normative"], "A3")
+
     def test_legacy_deployment_still_loads(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

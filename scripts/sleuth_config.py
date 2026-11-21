@@ -153,6 +153,14 @@ COST_VALUE_ALIASES = {
     "elapsed_time": "time",
     "tool_calls": "calls",
 }
+AUTONOMY_VALUE_ALIASES = {
+    "observe": "A0",
+    "propose": "A1",
+    "batch_review": "A2",
+    "supervised_auto": "A3",
+    "policy_auto": "A4",
+    "full_auto": "A5",
+}
 
 
 def _normalize_policy(raw: Dict[str, Any]) -> Dict[str, Any]:
@@ -173,6 +181,17 @@ def _normalize_policy(raw: Dict[str, Any]) -> Dict[str, Any]:
     cost = normalized.get("cost")
     if isinstance(cost, dict) and cost.get("primary_dimension") in COST_VALUE_ALIASES:
         cost["primary_dimension"] = COST_VALUE_ALIASES[cost["primary_dimension"]]
+    autonomy = normalized.get("autonomy")
+    if isinstance(autonomy, dict):
+        level = autonomy.get("default")
+        if isinstance(level, str) and level in AUTONOMY_VALUE_ALIASES:
+            autonomy["default"] = AUTONOMY_VALUE_ALIASES[level]
+        overrides = autonomy.get("overrides")
+        if isinstance(overrides, dict):
+            autonomy["overrides"] = {
+                key: AUTONOMY_VALUE_ALIASES.get(value, value) if isinstance(value, str) else value
+                for key, value in overrides.items()
+            }
     return normalized
 
 
