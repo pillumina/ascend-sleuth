@@ -14,7 +14,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement
 
     const CHANNEL = '/rsi-observatory'
-    const PLUGIN_VERSION = '0.7.0'
+    const PLUGIN_VERSION = '0.7.1'
     const PANEL_ID = 'rsi-observatory'
     const PANEL_LABEL = '自演进实验'
 
@@ -917,8 +917,9 @@ window.__ModuleLoader__.load({
         border-radius:10px;outline:none}
       .rsi-table-wrap:focus-visible{outline:2px solid var(--rsi-run);outline-offset:2px}
       .rsi-table{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px;min-width:460px}
-      .rsi-caption{padding:10px 12px;text-align:left;font-size:11px;color:var(--dsw-alias-label-secondary);
-        background:var(--rsi-surface);border-bottom:1px solid var(--rsi-border)}
+      .rsi-caption{display:table-caption;width:100%;box-sizing:border-box;padding:10px 12px;text-align:left;
+        font-size:11px;color:var(--dsw-alias-label-secondary);background:var(--rsi-surface);
+        border-bottom:1px solid var(--rsi-border);white-space:normal}
       .rsi-table th,.rsi-table td{padding:8px 12px;border-bottom:1px solid var(--rsi-border);text-align:left}
       .rsi-table thead th{position:sticky;top:0;z-index:1;background:var(--rsi-surface-raised);
         color:var(--dsw-alias-label-secondary);font-weight:600}
@@ -994,7 +995,8 @@ window.__ModuleLoader__.load({
         .rsi-inner{padding:0 16px 36px}
         .rsi-head{padding:14px 0 12px}
         .rsi-strip{grid-template-columns:repeat(2,minmax(0,1fr))}
-        .rsi-table{min-width:0}
+        .rsi-table{display:block;width:100%;min-width:0}
+        .rsi-caption{display:block;width:100%}
         .rsi-table thead{display:none}
         .rsi-table,.rsi-table tbody,.rsi-table tr,.rsi-table th,.rsi-table td{display:block}
         .rsi-table tr{border-bottom:1px solid var(--rsi-border);padding:9px 12px}
