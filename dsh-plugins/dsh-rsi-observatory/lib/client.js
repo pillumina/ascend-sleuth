@@ -498,6 +498,7 @@ window.__ModuleLoader__.load({
       }
       const rows = [
         ['提案编号', String(proposal.id || '—')],
+        ['EV 卡', String((proposal.artifact && proposal.artifact.ev_card) || '未绑定')],
         ['目标对象', String(proposal.target || '—')],
         ['影响范围', String(proposal.component || '—')],
         ['改动类型', String(proposal.artifact_kind || '—')],

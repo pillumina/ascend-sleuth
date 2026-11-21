@@ -90,8 +90,11 @@ class FlowTest(unittest.TestCase):
                             "ok", encoding="utf-8")
 
             result = run_proposal(root, proposal, samples, Path(td) / "pilot",
-                                  _policy(), judge, archive, runner=runner)
+                                  _policy(), judge, archive, runner=runner,
+                                  card="EV-2026-001")
             self.assertEqual(result["conclusion"]["decision"], "accept")
+            self.assertEqual(result["conclusion"]["card"], "EV-2026-001")
+            self.assertEqual(result["experiment"]["ev_card"], "EV-2026-001")
             self.assertEqual(result["conclusion"]["proposal"], proposal.id)
             rows = ProposalArchive(Path(td) / "proposals.jsonl").read()
             self.assertEqual(rows[-1]["status"], "accept")
