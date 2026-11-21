@@ -152,7 +152,7 @@ def write_mode(root: Path, mode: str) -> Path:
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="读/写部署演进角色（sleuth.yaml）")
+    ap = argparse.ArgumentParser(description="读/写部署演进角色（sleuth.config.yaml）")
     ap.add_argument("--root", type=Path, default=None, help="仓库根（默认当前检出的顶层）")
     ap.add_argument("--json", action="store_true", help="输出 JSON：{mode, source}")
     ap.add_argument("--set", choices=SET_CHOICES, default=None, help="写入配置角色")

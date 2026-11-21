@@ -37,7 +37,7 @@ description: >
 地位）。如果一轮内容执行本身就是自演进深度轮的一部分（self-evolve 驱动），跳过本
 协议（深度轮已含观测）。
 
-**触发受部署声明约束**：这个部署要不要记录、记录到哪一层由仓库根 `sleuth.yaml` 的
+**触发受部署声明约束**：这个部署要不要记录、记录到哪一层由仓库根 `sleuth.config.yaml` 的
 `evolution.role` 决定（第 0 步读），不由本协议自己决定。只做内容沉淀的下游部署设
 `signal-only`：信号照记，卡不产——本地卡号会与上游号段重号，合并时无法机械解决。
 
@@ -58,13 +58,13 @@ python3 scripts/evolve_mode.py --json      # → {"role": "maintainer" | "signal
 - 脚本退出码 2 = 声明写坏（取值不在词表、YAML 解析失败、有文件但缺 `evolution.role`）。
   把报错原文给用户，**不要自己挑一档继续跑**——静默降级会让"这个部署在演进"与
   "这个部署关掉了演进"在数据上混为一谈（原则十）。
-- 缺省（仓库根无 `sleuth.yaml`）= `maintainer`。`source` 要写进收尾说明，读的人才知道
-  这一轮按哪档跑的、依据在哪（`sleuth.yaml` / 环境变量 / 缺省）。
+- 缺省（仓库根无 `sleuth.config.yaml`）= `maintainer`。`source` 要写进收尾说明，读的人才知道
+  这一轮按哪档跑的、依据在哪（`sleuth.config.yaml` / 环境变量 / 缺省）。
 - 环境变量 `ASCEND_SLEUTH_EVOLUTION` 优先于文件，只用于临时覆盖（演练、CI、一次运行），
-  不是团队声明：要长期改这个部署的行为，改 `sleuth.yaml` 并提交。
+  不是团队声明：要长期改这个部署的行为，改 `sleuth.config.yaml` 并提交。
 - **用户说"这个部署不要产卡 / 只做沉淀"时**，不要让对方手改 YAML：跑
   `python3 scripts/evolve_mode.py --set signal-only`，并说明两件事——写的是仓库根的
-  `sleuth.yaml`（提交后对该仓所有 agent 生效，未提交时只在本工作区生效），以及之后
+  `sleuth.config.yaml`（提交后对该仓所有 agent 生效，未提交时只在本工作区生效），以及之后
   机制缺口该怎么交（MR 描述或 issue）。要恢复说 `--set maintainer`。
 
 **第 1 步：读本轮执行现场**（不重扫全库、不读 case 全文——token 预算，原则九）：
@@ -245,8 +245,8 @@ python3 scripts/evolve_mode.py --json      # → {"role": "maintainer" | "signal
 ```
 evolve-check：产出 EV-xxxx（补 case，S2 replay 佐证缺口）→ agent 判断采纳（validated）
 或：evolve-check：无演进信号（本轮无新增数据/无流程摩擦/无覆盖缺口）
-或：evolve-check：signal-only（来源：sleuth.yaml），命中 T10；不产卡，建议写进 MR/issue
-或：evolve-check：跳过（来源：sleuth.yaml，role=off）
+或：evolve-check：signal-only（来源：sleuth.config.yaml），命中 T10；不产卡，建议写进 MR/issue
+或：evolve-check：跳过（来源：sleuth.config.yaml，role=off）
 ```
 
 ## 与 self-evolve 的分工

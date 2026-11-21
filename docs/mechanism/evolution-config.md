@@ -1,6 +1,6 @@
-# 演进配置：一份 sleuth.yaml
+# 演进配置：一份 sleuth.config.yaml
 
-这篇说明自演进相关的部署配置、角色边界和迁移。新用户只维护仓库根的 `sleuth.yaml`；旧文件只作兼容读取。
+这篇说明自演进相关的部署配置、角色边界和迁移。新用户只维护仓库根的 `sleuth.config.yaml`；旧文件只作兼容读取。
 
 ## 1 为什么合并
 
@@ -13,7 +13,7 @@ eval/policy-latency.yaml    延迟 profile
 .s2-replay/evolve/store.yaml RSI store
 ```
 
-同一个部署要改一种行为，需要同时记住四个文件、四套校验和四处文档。`sleuth.yaml` 把这些收成一份：
+同一个部署要改一种行为，需要同时记住四个文件、四套校验和四处文档。`sleuth.config.yaml` 把这些收成一份：
 
 ```yaml
 schema: sleuth-config-v1
@@ -73,6 +73,25 @@ full_auto        A5  全自动（本期不做）
 ```
 
 旧键 `primary`、`field_eval`、`primary_dimension`、`B`、`epsilon`、`delta` 仍可被 legacy 读取，但新配置不再新增。
+
+### 2.2 流水线预设与消融
+
+`evolution.pipeline` 选择预设；`evolution.pipelines` 定义可复用的 stage 组合。`extends` 只覆盖差异，便于做消融：
+
+```yaml
+pipeline: default
+pipelines:
+  default:
+    stages: { attribute: attribute.trace_rule, ... }
+  no_proposal:
+    extends: default
+    stages: { propose: propose.none }
+```
+
+- 每个 stage 点的实现仍由 `scripts/evolve/stages.py` registry 校验；
+- `experiment.stages` 不再写进用户配置，由预设解析后注入内部 policy；
+- 消融时只改 `pipeline`，同一份候选/样本可以跑不同预设；
+- 预设名、stage id 与描述必须一起写，避免再次出现裸代号。
 
 ## 2 角色边界
 
@@ -138,7 +157,7 @@ eval/policy-latency.yaml                    -> evolution.profiles.latency
 读取优先级：
 
 ```text
-sleuth.yaml
+sleuth.config.yaml
   > deployment.yaml / eval/policy*.yaml / store.yaml（legacy）
   > 内置默认值
 ```

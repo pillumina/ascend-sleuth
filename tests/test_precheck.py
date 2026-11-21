@@ -76,7 +76,7 @@ class DocsSyncTest(unittest.TestCase):
                      "tests/", "proposals/", "docs/spec/", "docs/mechanism/"):
             self.assertIn(f"`{pref}**`", doc, pref)
         for token in ("`metrics/gates.yaml`", "`triage-tree*`", "`docs/guide/git-workflow.md`",
-                      "`AGENTS.md`", "`sleuth.yaml`", "`.gitignore`"):
+                      "`AGENTS.md`", "`sleuth.config.yaml`", "`.gitignore`"):
             self.assertIn(token, doc, token)
 
 

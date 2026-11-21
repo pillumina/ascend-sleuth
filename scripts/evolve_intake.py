@@ -7,7 +7,7 @@
 本脚本把这条策略收进结构：
 
     调用方（任何 skill）→ evolve_intake record <观察载荷>
-                              │ 读 sleuth.yaml 的 evolution.role
+                              │ 读 sleuth.config.yaml 的 evolution.role
                               ├─ maintainer  → 写信号台账，上游分诊后走 RSI
                               ├─ signal-only → 写 proposals/signals/<部署>-<哈希>.yaml
                               └─ off         → 不落盘，只打印一行

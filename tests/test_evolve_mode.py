@@ -105,7 +105,7 @@ class ReadModeTest(unittest.TestCase):
 
         不钉具体取值：声明按部署改，fork 的取值与上游本来就不同，钉 full 会让 fork 的 CI 红。
         """
-        text = (ROOT / "sleuth.yaml").read_text(encoding="utf-8")
+        text = (ROOT / "sleuth.config.yaml").read_text(encoding="utf-8")
         self.assertIn("evolution:", text)
         role, _ = EM.read_role(ROOT)
         self.assertIn(role, ("maintainer", "signal-only", "off"))

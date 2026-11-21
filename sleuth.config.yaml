@@ -29,6 +29,29 @@ evolution:
     # local 后端的文件路径；相对仓库根目录。
     path: .s2-replay/evolve/rsi-events.jsonl
 
+  # 实验流水线预设：同名 pipeline 可作为消融实验；stage id 来自 stages.py registry。
+  # 日常工作用 default；做消融时只改 pipeline 名，不动其余评估策略。
+  pipeline: default
+  pipelines:
+    default:
+      description: 七环节全开：规则归因、区域选择、best 候选、agent 提案、subagent judge、paired gate。
+      stages:
+        attribute: attribute.trace_rule
+        select_region: select.region_hardcount
+        select_candidate: select.best
+        propose: propose.agent
+        judge: judge.subagent
+        gate: gate.paired
+    no_proposal:
+      description: 消融“提案”环节：保留评估，propose 使用 propose.none，测试没有提案时下游是否仍可判定。
+      extends: default
+      stages:
+        propose: propose.none
+    no_selection:
+      description: 消融“候选选择”环节：select_candidate 使用 select.none，只评估当前 skill。
+      extends: default
+      stages:
+        select_candidate: select.none
   # 评估/审批策略；下面每个键都有允许值与默认值。
   policy:
     autonomy:

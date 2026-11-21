@@ -66,9 +66,9 @@ class HelpAndPolicyCliTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             import yaml
-            cfg = yaml.safe_load((ROOT / "sleuth.yaml").read_text(encoding="utf-8"))
+            cfg = yaml.safe_load((ROOT / "sleuth.config.yaml").read_text(encoding="utf-8"))
             cfg["evolution"]["policy"]["surprise"] = True
-            (root / "sleuth.yaml").write_text(yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
+            (root / "sleuth.config.yaml").write_text(yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
             result = run_cli("policy", "check", "--root", td)
             self.assertEqual(result.returncode, 1)
             self.assertIn("unknown policy key", result.stderr)

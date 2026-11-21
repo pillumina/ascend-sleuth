@@ -38,7 +38,7 @@
 python3 scripts/evolve_mode.py --set signal-only
 ```
 
-它写仓库根的 `sleuth.yaml`（每部署一份、不参与合并）。提交后对这个仓的所有检出与所有 agent 生效；没提交时只有本工作区生效。之后内容流程收尾仍然检查信号、仍然落执行记录，但不产卡、不跑验证门：观察统一交给 `python3 scripts/evolve_intake.py record …`，它按声明落信号台账 `proposals/signals/`（一条信号一个文件，随 PR 提交）。
+它写仓库根的 `sleuth.config.yaml`（每部署一份、不参与合并）。提交后对这个仓的所有检出与所有 agent 生效；没提交时只有本工作区生效。之后内容流程收尾仍然检查信号、仍然落执行记录，但不产卡、不跑验证门：观察统一交给 `python3 scripts/evolve_intake.py record …`，它按声明落信号台账 `proposals/signals/`（一条信号一个文件，随 PR 提交）。
 
 把台账交给上游的方式：
 

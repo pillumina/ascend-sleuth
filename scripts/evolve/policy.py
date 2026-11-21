@@ -334,6 +334,9 @@ def load_config_policy(config: Dict[str, Any], profile: Optional[str] = None) ->
     import sleuth_config as SC
     try:
         raw = SC.policy_for(config, profile)
+        pipeline = SC.pipeline_for(config)
+        experiment = raw.setdefault("experiment", {})
+        experiment["stages"] = pipeline["stages"]
     except SC.ConfigError as exc:
         raise PolicyError(str(exc)) from exc
     return _load_raw(raw, str(config.get("_source") or SC.CONFIG_NAME))

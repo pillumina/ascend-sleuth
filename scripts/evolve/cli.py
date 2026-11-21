@@ -602,7 +602,7 @@ def _judge_policy(path: Optional[str]) -> Dict[str, Any]:
 
 
 def _policy_for(args: argparse.Namespace) -> Dict[str, Any]:
-    """策略读取顺序：显式 ``--policy`` → ``<root>/sleuth.yaml`` 的 evolution.policy。"""
+    """策略读取顺序：显式 ``--policy`` → ``<root>/sleuth.config.yaml`` 的 evolution.policy。"""
     explicit = getattr(args, "policy", None)
     if explicit:
         return _judge_policy(explicit)
@@ -612,7 +612,7 @@ def _policy_for(args: argparse.Namespace) -> Dict[str, Any]:
         config = SC.load_config(root)
         return load_config_policy(config, getattr(args, "profile", None))
     except (SC.ConfigError, Exception) as exc:
-        # 旧测试/隔离目录没有 sleuth.yaml 时，legacy 配置也会落到这里；
+        # 旧测试/隔离目录没有 sleuth.config.yaml 时，legacy 配置也会落到这里；
         # 真正读不了才退回内置默认值。
         if isinstance(exc, (SC.ConfigError,)):
             return _judge_policy(None)
@@ -1855,7 +1855,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     policy = sub.add_parser("policy", help="策略文件检查/展示")
     policy_sub = policy.add_subparsers(dest="policy_command", required=True)
-    check = policy_sub.add_parser("check", help="校验 sleuth.yaml 的 evolution.policy")
+    check = policy_sub.add_parser("check", help="校验 sleuth.config.yaml 的 evolution.policy")
     check.add_argument("--root", default=".", help="检出根目录（默认 .）")
     check.set_defaults(func=cmd_policy_check)
     show = policy_sub.add_parser("show", help="打印合并默认值后的策略")
@@ -1864,7 +1864,7 @@ def build_parser() -> argparse.ArgumentParser:
     autonomy = policy_sub.add_parser("autonomy", help="按 target_component 解析自动档位")
     autonomy.add_argument("--root", default=".", help="检出根目录（默认 .）")
     autonomy.add_argument("--component", required=True)
-    autonomy.add_argument("--policy", default=None, help="策略文件路径（默认 sleuth.yaml 的 evolution.policy）")
+    autonomy.add_argument("--policy", default=None, help="策略文件路径（默认 sleuth.config.yaml 的 evolution.policy）")
     autonomy.set_defaults(func=cmd_policy_autonomy)
     sample = sub.add_parser("sample", help="样本队列与生命周期")
     sample_sub = sample.add_subparsers(dest="sample_command", required=True)
@@ -2016,7 +2016,7 @@ def build_parser() -> argparse.ArgumentParser:
     draw.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")
     draw.add_argument("--size", type=int, default=None,
                       help="抽几条（默认读 policy.samples.test）")
-    draw.add_argument("--policy", default=None, help="策略文件路径（默认 sleuth.yaml 的 evolution.policy）")
+    draw.add_argument("--policy", default=None, help="策略文件路径（默认 sleuth.config.yaml 的 evolution.policy）")
     draw.add_argument("--actor", default="maintainer")
     draw.add_argument("--reason", default="")
     draw.set_defaults(func=cmd_sample_draw_test)
@@ -2083,7 +2083,7 @@ def build_parser() -> argparse.ArgumentParser:
     judge.add_argument("--n", type=int, required=True, help="配对样本总数")
     judge.add_argument("--cost-b", type=float, default=None)
     judge.add_argument("--cost-c", type=float, default=None)
-    judge.add_argument("--policy", default=None, help="策略文件路径（默认 sleuth.yaml 的 evolution.policy）")
+    judge.add_argument("--policy", default=None, help="策略文件路径（默认 sleuth.config.yaml 的 evolution.policy）")
     judge.add_argument("--k", type=int, default=0, help="同一评估池复用序号")
     judge.add_argument("--root", default=None, help="结论记录本地根（默认锚主检出）")
     judge.add_argument("--record", action="store_true",
@@ -2105,7 +2105,7 @@ def build_parser() -> argparse.ArgumentParser:
     judge_stats.add_argument("--candidate", required=True, help="候选 stats YAML")
     judge_stats.add_argument("--cost-b", type=float, default=None)
     judge_stats.add_argument("--cost-c", type=float, default=None)
-    judge_stats.add_argument("--policy", default=None, help="策略文件路径（默认 sleuth.yaml 的 evolution.policy）")
+    judge_stats.add_argument("--policy", default=None, help="策略文件路径（默认 sleuth.config.yaml 的 evolution.policy）")
     judge_stats.add_argument("--k", type=int, default=0, help="同一评估池复用序号")
     judge_stats.add_argument("--root", default=None, help="结论记录本地根（默认锚主检出）")
     judge_stats.add_argument("--record", action="store_true",
@@ -2213,7 +2213,7 @@ def build_parser() -> argparse.ArgumentParser:
     exp_flow.add_argument("--baseline-traces", default=None)
     exp_flow.add_argument("--archive", default=None)
     exp_flow.add_argument("--policy", default=None)
-    exp_flow.add_argument("--profile", default=None, help="sleuth.yaml 的成本 profile")
+    exp_flow.add_argument("--profile", default=None, help="sleuth.config.yaml 的成本 profile")
     exp_flow.add_argument("--reuse-index", type=int, default=None)
     exp_flow.set_defaults(func=cmd_experiment_flow)
 

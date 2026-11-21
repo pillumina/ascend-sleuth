@@ -368,7 +368,7 @@ def check_evolution(root: Path):
         return {"id": "evolution", "label": "演进模式", "kind": "policy", "state": DEGRADE,
                 "detail": f"声明写坏：{e}",
                 "note": "收尾检查会停下来问人，不会自己挑一档跑",
-                "fix": "改 sleuth.yaml 的 evolution.role 为 maintainer / signal-only / off 之一"}
+                "fix": "改 sleuth.config.yaml 的 evolution.role 为 maintainer / signal-only / off 之一"}
     meaning = {
         "full": "维护者部署：信号分诊后可跑 RSI 实验；EV 卡只作高风险授权",
         "record-only": "只记信号，不产卡、不跑实验（本地/内网 fork）",

@@ -37,7 +37,7 @@
 
 伴随评估是内容执行的收尾动作，不构成独立目标。用户下的是内容目标（沉淀、补 case、诊断）时，该流程收尾自动执行 `evolve-check`。只有深度全库体检（没有内容目标）才走会话协议，由 `/skill:self-evolve` 承载。
 
-部署可以声明演进角色：`sleuth.yaml` 的 `evolution.role`，读端 `scripts/evolve_mode.py`。`maintainer` 先落信号，行为质量进 RSI、内容缺口进 ingest，不自动产 EV 卡；`signal-only` 只落信号、不跑实验；`off` 只留一条跳过记录。只做内容沉淀的下游部署用 `signal-only`：本地卡号会与上游号段重号，冲突无法机械解决。
+部署可以声明演进角色：`sleuth.config.yaml` 的 `evolution.role`，读端 `scripts/evolve_mode.py`。`maintainer` 先落信号，行为质量进 RSI、内容缺口进 ingest，不自动产 EV 卡；`signal-only` 只落信号、不跑实验；`off` 只留一条跳过记录。只做内容沉淀的下游部署用 `signal-only`：本地卡号会与上游号段重号，冲突无法机械解决。
 
 ### 3.2 运行模式、授权与停止
 
@@ -125,7 +125,7 @@
 
 只跑新增样本，不每周跑全量；判定那一次才跑全量。读数包含六项：可评样本数、最近一次全量回放的命中率、单次回放成本、距上次收尾检查的天数、未执行的检查命令数、内容体检的越界项。没测过的项写「未测」，不补零。
 
-维护者每周只看一个入口：`python3 scripts/evolve.py run`（面板或脚本用 `--json`）。它不跑模型、不写库，只根据样本队列、结论、`sleuth.yaml 的 evolution.policy` 和 metrics 给出 `next_actions`：候选待审、field 评估样本不足、test 不足或未抽、尚无结论、core 回归不足；同时给出 candidate/field/test 计数、按 `stratum` 的分层计数与 warnings（例如候选缺答案、某层 test 不足）。`samples.strata` 配每层目标；`draw-test` 按目标层补齐。
+维护者每周只看一个入口：`python3 scripts/evolve.py run`（面板或脚本用 `--json`）。它不跑模型、不写库，只根据样本队列、结论、`sleuth.config.yaml 的 evolution.policy` 和 metrics 给出 `next_actions`：候选待审、field 评估样本不足、test 不足或未抽、尚无结论、core 回归不足；同时给出 candidate/field/test 计数、按 `stratum` 的分层计数与 warnings（例如候选缺答案、某层 test 不足）。`samples.strata` 配每层目标；`draw-test` 按目标层补齐。
 
 trace 归因的幂等状态在 `.s2-replay/evolve/trace-state.json`：键是 `(source_id, trace_id, content_sha256, attribution_schema)`；同内容同 schema 跳过，trace 内容变化或 schema 升级才重算。`snapshot_id` 由当前活跃 trace 集合再哈希，用来判断状态是否对应当前 trace 集。`traces sync` 会把归因组件映射到 `regions.py` 的可变异区；没有匹配就空，不猜。未来 collector 实现 `TraceSource` 并换 `source_id`，不复制归因/状态机。
 
@@ -258,7 +258,7 @@ S2 校准集的 selection 与 test 分离是规模条件：池子撑不起两半
 ### 5.1 已落地
 
 - 三个入口：`skills/evolve-check/SKILL.md`（伴随评估）、`skills/self-evolve/SKILL.md`（深度轮）、`skills/knowledge-groom/SKILL.md`（每周批审）。
-- 部署级演进模式：`sleuth.yaml` 的 `evolution.role` 与 `scripts/evolve_mode.py`。
+- 部署级演进模式：`sleuth.config.yaml` 的 `evolution.role` 与 `scripts/evolve_mode.py`。
 - 积压水位、合入点回写与单一分子实现：`scripts/ev_proposal.py --waterline`、`--mark-merged --from-prs`。
 - 内容流程执行记录与聚合进 timeline。
 - 季度自评的载体目录：`proposals/reviews/`（目录与放行规则已定，内容仍空）。
@@ -289,7 +289,7 @@ S2 校准集的 selection 与 test 分离是规模条件：池子撑不起两半
 | 收尾伴随评估 | `skills/evolve-check/SKILL.md` |
 | 深度观测轮 | `skills/self-evolve/SKILL.md` |
 | 每周批审 | `skills/knowledge-groom/SKILL.md` |
-| 演进模式 | `scripts/evolve_mode.py`、`sleuth.yaml` 的 `evolution.role` |
+| 演进模式 | `scripts/evolve_mode.py`、`sleuth.config.yaml` 的 `evolution.role` |
 | 积压水位与合入点 | `scripts/ev_proposal.py --waterline`、`--mark-merged --from-prs` |
 | 周读数 | `scripts/metrics_snapshot.py --kind live`、`scripts/build_timeline.py` |
 | 体检 | `scripts/evolution_health.py`、`proposals/gates.yaml` |

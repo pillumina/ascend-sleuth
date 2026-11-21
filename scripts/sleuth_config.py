@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""单一部署配置（sleuth.yaml）的读取、校验与旧配置兼容。
+"""单一部署配置（sleuth.config.yaml）的读取、校验与旧配置兼容。
 
-新用户只维护仓库根的 sleuth.yaml：部署角色、自演进策略、成本 profile、
+新用户只维护仓库根的 sleuth.config.yaml：部署角色、自演进策略、成本 profile、
 RSI store 与同步模式都在这一份文件里。旧的 deployment.yaml、
-eval/policy*.yaml、.s2-replay/evolve/store.yaml 只在没有 sleuth.yaml 时
+eval/policy*.yaml、.s2-replay/evolve/store.yaml 只在没有 sleuth.config.yaml 时
 作为 legacy fallback 读取，不再作为新入口。
 """
 
@@ -16,7 +16,7 @@ from typing import Any, Dict, Optional
 
 import yaml
 
-CONFIG_NAME = "sleuth.yaml"
+CONFIG_NAME = "sleuth.config.yaml"
 SCHEMA = "sleuth-config-v1"
 ROLES = ("maintainer", "signal-only", "off")
 ROLE_ALIASES = {"full": "maintainer", "record-only": "signal-only"}
@@ -206,6 +206,30 @@ def policy_for(config: Dict[str, Any], profile: Optional[str] = None) -> Dict[st
     return _normalize_policy(policy)
 
 
+def pipeline_for(config: Dict[str, Any], name: Optional[str] = None) -> Dict[str, Any]:
+    evolution = config.get("evolution") or {}
+    pipelines = evolution.get("pipelines") or {}
+    selected = name or evolution.get("pipeline") or "default"
+    if not pipelines:
+        return {"name": "default", "description": "built-in stage defaults", "stages": {}}
+    if selected not in pipelines:
+        raise ConfigError(f"未知 pipeline {selected!r}；可选 {sorted(pipelines)}")
+    def resolve(key: str, seen: tuple = ()) -> Dict[str, Any]:
+        if key in seen:
+            raise ConfigError(f"pipeline extends 循环：{' -> '.join(seen + (key,))}")
+        item = pipelines.get(key)
+        if not isinstance(item, dict):
+            raise ConfigError(f"pipeline {key!r} 必须是映射")
+        base = {}
+        parent = item.get("extends")
+        if parent:
+            base = resolve(str(parent), seen + (key,))
+        stages = _deep_merge(base.get("stages") or {}, item.get("stages") or {})
+        return {"name": key, "description": item.get("description") or "",
+                "stages": stages}
+    return resolve(str(selected))
+
+
 def store_for(config: Dict[str, Any]) -> Dict[str, Any]:
     return dict((config.get("evolution") or {}).get("store") or {})
 
@@ -221,13 +245,14 @@ def sync_mode(config: Dict[str, Any]) -> str:
 def main(argv=None):
     import argparse
     import json
-    parser = argparse.ArgumentParser(description="读取/校验 sleuth.yaml")
+    parser = argparse.ArgumentParser(description="读取/校验 sleuth.config.yaml")
     parser.add_argument("--root", default=None)
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
     try:
         cfg = load_config(Path(args.root) if args.root else None)
+        pipeline = pipeline_for(cfg)
     except ConfigError as exc:
         print(f"error: {exc}", file=__import__("sys").stderr)
         return 2
@@ -237,6 +262,8 @@ def main(argv=None):
         "sync": sync_mode(cfg),
         "store": store_for(cfg),
         "profiles": sorted((cfg.get("evolution") or {}).get("profiles") or {}),
+        "pipeline": pipeline["name"],
+        "pipelines": sorted((cfg.get("evolution") or {}).get("pipelines") or {}),
     }
     if args.json:
         print(json.dumps(payload, ensure_ascii=False, indent=2))
@@ -245,6 +272,7 @@ def main(argv=None):
         print(f"role={payload['role']} sync={payload['sync']}")
         print(f"store={payload['store']}")
         print(f"profiles={','.join(payload['profiles']) or '—'}")
+        print(f"pipeline={payload['pipeline']} pipelines={','.join(payload['pipelines']) or '—'}")
     return 0
 
 

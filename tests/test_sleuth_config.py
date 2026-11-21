@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""单一配置 sleuth.yaml 的读取、profile、legacy 兼容与 store 优先级。"""
+"""单一配置 sleuth.config.yaml 的读取、profile、legacy 兼容与 store 优先级。"""
 
 import tempfile
 import unittest
@@ -20,7 +20,7 @@ class SleuthConfigTest(unittest.TestCase):
     def test_unified_config_carries_role_policy_store_sync(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            (root / "sleuth.yaml").write_text(yaml.safe_dump({
+            (root / "sleuth.config.yaml").write_text(yaml.safe_dump({
                 "schema": SC.SCHEMA,
                 "evolution": {
                     "role": "signal-only",
@@ -40,7 +40,7 @@ class SleuthConfigTest(unittest.TestCase):
     def test_autonomy_professional_names_map_to_rfc_levels(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            (root / "sleuth.yaml").write_text(yaml.safe_dump({
+            (root / "sleuth.config.yaml").write_text(yaml.safe_dump({
                 "schema": SC.SCHEMA,
                 "evolution": {
                     "role": "maintainer",
@@ -58,6 +58,32 @@ class SleuthConfigTest(unittest.TestCase):
             self.assertEqual(policy["autonomy"]["overrides"]["docs.normative"], "A1")
             self.assertEqual(policy["autonomy"]["overrides"]["docs.non_normative"], "A3")
 
+    def test_pipeline_preset_extends_default(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "sleuth.config.yaml").write_text(yaml.safe_dump({
+                "schema": SC.SCHEMA,
+                "evolution": {
+                    "role": "maintainer",
+                    "pipeline": "no_proposal",
+                    "pipelines": {
+                        "default": {"stages": {
+                            "attribute": "attribute.trace_rule",
+                            "select_region": "select.region_hardcount",
+                            "select_candidate": "select.best",
+                            "propose": "propose.agent",
+                            "judge": "judge.subagent",
+                            "gate": "gate.paired",
+                        }},
+                        "no_proposal": {"extends": "default",
+                                        "stages": {"propose": "propose.none"}},
+                    },
+                },
+            }), encoding="utf-8")
+            policy = load_config_policy(SC.load_config(root))
+            self.assertEqual(policy["experiment"]["stages"]["propose"], "propose.none")
+            self.assertEqual(policy["experiment"]["stages"]["judge"], "judge.subagent")
+
     def test_legacy_deployment_still_loads(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
@@ -72,7 +98,7 @@ class SleuthConfigTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             (root / "deployment.yaml").write_text('evolution:\n  mode: "full"\n', encoding="utf-8")
-            (root / "sleuth.yaml").write_text(yaml.safe_dump({
+            (root / "sleuth.config.yaml").write_text(yaml.safe_dump({
                 "schema": SC.SCHEMA,
                 "evolution": {"role": "off"},
             }), encoding="utf-8")
@@ -81,7 +107,7 @@ class SleuthConfigTest(unittest.TestCase):
     def test_unknown_top_level_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            (root / "sleuth.yaml").write_text(yaml.safe_dump({
+            (root / "sleuth.config.yaml").write_text(yaml.safe_dump({
                 "schema": SC.SCHEMA, "unexpected": True,
             }), encoding="utf-8")
             with self.assertRaises(SC.ConfigError):
@@ -90,7 +116,7 @@ class SleuthConfigTest(unittest.TestCase):
     def test_unknown_profile_rejected(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            (root / "sleuth.yaml").write_text(yaml.safe_dump({
+            (root / "sleuth.config.yaml").write_text(yaml.safe_dump({
                 "schema": SC.SCHEMA, "evolution": {"role": "off"},
             }), encoding="utf-8")
             cfg = SC.load_config(root)
@@ -102,7 +128,7 @@ class SleuthConfigTest(unittest.TestCase):
             root = Path(td)
             base = root / ".s2-replay" / "evolve"
             base.mkdir(parents=True)
-            (root / "sleuth.yaml").write_text(yaml.safe_dump({
+            (root / "sleuth.config.yaml").write_text(yaml.safe_dump({
                 "schema": SC.SCHEMA,
                 "evolution": {"store": {"backend": "local", "path": ".s2-replay/evolve/events.jsonl"}},
             }), encoding="utf-8")

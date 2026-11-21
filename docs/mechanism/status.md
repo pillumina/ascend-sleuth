@@ -181,7 +181,7 @@
 | 四层视图 | 面板视图，数据源为 `proposals/`、`metrics/timeline.yaml` 与 `traces/` |
 | 长期任务层与执行记录的关键脚本 | `scripts/log_skill_exec.py`、`verify_exec_log.py`、`tail_exec_log.py`、`exec_log_path.py`、`metrics_snapshot.py`、`build_timeline.py`、`settle_s2_feedback.py`、`s2_calibration.py`、`s2_replay.py`、`verify_proposals.py` |
 | 评估台、arena | `scripts/eval_arena.py` |
-| 样本队列、判定与读数（v1） | `scripts/evolve.py`（`policy` / `sample` / `judge` / `brief`）、`scripts/evolve/`、`sleuth.yaml 的 evolution.policy` |
+| 样本队列、判定与读数（v1） | `scripts/evolve.py`（`policy` / `sample` / `judge` / `brief`）、`scripts/evolve/`、`sleuth.config.yaml 的 evolution.policy` |
 | 结论与执行记录（v1） | `.s2-replay/evolve/conclusions.jsonl`、`runs.jsonl` |
 | 判定池 | `.s2-replay/arena/pool-val.yaml`（`role: judgment`） |
 | 回归池 | `.s2-replay/arena/pool-val-absorbed.yaml`（`role: regression`） |
