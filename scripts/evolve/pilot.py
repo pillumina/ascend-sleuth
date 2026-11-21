@@ -133,7 +133,7 @@ def prepare(root: Path, candidate_path: Path, samples: List[str],
     tasks = {"stage": "pilot", "candidate_id": candidate["candidate_id"], "candidate": candidate,
              "workspace": str(workspace), "apply": info,
              "samples": sample_rows,
-             "budget": {
+            "budget": {
                  "max_pairs": max_pairs,
                  "max_tokens": runs.get("max_tokens"),
                  "early_stop": bool(runs.get("early_stop", True)),
@@ -484,22 +484,31 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
     alpha_eff = alpha / (reuse_index + 1)
 
     cost_cfg = policy.get("cost") or {}
-    dimension = cost_cfg.get("primary_dimension", "tokens")
-    cost_b = cost_c = None
-    cost_paired = 0
-    if dimension == "tokens":
-        base_rows = {row["sample_id"]: row for row in collect["arms"]["baseline"]}
-        cand_rows = {row["sample_id"]: row for row in collect["arms"]["candidate"]}
+    dimension = str(cost_cfg.get("primary_dimension") or "tokens")
+    base_rows = {row["sample_id"]: row for row in collect["arms"]["baseline"]}
+    cand_rows = {row["sample_id"]: row for row in collect["arms"]["candidate"]}
+    cost_dimensions = {}
+    for name in ("tokens", "elapsed_ms", "tool_calls", "full_body_reads"):
         pairs = []
         for sample_id in sorted(set(base_rows) & set(cand_rows)):
-            tb = (base_rows[sample_id].get("knowledge_usage") or {}).get("tokens")
-            tc = (cand_rows[sample_id].get("knowledge_usage") or {}).get("tokens")
+            tb = (base_rows[sample_id].get("knowledge_usage") or {}).get(name)
+            if tb is None:
+                tb = (base_rows[sample_id].get("source_usage") or {}).get(name)
+            tc = (cand_rows[sample_id].get("knowledge_usage") or {}).get(name)
+            if tc is None:
+                tc = (cand_rows[sample_id].get("source_usage") or {}).get(name)
             if tb is not None and tc is not None:
                 pairs.append((tb, tc))
         if pairs:
-            cost_b = sum(pair[0] for pair in pairs)
-            cost_c = sum(pair[1] for pair in pairs)
-            cost_paired = len(pairs)
+            cost_dimensions[name] = {
+                "baseline": sum(pair[0] for pair in pairs),
+                "candidate": sum(pair[1] for pair in pairs),
+                "paired": len(pairs),
+            }
+    chosen = cost_dimensions.get(dimension) or cost_dimensions.get("tokens")
+    cost_b = chosen["baseline"] if chosen else None
+    cost_c = chosen["candidate"] if chosen else None
+    cost_paired = chosen["paired"] if chosen else 0
 
     decision = decide_binary(
         counts["b"], counts["c"], counts["n"], alpha=alpha, k=reuse_index,
@@ -547,6 +556,8 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
         decision=result, reason=reason,
         metrics={
             "constraints": constraints,
+            "cost_primary": dimension,
+            "cost_dimensions": cost_dimensions,
             "main_metric": "resolution",
             "judge": (judge.get("meta") if isinstance(judge.get("meta"), dict) else None),
             "budget": {
@@ -559,7 +570,7 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
                 "baseline_reused": bool((tasks.get("budget") or {}).get("baseline_reused", False)),
             },
         },
-        cost=({"tokens": {"baseline": cost_b, "candidate": cost_c},
+        cost=({dimension: {"baseline": cost_b, "candidate": cost_c},
                "paired": cost_paired, "missing": len(all_ids) - cost_paired}
               if cost_b is not None else None),
         versions=Version.from_dict(version),
