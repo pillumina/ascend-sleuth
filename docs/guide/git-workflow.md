@@ -70,7 +70,7 @@ worktree 与 detached HEAD 不自动合并。worktree 里通常在做提 PR 的�
 
 查看配置与状态用 `python3 scripts/kb_sync.py --show`（只读，不联网）；改配置用 `python3 scripts/pr_status.py --set-sync`（`--remote` / `--branch` / `--disable` / `--auto-merge off` / `--check-reminders on|off` / `--check-minutes 分钟` / `--check-full-access on|off`），改归属仓用 `--set-identity --remote <名字>`，不要手改 JSON。
 
-`sync.enabled` 只拦自动路径：开单时 `trace_begin.py` 的自动 fetch 与自动合并看它。后台提醒检查与手动同步不受它影响：提醒检查走 `python3 scripts/kb_sync.py --check`（只 fetch、不合并），手动「立即同步」走 `--merge --force`。`sync.auto_merge` 只管自动路径里的合并；groom 是显式动作，不看 `sync.enabled` 与 `sync.auto_merge`，关掉自动检查后周批仍会 fetch。要让整机不联网，用 `deployment.yaml` 的 `sync.mode: "offline"`。
+`sync.enabled` 只拦自动路径：开单时 `trace_begin.py` 的自动 fetch 与自动合并看它。后台提醒检查与手动同步不受它影响：提醒检查走 `python3 scripts/kb_sync.py --check`（只 fetch、不合并），手动「立即同步」走 `--merge --force`。`sync.auto_merge` 只管自动路径里的合并；groom 是显式动作，不看 `sync.enabled` 与 `sync.auto_merge`，关掉自动检查后周批仍会 fetch。要让整机不联网，用 `sleuth.config.yaml` 的 `sync.mode: "offline"`。
 
 `sync.check_enabled` 与 `sync.check_minutes` 管后台提醒检查。`check_enabled` 默认 true，关掉后不再检查，也不在诊断状态条提示知识库落后。`check_minutes` 是检查间隔，默认 30 分钟；读侧越界会夹到 5–720，写侧越界拒绝（`E_ARGS`）。
 `sync.check_full_access` 管这条检查的沙箱档位，默认 true：true 时以完全权限跑 `--check`（只 fetch、不改检出，但要读 git 凭据）；false 时跟随部署默认档（不是完全权限时收成 `workspace-write` + 主检出）。面板知识库页有对应开关，写侧是 `--check-full-access on|off`。
@@ -101,7 +101,7 @@ fetch 失败时标 `kb_sync: failed`，原因写进 `kb_sync_reason`。
 `--show` 以 `last_source` 带出。
 知识库页据此把失败写成「上次后台检查失败」还是「上次同步失败」。
 
-离线部署在 `deployment.yaml` 声明 `sync.mode: "offline"`：`--sync` / `--check` / `--merge` 都不联网，`--show` 仍可读本地状态。
+离线部署在 `sleuth.config.yaml` 声明 `sync.mode: "offline"`：`--sync` / `--check` / `--merge` 都不联网，`--show` 仍可读本地状态。
 
 ### 部署形态
 
@@ -130,11 +130,11 @@ fetch 失败时标 `kb_sync: failed`，原因写进 `kb_sync_reason`。
 它与「两边都写」的差别在追加的粒度：一周一个文件、一行一条自包含记录（每行带 `deployment`），配了 `merge=union`——同周并发时各人各写各的行、两侧都留住，行序不影响结果（前提是「一行一条」，见 `.gitattributes` 的注释）。读端按 `deployment` 分组，一个部署出一份生成物 `metrics/entry-activity/<部署>.yaml`，不跨部署合并：合并两侧的行只解决同部署的并发，两份部署的计数不会被加成一条排行。它与 `metrics/timeline.d/` 一样按自然周命名，一个文件里可能装两个部署的行。
 
 追加型（一信号一文件，跨部署不冲突）：`proposals/signals/`。
-文件名是内容哈希，不是序号——两个部署各写各的文件，不会撞号；同名文件表示同一条信号，只追加 `occurrences` 与 `last_seen`。`record-only` 部署用它交接收尾信号，`full` 部署不写这个目录。产卡在上游进行，本目录只放信号、证据与出处。
+文件名是内容哈希，不是序号——两个部署各写各的文件，不会撞号；同名文件表示同一条信号，只追加 `occurrences` 与 `last_seen`。`signal-only` 部署用它交接收尾信号；`maintainer` 也先写信号，再按分诊进入 RSI。本目录只放信号、证据与出处。
 
-每部署一份（不参与合并）：`deployment.yaml`、`metrics/timeline.d/`、`metrics/timeline.yaml`、`ingest-state.json`、`reference-ingest-state.json`、`eval/scorecard.yaml`、`.github/CODEOWNERS`（owner 名单各仓不同）。
+每部署一份（不参与合并）：`sleuth.config.yaml`、`metrics/timeline.d/`、`metrics/timeline.yaml`、`ingest-state.json`、`reference-ingest-state.json`、`eval/scorecard.yaml`、`.github/CODEOWNERS`（owner 名单各仓不同）。
 冲突时保留本仓那份。同期名的指标文件也按本仓处理——两份部署的读数混进一条趋势线本身不成立。
-`deployment.yaml` 声明这个部署的演进模式（`evolution.mode`：`full` / `record-only` / `off`），
+`sleuth.config.yaml` 声明这个部署的演进角色（`evolution.role`：`maintainer` / `signal-only` / `off`），
 读端只有 `scripts/evolve_mode.py`；fork 与上游的取值不同，改它属于本仓的部署配置，不是机制改动。
 
 生成物（重新生成，不逐行解）：`knowledge/_index.yaml` 与 `knowledge/_index/`、`triage-tree.yaml`、`references/_summary-index.yaml`、`references/_procedure-index.yaml` 与 `references/_procedure-index/`、`metrics/entry-activity/`（一个部署一份，由 `scripts/build_entry_activity.py` 从源重建）。
@@ -150,9 +150,9 @@ idea 卡（`proposals/ideas/`）是机制账本，归上游。两条原因：
 - 卡号在本地递增分配（`scripts/ev_proposal.py` 只扫自己检出里的卡），两个仓库各产各的必然重号；重号后同一个文件路径两边内容不同，冲突无法机械解决；
 - 上游 `docs/mechanism/`、`docs/plan/` 里引用的卡号会随合并落进 fork，在那里指向另一张卡——这种错不报错。
 
-fork 负载类型的机制缺口写进 MR 描述或 issue，由维护者拿到上游产卡。内容产出（补 case、补词条、扩错误码家族、从 case 归纳 reference）不产卡，产卡范围见 `skills/evolve-check/SKILL.md`。fork 长期无法访问上游、又确实需要本地决策档案时，用与上游不重叠的号段或前缀，并让该目录归 fork 独占——复用 `proposals/ideas/` 的号段会让重号问题原样保留。
+fork 负载类型的机制缺口写进 MR 描述或 issue，由维护者拿到上游产卡。内容产出（补 case、补词条、扩错误码家族、从 case 归纳 reference）不产卡；EV 卡只用于高风险授权，见 `skills/evolve-check/SKILL.md` 与 `skills/self-evolve/SKILL.md`。fork 长期无法访问上游、又确实需要本地决策档案时，用与上游不重叠的号段或前缀，并让该目录归 fork 独占——复用 `proposals/ideas/` 的号段会让重号问题原样保留。
 
-**这条规则由声明承载，不靠记性**：fork 在自己的 `deployment.yaml` 里写 `evolution.mode: record-only`，evolve-check 收尾与深度轮都先读它（`scripts/evolve_mode.py`）。不设时缺省 `full`，也就是上游行为——所以 fork 要做一次显式声明，否则收尾照常产卡。`record-only` 下信号照记、执行记录照落，只把"该产卡"的结论改成写进 MR 描述或 issue。
+**这条规则由声明承载，不靠记性**：fork 在自己的 `sleuth.config.yaml` 里写 `evolution.role: signal-only`，evolve-check 收尾与深度轮都先读它（`scripts/evolve_mode.py`）。不设时缺省 `maintainer`（上游行为）；fork 要显式声明 `signal-only`，否则收尾会按维护者路径处理。`signal-only` 下信号照记、执行记录照落，只把"该走 RSI"的结论改成写进信号台账或 MR 描述。
 
 ### Skill 自包含边界（SKILL.md 与 docs/ 的引用关系）
 
@@ -367,7 +367,7 @@ python3 scripts/rebuild_generated.py --check
 
 判据的独立性只有一条标准：改动者不能靠"写文字"通过它。PR 里的命题（success_criteria 达成、无回归、断言全过）多由制造改动的同一过程写成，而 CI 检查的是内部自洽（索引新鲜度、YAML 合法性、模板结构齐全）——因此"CI 绿 + 测试过"对"该不该合"的信息量接近于零，reviewer 会被逼在"开全文"与"直接批"之间二选一（`mechanism/records.md` §3.1 把这一失效形态命名为"橡皮图章"）。
 
-改动侧义务：EV 卡带 `predicted_effect.measure`。reviewer 侧动作：
+改动侧义务：行为质量改动带 RSI 实验的 measure；高风险 EV 卡只记录授权与回滚。reviewer 侧动作：
 
 ```
 python3 scripts/ev_measure.py <card-id> --run    # 打印判据命令 + 期望，执行并比对
@@ -396,7 +396,7 @@ python3 scripts/ev_measure.py --audit            # 全库盘点：可复现 / �
 | `knowledge/**`、`references/**` | 判断性预核，内容档 | 1 轮；最多 3 条；正文 ≤ 3000 字符 |
 | `docs/**`（除上一行）、`skills/**`、五类 PR 模板、`README.md`、`CLAUDE.md`、`AGENTS.md`、`CONTEXT.md` | 判断性预核，文档档 | 1 轮；最多 3 条；正文 ≤ 3000 字符 |
 | 带 `kb/high-risk` 标签 | 按脚本/机制档 | 同第 1 行 |
-| `metrics/timeline.d/`、`metrics/entry-activity.d/`、`assets/`、`deployment.yaml`、`.gitignore` | 机器自检，不派会话 | 只跑该面的 `--check` |
+| `metrics/timeline.d/`、`metrics/entry-activity.d/`、`assets/`、`sleuth.config.yaml`、`.gitignore` | 机器自检，不派会话 | 只跑该面的 `--check` |
 | 其余路径（含 `.github/CODEOWNERS`、根目录未列出的文件） | 按脚本/机制档兜底 | 同第 1 行 |
 
 一个 PR 同时碰到多档时按最高一档做。路径判不准时按脚本/机制档做（`precheck.py` 的默认）。

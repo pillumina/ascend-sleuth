@@ -15,7 +15,7 @@
 # 边界（必须如实读）：
 #   - 快照是**某一时刻**的远端状态。fetch 之后 main 仍可前进，所以"fresh"只表示
 #     "抓取成功且与 fetch 那一刻的 <remote>/<branch> 一致"，不是"合入时仍最新"。
-#   - fetch 失败时**默认失败退出（2）**；显式 `--offline` 与 `deployment.yaml` 的
+#   - fetch 失败时**默认失败退出（2）**；显式 `--offline` 与 `sleuth.config.yaml` 的
 #     `sync.mode: offline` 两种情况不联网，用本地已有引用，并标 `fresh: false,
 #     authoritative: false`。stale 数据不会被静默当成权威。个人配置的 `sync.enabled`
 #     只管诊断读侧，不影响本脚本。
@@ -125,7 +125,7 @@ def load_sync_settings(root: Path):
 def _fetch_policy(root: Path, offline: bool):
     """本次是否联网 → (allow_fetch, skip_reason)。
 
-    `--offline` 与 `deployment.yaml` 声明 `sync.mode: offline` 两种情况不 fetch，改用本机
+    `--offline` 与 `sleuth.config.yaml` 声明 `sync.mode: offline` 两种情况不 fetch，改用本机
     已有 ref 建快照：meta 按现有 `fresh` / `authoritative` 语义标 false，不联网的原因写进
     `fetch_error`。个人配置的 `sync.enabled` 只管诊断读侧的自动检查，不影响 groom——
     groom 是显式动作，`--require-fresh` 要求这一版是最新的。整机离线请用 deployment 声明。
@@ -133,7 +133,7 @@ def _fetch_policy(root: Path, offline: bool):
     if offline:
         return False, "offline 模式：未尝试 fetch"
     if kb_sync.deployment_sync_mode(root) == "offline":
-        return False, "deployment.yaml 声明 sync.mode: offline，未尝试 fetch；使用本机已有引用"
+        return False, "sleuth.config.yaml 声明 sync.mode: offline，未尝试 fetch；使用本机已有引用"
     return True, None
 
 

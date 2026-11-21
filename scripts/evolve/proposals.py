@@ -67,7 +67,7 @@ SPECS: Dict[str, ProposalSpec] = {
         change_surface="调度 / 控制流 / 预算与停止条件",
         allowed_paths=("scripts/", "eval/"),
         forbidden_paths=("knowledge/", "scripts/evolve/", "eval/core/",
-                         "eval/policy.yaml", "eval/holdout.yaml", "tests/"),
+                         "eval/holdout.yaml", "sleuth.config.yaml", "config/rsi/", "tests/"),
         prompt_rules=("只改调度/控制流；不改知识内容与评分规则",
                       "高风险 A1：必须写回归范围、回滚和人工审原因",
                       "输出 code/config diff，并写预期、风险、回滚"),

@@ -3,7 +3,7 @@
 
 面板（``dsh-plugins/dsh-rsi-observatory``）不读 JSONL，也不解析 RSI 事件：它经 shell 调本脚本，
 本脚本只用 ``evolve.store`` 的 ``open_store()`` / ``read()`` / ``history()`` 取证，输出一份归一化
-的 JSON。换后端（``store.yaml`` / ``SLEUTH_RSI_STORE_*``）时面板不用改。
+的 JSON。换后端（``sleuth.config.yaml 的 ``evolution.store`` / ``SLEUTH_RSI_STORE_*``）时面板不用改。
 
 为什么不在面板里读文件：存储层已经拆成端口（``store/ports.py``），默认才是本地 JSONL；直接读文件
 会把面板绑死在 ``local`` 后端上，也绕开 ``RSIEvent.validate()`` 的 schema 校验。同理，本脚本不读

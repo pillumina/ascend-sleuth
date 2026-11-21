@@ -51,6 +51,7 @@
 *你要改演进/评测/编排机制本身时——日常只读 docs/mechanism/rsi-mechanism.md 一篇，论证层在 docs/mechanism/*
 
 - [evolution.md](../docs/evolution.md) — 旧链接入口（保留以免旧链接失效）：内容已并入 mechanism/rsi-mechanism.md，本文只是一页指路，不要在此续写
+- [evolution-config.md](../docs/mechanism/evolution-config.md) — 自演进配置的唯一入口：sleuth.config.yaml 的角色、policy、profile、store、sync、pipeline 组合与信号/RSI/EV 边界
 - [rsi-acceptance.md](../docs/mechanism/rsi-acceptance.md) — RSI 真实数据验收记录：样本、候选、A/B gate、full flow、store 缺口与插件验证结论
 - [rsi-mechanism.md](../docs/mechanism/rsi-mechanism.md) — 机制技术入口：目标、三条环路、一轮演进、角色、人工介入等级、八篇文档地图
 - [evaluation.md](../docs/mechanism/evaluation.md) — 评估对象与评估集、rubric、配对判定、成本、版本，以及评估台（arena）的池与结论

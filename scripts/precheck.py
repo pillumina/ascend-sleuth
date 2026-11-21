@@ -110,7 +110,7 @@ def classify(paths, labels=()):
             hit_content.append(p)
         elif _match(p, DOC_PREFIXES, DOC_FILES):
             hit_docs.append(p)
-        elif _match(p, SELFCHECK_PREFIXES, ("deployment.yaml", ".gitignore")):
+        elif _match(p, SELFCHECK_PREFIXES, ("sleuth.config.yaml", ".gitignore")):
             hit_selfcheck.append(p)
         else:
             unknown.append(p)

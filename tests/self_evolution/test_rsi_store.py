@@ -29,12 +29,15 @@ class RSIStoreTest(unittest.TestCase):
         with self.assertRaises(RSIStoreError):
             store.append("unknown", {})
 
-    def test_store_yaml_selects_local_path(self):
+    def test_config_selects_local_path(self):
         with tempfile.TemporaryDirectory() as td:
-            base = Path(td) / ".s2-replay" / "evolve"
+            root = Path(td)
+            base = root / ".s2-replay" / "evolve"
             base.mkdir(parents=True)
-            (base / "store.yaml").write_text(yaml.safe_dump({
-                "backend": "local", "options": {"path": str(base / "events.jsonl")},
+            (root / "sleuth.config.yaml").write_text(yaml.safe_dump({
+                "schema": "sleuth-config-v1",
+                "evolution": {"store": {"backend": "local",
+                                        "path": ".s2-replay/evolve/events.jsonl"}},
             }), encoding="utf-8")
             store = open_store(base)
             store.append("archive", {"status": "archived"})

@@ -65,19 +65,23 @@ class HelpAndPolicyCliTest(unittest.TestCase):
     def test_policy_check_unknown_key_fails(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
-            (root / "eval").mkdir()
-            text = (ROOT / "eval" / "policy.yaml").read_text(encoding="utf-8")
-            (root / "eval" / "policy.yaml").write_text(
-                text + "\nsurprise: true\n", encoding="utf-8")
+            import yaml
+            cfg = yaml.safe_load((ROOT / "sleuth.config.yaml").read_text(encoding="utf-8"))
+            cfg["evolution"]["policy"]["surprise"] = True
+            (root / "config" / "rsi").mkdir(parents=True)
+            (root / "config" / "rsi" / "pipelines.yaml").write_text(
+                (ROOT / "config" / "rsi" / "pipelines.yaml").read_text(encoding="utf-8"),
+                encoding="utf-8")
+            (root / "sleuth.config.yaml").write_text(yaml.safe_dump(cfg, allow_unicode=True), encoding="utf-8")
             result = run_cli("policy", "check", "--root", td)
             self.assertEqual(result.returncode, 1)
             self.assertIn("unknown policy key", result.stderr)
 
-    def test_policy_check_missing_file_fails(self):
+    def test_policy_check_defaults_without_config(self):
         with tempfile.TemporaryDirectory() as td:
             result = run_cli("policy", "check", "--root", td)
-            self.assertEqual(result.returncode, 1)
-            self.assertIn("not found", result.stderr)
+            self.assertEqual(result.returncode, 0)
+            self.assertIn("policy: ok", result.stdout)
 
 
 class HealthCliTest(unittest.TestCase):
@@ -1148,9 +1152,8 @@ class PolicyWiringCliTest(unittest.TestCase):
         self.assertEqual(promoted.returncode, 0, promoted.stderr)
 
     def test_draw_test_defaults_to_policy_size_and_split(self):
-        policy = self.root / "eval" / "policy.yaml"
-        policy.parent.mkdir(parents=True)
-        policy.write_text("samples:\n  test: 1\n  split: hash\n", encoding="utf-8")
+        policy = self.root / "sleuth.config.yaml"
+        policy.write_text("schema: sleuth-config-v1\nevolution:\n  policy:\n    samples:\n      test: 1\n      split: hash\n", encoding="utf-8")
         self.create_core_sample("S-1")
         self.create_core_sample("S-2")
         result = run_cli("sample", "draw-test", "--root", str(self.root))
@@ -1160,9 +1163,8 @@ class PolicyWiringCliTest(unittest.TestCase):
         self.assertIn("split: hash (policy)", result.stdout)
 
     def test_draw_test_explicit_size_still_uses_policy_split(self):
-        policy = self.root / "eval" / "policy.yaml"
-        policy.parent.mkdir(parents=True)
-        policy.write_text("samples:\n  test: 4\n  split: group\n", encoding="utf-8")
+        policy = self.root / "sleuth.config.yaml"
+        policy.write_text("schema: sleuth-config-v1\nevolution:\n  policy:\n    samples:\n      test: 4\n      split: group\n", encoding="utf-8")
         self.create_core_sample("S-1")
         self.create_core_sample("S-2")
         result = run_cli("sample", "draw-test", "--root", str(self.root),

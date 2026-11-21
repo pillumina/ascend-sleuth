@@ -1,37 +1,37 @@
 # 记录与数据契约
 
-一次改动、一次评估、一条结论都要留下能复核的记录。记录分四类：改进项卡、样本、执行、结论；版本是它们的共同坐标，存储决定哪一份进仓库。
+记录分四类：signal、RSI 实验（样本 / 执行 / 结论）、高风险 EV 授权、版本坐标。普通确定性修复与内容改动不强制四件套；只有行为质量实验需要完整 RSI 记录。
 
 读者是要改字段或 schema、写记录、查某条数据进不进 git 的人。前置是 [rsi-mechanism.md](rsi-mechanism.md)（机制入口）与 [evaluation.md](evaluation.md)（样本怎么选、结论怎么判）。只跑流程、不碰数据的人不必读本文。
 
-范围：四类记录的字段与生命周期、接口、存储归属、版本坐标、代码入口。不含评估集与判定的规则（[evaluation.md](evaluation.md)）、运行节奏（[operations.md](operations.md)）、诊断侧字段（[diagnosis-observability.md](diagnosis-observability.md)）。
+范围：signal、RSI 实验、高风险 EV 授权、接口、存储归属、版本坐标、代码入口。不含评估集与判定的规则（[evaluation.md](evaluation.md)）、运行节奏（[operations.md](operations.md)）、诊断侧字段（[diagnosis-observability.md](diagnosis-observability.md)）。
 
 本文不写会过期的数字。卡片张数与状态分布用 `python3 scripts/ev_measure.py --audit` 现算；库内条数用 `python3 scripts/index_counts.py`。
 
 ## 1 解决什么问题
 
-改动与验证要能事后复核，缺的是三样东西：一张卡说不清改哪、现状是什么、怎么算改完；一次评估没有能复现的版本坐标；一条结论没有可追加的判断记录。
+行为质量改动要能事后复核，缺的是三样东西：一个 RSI proposal 说不清改哪、现状是什么、怎么算改完；一次实验没有能复现的版本坐标；一条结论没有可追加的判断记录。
 
-四类记录各补一个缺口：卡补执行前的契约（改哪、现状、怎么算改完、影响谁），样本补评估的输入（输入、答案或 rubric、来源、对象类型、用途），执行与结论补一次判定的数据与理由，版本补复现坐标。
+signal 补观察来源；RSI proposal 补执行前契约；样本补评估输入；执行与结论补判定数据与理由；版本补复现坐标。高风险 EV 卡只补授权与历史，不是普通改动的默认记录。
 
 明确不解决：结论怎么判（在 [evaluation.md](evaluation.md)）、什么节奏跑（在 [operations.md](operations.md)）、现场有效性（只认工程师回报）。
 
 ## 2 最小可执行模型
 
-一次改动对应四个对象，按顺序写：
+按改动性质写：
 
-1. 一张卡：方案、可验证的预期、每一步的判断记录。
-2. 一个或多个样本：被评估的对象，带输入与答案。
-3. 一次或多次执行：在某一组版本下跑一次评估，记指标与成本。
-4. 一条结论：比较基线与候选之后的判断，带理由与版本。
+- 确定性 bug：最小回归测试 + PR；不产生 EV 卡或 RSI 记录。
+- 内容缺口：内容记录（case / reference / ingest 的来源与验证）。
+- 行为质量：signal → RSI proposal → 一个或多个样本 → 执行 → 结论。
+- 高风险授权：轻量 EV 卡，记录授权、回滚与历史；不替代 RSI 或 PR。
 
-存储只分两种归属：资产进 git，运行时件留本地。判据是「这份数据是否逐轮变化」：卡的终态与判断记录是资产；逐轮进度、token 记录、池文件是运行时件。
+存储只分两种归属：资产进 git，运行时件留本地。判据是「这份数据是否逐轮变化」：proposal 契约、结论与授权是资产；逐轮进度、token 记录、池文件是运行时件。
 
 ## 3 完整机制
 
-### 3.1 改进项卡
+### 3.1 高风险 EV 授权卡
 
-卡是写给人审的决策档案：识别改进点、执行、验证、判断采纳或不采纳。它不含 git 协作状态，批提交、提 PR、合入是流程层的事。
+卡只用于高风险授权或历史记录：写清改哪、风险、谁授权、怎么回滚；不承担普通行为改动的 proposal/experiment 职责。它不含 git 协作状态，批提交、提 PR、合入是流程层的事。
 
 ```yaml
 id: EV-2026-XXX                 # 真实卡号由 ev_proposal --new 分配
@@ -63,18 +63,11 @@ decisions: []                    # 只追加：proposal / action / eval / decisi
 | `verification` | 验证数据、测法、观察窗长度；落到 `validation.method` 与 `success_criteria` | 不可证伪的变更不该合入 |
 | `rollback` | 回滚方式：revert、分支丢弃或配置开关 | 变更不可逆 |
 
-另一组是审计链：`source_signals[].trajectory` 记问题在哪一段记录里，`decisions` 记谁在何时依据哪份证据判断什么。`status` 只有四个取值，产卡即执行，没有待办态：
-
-| 取值 | 含义 |
-|---|---|
-| `in_experiment` | 产卡即执行。识别信号且方案成形才产卡 |
-| `validated` | 采纳。改动保留，进批提交与 PR |
-| `rejected` | 不采纳。试了不行，结论留在卡里 |
-| `superseded` | 换方向。被新的卡替代，`superseded_by` 指过去 |
+另一组是审计链：`source_signals[].trajectory` 记问题在哪一段记录里，`decisions` 记谁在何时依据哪份证据判断什么。高风险 EV 卡只在授权时创建，不是普通改动的默认对象。
 
 四条完整性规则：
 
-1. 产卡即执行。有信号但方案未成形或数据未齐时不产卡，信号记进会话报告，条件到了再产。想法清单不进卡库。
+1. 普通 signal 不产卡；只有高风险授权或历史归档才创建 EV 卡。行为质量改动走 RSI，不要求卡。
 2. 终态卡必须有判断记录。`validated`、`rejected`、`superseded` 的卡，`decisions` 里必须有对应结论与所依据的评估数据；缺了是审计缺口。
 3. `validated` 后 `actual_cost` 必填。没有实际成本记录的卡不可审计。
 4. `supersedes` 与 `superseded_by` 构成替换链；同一时刻每个 `target_component` 至多一张 `validated` 卡。
@@ -139,7 +132,7 @@ run:
   trace_ref: traces/2026-11-17-....yaml
 ```
 
-版本坐标必须带 `algorithm`/`algorithm_version`；算法实验还带 `budget`/`seed`。手工 baseline 写 `algorithm: baseline`、`algorithm_version: manual`；不写算法身份的结论不能用于 GEPA/AEL 对照。`metrics` 是开放字典，缺数据的维度记 `null`，不补 `false` 或 0。`cost` 拿不到写 `null`，不写 0。回放必须带 `harness_session`，否则成本挂不到样本。指标的角色与方向写在 `eval/policy.yaml`，新增维度先在策略里注册。
+版本坐标必须带 `algorithm`/`algorithm_version`；算法实验还带 `budget`/`seed`。手工 baseline 写 `algorithm: baseline`、`algorithm_version: manual`；不写算法身份的结论不能用于 GEPA/AEL 对照。`metrics` 是开放字典，缺数据的维度记 `null`，不补 `false` 或 0。`cost` 拿不到写 `null`，不写 0。回放必须带 `harness_session`，否则成本挂不到样本。指标的角色与方向写在 `sleuth.config.yaml 的 evolution.policy`，新增维度先在策略里注册。
 
 ```yaml
 conclusion:
@@ -172,7 +165,7 @@ conclusion:
 
 判定时协议、策略、基线知识库与模型必须相同；候选知识与候选改动可以不同，但差异必须等于候选补丁。两个知识库版本都要记：基线是 HEAD 短 sha；候选是 HEAD，或候选 worktree 有未提交补丁时的 `<base>+patch:<补丁哈希>`；worktree 已失效记 `unknown`。
 
-两项记录的变更方式不同：改协议要单独走一次评审并升版本，旧结论标上当时的版本；改策略写在 `eval/policy.yaml`，加载时校验未知键、非法枚举与缺失字段，哈希写进 `versions.policy`。改过的策略与旧结论不可直接比较。
+两项记录的变更方式不同：改协议要单独走一次评审并升版本，旧结论标上当时的版本；改策略写在 `sleuth.config.yaml 的 evolution.policy`，加载时校验未知键、非法枚举与缺失字段，哈希写进 `versions.policy`。改过的策略与旧结论不可直接比较。
 
 ### 3.5 存储与写入规则
 
@@ -285,7 +278,7 @@ schema 在 `metrics/skill-exec-log.yaml`，只追加；`scripts/log_skill_exec.p
 | 指标与 timeline | `scripts/metrics_snapshot.py`、`scripts/build_timeline.py`、`scripts/verify_metrics.py`、`metrics/gates.yaml` |
 | 条目使用记录 | `scripts/trace_entry_activity.py`、`scripts/build_entry_activity.py`、`scripts/verify_entry_activity.py` |
 | 结算 | `scripts/settle_trace_feedback.py`、`scripts/settle_s2_feedback.py` |
-| 样本池、判定与样本队列（v1） | [evaluation.md](evaluation.md)；`scripts/evolve.py`（`policy` / `sample` / `judge` / `brief`）、`scripts/evolve/`、`eval/policy.yaml` |
+| 样本池、判定与样本队列（v1） | [evaluation.md](evaluation.md)；`scripts/evolve.py`（`policy` / `sample` / `judge` / `brief`）、`scripts/evolve/`、`sleuth.config.yaml 的 evolution.policy` |
 | 结论与执行记录（v1） | `.s2-replay/evolve/conclusions.jsonl`、`runs.jsonl` |
 | 共享路径 | `python3 scripts/shared_dir.py <名字>` |
 | 状态与代码入口总表 | [status.md](status.md) |

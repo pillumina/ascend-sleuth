@@ -11,7 +11,7 @@
 | 机制 | 定义在哪 | 现状 | 确认方式 |
 |---|---|---|---|
 | 内容流程收尾的伴随演进 | [operations.md](operations.md) 3.1 | 已落地 | `ls skills/evolve-check/SKILL.md` |
-| 部署级演进模式 `evolution.mode` | [operations.md](operations.md) 3.1 | 已落地 | `python3 scripts/evolve_mode.py` |
+| 部署级演进模式 `evolution.role` | [operations.md](operations.md) 3.1 | 已落地 | `python3 scripts/evolve_mode.py` |
 | 全库体检轮 | [operations.md](operations.md) 3.1 | 已落地 | `ls skills/self-evolve/SKILL.md` |
 | 每周批审 | [operations.md](operations.md) 3.3 | 已落地 | `ls skills/knowledge-groom/SKILL.md` |
 | 信号台账（下游部署的收尾交接） | [signals/README.md](../../proposals/signals/README.md) | 已落地 | `python3 scripts/evolve_signals.py list` |
@@ -181,7 +181,7 @@
 | 四层视图 | 面板视图，数据源为 `proposals/`、`metrics/timeline.yaml` 与 `traces/` |
 | 长期任务层与执行记录的关键脚本 | `scripts/log_skill_exec.py`、`verify_exec_log.py`、`tail_exec_log.py`、`exec_log_path.py`、`metrics_snapshot.py`、`build_timeline.py`、`settle_s2_feedback.py`、`s2_calibration.py`、`s2_replay.py`、`verify_proposals.py` |
 | 评估台、arena | `scripts/eval_arena.py` |
-| 样本队列、判定与读数（v1） | `scripts/evolve.py`（`policy` / `sample` / `judge` / `brief`）、`scripts/evolve/`、`eval/policy.yaml` |
+| 样本队列、判定与读数（v1） | `scripts/evolve.py`（`policy` / `sample` / `judge` / `brief`）、`scripts/evolve/`、`sleuth.config.yaml 的 evolution.policy` |
 | 结论与执行记录（v1） | `.s2-replay/evolve/conclusions.jsonl`、`runs.jsonl` |
 | 判定池 | `.s2-replay/arena/pool-val.yaml`（`role: judgment`） |
 | 回归池 | `.s2-replay/arena/pool-val-absorbed.yaml`（`role: regression`） |

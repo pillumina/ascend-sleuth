@@ -35,9 +35,9 @@
 | 每周批审收尾的检查 | 系统自动 | 知识库的覆盖缺口与结构问题 |
 | 深度轮（全库观测） | 人显式要求 | 跨轮聚合：归因聚类、容量、重跑未做的条目、指标漂移 |
 
-伴随评估是内容执行的收尾动作，不构成独立目标。用户下的是内容目标（沉淀、补 case、诊断）时，该流程收尾自动执行 `evolve-check`。只有深度全库体检（没有内容目标）才走会话协议，由 `/skill:self-evolve` 承载。
+内容流程收尾只执行 `evolve-check`，它只记录信号，不产 EV 卡、不跑 RSI、不跑验证门。只有用户显式发起深度全库体检时，才走 `/skill:self-evolve`；深度轮只分诊候选，不自动执行 RSI。
 
-部署可以声明演进模式：`deployment.yaml` 的 `evolution.mode`，读端 `scripts/evolve_mode.py`。`full` 照常产卡；`record-only` 仍然收尾检查、仍然落记录，但不产卡、不跑验证，信号写进 `proposals/signals/` 由上游产卡；`off` 只留一条跳过记录。只做内容沉淀的下游部署用 `record-only`：本地卡号会与上游号段重号，冲突无法机械解决。
+部署可以声明演进角色：`sleuth.config.yaml` 的 `evolution.role`，读端 `scripts/evolve_mode.py`。`maintainer` 先落信号，行为质量进 RSI、内容缺口进 ingest，不自动产 EV 卡；`signal-only` 只落信号、不跑实验；`off` 只留一条跳过记录。只做内容沉淀的下游部署用 `signal-only`：本地卡号会与上游号段重号，冲突无法机械解决。
 
 ### 3.2 运行模式、授权与停止
 
@@ -48,7 +48,7 @@
 | `default`（默认） | 自动跑，关键改动攒批给我审 | `auto` 即时合入；`review` 与 `dual` 攒批 | 轮末或批边界，提一个批 PR |
 | `hands-off` | 我信这个 scope 的判断，全自动跑，做完给我 PR 审 | 三个级别都按预授权连续执行，事中不打断 | 目标完成或批边界，提一个批 PR |
 
-不指定时按 `default`。`hands-off` 需要明确要求，并且有四条硬前提：每个改动源于一张卡；每个改动过独立验证；每个改动独立 commit、可以逐卡 revert；验证先于合入。
+不指定时按 `default`。`hands-off` 需要明确要求，并且有三条硬前提：每个行为改动有 signal/RSI 证据（高风险另有授权卡）；每个改动独立 commit、可以逐条 revert；验证先于合入。
 
 运行模式决定一轮里人审什么时候发生；授权级别决定这次改动要不要签字；人工介入等级（默认第 2 档）决定谁有权合入、人多久看一次结果。三者不是一回事。
 
@@ -112,7 +112,7 @@
 | 看完整 metrics 体检 | `python3 scripts/evolve.py health --json`（只读；`--check` 有 fail 退出 1，broken 退出 2；不带 `--check` 的读数命令仍退出 0，与 `metrics_health.py` 一致） |
 | 记录一个 baseline 提案 | `python3 scripts/evolve.py experiment propose --target skill --component <组件> --summary <一句话>`（只写本地实验记录，不跑模型、不合入） |
 | 查看本地实验记录 | `python3 scripts/evolve.py experiment records --limit 10` |
-| 记录 subagent 对照实验 | `/skill:self-evolve` 的 `references/experiment.md` 产 `result.json`，再 `experiment record --file result.json` |
+| 记录 subagent 对照实验 | 显式进入 RSI：`experiment request` → `experiment flow` → `experiment show` |
 | agent-native GEPA | 状态机 `scripts/agent_gepa.py`；不接官方 gepa 库，不依赖外部 endpoint |
 | 增量 trace 归因 | `python3 scripts/evolve.py traces sync`；`traces status` 看 snapshot/状态 |
 | 知识使用效率 | `python3 scripts/evolve.py knowledge-usage evaluate/compare`；只读 usage JSON，不改 case |
@@ -125,7 +125,7 @@
 
 只跑新增样本，不每周跑全量；判定那一次才跑全量。读数包含六项：可评样本数、最近一次全量回放的命中率、单次回放成本、距上次收尾检查的天数、未执行的检查命令数、内容体检的越界项。没测过的项写「未测」，不补零。
 
-维护者每周只看一个入口：`python3 scripts/evolve.py run`（面板或脚本用 `--json`）。它不跑模型、不写库，只根据样本队列、结论、`eval/policy.yaml` 和 metrics 给出 `next_actions`：候选待审、field 评估样本不足、test 不足或未抽、尚无结论、core 回归不足；同时给出 candidate/field/test 计数、按 `stratum` 的分层计数与 warnings（例如候选缺答案、某层 test 不足）。`samples.strata` 配每层目标；`draw-test` 按目标层补齐。
+维护者每周只看一个入口：`python3 scripts/evolve.py run`（面板或脚本用 `--json`）。它不跑模型、不写库，只根据样本队列、结论、`sleuth.config.yaml 的 evolution.policy` 和 metrics 给出 `next_actions`：候选待审、field 评估样本不足、test 不足或未抽、尚无结论、core 回归不足；同时给出 candidate/field/test 计数、按 `stratum` 的分层计数与 warnings（例如候选缺答案、某层 test 不足）。`samples.strata` 配每层目标；`draw-test` 按目标层补齐。
 
 trace 归因的幂等状态在 `.s2-replay/evolve/trace-state.json`：键是 `(source_id, trace_id, content_sha256, attribution_schema)`；同内容同 schema 跳过，trace 内容变化或 schema 升级才重算。`snapshot_id` 由当前活跃 trace 集合再哈希，用来判断状态是否对应当前 trace 集。`traces sync` 会把归因组件映射到 `regions.py` 的可变异区；没有匹配就空，不猜。未来 collector 实现 `TraceSource` 并换 `source_id`，不复制归因/状态机。
 
@@ -257,8 +257,8 @@ S2 校准集的 selection 与 test 分离是规模条件：池子撑不起两半
 
 ### 5.1 已落地
 
-- 三个入口：`skills/evolve-check/SKILL.md`（伴随评估）、`skills/self-evolve/SKILL.md`（深度轮）、`skills/knowledge-groom/SKILL.md`（每周批审）。
-- 部署级演进模式：`deployment.yaml` 的 `evolution.mode` 与 `scripts/evolve_mode.py`。
+- 三个入口：`skills/evolve-check/SKILL.md`（只记信号）、`skills/self-evolve/SKILL.md`（深度分诊）、`skills/knowledge-groom/SKILL.md`（每周批审）；重型 RSI 只由显式选择候选后进入。
+- 部署级演进模式：`sleuth.config.yaml` 的 `evolution.role` 与 `scripts/evolve_mode.py`。
 - 积压水位、合入点回写与单一分子实现：`scripts/ev_proposal.py --waterline`、`--mark-merged --from-prs`。
 - 内容流程执行记录与聚合进 timeline。
 - 季度自评的载体目录：`proposals/reviews/`（目录与放行规则已定，内容仍空）。
@@ -289,7 +289,7 @@ S2 校准集的 selection 与 test 分离是规模条件：池子撑不起两半
 | 收尾伴随评估 | `skills/evolve-check/SKILL.md` |
 | 深度观测轮 | `skills/self-evolve/SKILL.md` |
 | 每周批审 | `skills/knowledge-groom/SKILL.md` |
-| 演进模式 | `scripts/evolve_mode.py`、`deployment.yaml` 的 `evolution.mode` |
+| 演进模式 | `scripts/evolve_mode.py`、`sleuth.config.yaml` 的 `evolution.role` |
 | 积压水位与合入点 | `scripts/ev_proposal.py --waterline`、`--mark-merged --from-prs` |
 | 周读数 | `scripts/metrics_snapshot.py --kind live`、`scripts/build_timeline.py` |
 | 体检 | `scripts/evolution_health.py`、`proposals/gates.yaml` |
