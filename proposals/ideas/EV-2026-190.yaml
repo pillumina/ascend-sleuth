@@ -7,7 +7,7 @@ authorization: dual
 dimension: evolvability
 supersedes: []
 superseded_by: null
-created_at: 2026-11-11
+created_at: 2026-11-21
 source_signals:
   - signal: linkage_gap
     evidence: 新增的队列流控词条在 related_references 里指向链路诊断词条，反向那一侧没有指回来，检索时只见其一
