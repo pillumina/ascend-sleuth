@@ -1,4 +1,4 @@
-id: EV-2026-188
+id: EV-2026-190
 layer: L2
 target_component: references/tools/hccn-tool-network-diagnosis.yaml
 title: 链路诊断词条补一条反向互链——指回队列流控面词条
