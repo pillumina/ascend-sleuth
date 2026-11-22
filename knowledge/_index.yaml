@@ -1598,6 +1598,35 @@ namespaces:
       - FULL_DECODE_ONLY
       file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13964.yaml
       hash: fa580f0a5f44
+    - id: VLLM-ASC-13976
+      title: DSpark 投机解码首个请求即崩：vllm_ascend/spec_decode/dspark_proposer.py:437 set_inputs_first_pass 无条件调用可选模型
+        API get_draft_attn_causal()，legacy 非因果模型 DSparkDeepseekV4ForCau…
+      category: interrupt
+      tags:
+      - spec-decode
+      - dspark
+      - optional-api
+      - attributeerror
+      - code-sync
+      - enginecore
+      compat: vllm-ascend <0.26.0rc1
+      confidence:
+        score: 0.75
+      symptoms:
+      - 'DSpark 投机解码（--speculative-config ''{"num_speculative_tokens": 7, "method": "dspark", "enforce_eager":
+        true}''）服务能拉起，第一个 ch…'
+      sig: []
+      tok:
+      - 0.19.1rc2
+      - 0.26.0
+      - '25.3'
+      - 9.0.1
+      - dspark_proposer.py
+      - get_draft_attn_causal()
+      - llm_base_proposer.py
+      - v0.26.0rc1
+      file: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-13976.yaml
+      hash: 06a0ef7de5e3
     - id: VLLM-ASC-14121
       title: DSV4 压缩 KV + AscendStore MemCache 首请求懒初始化把 TP rank 初始化时序撕裂 → 集合通信序分叉（store.init non-zero
         / BM join -2 / EI0002 / 507034 / EngineCore 退出、Prefill 全挂）

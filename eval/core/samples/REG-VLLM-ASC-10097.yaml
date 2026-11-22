@@ -1,0 +1,48 @@
+id: REG-VLLM-ASC-10097
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: https://github.com/vllm-project/vllm-ascend/issues/10097
+input:
+  phenomenon: 'Mamba 模型 + mamba_cache_mode=align 配置（model_runner_v1.py preprocess_mamba
+    调用路径）下推理抛 TypeError——issue 标题即 ''[Bug]: model_runner_v1 preprocess_mamba 重复传参致
+    TypeError（v0.20.2 回归）''；报错代码特征：preprocess_mamba 调用最后两个实参重复——vllm_version_is(''0.20.2'')
+    分支先置 preprocess_bufs = mamba_bufs = self._get_mamba_copy_bufs()，随后调用仍把 self._get_mamba_copy_bufs(),
+    与 preprocess_bufs, 一并传入（issue 原文：''the last 2 args ... is duplicated, self._get_mamba_copy_bufs(),
+    should be removed''）；回归由 v0.20.2 分支引入（报错代码处于 vllm_version_is(''0.20.2'') 保护段）；issue
+    环境标 main branch——携带 0.20.2 分支同段调用代码时同现，报错与 Mamba align 模式路径绑定'
+  environment: ''
+  evidence:
+    case: VLLM-ASC-10097
+    references:
+    - https://github.com/vllm-project/vllm-ascend/issues/10097
+    - https://github.com/vllm-project/vllm-ascend/pull/10188
+expected:
+  resolution: 'v0.20.2 回归（model_runner_v1.py，Mamba align 模式）：mamba_cache_mode == "align"
+    分支中， vllm_version_is("0.20.2") 判断下把 preprocess_bufs 直接置为 self._get_mamba_copy_bufs()
+    （该版本 copy_bufs 即 preprocess 用缓冲，preprocess_mamba 签名相应不含独立 copy_bufs 实参）， 但调用 mamba_utils.preprocess_mamba
+    时仍把 self._get_mamba_copy_bufs() 作为独立位置实参再传一次， 与 preprocess_bufs 重复 → 实参数超过函数签名
+    → TypeError（对齐预处理路径崩溃）。 buffer 获取逻辑随 0.20.2 签名变更改了，多余的实参没删——调用残留引入的回归。
+
+
+
+    PR #10188：移除 model_runner_v1.py preprocess_mamba 调用中重复的 self._get_mamba_copy_bufs()
+    位置实参（保留 preprocess_bufs）。实际动作 = 升级到含 PR #10188 的版本。'
+  case: VLLM-ASC-10097
+  confidence: maintainer-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: postmortem
+  report_ref: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10097.yaml
+  captured_at: '2026-11-19T14:13:03+00:00'
+  kb_rev: unknown
+  sanitized: true
+  redactions: []
+  confidence: maintainer-reviewed
+  extraction: auto
+created_at: '2026-11-19T14:13:03+00:00'
+updated_at: '2026-11-19T14:13:03+00:00'
+history: []
+notes: core regression derived from knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10097.yaml

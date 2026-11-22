@@ -1,0 +1,392 @@
+{
+  "schema": "rsi-observatory-v1",
+  "generatedAt": "2026-11-20T13:05:54+00:00",
+  "source": {
+    "base": "/tmp/rsiobs-fix/.s2-replay/evolve",
+    "backend": "local",
+    "path": "/tmp/rsiobs-fix/.s2-replay/evolve/rsi-events.jsonl",
+    "storeSchema": "rsi-store-v1",
+    "kinds": [
+      "experiment",
+      "proposal",
+      "decision",
+      "rollout",
+      "archive"
+    ]
+  },
+  "experiment": {
+    "eventId": "E-2eb96d937c42",
+    "at": "2026-11-20T13:05:45+00:00",
+    "experimentId": "EX-P-2026-060",
+    "proposalId": "P-2026-060"
+  },
+  "proposal": {
+    "artifact": {
+      "diff": "--- a/skills/diagnose/SKILL.md\n+++ b/skills/diagnose/SKILL.md\n-载入全部候选\n+只载筛出的候选",
+      "files": [
+        "skills/diagnose/SKILL.md"
+      ]
+    },
+    "artifact_kind": "code",
+    "at": "2026-11-20T15:28:00+00:00",
+    "candidate": {
+      "id": "C-1"
+    },
+    "component": "diagnose.knowledge_usage",
+    "conclusion_ref": "/tmp/conclusions.jsonl",
+    "decision": "insufficient",
+    "errors": [],
+    "evidence": [
+      "trace 16023"
+    ],
+    "expected": "知识读取量下降约 20%",
+    "feedback": {},
+    "id": "P-2026-060",
+    "parent": null,
+    "risk": "低：只改加载范围",
+    "rollback": "恢复原阶段二说明",
+    "rolled_back": true,
+    "scores": {
+      "total": 1.0
+    },
+    "status": "reject",
+    "summary": "阶段二只载筛出的候选全文",
+    "target": "skill",
+    "workspace": "/tmp/ws-060"
+  },
+  "record": {
+    "algorithm": "agent_draft",
+    "algorithm_version": "v1",
+    "baseline": {
+      "samples": [
+        "16023"
+      ],
+      "score": 0.3333
+    },
+    "candidate": {
+      "samples": [
+        "16023"
+      ],
+      "score": 0.4444
+    },
+    "decision": "insufficient",
+    "eval_profile_id": "subagent_judge",
+    "eval_ready": false,
+    "execution": "subagent",
+    "knowledge_usage": {
+      "decision": "accept",
+      "deltas": {
+        "tokens": -220000
+      }
+    },
+    "paired": {
+      "b": 1,
+      "c": 0,
+      "n": 9
+    },
+    "proposal": "P-2026-060",
+    "samples": [
+      "16023",
+      "16049",
+      "16396",
+      "15815",
+      "15866",
+      "16460",
+      "16932",
+      "20569",
+      "19823"
+    ],
+    "summary": "阶段二只载筛出的候选全文",
+    "target_component": "diagnose.knowledge_usage",
+    "target_kind": "skill"
+  },
+  "conclusion": {
+    "alpha_eff": 0.1,
+    "at": "2026-11-20T15:41:02+00:00",
+    "b": 1,
+    "c": 0,
+    "card": "EV-2026-060",
+    "cost": {
+      "missing": 0,
+      "paired": 9,
+      "tokens": {
+        "baseline": 1200000,
+        "candidate": 980000
+      }
+    },
+    "cost_ratio": 0.91,
+    "decision": "insufficient",
+    "delta_q": 0.02,
+    "metrics": {
+      "constraints": {
+        "knowledge": {
+          "decision": "accept",
+          "missing": 0,
+          "paired": 9
+        }
+      }
+    },
+    "n": 9,
+    "p_value": 0.5,
+    "pool": "pilot",
+    "pool_hash": "77a2",
+    "proposal": "P-2026-060",
+    "reason": "9 条有效样本中只有 1 条支持候选；继续跑终判不会改变统计结论。",
+    "reuse_index": 0,
+    "versions": {
+      "candidate": "def",
+      "candidate_kb": "abc",
+      "policy": "ghi"
+    }
+  },
+  "rollout": {
+    "arms": {
+      "baseline": 9,
+      "candidate": 9
+    },
+    "decision": "insufficient",
+    "rolled_back": true,
+    "samples": [
+      "16023",
+      "16049",
+      "16396",
+      "15815",
+      "15866",
+      "16460",
+      "16932",
+      "20569",
+      "19823"
+    ],
+    "workspace": "/tmp/ws-060"
+  },
+  "stages": [
+    {
+      "id": "attribute",
+      "label": "归因",
+      "state": "empty",
+      "fields": [],
+      "summary": "store 里没有这个阶段"
+    },
+    {
+      "id": "select_region",
+      "label": "选面",
+      "state": "empty",
+      "fields": [],
+      "summary": "store 里没有这个阶段"
+    },
+    {
+      "id": "select_candidate",
+      "label": "选候选",
+      "state": "empty",
+      "fields": [],
+      "summary": "store 里没有这个阶段"
+    },
+    {
+      "id": "propose",
+      "label": "提案",
+      "state": "evidence",
+      "fields": [
+        "data.proposal.artifact",
+        "data.proposal.expected",
+        "data.proposal.risk",
+        "data.proposal.rollback"
+      ],
+      "summary": "skill · 1 个文件 · 预期已写"
+    },
+    {
+      "id": "execute",
+      "label": "执行",
+      "state": "evidence",
+      "fields": [
+        "data.rollout.arms",
+        "data.rollout.samples",
+        "data.rollout.workspace"
+      ],
+      "summary": "baseline 9 / candidate 9 条 rollout"
+    },
+    {
+      "id": "judge",
+      "label": "评分",
+      "state": "evidence",
+      "fields": [
+        "data.experiment.baseline",
+        "data.experiment.candidate",
+        "data.experiment.samples",
+        "data.conclusion.b/c/n"
+      ],
+      "summary": "均分 baseline 0.3333 / candidate 0.4444"
+    },
+    {
+      "id": "gate",
+      "label": "判定",
+      "state": "evidence",
+      "fields": [
+        "data.conclusion.decision",
+        "data.conclusion.reason",
+        "data.conclusion.alpha_eff",
+        "data.conclusion.p_value"
+      ],
+      "summary": "insufficient · 9 条有效样本中只有 1 条支持候选；继续跑终判不会改变统计结论。"
+    }
+  ],
+  "history": [
+    {
+      "eventId": "E-2eb96d937c42",
+      "kind": "experiment",
+      "at": "2026-11-20T13:05:45+00:00",
+      "proposalId": "P-2026-060",
+      "experimentId": "EX-P-2026-060",
+      "summary": "实验记录 · insufficient",
+      "data": {
+        "conclusion": {
+          "alpha_eff": 0.1,
+          "at": "2026-11-20T15:41:02+00:00",
+          "b": 1,
+          "c": 0,
+          "card": "EV-2026-060",
+          "cost": {
+            "missing": 0,
+            "paired": 9,
+            "tokens": {
+              "baseline": 1200000,
+              "candidate": 980000
+            }
+          },
+          "cost_ratio": 0.91,
+          "decision": "insufficient",
+          "delta_q": 0.02,
+          "metrics": {
+            "constraints": {
+              "knowledge": {
+                "decision": "accept",
+                "missing": 0,
+                "paired": 9
+              }
+            }
+          },
+          "n": 9,
+          "p_value": 0.5,
+          "pool": "pilot",
+          "pool_hash": "77a2",
+          "proposal": "P-2026-060",
+          "reason": "9 条有效样本中只有 1 条支持候选；继续跑终判不会改变统计结论。",
+          "reuse_index": 0,
+          "versions": {
+            "candidate": "def",
+            "candidate_kb": "abc",
+            "policy": "ghi"
+          }
+        },
+        "experiment": {
+          "algorithm": "agent_draft",
+          "algorithm_version": "v1",
+          "baseline": {
+            "samples": [
+              "16023"
+            ],
+            "score": 0.3333
+          },
+          "candidate": {
+            "samples": [
+              "16023"
+            ],
+            "score": 0.4444
+          },
+          "decision": "insufficient",
+          "eval_profile_id": "subagent_judge",
+          "eval_ready": false,
+          "execution": "subagent",
+          "knowledge_usage": {
+            "decision": "accept",
+            "deltas": {
+              "tokens": -220000
+            }
+          },
+          "paired": {
+            "b": 1,
+            "c": 0,
+            "n": 9
+          },
+          "proposal": "P-2026-060",
+          "samples": [
+            "16023",
+            "16049",
+            "16396",
+            "15815",
+            "15866",
+            "16460",
+            "16932",
+            "20569",
+            "19823"
+          ],
+          "summary": "阶段二只载筛出的候选全文",
+          "target_component": "diagnose.knowledge_usage",
+          "target_kind": "skill"
+        },
+        "proposal": {
+          "artifact": {
+            "diff": "--- a/skills/diagnose/SKILL.md\n+++ b/skills/diagnose/SKILL.md\n-载入全部候选\n+只载筛出的候选",
+            "files": [
+              "skills/diagnose/SKILL.md"
+            ]
+          },
+          "artifact_kind": "code",
+          "at": "2026-11-20T15:28:00+00:00",
+          "candidate": {
+            "id": "C-1"
+          },
+          "component": "diagnose.knowledge_usage",
+          "conclusion_ref": "/tmp/conclusions.jsonl",
+          "decision": "insufficient",
+          "errors": [],
+          "evidence": [
+            "trace 16023"
+          ],
+          "expected": "知识读取量下降约 20%",
+          "feedback": {},
+          "id": "P-2026-060",
+          "parent": null,
+          "risk": "低：只改加载范围",
+          "rollback": "恢复原阶段二说明",
+          "rolled_back": true,
+          "scores": {
+            "total": 1.0
+          },
+          "status": "reject",
+          "summary": "阶段二只载筛出的候选全文",
+          "target": "skill",
+          "workspace": "/tmp/ws-060"
+        },
+        "rollout": {
+          "arms": {
+            "baseline": 9,
+            "candidate": 9
+          },
+          "decision": "insufficient",
+          "rolled_back": true,
+          "samples": [
+            "16023",
+            "16049",
+            "16396",
+            "15815",
+            "15866",
+            "16460",
+            "16932",
+            "20569",
+            "19823"
+          ],
+          "workspace": "/tmp/ws-060"
+        }
+      },
+      "truncated": false
+    }
+  ],
+  "gaps": [
+    "rolled_back"
+  ],
+  "truncated": false,
+  "notes": [
+    "阶段是派生视图：有记录 = 事件里能找到对应字段；不是时间线。",
+    "数据只来自 RSIStore（open_store/read/history），不读 JSONL 投影。"
+  ]
+}

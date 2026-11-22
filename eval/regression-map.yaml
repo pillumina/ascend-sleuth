@@ -1,0 +1,10 @@
+# candidate.target_component -> regression 子集选择规则。
+# 未命中时用 default；where 与 stage plan --where 同义。
+default:
+  where: {}
+"diagnose.knowledge_usage":
+  where:
+    environment: A2
+"diagnose.source_usage":
+  where:
+    environment: A2

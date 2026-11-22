@@ -1,0 +1,42 @@
+{
+  "name": "dsh-rsi-observatory",
+  "version": "0.8.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only DSH page for RSI experiments, proposals and decision history in ascend-sleuth",
+  "exports": {
+    ".": "./host/index.js",
+    "./client": "./lib/client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "host",
+    "lib",
+    "locale",
+    "icon.svg",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node test/host.test.mjs && node test/client.test.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-connection"
+      ]
+    }
+  },
+  "meta": {
+    "title": "RSI 实验台",
+    "description": "只读查看 RSI 实验、提案与判定历史：实验列表、提案列表、阶段派生、判定与回滚、事件流。"
+  },
+  "main": "./host/index.js"
+}

@@ -1,10 +1,10 @@
 # 演进信号台账
 
-`record-only` 部署的收尾产物。一条信号一个文件，随 PR 提交；上游维护者拿这批文件产卡。
+内容流程收尾的轻量产物。一条信号一个文件，随 PR 提交；由深度轮分诊，不直接产 EV 卡。
 
 ## 谁写
 
-`skills/evolve-check/SKILL.md` 第 3 步：部署声明为 `record-only` 时，收尾不产 EV 卡（卡号按检出递增，两个仓各产各的会重号），改为写这里。
+`skills/evolve-check/SKILL.md` 第 3 步：所有部署角色收尾都只写这里；不产 EV 卡、不跑 RSI。
 
 ```bash
 python3 scripts/evolve_signals.py add --signal T10 --signal-text "自审发现的缺口" \

@@ -23,6 +23,7 @@
 //   node scripts/verify_panel_desktop.js --keep              # 保留临时 DSH_HOME 现场（排查用）
 //   node scripts/verify_panel_desktop.js --full              # 临时 profile 用配置层完整副本（复现与其它插件的交互）
 //   node scripts/verify_panel_desktop.js --selftest          # 自带假 dsh 自测本脚本（不需要 DSH）
+//   node scripts/verify_panel_desktop.js --package <name>    # 额外验证一个已登记的包（可重复）
 //
 // 临时 profile 默认是最小组合（base + web-app + 已登记的包，profile 级与 home 级 patch 都置空）：
 // 它只验证"这个包在当前安装里能不能加载、RPC 与页面在不在"，不会把 profile 里其它插件的全局锁 /
@@ -69,11 +70,11 @@ const RPC_ENDPOINT = 'ascend-traces-list'
 const PANEL_NAME = 'dsh-sleuth-panels'
 
 function parseArgs(argv) {
-  const args = { profile: null, dsh: null, dshHome: null, timeout: 120, keep: false, full: false, selftest: false, help: false, quiet: false }
+  const args = { profile: null, dsh: null, dshHome: null, timeout: 120, keep: false, full: false, selftest: false, help: false, quiet: false, extra: [] }
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i]
     const value = argv[i + 1]
-    if (flag === '--profile') { args.profile = value; i += 1 } else if (flag === '--dsh') { args.dsh = value; i += 1 } else if (flag === '--dsh-home') { args.dshHome = value; i += 1 } else if (flag === '--timeout') { args.timeout = Number(value); i += 1 } else if (flag === '--keep') { args.keep = true } else if (flag === '--full') { args.full = true } else if (flag === '--selftest') { args.selftest = true } else if (flag === '--quiet') { args.quiet = true } else if (flag === '--help' || flag === '-h') { args.help = true }
+    if (flag === '--profile') { args.profile = value; i += 1 } else if (flag === '--dsh') { args.dsh = value; i += 1 } else if (flag === '--dsh-home') { args.dshHome = value; i += 1 } else if (flag === '--timeout') { args.timeout = Number(value); i += 1 } else if (flag === '--keep') { args.keep = true } else if (flag === '--full') { args.full = true } else if (flag === '--selftest') { args.selftest = true } else if (flag === '--quiet') { args.quiet = true } else if (flag === '--package') { args.extra.push(value); i += 1 } else if (flag === '--help' || flag === '-h') { args.help = true }
   }
   return args
 }
@@ -306,7 +307,10 @@ async function runVerification(options, io) {
       + '@deepseek-ai/dsh-web-app），最小组合起不来；这个脚本只验桌面版的 web profile。')
     return 2
   }
-  const registered = PANEL_PACKAGES
+  const packages = PANEL_PACKAGES.concat(
+    Array.from(new Set(options.extra || [])).map((name) => ({ name }))
+  )
+  const registered = packages
     .map((item) => ({ name: item.name, reg: packageRegistration(read.manifest, item.name) }))
     .filter((item) => item.reg.bundle || item.reg.dependency !== null)
   if (registered.length === 0) {
@@ -387,10 +391,28 @@ async function runVerification(options, io) {
       const result = response.envelope && response.envelope.result ? response.envelope.result : null
       if (response.status !== 200 || result === null || result.ok !== true) {
         io.warn('RPC ' + RPC_CHANNEL + '/' + RPC_ENDPOINT + ' 不通：HTTP ' + response.status + '，'
-          + (result === null ? '应答不是合法信封' : 'result.ok=' + String(result.ok)))
+          + (result === null ? '应答不是合法信封'
+             : 'result.ok=' + String(result.ok) + ' error=' + JSON.stringify(result.error || null)))
         return 1
       }
       io.say('RPC          ok（' + RPC_ENDPOINT + ' 回 result.ok=true）')
+    }
+
+    if (expected.includes('dsh-rsi-observatory')) {
+      const response = await rpcCall('/rsi-observatory', 'rsi-list',
+        { sessionId: null, refresh: true }, waited.found.base, session.cookie)
+      const result = response.envelope && response.envelope.result ? response.envelope.result : null
+      const errorCode = result && result.error && result.error.code
+      if (response.status === 200 && errorCode === 'E_NO_REPO') {
+        io.warn('RSI RPC      已注册，但临时实例没有仓库 cwd（E_NO_REPO）；host 路由存在')
+      } else if (response.status !== 200 || result === null || result.ok !== true) {
+        io.warn('RPC /rsi-observatory/rsi-list 不通：HTTP ' + response.status + '，'
+          + (result === null ? '应答不是合法信封'
+             : 'result.ok=' + String(result.ok) + ' error=' + JSON.stringify(result.error || null)))
+        return 1
+      } else {
+        io.say('RSI RPC      ok（rsi-list 回 result.ok=true）')
+      }
     }
 
     io.say('全部通过：临时 profile 能拼出配置，页面会加载已登记包的浏览器半'

@@ -36,6 +36,15 @@ class SelectUnitTestsTest(unittest.TestCase):
         result, _ = self.select(["scripts/build_foo.py"])
         self.assertEqual(result, ["tests.test_build_foo"])
 
+    def test_dir_consumers_point_at_existing_scripts(self):
+        """DIR_CONSUMERS 写错只会表现为少选；钉住每个键与消费方都落在真仓里。"""
+        for prefix, consumers in sut.DIR_CONSUMERS.items():
+            with self.subTest(prefix=prefix):
+                self.assertTrue((ROOT / prefix).is_dir(), prefix)
+                modules = {alias for alias, _ in sut._script_modules(ROOT)}
+                for alias in consumers:
+                    self.assertIn(alias, modules, f"{prefix} -> {alias}")
+
     def test_data_dir_change_selects_consumer_test(self):
         """数据目录改动要选中消费脚本的测试：数据文件不是脚本，静态扫描看不出归属。"""
         self.write("scripts/src_fetch.py")
@@ -60,6 +69,144 @@ class SelectUnitTestsTest(unittest.TestCase):
         self.write("tests/test_build_foo.py", "import build_foo\n")
         result, _ = self.select(["scripts/_base.py"])
         self.assertEqual(result, ["tests.test_build_foo"])
+
+    def test_nested_test_module_is_selected(self):
+        self.write("scripts/cli.py")
+        self.write("tests/self_evolution/test_cli.py", "import cli\n")
+        result, _ = self.select(["tests/self_evolution/test_cli.py"])
+        self.assertEqual(result, ["tests.self_evolution.test_cli"])
+
+    def test_package_script_selects_test_by_dotted_import(self):
+        """子包按点分模块名解析，不再一律全量：改 samples 只带出 import 它的测试。"""
+        self.write("scripts/evolve/__init__.py")
+        self.write("scripts/evolve/samples.py")
+        self.write("scripts/evolve/other.py")
+        self.write("tests/evolve/test_samples.py", "from evolve.samples import Sample\n")
+        self.write("tests/evolve/test_other.py", "from evolve.other import Other\n")
+        result, _ = self.select(["scripts/evolve/samples.py"])
+        self.assertEqual(result, ["tests.evolve.test_samples"])
+
+    def test_relative_import_links_package_modules(self):
+        """包内 `from .decision import` 要连到同包模块，改被引用的那个能带出调用方。"""
+        self.write("scripts/evolve/__init__.py")
+        self.write("scripts/evolve/decision.py")
+        self.write("scripts/evolve/runner.py", "from .decision import decide\n")
+        self.write(
+            "tests/self_evolution/test_runner.py",
+            "from evolve.runner import decide\n",
+        )
+        result, _ = self.select(["scripts/evolve/decision.py"])
+        self.assertEqual(result, ["tests.self_evolution.test_runner"])
+
+    def test_nested_relative_import_resolves_to_parent_package(self):
+        """`from ..adapters import x` 要按当前包层级回退两级。"""
+        self.write("scripts/evolve/__init__.py")
+        self.write("scripts/evolve/adapters/__init__.py")
+        self.write("scripts/evolve/sources/__init__.py")
+        self.write(
+            "scripts/evolve/sources/github.py",
+            "from ..adapters import AdapterError\n",
+        )
+        self.write(
+            "tests/self_evolution/test_github.py",
+            "from evolve.sources.github import GitHub\n",
+        )
+        result, _ = self.select(["scripts/evolve/adapters/__init__.py"])
+        self.assertIn("tests.self_evolution.test_github", result)
+
+    def test_package_init_change_pulls_member_tests(self):
+        """改包 `__init__.py` 会让包内每个模块受影响：import 子模块先执行 init。"""
+        self.write("scripts/evolve/__init__.py")
+        self.write("scripts/evolve/samples.py")
+        self.write("scripts/evolve/runner.py")
+        self.write("tests/self_evolution/test_samples.py", "from evolve.samples import S\n")
+        self.write("tests/self_evolution/test_runner.py", "from evolve.runner import R\n")
+        result, _ = self.select(["scripts/evolve/__init__.py"])
+        self.assertEqual(
+            result,
+            ["tests.self_evolution.test_runner", "tests.self_evolution.test_samples"],
+        )
+
+    def test_same_named_entry_does_not_expand_to_package(self):
+        """`scripts/evolve.py` 与包 `evolve/` 同名：改入口不能把包内模块带出来。
+
+        判据取「改入口文件本身」：只有包内模块引用的测试不该被选中。若实现按
+        「这个名字有成员」展开，这里会多出 tests.test_runner。
+        """
+        self.write("scripts/evolve.py", "from evolve.cli import main\n")
+        self.write("scripts/evolve/__init__.py")
+        self.write("scripts/evolve/cli.py")
+        self.write("scripts/evolve/runner.py")
+        self.write("tests/test_cli.py", "from evolve.cli import main\n")
+        self.write("tests/test_runner.py", "from evolve.runner import run\n")
+        result, _ = self.select(["scripts/evolve.py"])
+        self.assertEqual(result, [])
+
+    def test_relative_import_in_package_init_uses_that_package(self):
+        """包 `__init__.py` 里的 `from .base import` 指向包内，不是父包。"""
+        self.write("scripts/evolve/__init__.py")
+        self.write("scripts/evolve/sources/__init__.py", "from .base import Source\n")
+        self.write("scripts/evolve/sources/base.py")
+        self.write(
+            "tests/self_evolution/test_sources.py",
+            "from evolve.sources import Source\n",
+        )
+        result, _ = self.select(["scripts/evolve/sources/base.py"])
+        self.assertEqual(result, ["tests.self_evolution.test_sources"])
+
+    def test_relative_import_in_top_package_init_uses_package(self):
+        """顶层包 `__init__.py` 的 `from .samples import` 指向 `evolve.samples`。"""
+        self.write("scripts/evolve/__init__.py", "from .samples import S\n")
+        self.write("scripts/evolve/samples.py")
+        self.write("tests/test_samples.py", "from evolve import S\n")
+        result, _ = self.select(["scripts/evolve/samples.py"])
+        self.assertEqual(result, ["tests.test_samples"])
+
+    def test_nested_dir_without_package_forces_all(self):
+        """包内还有一层不是包的目录：点分名对不上，按全量（多跑，不漏跑）。"""
+        self.write("scripts/evolve/__init__.py")
+        self.write("scripts/evolve/plugins/tool.py")
+        result, notes = self.select(["scripts/evolve/plugins/tool.py"])
+        self.assertEqual(result, "ALL")
+        self.assertTrue(any("登记消费方" in note for note in notes))
+
+    def test_subpackage_path_string_reference_is_selected(self):
+        """测试用 `scripts/<子目录>/<文件>` 字面量调脚本时也要选中。"""
+        self.write("scripts/evolve/__init__.py")
+        self.write("scripts/evolve/runner.py")
+        self.write("tests/test_runner.py", 'CMD = ["python3", "scripts/evolve/runner.py"]\n')
+        result, _ = self.select(["scripts/evolve/runner.py"])
+        self.assertEqual(result, ["tests.test_runner"])
+
+    def test_dynamic_dir_maps_to_consumer_test(self):
+        """动态加载的目录没有 import 关系，靠登记的消费方选中它的测试。"""
+        self.write("scripts/platforms/github.py")
+        self.write("scripts/pr_status.py", "PLATFORMS_DIR = 1\n")
+        self.write("tests/test_pr_status.py", "import pr_status\n")
+        result, _ = self.select(["scripts/platforms/github.py"])
+        self.assertEqual(result, ["tests.test_pr_status"])
+
+    def test_unknown_subdir_without_package_forces_all(self):
+        """未登记、也不在 Python 包里的子目录：静态扫描看不出谁用它，回退全量。"""
+        self.write("scripts/newdir/tool.js")
+        result, notes = self.select(["scripts/newdir/tool.js"])
+        self.assertEqual(result, "ALL")
+        self.assertTrue(any("登记消费方" in note for note in notes))
+
+    def test_registered_dir_without_consumers_selects_nothing(self):
+        """已登记且没有 Python 测试消费的目录：不跑单元测试，由别的 job 管。"""
+        self.write("scripts/fixtures/make_root.py")
+        result, notes = self.select(["scripts/fixtures/make_root.py"])
+        self.assertEqual(result, [])
+        self.assertTrue(any("没有单元测试引用" in note for note in notes))
+
+    def test_all_test_modules_recurse(self):
+        self.write("tests/test_a.py")
+        self.write("tests/self_evolution/test_b.py")
+        self.assertEqual(
+            sut.all_test_modules(self.root),
+            ["tests.self_evolution.test_b", "tests.test_a"],
+        )
 
     def test_changed_test_file_is_selected_even_without_script_change(self):
         self.write("scripts/cli.py")
@@ -119,6 +266,12 @@ class SelectUnitTestsTest(unittest.TestCase):
         self.write(".github/workflows/kb-checks.yml")
         result, _ = self.select([".github/workflows/kb-checks.yml"])
         self.assertEqual(result, "ALL")
+
+    def test_deleted_test_file_forces_all(self):
+        """删测试文件时没有可跑的模块；不判全量就成了「删掉测试 = 绿」。"""
+        result, notes = self.select(["tests/test_gone.py"])
+        self.assertEqual(result, "ALL")
+        self.assertTrue(any("删除" in note for note in notes))
 
     def test_deleted_script_forces_all(self):
         self.write("scripts/build_foo.py")

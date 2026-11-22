@@ -36,6 +36,8 @@ import os
 import sys
 from pathlib import Path
 
+from typing import Optional
+
 import yaml
 
 from _stdio import write_text_lf
@@ -166,7 +168,7 @@ def cmd_check(root: Path) -> int:
     return 0
 
 
-def cmd_reseal(root: Path, all_: bool, fixture: str | None) -> int:
+def cmd_reseal(root: Path, all_: bool, fixture: Optional[str]) -> int:
     doc = load_manifest(root)
     if doc is None:
         doc = {"version": 1, "entries": []}

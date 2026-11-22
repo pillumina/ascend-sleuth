@@ -1,0 +1,40 @@
+id: REG-COMMON-FA-RACE-DETERMINISM
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: msprobe docs/zh/best_practices/ascend_80_card_large_model_training_determinism_troubleshooting.md（MindStudio
+  26.2.0.B050_003）
+input:
+  phenomenon: 80 卡大规模训练任务结果确定性无法固定（重复运行 Loss 曲线不一致）；全量 dump 会导致问题不复现（采集行为影响执行时序）；降低采集粒度（如
+    L1）或缩小模型规模后问题可复现
+  environment: ''
+  evidence:
+    case: COMMON-FA-RACE-DETERMINISM
+    references:
+    - msprobe docs/zh/best_practices/ascend_80_card_large_model_training_determinism_troubleshooting.md（MindStudio
+      26.2.0.B050_003）
+expected:
+  resolution: 'CANN 8.1.0 RC1 的 Flash Attention 算子内部在数据搬迁操作前后未添加必要的同步机制。 多卡并行/高并发场景下，这种缺乏同步的操作导致数据读写时序不确定，产生非确定性计算结果；
+    8.0.0 RC4 无此问题。
+
+
+
+    获取修复包（核心修改：算子内部数据搬迁操作前后增加同步机制）； 验证后连续多次训练 Loss 曲线完全一致。'
+  case: COMMON-FA-RACE-DETERMINISM
+  confidence: maintainer-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: postmortem
+  report_ref: knowledge/common/precision/COMMON-FA-RACE-DETERMINISM.yaml
+  captured_at: '2026-11-19T14:13:03+00:00'
+  kb_rev: unknown
+  sanitized: true
+  redactions: []
+  confidence: maintainer-reviewed
+  extraction: auto
+created_at: '2026-11-19T14:13:03+00:00'
+updated_at: '2026-11-19T14:13:03+00:00'
+history: []
+notes: core regression derived from knowledge/common/precision/COMMON-FA-RACE-DETERMINISM.yaml

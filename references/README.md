@@ -66,6 +66,14 @@ status: active | pending-review | deprecated | draft   # 新产出即 active（P
 
 **词条数量是运行时状态**，不写进本 README（会随导入/转正腐烂）——用 `python3 scripts/verify_references.py` 实时查。
 
+## 产出处
+
+词条不记录「产出处」字段：PR 号在产出时还不知道，手写一份只会长期为空或写错。要查一条词条是哪次提交、哪次合并（PR）带进来的：
+
+`python3 scripts/ref_origin.py <ref-id>`
+
+它只读 git 历史，换台机器也能查；表内条目（错误码等）传条目自己的 code / pattern，不要传文件名。词条没有提交历史（未提交、浅克隆截断、文件被复制进来）时脚本报「查不到」，不拿修改时间或作者猜。
+
 ## 校验
 
 `python3 scripts/verify_references.py --check`（CI 中随 kb-checks 运行）：

@@ -3,7 +3,7 @@
 #
 # WikiSkill 式门控的数据/评分侧：候选改动（triage/quickly_check/case 等检索路由层
 # 组件）在 held-out selection 池上 baseline vs candidate 重放对照，严格提升才接受，
-# 否则回滚；结果留影响账本。设计文档 docs/mechanism/eval-arena.md。
+# 否则回滚；结果留影响账本。设计文档 docs/mechanism/evaluation.md。
 #
 # 目录（本地运行件，gitignore）：.s2-replay/arena/
 #   pool-*.yaml         池清单：{name, split, role, absorption_rev, issues:[{id, expected_ns,
@@ -35,7 +35,7 @@
 # 向量里滤掉一次（挡住手写 stats 与旧版 stats）。此前该字段只出现在建池与结构校验里，
 # "写了不读"，那条"不参与 gate 决策"的声明只在 --split selection 的默认参数下侥幸成立。
 #
-# 非诊断样本（无可判别信号）同样在这一层落实：`docs/mechanism/eval-arena.md` §3 早就写着
+# 非诊断样本（无可判别信号）同样在这一层落实：`docs/mechanism/evaluation.md` §3 早就写着
 # "输入文件里没有可判别信号 = 非诊断样本，不进命中率"，但全仓只有那一句话、没有读取方
 # （与 held_out 同一类"说了没做"）。标注落在校准集行的 `non_diagnostic`（真值或一句原因，
 # 由选样人按上面那条判据标），--build-pool 原样带进池行；--stats 不把它的 result 计入任何
@@ -91,13 +91,14 @@
 
 import argparse
 import hashlib
-import math
 import re
 import sys
 from datetime import datetime
 from pathlib import Path
 
 import yaml
+
+from evolve.statistics import exact_mcnemar_ge as _exact_mcnemar_ge_bc
 
 ARENA_SUBDIR = ".s2-replay/arena"
 S2_RESULT_REL = ".s2-replay/{}.result.yaml"
@@ -253,7 +254,7 @@ def build_pool(root, source, name, split, only_scored, out, case_prefix="VLLM-AS
             "fix_ref": exp.get("fix_commit") or "",
             "held_out": is_test,      # 终判集：**不参与 gate 决策**（设计纪律）
         }
-        # 非诊断样本（无可判别信号）：判据与原因写在 docs/mechanism/eval-arena.md §3。
+        # 非诊断样本（无可判别信号）：判据与原因写在 docs/mechanism/evaluation.md。
         # 值可以是 true，也可以是一句原因——两种都照原样带进池行，供 --stats 单列与打印。
         if c.get("non_diagnostic"):
             row["non_diagnostic"] = c["non_diagnostic"]
@@ -349,11 +350,13 @@ def exact_mcnemar_ge(b, n):
 
     只数"方向不一致"的对子（b + c），一致的对子不含判别信息——这正是配对检验比
     "两个比例各看一遍"更敏感的原因，也是它比 v1 更严的原因：一次翻转不再自动成立。
+
+    实现已抽到 ``evolve.statistics.exact_mcnemar_ge(b, c)``（本函数保留旧的
+    ``(b, n)`` 签名做兼容包装，``n`` 是 b + c）。
     """
     if n <= 0:
         return 1.0
-    tail = sum(math.comb(n, i) for i in range(b, n + 1))
-    return tail / (2 ** n)
+    return _exact_mcnemar_ge_bc(b, n - b)
 
 
 def reuse_index(records, pool_name, pool_hash, exclude_last=False):
@@ -462,11 +465,11 @@ def cmd_pool(root, pool_file):
               "（旧池或手写池），判定时按未校验放行。")
     n_held = sum(1 for it in pool["issues"] if it.get("held_out"))
     if n_held:
-        print(f"  held_out（终判集）{n_held} 条：不参与 gate 决策（docs/mechanism/eval-arena.md §1）")
+        print(f"  held_out（终判集）{n_held} 条：不参与 gate 决策（docs/mechanism/evaluation.md）")
     n_nd = sum(1 for it in pool["issues"] if it.get("non_diagnostic"))
     if n_nd:
         print(f"  非诊断样本 {n_nd} 条：不参与命中率与配对，只在 --stats 里单列"
-              f"（docs/mechanism/eval-arena.md §3）")
+              f"（docs/mechanism/evaluation.md）")
     return 0
 
 
@@ -497,7 +500,7 @@ def cmd_stats(root, pool_file):
             n_held += 1
             continue
         # 非诊断样本（输入里没有可判别信号）= 任何诊断都不可能有结论，混进命中率会同时
-        # 高估分母与低估命中率（docs/mechanism/eval-arena.md §3）。单列并剔出一切指标。
+        # 高估分母与低估命中率（docs/mechanism/evaluation.md）。单列并剔出一切指标。
         if it.get("non_diagnostic"):
             why = it["non_diagnostic"]
             nd_rows.append({"id": str(it["id"]),
@@ -509,7 +512,7 @@ def cmd_stats(root, pool_file):
             continue
         r = load(rp) or {}
         expected_ns = it.get("expected_ns", "")
-        # 可证伪性（docs/mechanism/eval-arena.md §3 的 ground_truth）：这个 issue 的外部结论
+        # 可证伪性（docs/mechanism/evaluation.md 的 ground_truth）：这个 issue 的外部结论
         # 是什么形态。`none` = 无外部结论 → "结论一致"这件事没有真值，既不记一致也不记不一致
         # （结算侧 scripts/settle_s2_feedback.py 依同一句话跳过；两边必须同口径，否则同一份
         # result 会被两个读端判成两种样子）。字段缺席 ≠ none：缺席按旧行为计入分母。
@@ -640,7 +643,7 @@ def cmd_gate(root, baseline_file, candidate_file, component, cand_ref, note, alp
         if s.get("role") == "regression":
             print(f"eval_arena: {side} 是回归池的 stats（role: regression）——这些样本的答案已进"
                   f"知识库，属自洽样本，只做回归信号，不能当门控判定"
-                  f"（docs/mechanism/eval-arena.md §1 纪律）。", file=sys.stderr)
+                  f"（docs/mechanism/evaluation.md 纪律）。", file=sys.stderr)
             return 2
 
     # 运行期重判：池建好之后，沉淀闭环可能已经把某些样本的答案写进了知识库。此时这一池测的
@@ -930,7 +933,7 @@ def cmd_rc_check(root, pool_file):
 
 def main():
     ap = argparse.ArgumentParser(
-        description="元层 eval 台工具（EV-2026-013；docs/mechanism/eval-arena.md）")
+        description="元层 eval 台工具（EV-2026-013；docs/mechanism/evaluation.md）")
     g = ap.add_mutually_exclusive_group(required=True)
     g.add_argument("--pool", metavar="YAML", help="校验池文件")
     g.add_argument("--stats", metavar="YAML", help="聚合池内 result → stats")
@@ -981,7 +984,7 @@ def main():
     if not args.baseline or not args.candidate:
         # 明确退化：无池/无 stats 时不要静默拿空路径去读（会把仓库根当文件读，报"Is a directory"）
         print("eval_arena: --gate 需要 --baseline <stats.yaml> 与 --candidate <stats.yaml>。\n"
-              "  还没有数据时：先按 docs/mechanism/eval-arena.md §2 建池（.s2-replay/arena/pool-*.yaml），\n"
+              "  还没有数据时：先按 docs/mechanism/evaluation.md 建池（.s2-replay/arena/pool-*.yaml），\n"
               "  跑 replay 出 .s2-replay/<issue>.result.yaml，再各跑一次 --stats 得到两侧 stats。\n"
               "  只验证判据本身用 --self-test（不需要任何本地数据）。", file=sys.stderr)
         return 2

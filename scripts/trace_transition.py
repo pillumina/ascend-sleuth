@@ -7,7 +7,8 @@
 transition 事件；面板、skill、终端都调它。
 
 **它不做什么**：不判断「该不该收尾」（那是人的动作）；不改 `trace[]` 事件流；不改
-`feedback` 之外的任何轴（`--field outcome` 排 PR2）。
+`feedback` 之外的任何轴（`--field outcome` 排 PR2）。`--field candidate` 只改
+`sediment_candidates` 里一条 reference 候选的 status/ref_id，不改 case 候选。
 
 用法：
 
@@ -16,6 +17,8 @@ transition 事件；面板、skill、终端都调它。
   python3 scripts/trace_transition.py <sid> --to archived --kind duplicate --duplicate-of case:VLLM-ASC-11312
   python3 scripts/trace_transition.py <sid> --reopen
   python3 scripts/trace_transition.py <sid> --field sedimented --state submitted --inbox-path …
+  python3 scripts/trace_transition.py <sid> --field content --content-file /tmp/content.json --by agent --json
+  python3 scripts/trace_transition.py <sid> --field candidate --candidate-summary "<摘要>" --ref-id <ref-id> --by agent --source agent
   python3 scripts/trace_transition.py <sid> --to archived --kind withdrawn --expect-sha256 <hex> --json
   python3 scripts/trace_transition.py <sid> --json --payload-base64 <b64>
   （`--payload-base64` 是给「复制到任意终端」用的：base64 是纯 ASCII 单行，bash / zsh /
@@ -35,6 +38,7 @@ import argparse
 import base64
 import json
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -43,15 +47,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import yaml  # noqa: E402
 
+import _trace_content as tc  # noqa: E402
 from _stdio import write_text_lf  # noqa: E402
 from _trace_state import (  # noqa: E402
     SCHEME, actions_for, case_kind, derive, is_terminal, load_vocab, status_meta,
 )
+from verify_references import is_entry_file  # noqa: E402
 from _yaml import load_text  # noqa: E402
 from exec_log_path import log_lock, resolve_traces  # noqa: E402
 
 TOUCHED = {"status", "ending", "resolved_at", "updated_at", "stop_reason", "transitions",
-           "sedimented", "summary", "severity", "fix_emitted"}
+           "sedimented", "sediment_candidates", "summary", "severity", "fix_emitted",
+           # 三段时间线 + 修订记录（--field content）：写入口允许改，verify_untouched
+           # 不能把它们判成越权改动。
+           "incident_env", "incident_timeline", "failure_process", "upstream_timeline",
+           "revisions",
+           # 回报 / 复核通道写的就是这三个键：不在白名单里时，第二次回报或回报后再复核
+           # 会被自己的写入后校验判成越权改动并回滚（E_IO）。
+           "reports", "reviews", "feedback"}
 CODE_EXIT = {"E_SCHEMA": 2, "E_STATE_CHANGED": 3, "E_IO": 4, "E_PERM": 5,
              "E_NOT_FOUND": 6, "E_SCHEMA_VERSION": 7, "E_NO_CHANGE": 8}
 
@@ -150,8 +163,106 @@ def block_mapping(key: str, mapping: dict) -> str:
 
 
 def list_block(key: str, rows: list[dict]) -> str:
+    # 每个条目一行 flow mapping（JSON 是 YAML 子集）。值先过 to_jsonable：手写 trace 里
+    # `at:` 没加引号会被 PyYAML 解析成 datetime，json.dumps 直接抛 TypeError（CLI 兜成
+    # E_IO），`--field report` / `--field review` 就写不进去。
     return key + ":\n" + "".join(
-        "  - " + json.dumps(r, ensure_ascii=False, sort_keys=True) + "\n" for r in rows)
+        "  - " + json.dumps(tc.to_jsonable(r), ensure_ascii=False, sort_keys=True) + "\n"
+        for r in rows)
+
+
+class _BlockDumper(yaml.SafeDumper):
+    """块风格的 dumper：让序列条目在映射键下缩进两格。
+
+    PyYAML 默认把序列写成 indentless（`key:\n- item`）；内容字段是给人看的，统一缩进
+    两格读起来才是一棵清晰的树。其它行为（安全构造、排版选项）仍是 SafeDumper。
+    """
+
+    def increase_indent(self, flow=False, indentless=False):
+        return super().increase_indent(flow, False)
+
+
+def content_block(key: str, value) -> str:
+    """三段时间线 / 修订记录的 YAML 块：缩进块风格，不再压成一行 flow。
+
+    `to_jsonable` 先把 datetime 归成字符串（手写 trace 里没加引号的时间会被 PyYAML 解析成
+    datetime），再交给 SafeDumper 出块结构。`width` 关掉折行：长句在 plain scalar 里折行再
+    解析可能改变空格，写入口自己算的 hash 会对不上。
+    """
+    body = yaml.dump({key: tc.to_jsonable(value)}, Dumper=_BlockDumper,
+                     allow_unicode=True, default_flow_style=False, sort_keys=False,
+                     indent=2, width=10 ** 9)
+    return body if body.endswith("\n") else body + "\n"
+
+
+def apply_content(doc: dict, text: str, args) -> tuple[str, dict]:
+    """三段时间线 + 修订记录的唯一写入口（`--field content`）。
+
+    set 里只更新给出的字段；与当前值深比较后没变化就 E_NO_CHANGE（不刷新 updated_at）。
+    有变化时必须给 kind 与 reason：写入口自动算 changes（列表按 id、failure_process 按节点
+    与结构字段、字符串整体）与每个被改字段的 canonical hash，追加一条 revisions。
+    """
+    content_file = getattr(args, "content_file", None)
+    if not content_file:
+        raise Fail("E_SCHEMA", "需要 --content-file（JSON：set / kind / reason / evidence）",
+                   requirements=["content_file"])
+    try:
+        payload = json.loads(Path(content_file).read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise Fail("E_SCHEMA", "内容文件读不了：" + str(exc), requirements=["content_file"])
+    except ValueError as exc:
+        raise Fail("E_SCHEMA", "内容文件不是合法 JSON：" + str(exc),
+                   requirements=["content_file"])
+    if not isinstance(payload, dict):
+        raise Fail("E_SCHEMA", "内容文件的顶层必须是对象")
+    updates = payload.get("set")
+    if not isinstance(updates, dict) or not updates:
+        raise Fail("E_SCHEMA", "set 至少给一个字段", requirements=list(tc.WRITABLE_FIELDS))
+    unknown = [str(k) for k in updates if k not in tc.WRITABLE_FIELDS]
+    if unknown:
+        raise Fail("E_SCHEMA", "set 里有不认识的字段：" + "、".join(unknown),
+                   requirements=list(tc.WRITABLE_FIELDS))
+    errors = []
+    for field, value in updates.items():
+        errors.extend(tc.validate_field(field, value))
+    if errors:
+        raise Fail("E_SCHEMA", "内容不合 schema：" + "；".join(errors), errors=errors)
+
+    changed = [field for field in tc.WRITABLE_FIELDS
+               if field in updates and not tc.field_equal(doc.get(field), updates[field])]
+    if not changed:
+        raise Fail("E_NO_CHANGE", "这次的内容和当前记录一样，没有写入")
+    kind = str(payload.get("kind") or "")
+    if kind not in tc.REVISION_KINDS:
+        raise Fail("E_SCHEMA", "有改动时必须给 kind", requirements=list(tc.REVISION_KINDS))
+    reason = str(payload.get("reason") or "").strip()
+    if not reason:
+        raise Fail("E_SCHEMA", "有改动时必须给 reason", requirements=["reason"])
+    evidence = payload.get("evidence")
+    if evidence is not None and not isinstance(evidence, dict):
+        raise Fail("E_SCHEMA", "evidence 应是映射（如 {\"files\": [\"traces/evidence/...\"]}）")
+
+    changes = []
+    for field in changed:
+        changes.extend(tc.diff_content(field, doc.get(field), updates[field]))
+    if not changes:
+        raise Fail("E_SCHEMA", "检测到改动但生成不出改动条目（内容类型不受支持）")
+    revision = {"at": now_iso(), "by": args.by or "cli", "kind": kind,
+                "changes": changes, "reason": reason,
+                "hashes": {field: tc.canonical_hash(updates[field]) for field in changed}}
+    if evidence:
+        revision["evidence"] = evidence
+    rev_errors = tc.validate_revision(revision, "生成的 revision")
+    if rev_errors:
+        raise Fail("E_SCHEMA", "生成的修订记录不合 schema：" + "；".join(rev_errors))
+
+    revisions = [r for r in (doc.get("revisions") or []) if isinstance(r, dict)] + [revision]
+    new_text = text
+    for field in changed:
+        new_text = put_block(new_text, field, content_block(field, updates[field]))
+    new_text = put_block(new_text, "revisions", content_block("revisions", revisions))
+    new_text = put_block(new_text, "updated_at", scalar_block("updated_at", now_iso()))
+    return new_text, {"revision": revision, "changed": changed}
 
 
 def apply_report(doc: dict, text: str, args, vocab: dict) -> tuple[str, dict]:
@@ -190,6 +301,114 @@ def apply_review(doc: dict, text: str, args, vocab: dict) -> tuple[str, dict]:
     new_text = put_block(text, "reviews", list_block("reviews", reviews))
     new_text = put_block(new_text, "updated_at", scalar_block("updated_at", now_iso()))
     return new_text, doc
+
+
+REF_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
+
+def _norm_text(value) -> str:
+    return " ".join(str(value or "").split())
+
+
+def _reference_ids(root: Path) -> tuple[set[str], bool]:
+    """references/ 里的词条 id；目录不存在（只装 skill 的部署）时返回空集。
+
+    第二个返回值表示「有文件解析不了」：此时不拦写入——坏文件该由 verify_references 报，
+    不能把「解析失败」误报成「id 不存在」。
+    """
+    refs = root / "references"
+    if not refs.is_dir():
+        return set(), False
+    ids, broken = set(), False
+    for path in refs.rglob("*.yaml"):
+        if not is_entry_file(path):
+            continue
+        try:
+            d = load_text(path.read_text(encoding="utf-8")) or {}
+        except Exception:
+            broken = True
+            continue
+        if isinstance(d, dict) and d.get("id"):
+            ids.add(str(d["id"]))
+    return ids, broken
+
+
+def apply_candidate(doc: dict, text: str, args, root: Path) -> tuple[str, dict, dict]:
+    """把一条 reference 候选标成「已产出」并记下词条 id。
+
+    为什么由写入口做：这是 trace 里唯一一处「诊断产出了先验词条」的落点。没有它，
+    只产出词条、没命中 case 的单在 trace 里只能写 `sedimented: none`，面板会一直把它
+    算成「待复核」。只接受 `kind: reference`，只从 proposed/drafted 改成 produced，
+    不改 case 候选的沉淀状态（那条轴由 to-postmortem/groom 回写）。
+    """
+    candidates = doc.get("sediment_candidates")
+    if not isinstance(candidates, list) or not candidates:
+        raise Fail("E_SCHEMA", "这单没有 sediment_candidates，没有可回写的候选")
+    ref_id = str(getattr(args, "ref_id", None) or "").strip()
+    if not ref_id:
+        raise Fail("E_SCHEMA", "需要一个 --ref-id（产出词条的 id）", requirements=["ref_id"])
+    if not REF_ID_RE.match(ref_id):
+        raise Fail("E_SCHEMA", f"--ref-id '{ref_id}' 不是词条 id 形态（小写字母/数字/连字符）",
+                   requirements=["ref_id"])
+    known, broken = _reference_ids(root)
+    if known and not broken and ref_id not in known:
+        raise Fail("E_SCHEMA", f"references/ 里没有 id 为 {ref_id} 的词条；先产出词条再回写，或确认 id 没写错",
+                   requirements=["ref_id"])
+
+    idx = getattr(args, "candidate_index", None)
+    summary = _norm_text(getattr(args, "candidate_summary", None))
+    if idx is None and not summary:
+        raise Fail("E_SCHEMA", "需要一个 --candidate-index 或 --candidate-summary",
+                   requirements=["candidate_index", "candidate_summary"])
+    if idx is not None:
+        try:
+            idx = int(idx)
+        except (TypeError, ValueError):
+            raise Fail("E_SCHEMA", "--candidate-index 必须是整数", requirements=["candidate_index"])
+        if idx < 0 or idx >= len(candidates):
+            raise Fail("E_SCHEMA", f"--candidate-index {idx} 越界（共 {len(candidates)} 条）",
+                       requirements=["candidate_index"])
+        matches = [idx]
+    else:
+        matches = [i for i, c in enumerate(candidates)
+                   if isinstance(c, dict) and _norm_text(c.get("summary")) == summary]
+        if not matches:
+            # 摘要被命令行截断/改写时给一次包含匹配；仍要求唯一，避免标错候选。
+            matches = [i for i, c in enumerate(candidates)
+                       if isinstance(c, dict) and summary and summary in _norm_text(c.get("summary"))]
+        if not matches:
+            raise Fail("E_SCHEMA", "找不到摘要匹配的候选；用 --candidate-index 指定",
+                       candidates=[{"index": i, "kind": (c or {}).get("kind"),
+                                    "summary": (c or {}).get("summary")}
+                                   for i, c in enumerate(candidates) if isinstance(c, dict)])
+        if len(matches) > 1:
+            raise Fail("E_SCHEMA", "摘要匹配到多条候选；用 --candidate-index 消歧",
+                       candidates=[{"index": i, "summary": candidates[i].get("summary")} for i in matches])
+
+    i = matches[0]
+    cand = candidates[i]
+    if not isinstance(cand, dict):
+        raise Fail("E_SCHEMA", f"sediment_candidates[{i}] 不是映射")
+    kind = str(cand.get("kind") or "")
+    if kind != "reference":
+        raise Fail("E_SCHEMA", f"sediment_candidates[{i}] 是 {kind or '未标 kind'} 候选，只能标记 reference 候选")
+    status = str(cand.get("status") or "proposed")
+    if status == "produced":
+        if str(cand.get("ref_id") or "") == ref_id:
+            raise Fail("E_NO_CHANGE", "这条候选已经标记为产出", ref_id=ref_id)
+        raise Fail("E_SCHEMA", "这条候选已标记为产出，但 ref_id 不同",
+                   current=str(cand.get("ref_id") or ""))
+    if status not in ("proposed", "drafted"):
+        raise Fail("E_SCHEMA", f"候选状态 '{status}' 不能改成 produced（只接受 proposed / drafted）")
+
+    updated = dict(cand)
+    updated["status"] = "produced"
+    updated["ref_id"] = ref_id
+    rows = list(candidates)
+    rows[i] = updated
+    new_text = put_block(text, "sediment_candidates", list_block("sediment_candidates", rows))
+    new_text = put_block(new_text, "updated_at", scalar_block("updated_at", now_iso()))
+    return new_text, doc, {"candidateIndex": i, "refId": ref_id, "summary": str(cand.get("summary") or "")}
 
 
 def sedimented_block(doc: dict, state: str, case_id: str, inbox_path: str) -> str:
@@ -387,10 +606,17 @@ def _apply_locked(root: Path, traces: Path, sid: str, args) -> dict:
 
     if args.to and args.to not in {x["value"] for x in vocab["statuses"]}:
         raise Fail("E_SCHEMA", "目标状态不在词表里", requirements=[x["value"] for x in vocab["statuses"]])
+    content_info = None
+    candidate_info = None
     if args.field == "review":
         new_text, before = apply_review(doc, text, args, vocab)
     elif args.field == "report":
         new_text, before = apply_report(doc, text, args, vocab)
+    elif args.field == "content":
+        new_text, content_info = apply_content(doc, text, args)
+        before = doc
+    elif args.field == "candidate":
+        new_text, before, candidate_info = apply_candidate(doc, text, args, root)
     elif args.field == "sedimented":
         if not args.state:
             raise Fail("E_SCHEMA", "需要一个 --state", requirements=["sedimented.state"])
@@ -490,6 +716,24 @@ def _apply_locked(root: Path, traces: Path, sid: str, args) -> dict:
             if field == "fix_emitted":
                 value = bool(value) if not isinstance(value, bool) else value
             new_text = put_block(new_text, field, scalar_block(field, value))
+        # 状态转移顺带改 summary 时也落一条修订：摘要写的是结论，静默覆盖会让「结论变过没」
+        # 在面板上不可见。内容层（--field content）走自己的修订分支，这里只补转移这一路。
+        if "summary" in updates and not tc.field_equal(doc.get("summary"), updates["summary"]):
+            summary_revision = {
+                "at": at,
+                "by": by,
+                "kind": "fact_corrected",
+                "changes": [{
+                    "target": "summary",
+                    "before": tc._text(doc.get("summary")),
+                    "after": tc._text(updates["summary"]),
+                }],
+                "reason": args.note or f"状态转移写入摘要（{cur_status} → {new_status}）",
+                "hashes": {"summary": tc.canonical_hash(updates["summary"])},
+            }
+            revisions = [r for r in (doc.get("revisions") or []) if isinstance(r, dict)]
+            revisions.append(summary_revision)
+            new_text = put_block(new_text, "revisions", content_block("revisions", revisions))
         new_text = put_block(new_text, "updated_at", scalar_block("updated_at", now_iso()))
         history_path = append_history(traces, sid, events[-2:] if action["id"] == "correct-ending" and target_status != cur_status else events[-1:])
         folded_events, folded = fold_events(events)
@@ -501,6 +745,13 @@ def _apply_locked(root: Path, traces: Path, sid: str, args) -> dict:
         before = doc
 
     if args.dry_run:
+        if content_info is not None:
+            # content 的改动由深比较得出（不是「命令行给了哪些参数」），dry-run 也照实报。
+            return {"ok": True, "dryRun": True, "changed": content_info["changed"],
+                    "revision": content_info["revision"]}
+        if candidate_info is not None:
+            return {"ok": True, "dryRun": True, "changed": ["sediment_candidates", "updated_at"],
+                    "candidate": candidate_info}
         changed = [k for k in ("status", "ending", "sedimented", "resolved_at", "stop_reason",
                                "summary", "severity", "fix_emitted") if getattr(args, k, None) is not None]
         return {"ok": True, "dryRun": True, "changed": changed}
@@ -525,14 +776,23 @@ def _apply_locked(root: Path, traces: Path, sid: str, args) -> dict:
         path.write_bytes(raw)
         raise Fail("E_IO", "写入后校验失败，已回滚")
     last = (after.get("transitions") or [{}])[-1]
-    return {"ok": True,
-            "from": before.get("status"),
-            "to": after.get("status"),
-            "changed": sorted([k for k in TOUCHED if before.get(k) != after.get(k)]),
-            "event": last,
-            "current": {"status": after.get("status"), "ending": after.get("ending"),
-                        "sha256": __import__("hashlib").sha256(
-                            path.read_bytes()).hexdigest()}}
+    result = {"ok": True,
+              "from": before.get("status"),
+              "to": after.get("status"),
+              "changed": sorted([k for k in TOUCHED if before.get(k) != after.get(k)]),
+              "event": last,
+              "current": {"status": after.get("status"), "ending": after.get("ending"),
+                          "sha256": __import__("hashlib").sha256(
+                              path.read_bytes()).hexdigest()}}
+    if content_info is not None:
+        # content 的 changed 按「深比较后真变了的字段」报（updated_at / revisions 是副作用，
+        # 不混进语义改动里）；revision 是本条自动生成的修订记录。
+        result["changed"] = content_info["changed"]
+        result["revision"] = content_info["revision"]
+    if candidate_info is not None:
+        result["changed"] = ["sediment_candidates", "updated_at"]
+        result["candidate"] = candidate_info
+    return result
 
 
 def target_status_of(action: dict, args) -> str:
@@ -614,7 +874,11 @@ def main(argv=None) -> int:
     ap.add_argument("--reopen", action="store_true")
     ap.add_argument("--correct-ending", action="store_true")
     ap.add_argument("--backfill-ending", action="store_true")
-    ap.add_argument("--field", default=None, choices=["sedimented", "outcome", "report", "review"])
+    ap.add_argument("--field", default=None,
+                    choices=["sedimented", "outcome", "report", "review", "content", "candidate"])
+    ap.add_argument("--content-file", default=None,
+                    help="--field content 的输入文件：JSON，含 set / kind / reason / evidence；"
+                         "内容不落命令行，省得中文与引号过 shell")
     ap.add_argument("--verdict", default=None)
     ap.add_argument("--review-note", default=None)
     ap.add_argument("--report-source", default=None)
@@ -623,6 +887,12 @@ def main(argv=None) -> int:
     ap.add_argument("--state", default=None)
     ap.add_argument("--case-id", default=None)
     ap.add_argument("--inbox-path", default=None)
+    ap.add_argument("--candidate-index", type=int, default=None,
+                    help="--field candidate：候选在 sediment_candidates 里的下标（0 起）")
+    ap.add_argument("--candidate-summary", default=None,
+                    help="--field candidate：候选摘要（与 trace 里逐字一致；唯一匹配才写）")
+    ap.add_argument("--ref-id", default=None,
+                    help="--field candidate：产出词条的 id（写进候选的 ref_id）")
     ap.add_argument("--by", default="cli", choices=["user", "agent", "cli"])
     ap.add_argument("--source", default="cli", choices=["panel", "cli", "agent", "import"])
     ap.add_argument("--expect-sha256", default=None)
@@ -678,7 +948,9 @@ def main(argv=None) -> int:
                     "expect_sha256": "expect_sha256",
                     "report_source": "report_source", "report_result": "report_result",
                     "report_note": "report_note", "verdict": "verdict",
-                    "review_note": "review_note"}.get(key)
+                    "review_note": "review_note", "content_file": "content_file",
+                    "candidate_index": "candidate_index", "candidate_summary": "candidate_summary",
+                    "ref_id": "ref_id"}.get(key)
             if attr and getattr(args, attr, None) in (None, ""):
                 setattr(args, attr, value)
         if payload.get("reopen"):
@@ -693,6 +965,9 @@ def main(argv=None) -> int:
         result = apply_transition(root, traces, args.session_id, args)
         if args.json:
             print(json.dumps(result, ensure_ascii=False))
+        elif args.field == "candidate":
+            c = result.get("candidate") or {}
+            print(f"已回写：候选 #{c.get('candidateIndex')} → produced（{c.get('refId')}）")
         else:
             print(f"已记录：{result.get('from')} → {result.get('to')}（{args.session_id}）")
         return 0

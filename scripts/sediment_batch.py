@@ -91,6 +91,21 @@ def sed_state(doc: dict) -> str:
     return "none"
 
 
+def _produced_only(cands) -> bool:
+    """这单是否只由「已产出的先验候选」构成（报告就是那批词条的材料）。
+
+    分组判定要按单看：同组里另一条只有报告的 session 还没沉淀，不能因为这一条产出了
+    词条就把整组从批量里拿掉。
+    """
+    items = [c for c in (cands or []) if isinstance(c, dict)]
+    refs = [c for c in items if str(c.get("kind") or "") == "reference"]
+    if not refs:
+        return False
+    if any(str(c.get("status") or "") != "produced" for c in refs):
+        return False
+    return not [c for c in items if str(c.get("kind") or "") != "reference"]
+
+
 def why_actionable(doc: dict) -> str:
     st = str(doc.get("status") or "unknown")
     report = doc.get("report_file")
@@ -101,7 +116,12 @@ def why_actionable(doc: dict) -> str:
     if report:
         bits.append("有报告")
     if cands:
+        produced = [c for c in cands
+                    if isinstance(c, dict) and str(c.get("kind") or "") == "reference"
+                    and str(c.get("status") or "") == "produced"]
         bits.append(f"{len(cands)} 条候选")
+        if produced:
+            bits.append(f"已产出先验词条 {len(produced)} 条")
     return "、".join(bits)
 
 
@@ -135,12 +155,20 @@ def collect(traces_dir: Path):
             "report_file": doc.get("report_file"),
             "active_case": doc.get("active_case"),
             "sediment_candidates": doc.get("sediment_candidates") or [],
+            "produced_only": _produced_only(doc.get("sediment_candidates")),
             "why": why_actionable(doc),
         })
     rows = []
     for g in groups.values():
         has_material = bool(g["reports"] or g["candidates"])
-        actionable = has_material and not (g["states"] & DONE_SEDIMENT)
+        ref_cands = [c for c in g["candidates"]
+                     if isinstance(c, dict) and str(c.get("kind") or "") == "reference"]
+        produced_refs = [c for c in ref_cands if str(c.get("status") or "") == "produced"]
+        # 按单判：只有「该单的材料全部由已产出的先验候选构成」才算沉淀完。同组另一条只有
+        # 报告的 session 还没沉淀时，整组仍进批量——分组是给人看的，不能把两单合成一个结论。
+        material_docs = [d for d in g["docs"] if d["report_file"] or d["sediment_candidates"]]
+        unsettled = [d for d in material_docs if not d["produced_only"]]
+        actionable = (has_material and not (g["states"] & DONE_SEDIMENT) and bool(unsettled))
         g["sedimented"] = sorted(g["states"])
         g["statuses"] = sorted(g["statuses"])
         rows.append({
@@ -148,6 +176,9 @@ def collect(traces_dir: Path):
             "sedimented": g["sedimented"], "reports": g["reports"],
             "candidates": g["candidates"], "docs": g["docs"],
             "updated": g["updated"], "actionable": actionable,
+            "refCandidates": len(ref_cands),
+            "producedRefCandidates": len(produced_refs),
+            "producedRefs": [str(c.get("ref_id") or "") for c in produced_refs if c.get("ref_id")],
             "why": "；".join(d["why"] for d in g["docs"] if d["why"]),
         })
     rows.sort(key=lambda r: r["updated"], reverse=True)
@@ -164,18 +195,22 @@ def render_text(rows, unreadable, show_all: bool):
         out.append("没有可沉淀的单：有结论的都沉淀过了，或者结论还没落到报告与候选上。")
         return "\n".join(out)
     out.append(f"可沉淀 {len([r for r in sel if r['actionable']])} 组 / 共 {len(sel)} 组"
-               + ("（含已沉淀与无可沉淀）" if show_all else ""))
+               + ("（含已沉淀、先验已产出与无可沉淀）" if show_all else ""))
     out.append("")
     for i, r in enumerate(sel, 1):
-        flag = "可沉淀" if r["actionable"] else ("已沉淀" if set(r["sedimented"]) - {"none"} else "无素材")
+        produced_all = bool(r.get("refCandidates")) and r.get("producedRefCandidates", 0) >= r["refCandidates"]
+        flag = "可沉淀" if r["actionable"] else (
+            "已沉淀" if set(r["sedimented"]) - {"none"} else ("已产出先验词条" if produced_all else "无素材"))
         why = r["why"] or "—"
-        if not r["actionable"] and not (set(r["sedimented"]) - {"none"}):
+        if not r["actionable"] and not (set(r["sedimented"]) - {"none"}) and not produced_all:
             why += "（没有报告与候选，起草前得先读 trace 事件）"
         out.append(f"[{i}] {flag}  {why}")
         out.append(f"    session: {' '.join(r['sessions'])}")
         out.append(f"    状态: {'/'.join(r['statuses'])}   沉淀: {'/'.join(r['sedimented'])}   更新: {r['updated'][:16]}")
         for rep in r["reports"]:
             out.append(f"    报告: {rep['file']}")
+        if r.get("producedRefs"):
+            out.append("    已产出: " + " ".join(r["producedRefs"]))
     act = [r for r in sel if r["actionable"]]
     if act:
         ids = [s for r in act for s in r["sessions"]]

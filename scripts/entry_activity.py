@@ -163,7 +163,8 @@ def now_run() -> str:
 
 
 def deployment(root: Path) -> str:
-    """本次运行的部署标识：先取 `ASCEND_SLEUTH_DEPLOYMENT`，其次**主检出**目录名。
+    """本次运行的部署标识：先取 `ASCEND_SLEUTH_DEPLOYMENT`，其次
+    `sleuth.config.yaml` 的 `deployment.name`，最后**主检出**目录名。
 
     不取当前 worktree 的目录名：本项目要求改动走 worktree，按 worktree 取名会把同一部署拆成
     多条排行（`docs/mechanism/diagnosis-observability.md` 3.3）。
@@ -171,6 +172,14 @@ def deployment(root: Path) -> str:
     env = (os.environ.get("ASCEND_SLEUTH_DEPLOYMENT") or "").strip()
     if env:
         return env
+    try:
+        import sleuth_config as SC
+        config = SC.load_config(Path(root))
+        name = ((config.get("deployment") or {}).get("name") or "").strip()
+        if name:
+            return name
+    except (ImportError, Exception):
+        pass
     main = main_checkout(Path(root))
     return Path(main or root).resolve().name
 

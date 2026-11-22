@@ -18,5 +18,11 @@ repos:
       - {host: github, owner: vllm-project, repo: vllm-ascend}
     aliases: [vllm-ascend]
     why: vLLM 的昇腾适配层（现场问题最常落在这里）
+    discover:
+      any_of: [waiting, remote, kvs, finished, recving, ascendstore,
+               unquantizedfusedmoemethod, monolithic]
 
-self_test: []
+self_test:
+  - {sig: "WAITING_FOR_REMOTE_KVS", expect: vllm-project/vllm-ascend}
+  - {sig: "UnquantizedFusedMoEMethod has no attribute is_monolithic", expect: vllm-project/vllm-ascend}
+  - {sig: "finished_recving", expect: vllm-project/vllm-ascend}

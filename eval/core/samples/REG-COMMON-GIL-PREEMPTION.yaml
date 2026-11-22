@@ -1,0 +1,37 @@
+id: REG-COMMON-GIL-PREEMPTION
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: msprof docs/zh/best_practices/gil_lock_preemption.md（MindStudio 26.2.0.B060_001）
+input:
+  phenomenon: Python 模型业务迁移至 Ascend 平台后运行耗时偏高、任务吞吐率不足；无算子报错、无数据异常、无硬件资源瓶颈，但业务核心链路存在大量多线程并发操作
+  environment: ''
+  evidence:
+    case: COMMON-GIL-PREEMPTION
+    references:
+    - msprof docs/zh/best_practices/gil_lock_preemption.md（MindStudio 26.2.0.B060_001）
+expected:
+  resolution: 'Python GIL 单时刻单线程执行的特性决定纯 Python 多线程无法利用多核并行算力； 业务多线程逻辑存在缺陷——部分工作线程在执行耗时逻辑期间长期占用
+    GIL 不主动释放， 导致其他业务线程持续抢锁失败、长时间阻塞等待，算力浪费在锁竞争与线程等待中。
+
+
+
+    改业务多线程设计：缩短持锁时间、增加合理释放/让出机制，避免长期占用 GIL。'
+  case: COMMON-GIL-PREEMPTION
+  confidence: maintainer-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: postmortem
+  report_ref: knowledge/common/performance/COMMON-GIL-PREEMPTION.yaml
+  captured_at: '2026-11-19T14:13:03+00:00'
+  kb_rev: unknown
+  sanitized: true
+  redactions: []
+  confidence: maintainer-reviewed
+  extraction: auto
+created_at: '2026-11-19T14:13:03+00:00'
+updated_at: '2026-11-19T14:13:03+00:00'
+history: []
+notes: core regression derived from knowledge/common/performance/COMMON-GIL-PREEMPTION.yaml

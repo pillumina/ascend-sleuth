@@ -1,0 +1,47 @@
+id: REG-VLLM-ASC-10532
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: https://github.com/vllm-project/vllm-ascend/issues/10532
+input:
+  phenomenon: 'vllm-ascend + Mooncake KV Pool（ascend direct / ROCE / K8s 跨节点，如 Qwen3-8B
+    多 pod）推理中途 pod crash：segmentation fault；崩溃前日志：ascend_direct_transport Transfer
+    timeout to: ... / transfer failed and disconnect to: ... / Transfer failed for
+    key ...；native 栈定位：std::_Hashtable<...>::erase → mooncake::AscendDirectTransport::processSliceList；前几个请求正常、超时开始后随机崩溃；增大
+    TP 只降频不解（触发条件=transfer timeout/disconnect 反复出现）'
+  environment: ''
+  evidence:
+    case: VLLM-ASC-10532
+    references:
+    - https://github.com/vllm-project/vllm-ascend/issues/10532
+    - https://github.com/kvcache-ai/Mooncake/pull/1624
+expected:
+  resolution: 'Mooncake native AscendDirectTransport 在 v0.3.9 实现用进程共享的 need_update_metadata_segs_
+    （std::unordered_set<SegmentID>）维护需更新的 segment 元数据，processSliceList() 运行于传输 worker
+    池，transfer timeout/failure 后的失败/disconnect 路径会并发 find/erase/emplace 同一集合， 无锁保护
+    → 原生数据竞争 → _Hashtable::erase 遍历中 segfault。transfer timeout 是触发条件， 崩溃落在 Mooncake
+    ascend direct transport 原生路径。该共享 update set 由 kvcache-ai/Mooncake PR#1624 移除（disconnect
+    时直接删除 stale target segment desc cache）。
+
+
+
+    升级 Mooncake 至含 PR #1624（merged 2026-03-09）的版本（建议最新 Mooncake release）。调大 ASCEND_TRANSFER_TIMEOUT
+    / 改善网络稳定性可降低 timeout 触发频率，但无法消除旧实现的 native race。'
+  case: VLLM-ASC-10532
+  confidence: maintainer-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: postmortem
+  report_ref: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10532.yaml
+  captured_at: '2026-11-19T14:13:03+00:00'
+  kb_rev: unknown
+  sanitized: true
+  redactions: []
+  confidence: maintainer-reviewed
+  extraction: auto
+created_at: '2026-11-19T14:13:03+00:00'
+updated_at: '2026-11-19T14:13:03+00:00'
+history: []
+notes: core regression derived from knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10532.yaml

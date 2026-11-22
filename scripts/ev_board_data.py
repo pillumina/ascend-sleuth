@@ -454,7 +454,7 @@ def full_decisions(decisions):
 def audit_gaps(doc, days_open):
     """卡自审：机制要求 vs 实际字段的缺口（诚实退化——面板报出来，不粉饰）。
 
-    依据 docs/mechanism/pipeline.md §7「生命周期完整性规则」与 verify_proposals.py：
+    依据 docs/mechanism/records.md「生命周期完整性规则」与 verify_proposals.py：
       - 终态卡必须有 decision 记录（审计缺口）
       - validated 卡 actual_cost 必填（成本审计缺口）
       - 执行/验证完成而卡停在 in_experiment = 卡不完整（机制推进，不靠 agent 记得改状态）
@@ -507,7 +507,7 @@ def collect_ideas(root):
             "id": d.get("id"),
             "title": d.get("title"),
             "layer": d.get("layer"),
-            # 卡契约里要求的目标组件（execution.md 定为必填）。历史上 0 张卡有它，
+            # 卡契约里要求的目标组件（records.md 定为必填）。历史上 0 张卡有它，
             # 于是"同组件先例咨询"没有可查的键——本字段透出后，--impact 与面板都能按它聚合；
             # 缺失时回退到 surface_basis.path（卡文本指到的落点），仍然可查。
             "target_component": d.get("target_component"),
@@ -560,6 +560,19 @@ def collect_ideas(root):
     return ideas
 
 
+def card_conclusions(root, card):
+    """按 EV 卡号读最近结论；读不到返回空表。"""
+    try:
+        sys.path.insert(0, str(root / "scripts"))
+        from evolve.readback import summary
+        from evolve.records import ConclusionStore
+        rows = [r for r in ConclusionStore.for_root(root).read() if r.get("card") == card]
+    except Exception:
+        return []
+    rows.sort(key=lambda r: str(r.get("at") or ""))
+    return [summary(r) for r in rows[-5:]][::-1]
+
+
 def collect_idea_detail(root, idea_id):
     """单卡全文（点开才拉）：完整决策链 + 验证标准 + 证据轨迹 + 门控。"""
     for f in sorted((root / "proposals" / "ideas").glob("*.yaml")):
@@ -593,6 +606,7 @@ def collect_idea_detail(root, idea_id):
             "supersedes": d.get("supersedes") or [],
             "superseded_by": d.get("superseded_by"),
             "file": f.name,
+            "conclusions": card_conclusions(root, idea_id),
         }
     return None
 
@@ -847,6 +861,43 @@ def collect_s2_attrib(root):
     return d.get("attributions") if isinstance(d, dict) else None
 
 
+def collect_samples(root: Path):
+    """评测样本队列：读本地样本库，现算完整性与查重。读不到就给空表。"""
+    base = root / ".s2-replay" / "evolve"
+    if not (base / "samples").is_dir():
+        return {"present": False, "note": "本地还没有样本库（.s2-replay/evolve/samples）", "items": []}
+    try:
+        sys.path.insert(0, str(root / "scripts"))
+        from evolve.intake import completeness
+        from evolve.samples import SampleStore
+        store = SampleStore(base=base)
+        samples = store.read_all()
+    except Exception as e:
+        return {"present": False, "note": f"样本库不可用: {e}", "items": []}
+    items = []
+    for sample in samples:
+        try:
+            state = completeness(sample, store=store, root=root)
+        except Exception:
+            state = {"state": "unknown", "reasons": [], "duplicates": []}
+        items.append({
+            "id": sample.id,
+            "status": sample.status,
+            "origin": sample.origin,
+            "purpose": sample.purpose,
+            "source": sample.source,
+            "state": state.get("state"),
+            "reasons": state.get("reasons") or [],
+            "duplicates": state.get("duplicates") or [],
+            "created_at": sample.created_at,
+            "updated_at": sample.updated_at,
+        })
+    order = {"candidate": 0, "active": 1, "retired": 2, "rejected": 3}
+    items.sort(key=lambda item: (order.get(item["status"], 9),
+                                 str(item.get("updated_at") or ""), item["id"]))
+    return {"present": True, "items": items, "count": len(items)}
+
+
 def main():
     ap = argparse.ArgumentParser(description="自演进看板数据汇总")
     ap.add_argument("--root", type=Path, default=Path("."))
@@ -871,6 +922,7 @@ def main():
     s2_attrib = collect_s2_attrib(root)
     skill_exec = collect_skill_exec(root)
     measure_runs = collect_measure_runs(root)
+    samples = collect_samples(root)
 
     # 卡状态机分布（词表以 verify_proposals 为准；unknown 说明卡有 schema 问题）
     status_count = {}
@@ -888,6 +940,7 @@ def main():
         "tally": tally,
         "s2_attrib": s2_attrib,
         "skill_exec": skill_exec,
+        "samples": samples,
         "measure_runs": measure_runs,
         "stale_days": STALE_DAYS,
         "surface_window_days": SURFACE_WINDOW_DAYS,

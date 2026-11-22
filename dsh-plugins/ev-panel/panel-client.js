@@ -35,7 +35,7 @@ return {
     }
     const METHOD_LABELS = {
       golden_replay: 'golden 回放', metrics_compare: '指标对照',
-      issue_replay: 'S2 issue 回放', scan_review: '扫描 + 人审',
+      issue_replay: 'issue 回放', scan_review: '扫描 + 人审',
     }
     const DEC_TYPE = {
       proposal: { label: '提案', color: 'var(--c-purple)', acc: 'var(--acc-purple)' },
@@ -542,6 +542,20 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
             d.validation && d.validation.rollback ? React.createElement('div', { className: 'ev-kv' },
               React.createElement('span', { className: 'k' }, '回滚：'), d.validation.rollback) : null,
           ) : null,
+          // —— 结论回读：按卡号绑定的 Conclusion
+          (d && d.conclusions && d.conclusions.length) ? React.createElement('div', { className: 'ev-box' },
+            React.createElement(SectionLabel, null, '结论回读'),
+            d.conclusions.map((c, i) => React.createElement('div', { key: i, className: 'ev-kv' },
+              React.createElement(Pill, {
+                color: c.decision === 'accept' ? 'var(--c-green)' : c.decision === 'reject' ? 'var(--c-red)' : 'var(--c-amber)',
+              }, c.decision || '—'),
+              ' ', c.b + '/' + c.c + '/' + c.n + ' · ',
+              c.model || 'unknown',
+              c.cost && c.cost.baseline !== undefined
+                ? ' · 成本 ' + fmtTokens(c.cost.baseline) + '→' + fmtTokens(c.cost.candidate)
+                : '',
+            )),
+          ) : null,
           // —— 触发信号：回答"为什么会有这张卡"
           (d && d.source_signals && d.source_signals.length) ? React.createElement('div', null,
             React.createElement(SectionLabel, { color: 'var(--br)' }, '触发信号'),
@@ -638,6 +652,77 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
               ) : null,
             ),
       )
+    }
+
+
+    const SAMPLE_STATE_LABEL = {
+      ready: '可提交', needs_answer: '待补根因与修复', needs_sanitize: '待脱敏',
+      needs_source: '缺来源', non_diagnostic: '无可判别现象', duplicate: '已存在同来源',
+      absorbed: '已进知识库', stale: '来源失效', unknown: '未知',
+    }
+
+    let sampleQueueError = ''
+    let sampleQueueBusy = false
+
+    function SampleQueue({ samples, sessionId, onReload }) {
+      const data = samples || {}
+      const items = data.items || []
+      const counts = items.reduce((acc, item) => {
+        acc[item.status] = (acc[item.status] || 0) + 1
+        return acc
+      }, {})
+      function act(item, action) {
+        if (sampleQueueBusy) return
+        sampleQueueBusy = true
+        host.call('ev-sample-action', {
+          sessionId, id: item.id, action,
+          export: action === 'promote' && (item.purpose === 'test' || item.purpose === 'regression'),
+        }).then(r => {
+          if (r && r.ok) {
+            sampleQueueError = ''
+          } else {
+            sampleQueueError = (r && r.error) || '样本操作失败'
+          }
+          sampleQueueBusy = false
+          if (onReload) onReload()
+        }).catch(e => {
+          sampleQueueError = String((e && e.message) || e)
+          sampleQueueBusy = false
+          if (onReload) onReload()
+        })
+      }
+      return React.createElement(Section, { title: '评测样本' },
+        React.createElement('div', { className: 'ev-kv', style: { paddingBottom: 6 } },
+          '候选 ', React.createElement('b', null, counts.candidate || 0),
+          ' · 已入池 ', React.createElement('b', null, counts.active || 0),
+          ' · 共 ', React.createElement('b', null, items.length), ' 条'),
+        data.present === false ? React.createElement('div', { className: 'ev-empty' }, data.note || '样本库不可用') : null,
+        sampleQueueError ? React.createElement('div', { className: 'ev-err', style: { padding: '4px 0' } }, sampleQueueError) : null,
+        items.slice(0, 12).map((item) => React.createElement('div', {
+          key: item.id, className: 'ev-kv',
+          style: { padding: '4px 0', borderBottom: '1px dashed var(--bd)' },
+          title: item.source + (item.duplicates && item.duplicates.length ? ' · 重复：' + item.duplicates.join(', ') : ''),
+        },
+          React.createElement('b', null, item.id), ' · ',
+          SAMPLE_STATE_LABEL[item.state] || item.state,
+          ' · ', item.status + '/' + item.purpose,
+          ' · ', String(item.source || '').slice(-48),
+          item.status === 'candidate' ? React.createElement('span', { style: { marginLeft: 8 } },
+            React.createElement('button', {
+              type: 'button', className: 'ev-btn', style: { padding: '1px 6px' },
+              disabled: sampleQueueBusy,
+              onClick: () => act(item, 'approve'),
+            }, '通过复核'),
+            React.createElement('button', {
+              type: 'button', className: 'ev-btn', style: { padding: '1px 6px', marginLeft: 4 },
+              disabled: sampleQueueBusy,
+              onClick: () => act(item, 'reject'),
+            }, '退回修改')) : null,
+          item.status === 'active' && item.origin === 'field' ? React.createElement('button', {
+            type: 'button', className: 'ev-btn', style: { marginLeft: 8, padding: '1px 6px' },
+            disabled: sampleQueueBusy,
+            onClick: () => act(item, 'promote'),
+          }, '升 core') : null)))
     }
 
     // ============ ③ 自演进度量 ============
@@ -853,7 +938,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       if (!hasTally && !hasS2) {
         return React.createElement(Section, { title: '流程演进信号' },
           React.createElement('div', { className: 'ev-empty' },
-            '尚无归因事件（需 S1 反馈归因或 S2 replay 路由未命中累积后产生）。'),
+            '尚无归因事件（需现场反馈归因或 issue 回放路由未命中累积后产生）。'),
         )
       }
       return React.createElement(Section, { title: '流程演进信号' },
@@ -865,7 +950,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
             React.createElement('span', { className: 'k', style: { marginLeft: 'auto' } }, (c.traces || c.source_traces || []).length + ' 来源'),
           ))) : null,
         hasS2 ? React.createElement('div', null,
-          React.createElement(SectionLabel, null, 'S2 replay 路由归因'),
+          React.createElement(SectionLabel, null, 'issue 回放路由归因'),
           s2Attrib.map((a, i) => React.createElement('div', { key: i, className: 'ev-kv', style: { padding: '3px 0' } },
             '#' + a.issue + ' → ' + a.component + '：' + (a.note || '')))) : null,
       )
@@ -1198,6 +1283,8 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
           React.createElement(TimelineTrend, { timeline: data.timeline })),
         React.createElement('div', { className: 'ev-rise' },
           React.createElement(CapacitySummary, { capacity: data.capacity })),
+        React.createElement('div', { className: 'ev-rise' },
+          React.createElement(SampleQueue, { samples: data.samples, sessionId: sessionId, onReload: () => load(true) })),
         React.createElement('div', { className: 'ev-rise' },
           React.createElement(TallySection, { tally: data.tally, s2Attrib: data.s2_attrib })),
       )

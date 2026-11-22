@@ -1,0 +1,92 @@
+# VLLM-ASC-13976 —— DSpark 投机解码首请求崩溃：可选模型 API get_draft_attn_causal() 被无条件调用，legacy 非因果 DSpark 模型未实现（dspark_proposer.py:437）
+# 来源: https://github.com/vllm-project/vllm-ascend/issues/13976（closed completed，2026-10-13）
+# fix 跟踪: PR #13935（[BugFix][SpecDecode] Avoid DSpark crash when causality API is absent，main，merged 2026-08-12，e76d8da93）
+#           + PR #13831（同内容回迁 releases/v0.26.0rc，merged 2026-08-12，0a16426b4）；v0.26.0rc1 起生效
+# 回放结论: 诊断 session 2026-11-04-13976-dspark-causal-api（源码同函数同行对照 86db2ed32:437 无守卫 vs v0.26.0rc1:354-358 有守卫）
+# pre-triage: new_pattern（库内无同根因 case；最近的 VLLM-ASC-14871 也是 code-sync 类 AttributeError，
+#   但缺的是 Request.async_tokens_to_discard、配置是 PD 分离 + recompute_scheduler；VLLM-ASC-12640 同文件但根因是
+#   DP 补齐 metadata 口径，不是可选 API 缺失。增量 = 模型能力可选 API 在 proposer 内被无条件调用）
+
+cases:
+  - id: VLLM-ASC-13976
+    upstream:
+      - repo: vllm-project/vllm-ascend
+        issue: 13976
+        url: https://github.com/vllm-project/vllm-ascend/issues/13976
+    title: "DSpark 投机解码首个请求即崩：vllm_ascend/spec_decode/dspark_proposer.py:437 set_inputs_first_pass 无条件调用可选模型 API get_draft_attn_causal()，legacy 非因果模型 DSparkDeepseekV4ForCausalLM 未实现（AttributeError）；≥ v0.26.0rc1 修复为缺失时回落 causal=False"
+
+    category: interrupt
+    tags: [spec-decode, dspark, optional-api, attributeerror, code-sync, enginecore]
+
+    platforms: ["A2-910B"]
+    compat:
+      - framework: vllm-ascend
+        ranges: ["<0.26.0rc1"]   # 受影响 = 含 #13531、未含 #13935 的构建；现场 86db2ed32（2026-08-10）在其内；修复 = 含 #13935/#13831 的构建（v0.26.0rc1 起）
+
+    investigation_quality: high
+
+    symptoms:
+      - "DSpark 投机解码（--speculative-config '{\"num_speculative_tokens\": 7, \"method\": \"dspark\", \"enforce_eager\": true}'）服务能拉起，第一个 chat 请求即崩：WorkerProc 抛 AttributeError: 'DSparkDeepseekV4ForCausalLM' object has no attribute 'get_draft_attn_causal'，客户端收到 openai.APIError: EngineCore encountered an issue"
+      - "栈尾：vllm_ascend/spec_decode/dspark_proposer.py:437 in set_inputs_first_pass → cad.causal = self.model.get_draft_attn_causal()[0]；上一层是 vllm_ascend/spec_decode/llm_base_proposer.py:803 _propose"
+      - "同命令关闭 DSpark（去掉 --speculative-config）或只开 MTP（method=deepseek_mtp）均正常；报者用两种模型各验证过一次"
+      - "现场环境：vLLM 0.26.0、vllm-ascend 0.19.1rc2.dev1446+g86db2ed32、CANN 9.0.1、npu-smi 25.3.rc1.2、910B4 ×8（TP8 / DP1 / EP）"
+
+    references:
+      - "https://github.com/vllm-project/vllm-ascend/issues/13976"
+      - "https://github.com/vllm-project/vllm-ascend/pull/13935"
+      - "https://github.com/vllm-project/vllm-ascend/pull/13831"
+
+    verification:
+      source: upstream-fix-merged
+      detail: "#13935（main，merged 2026-08-12T08:49:58Z）/ #13831（releases/v0.26.0rc，merged 2026-08-12T01:32:12Z）；v0.26.0rc1 源码核对：dspark_proposer.py:354-358 改为 hasattr 守卫、缺失时 cad.causal=False"
+
+    quickly_check:
+      primary:
+        command_template: "grep -E \"AttributeError: 'DSparkDeepseekV4ForCausalLM' object has no attribute 'get_draft_attn_causal'\" {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:AttributeError: 'DSparkDeepseekV4ForCausalLM' object has no attribute 'get_draft_attn_causal'"
+      fallback:
+        command_template: "grep -E 'get_draft_attn_causal|dspark_proposer\\.py.*set_inputs_first_pass' {{log_path}}"
+        rank_selector: all_failed
+        expected: "regex:(get_draft_attn_causal|dspark_proposer\\.py.*set_inputs_first_pass)"
+
+    diagnosis:
+      - step: 1
+        check: "前提核验：在部署构建里查 vllm_ascend/spec_decode/dspark_proposer.py 是否含 hasattr(self.model, \"get_draft_attn_causal\") 守卫（命令见 source_ref 指向的同一文件；现场 86db2ed32 只有 `cad.causal = self.model.get_draft_attn_causal()[0]`）"
+        expected: "旧构建无 hasattr 守卫 → 本 case 适用；已有守卫 → 本 case 不适用，转查模型侧是否实现该 API 或其返回值"
+        fix_on_mismatch: "升级 vllm-ascend 到 ≥ v0.26.0rc1，或回移 #13935 的 hasattr 守卫"
+        rollback: "恢复原镜像/原 dspark_proposer.py；旧构建首个 DSpark 请求必崩，回退只用于恢复关闭 DSpark 时的基线"
+      - step: 2
+        check: "症状判别：是否首个 chat 请求即崩、且关闭 DSpark 或只开 MTP 同命令正常？"
+        expected: "是——崩溃点在首个 draft 的 set_inputs_first_pass，不是运行期压测崩溃、不是 OOM、无 NPU 错误码"
+      - step: 3
+        check: "修复路径：升级到含 #13935（main）/ #13831（v0.26.0 分支回迁）的构建并重启服务；不能升级时回移 hasattr 守卫（模型不报 causality 时置 cad.causal=False）"
+        expected: "升级后首个 DSpark 请求正常返回，worker 日志不再出现 get_draft_attn_causal 的 AttributeError"
+      - step: 4
+        check: "边界判别：若已含守卫仍崩，或报错变成模型 get_draft_attn_causal() 返回值/类型问题，属模型侧 DSpark 实现或 causality 返回值异常，勿按本 case 重复升级"
+        note: "本 case 只覆盖「proposer 无条件调用可选 API」这一形态；VLLM-ASC-12640（DP>1 draft metadata 口径）与 VLLM-ASC-16447（DSpark IndexCheck 越界 507035）是同一路径上的不同根因"
+
+    severity: service-affecting
+    fix_side_effects: [requires-restart, requires-code-change]
+    fix_type: code-patch
+
+    root_cause: >
+      vllm-ascend 的 DSpark proposer 在 PR #13531 后于
+      vllm_ascend/spec_decode/dspark_proposer.py:437 的 set_inputs_first_pass 无条件调用
+      可选模型 API get_draft_attn_causal()。DSparkDeepseekV4ForCausalLM 是 legacy 非因果
+      DSpark 模型，没有实现该 API（按维护者说明，只有 GLM-5.2 / Kimi-K3 的 DSpark 模型实现），
+      于是首个 draft 就抛 AttributeError；异常发生在 Worker 进程，WorkerProc 退出，引擎侧报
+      EngineCore encountered an issue。关闭 DSpark 或只开 MTP 不进入该函数路径，所以正常。
+
+    fix: >
+      升级 vllm-ascend 到 ≥ v0.26.0rc1（#13935 main 合并 e76d8da93、#13831 回迁
+      releases/v0.26.0rc 合并 0a16426b4，均 merged 2026-08-12）：修复把该 API 当可选能力，
+      模型报了 causality 就用，没报就回落原非因果行为 cad.causal=False。不能升级时，把
+      #13935 的 hasattr 守卫回移到现场构建的同一文件；这是改框架源码，要记录改动并在后续升级时移除。
+    rollback: "恢复原镜像或原 dspark_proposer.py；旧构建首个 DSpark 请求必崩，回退只用于恢复关闭 DSpark 时的基线"
+
+    source_ref:
+      repo: vllm-project/vllm-ascend
+      ref: "86db2ed32"
+      file: vllm_ascend/spec_decode/dspark_proposer.py
+      line: 437

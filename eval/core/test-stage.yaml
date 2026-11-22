@@ -1,0 +1,14 @@
+status: not_started
+pool: ["19562", "19498", "13478", "19298", "21558", "22015"]
+sealed_sha256:
+  "19562": "35d077201345925cf35ddafd94a2ff65aa1f9531cf79a0a09f1043f20c226d98"
+  "19498": "c28f5d26c5398c7c110e9a3ea703a8a60539657223ef2084fe38380d9fa6cddd"
+  "13478": "d17ed29df1fe596e5f07a63e6e6c29b13a4c1eeed03ce7da1f1883d0a92e0018"
+  "19298": "33cb18ca4b56456e11772b2c87b72c2c5923f1a9d338055589914802375faee2"
+  "21558": "dc4f9a86fe6924d4df2bcca009dfdc025852261bbad61b9a3180dc7d4fa78726"
+  "22015": "af0ab928f3c7ff8cc803f118678013c2407f202b131fa5889e988319b6db3389"
+selected: ["19562", "19498", "13478", "19298"]
+planned: 4
+required: ["baseline_trace", "candidate_trace"]
+reason: "先按 4 条跑终判，另 2 条留作扩展；pilot 只消费外部 trace，6 条 test 都还没有 baseline/candidate 诊断输出。"
+at: "2026-11-20"

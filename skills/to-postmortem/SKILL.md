@@ -155,9 +155,8 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
 补 case 走本流程。**归纳 reference 不在这一步做**——草稿还在 inbox、没升格，
 `to-reference` 的 `sources[].cases` 会引用一个不存在的 id（groom 拒掉那条草稿后更糟）；
 同族信号只写进报告，等升格后由 `knowledge-groom` 的 R8 提炼（那时 case id 已在 `knowledge/`）。
-只有信号连带要求改**行为面**（triage 分支、skill 步骤、闸门绑定、索引形态）时，才把观察交给
-`python3 scripts/evolve_intake.py record …`（按部署声明落卡或落台账，别直接调 `ev_proposal.py --new`；
-产卡后接 golden/S2 验证 → 进攒批）；
+行为面（triage 分支、skill 步骤、闸门绑定、索引形态）只记录信号，交给后续显式
+`/skill:self-evolve` 分诊；收尾不产 EV 卡、不跑 RSI。
 无信号则报告加一行"evolve-check：无演进信号"。这是流程默认收尾，**不需要用户另说
 "改进系统"**——演进由数据触发，像人学习。产出与流程报告一并给出。
 
