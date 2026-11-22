@@ -4,7 +4,7 @@
 // 四个面共用一份数据、一套动作与一条偏好：
 //   1. conversation.input.dock    状态条（可收起，收起状态记住）
 //   2. conversation.input.right   输入区工具条入口（带待回报角标）
-//   3. shell.overlay              诊断总览（全库列表 + 键盘操作 + 改状态）
+//   3. shell.overlay              诊断工作台（全库列表 + 键盘操作 + 改状态）
 //   4. 共享的写入菜单与表单：收尾 / 重开 / 沉淀状态；回报结果生成指令（该轴暂无脚本写入口）
 //
 // 读：Host 半的 copilot-state（判据在 scripts/_trace_state.py）。
@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/sleuth-copilot'
     const NS = 'sleuth-copilot'
     // 与 package.json 的 version 一起改；页面上的版本串是判断装没装到新版的依据。
-    const PLUGIN_VERSION = '0.23.0'
+    const PLUGIN_VERSION = '0.25.1'
     const POLL_MS = 10000
     // 查合入的逐条进度：主 RPC 在跑时每 500 ms 问一次进度端点；连续 3 次失败就静默停轮询，
     // 不打断整批（最终结果仍以主 RPC 为准）。
@@ -40,6 +40,64 @@ window.__ModuleLoader__.load({
     // 离线渲染没有布局引擎，拿不到尺寸时退回这个字数近似：四行在 400–510px 列宽下约 110–150 字，
     // 取小值，宁可多给一个入口也不把内容藏起来。
     const LEDE_TOGGLE_MIN = 110
+    // 选中行取时间线四层的去抖：方向键连按时只发最后一次，不堆子进程。
+    const LAYERS_DEBOUNCE_MS = 130
+
+    // ── 读屏播报（常驻 live region）────────────────────────────────────────
+    // 读屏只在「容器已存在、内容发生变化」时播报；节点带着文字一起创建时常常不播。
+    // 因此在 body 上放两个常驻容器（polite / assertive），所有结果与错误都写它们；
+    // 视觉上的提示行 / toast 仍按原样出现和消失。
+    const ANN_POLITE_ID = 'dsh-sleuth-copilot-status'
+    function announcerNode() {
+      let node = typeof document.getElementById === 'function' ? document.getElementById(ANN_POLITE_ID) : null
+      if (node) return node
+      node = document.createElement('div')
+      node.id = ANN_POLITE_ID
+      node.className = 'scp-sr-only'
+      node.setAttribute('role', 'status')
+      node.setAttribute('aria-live', 'polite')
+      node.setAttribute('aria-atomic', 'true')
+      if (!document.body || typeof document.body.appendChild !== 'function') return null
+      document.body.appendChild(node)
+      return node
+    }
+    // 区域要在第一条消息之前就存在，否则读屏不播报；状态条挂载时就把它建好。
+    function ensureAnnouncementRegions() {
+      if (typeof document === 'undefined') return
+      try { announcerNode() } catch { /* 替身渲染环境没有可用 DOM */ }
+    }
+    // 插件卸载时把容器清掉：样式表已卸载，留着带文字的节点会变成页面底部的可见文字。
+    function removeAnnouncementRegions() {
+      if (typeof document === 'undefined') return
+      try {
+        const node = typeof document.getElementById === 'function' ? document.getElementById(ANN_POLITE_ID) : null
+        if (node && node.parentNode && typeof node.parentNode.removeChild === 'function') node.parentNode.removeChild(node)
+      } catch { /* 忽略 */ }
+    }
+    function announce(text) {
+      const value = String(text || '').trim()
+      if (!value || typeof document === 'undefined') return
+      try {
+        const node = announcerNode()
+        if (!node) return
+        // 同一句话连续出现（连点两次复制）时先清空，否则读屏认为内容没变。
+        node.textContent = ''
+        const write = () => { node.textContent = value }
+        if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(write)
+        else write()
+      } catch { /* 替身渲染环境没有可用 DOM，忽略 */ }
+    }
+    // 查合入的进度（n/m）每 500ms 变一次：播报节流到 3 秒，避免读屏刷屏。
+    let lastCheckAnnounceAt = 0
+    // 同一角色可能同时存在两份表单（状态条菜单与工作台菜单），字段 id 不能只按表单 kind 生成。
+    let formSeq = 0
+    function announceCheckProgress(run) {
+      if (!run || !run.total) return
+      const now = Date.now()
+      if (now - lastCheckAnnounceAt < 3000) return
+      lastCheckAnnounceAt = now
+      announce(tr('sediment.checkingProgress', { n: Math.min(run.seen, run.total), m: run.total }))
+    }
 
     // ── 文案 ────────────────────────────────────────────────────────────────
     const ZH = {
@@ -53,7 +111,7 @@ window.__ModuleLoader__.load({
       'picker.empty': '没有匹配的诊断。',
       'picker.current': '当前',
       'picker.followOff': '取消固定',
-      'picker.open': '打开诊断总览',
+      'picker.open': '打开诊断工作台',
       'action.pin': '固定到状态条',
       'action.unpin': '取消固定',
       'hint.pinned': '状态条已固定到这一单。',
@@ -76,12 +134,13 @@ window.__ModuleLoader__.load({
       'hint.keepOn': '状态条展开后常驻：点状态条外不再收起。',
       'hint.keepOff': '状态条不再常驻：点状态条外收起。',
       'action.more': '更多操作',
-      'action.ledger': '诊断总览',
+      'action.ledger': '诊断工作台',
       'action.copySummary': '复制结论摘要',
       'action.copyResume': '复制续接指令',
       'action.copySediment': '复制沉淀指令',
       'action.copyPromote': '复制升格指令',
       'action.copyFeedback': '复制回报指令',
+      'action.copySample': '复制候选样本指令',
       'action.openSession': '切到该诊断的会话',
       'action.closeMenu': '关闭菜单',
       'waiting': '在等',
@@ -94,6 +153,21 @@ window.__ModuleLoader__.load({
       'stepsShort': '{n}/{m}',
       'chip.miss': '知识库未覆盖',
       'chip.excluded': '已排除 {n} 条',
+      'chip.sample': '候选样本',
+      'sample.pop.title': '候选样本',
+      'sample.pop.state': '状态',
+      'sample.pop.reasons': '原因',
+      'sample.pop.duplicates': '重复',
+      'sample.pop.copy': '复制状态命令',
+      'sample.pop.close': '关闭',
+      'chip.sample.ready': '候选样本：可提交',
+      'chip.sample.needs_answer': '候选样本：待补根因与修复',
+      'chip.sample.needs_sanitize': '候选样本：待脱敏',
+      'chip.sample.needs_source': '候选样本：缺来源',
+      'chip.sample.non_diagnostic': '候选样本：无可判别现象',
+      'chip.sample.duplicate': '候选样本：已存在同来源',
+      'chip.sample.absorbed': '候选样本：已进知识库',
+      'chip.sample.stale': '候选样本：来源失效',
       'chip.hit': '命中 {id}',
       'chip.sediment': '可沉淀',
       'chip.feedback': '待回报',
@@ -121,6 +195,7 @@ window.__ModuleLoader__.load({
       'label.severity': '严重级',
       'label.report': '人读报告',
       'label.hasReport': '有',
+      'label.produced': '已产出先验词条',
       'label.noReport': '无',
       'label.none': '未记录',
       'label.queue': '全库',
@@ -166,7 +241,12 @@ window.__ModuleLoader__.load({
       'source.field': '现场验证',
       'source.vendor': '厂商答复',
       'section.overview': '概览',
-      'section.upstream': '上游查证',
+      'section.upstream': '上游与查证',
+      'upstream.note': 'issue · PR · 维护者回复',
+      'upstream.fixCount': '{n} 条',
+      'upstream.noFix': '无上游修复记录',
+      'upstream.expand': '展开剩余 {n} 条',
+      'upstream.collapse': '收起',
       'section.sessions': '会话归属',
       'sessions.origin': '原始会话',
       'sessions.resumed': '续接会话',
@@ -181,7 +261,52 @@ window.__ModuleLoader__.load({
       'hint.sessionService': '当前界面没有切会话的接口。',
       'hint.sessionNoId': '没有会话号，补写后再试。',
       'section.missing': '还缺什么',
-      'section.timeline': '步骤时间线',
+      'section.timeline': '诊断步骤',
+      'section.incident': '现场故障时间线',
+      'section.failureProcess': '故障过程（日志）',
+      'incident.env': '现场环境：',
+      'incident.count': '{n} 条',
+      'incident.unknownCount': '{n} 条时点未知',
+      'incident.noTimeCount': '{n} 条时刻未记录',
+      'incident.unknown': '时点未知',
+      'incident.dateOnly': '时刻未记录',
+      'incident.legacyChip': '未记录',
+      'incident.legacyTitle': '未记录 · 旧单不回填',
+      'incident.legacy': '这单没有现场时间线',
+      'incident.legacyNote': '历史轨迹按当时的记录保留，不回填；缺的时序不猜，现场信息仍看上面的问题背景与证据文件。',
+      'incident.empty': '尚无现场事实',
+      'incident.emptyNote': '现场侧的可观察事件（现象、变更、规避与恢复）还没有写入这一单。',
+      'incident.corrected': '已更正',
+      'incident.foot': '只放现场可观察事件（现象、变更、规避与恢复）。「故障过程（日志）」与「上游与查证」两段在下面；推断与因果判断写在诊断步骤里。',
+      'failureProcess.count': '{n} 条',
+      'failureProcess.clockOff': '日志时间与墙钟不一致',
+      'failureProcess.window': '窗口 {range}',
+      'failureProcess.windowUnknown': '窗口未记录',
+      'failureProcess.foot': '日志原文在证据文件里；这里只留状态转折与重复区间，判断写在诊断步骤里。',
+      'action.expandProcess': '展开过程',
+      'action.collapseProcess': '收起过程',
+      'timelineSource.log': '日志',
+      'timelineSource.user': '用户',
+      'timelineSource.issue': 'issue',
+      'timelineSource.comment': '评论',
+      'timelineSource.commit': '提交',
+      'timelineSource.doc': '文档',
+      'timelineSource.field_test': '现场复测',
+      'timelineSource.observation': '观察记录',
+      'timelineSource.maintainer': '维护者',
+      'timelineSource.vendor': '厂商',
+      'chip.revisions': '修订 {n} 次',
+      'layers.loading': '正在读时间线…',
+      'layers.failed': '读不到时间线：{message}',
+      'layers.failedShort': '读取失败',
+      'truncated.showFirst': '显示前 {n} 条',
+      'history.revision': '修订',
+      'revision.kind.fact_corrected': '事实更正',
+      'revision.kind.conclusion_overturned': '结论翻转',
+      'revision.kind.scope_changed': '范围变更',
+      'revision.kind.severity_changed': '严重级变更',
+      'revision.kind.sediment_changed': '沉淀变更',
+      'revision.removed': '已删除 {id}',
       'materials.none': '没有记下具体材料，按上面的「在等」继续。',
       'action.copyMaterials': '复制清单',
       'action.materialResume': '填入续接指令',
@@ -239,7 +364,7 @@ window.__ModuleLoader__.load({
       'report.none': '这单还没有人读报告。',
       'evidence.none': '本次没记证据文件',
       'candidates.none': '没有沉淀候选',
-      'shortcut.open': '{keys} 打开总览',
+      'shortcut.open': '{keys} 打开工作台',
       'hint.undo': '重新打开；只清掉收尾方式（ending），收尾时间与停止原因保留。',
       'hint.reopened': '已撤销上一次收尾。',
       'hint.readonly': '当前会话是只读档位，改不了状态。',
@@ -292,20 +417,23 @@ window.__ModuleLoader__.load({
       'write.requirements': '（缺：{fields}）',
       'write.permissionHint': '面板写不进这一单（沙箱或文件权限拒绝）。可以生成一条指令，交给会话里的 agent 用脚本写；不会自动发送。',
       'write.permissionRetry': '生成指令（填入输入框）',
-      'palette.title': '诊断总览',
+      'palette.title': '诊断工作台',
       'palette.filterLabel': '筛选',
       'palette.filter.all': '全部',
       'palette.filter.open': '进行中',
       'palette.filter.pending': '待回报',
       'palette.filter.sediment': '可沉淀',
       'palette.empty': '没有符合条件的诊断。',
+      'palette.emptyAll': '还没有诊断记录。跑一次 /diagnose 之后，这里会列出全库的诊断。',
+      'palette.emptyFiltered': '当前筛选没有匹配的诊断。',
+      'palette.clearFilters': '清除筛选与搜索',
       'palette.loading': '正在读 traces/…',
       'palette.unavailable': '读不到 traces/：{message}',
       'palette.count': '共 {n} 单',
       'palette.loadFailed': '读取失败',
       'palette.reading': '正在读取',
-      'palette.close': '关闭诊断总览',
-      'tool.title': '诊断总览',
+      'palette.close': '关闭诊断工作台',
+      'tool.title': '诊断工作台',
       'tool.pending': '{n} 单待回报',
       // ── 沉淀队列（v1）──────────────────────────────────────────────
       'palette.view.diagnosis': '诊断',
@@ -316,6 +444,7 @@ window.__ModuleLoader__.load({
       'sediment.error': '读不到沉淀队列：{message}',
       'sediment.empty': '队列已清空',
       'sediment.emptyHint': '诊断收尾时点「沉淀为 case」，草稿会进入这里等周批。',
+      'sediment.emptyFiltered': '当前筛选没有匹配的草稿。',
       'sediment.goDiagnosis': '去诊断',
       'sediment.history': '最近完成',
       'sediment.target.pick': '有多个远端，先选一个',
@@ -399,12 +528,20 @@ window.__ModuleLoader__.load({
       'diag.batch.fill': '生成批量沉淀指令',
       'diag.batch.sub': '范围 = 当前筛选的 {n} 单；只生成指令，不直接写 trace',
       'diag.batch.subSelected': '范围 = 所选的 {n} 单；只生成指令，不直接写 trace',
+      'diag.batch.fillCount': '沉淀当前筛选 {n} 单',
       'diag.batch.flow': '流程：先按 sediment_batch.py --json 分组与复核，再逐单起草、逐单回写。',
       'diag.batch.boundary': '边界：只写 sedimented 与 updated_at，不改 status、不改 feedback.outcome，也不改知识库。',
       'diag.batch.search': '含搜索词「{q}」',
       'diag.batch.readonly': '只读档位：指令可复制到可写会话执行，回写会被拒绝。',
       // ── 多选与撤销 ────────────────────────────────────────────────
       'sel.check': '勾选「{title}」',
+      'sel.enter': '选择',
+      'sel.enterHint': '进入选择：勾选多行后批量处理',
+      'sel.emptyTitle': '选择要处理的项',
+      'sel.emptyHint': '勾选行前的复选框；空格也能勾焦点行',
+      'sel.exit': '退出选择',
+      'sel.allVisible': '全选当前筛选',
+      'sel.allBatch': '选中这 {n} 单',
       'sel.all': '全选当前筛选 {n} 项',
       'sel.count': '已选 {n} 项',
       'sel.inFilter': '当前筛选 {n} 项',
@@ -502,6 +639,9 @@ window.__ModuleLoader__.load({
       'sediment.table.decision': '决定',
       'sediment.detail.postmortem': 'postmortem',
       'sediment.detail.stale': '需重跑：{reason}',
+      'sediment.row.stale': '评估过期',
+      'sediment.detail.staleLabel': '评估过期',
+      'sediment.detail.stalePrNote': '合入前复核报评估过期时，先重跑 groom 再更新 PR。',
       'sediment.detail.target': '比较基准',
       'sediment.detail.targetWarnings': '目标提示',
       'sediment.targetState.ref_missing': '目标基准不可用',
@@ -539,6 +679,8 @@ window.__ModuleLoader__.load({
       'none': '未记录',
       // 知识库落后提醒：host 半定时检测后由 copilot-state 带下来。
       'kb.behind': '知识库落后 {n} 个提交',
+      'kb.panelBehind': '面板代码落后 {n} 个提交，同步后重启 DSH 才能加载新面板',
+      'kb.checked': '（{time} 核对）',
       'kb.panel': '这批改动含面板代码：同步后重启 DSH 才能加载新面板。',
       'kb.go': '去同步',
       'kb.later': '稍后',
@@ -547,6 +689,7 @@ window.__ModuleLoader__.load({
       'kb.laterUnavailable': '稍后没记上：状态条连不上后台，稍后再试。',
       'kb.missing': '没找到 Ascend Sleuth 整页；确认面板包已安装，或稍后再试。',
       'kb.collapsed': '知识库有更新',
+      'kb.panelCollapsed': '面板代码有更新',
       // 受限档位 fetch 被拒、退回只读探测：远端有新提交、落后数未知。
       'kb.degraded': '远端有新提交（落后数未知）',
       // 连败上屏：连续失败 3 次或权限拒绝时才出现，成功检查后消失。
@@ -566,7 +709,7 @@ window.__ModuleLoader__.load({
       'picker.empty': 'No matching diagnosis.',
       'picker.current': 'Current',
       'picker.followOff': 'Unpin',
-      'picker.open': 'Open diagnosis overview',
+      'picker.open': 'Open the diagnosis workbench',
       'action.pin': 'Pin to the status bar',
       'action.unpin': 'Unpin',
       'hint.pinned': 'The status bar is pinned to this diagnosis.',
@@ -589,12 +732,13 @@ window.__ModuleLoader__.load({
       'hint.keepOn': 'Status bar stays expanded: clicking outside no longer collapses it.',
       'hint.keepOff': 'Status bar no longer stays expanded: clicking outside collapses it.',
       'action.more': 'More actions',
-      'action.ledger': 'Diagnosis overview',
+      'action.ledger': 'Diagnosis workbench',
       'action.copySummary': 'Copy summary',
       'action.copyResume': 'Copy resume command',
       'action.copySediment': 'Copy sediment command',
       'action.copyPromote': 'Copy promote command',
       'action.copyFeedback': 'Copy outcome command',
+      'action.copySample': 'Copy sample intake command',
       'action.openSession': 'Open the diagnosis session',
       'action.closeMenu': 'Close menu',
       'waiting': 'Waiting for',
@@ -607,6 +751,21 @@ window.__ModuleLoader__.load({
       'stepsShort': '{n}/{m}',
       'chip.miss': 'not in knowledge base',
       'chip.excluded': '{n} excluded',
+      'chip.sample': 'Sample',
+      'sample.pop.title': 'Candidate sample',
+      'sample.pop.state': 'State',
+      'sample.pop.reasons': 'Reasons',
+      'sample.pop.duplicates': 'Duplicates',
+      'sample.pop.copy': 'Copy status command',
+      'sample.pop.close': 'Close',
+      'chip.sample.ready': 'Sample: ready',
+      'chip.sample.needs_answer': 'Sample: needs root cause/fix',
+      'chip.sample.needs_sanitize': 'Sample: needs sanitizing',
+      'chip.sample.needs_source': 'Sample: missing source',
+      'chip.sample.non_diagnostic': 'Sample: no diagnostic signal',
+      'chip.sample.duplicate': 'Sample: same source exists',
+      'chip.sample.absorbed': 'Sample: already in knowledge',
+      'chip.sample.stale': 'Sample: source missing',
       'chip.hit': 'Hit {id}',
       'chip.sediment': 'can sediment',
       'chip.feedback': 'outcome pending',
@@ -634,6 +793,7 @@ window.__ModuleLoader__.load({
       'label.severity': 'severity',
       'label.report': 'report',
       'label.hasReport': 'yes',
+      'label.produced': 'Produced',
       'label.noReport': 'no',
       'label.none': 'not recorded',
       'label.queue': 'workspace',
@@ -679,7 +839,12 @@ window.__ModuleLoader__.load({
       'source.field': 'Field verification',
       'source.vendor': 'Vendor reply',
       'section.overview': 'Overview',
-      'section.upstream': 'Upstream',
+      'section.upstream': 'Upstream and verification',
+      'upstream.note': 'issue · PR · maintainer replies',
+      'upstream.fixCount': '{n} item(s)',
+      'upstream.noFix': 'No upstream fix recorded',
+      'upstream.expand': 'Show the other {n}',
+      'upstream.collapse': 'Collapse',
       'section.sessions': 'Session attribution',
       'sessions.origin': 'Origin session',
       'sessions.resumed': 'Resumed in',
@@ -694,7 +859,52 @@ window.__ModuleLoader__.load({
       'hint.sessionService': 'This interface has no session-switch hook.',
       'hint.sessionNoId': 'No session id; write one back and retry.',
       'section.missing': 'Still missing',
-      'section.timeline': 'Step timeline',
+      'section.timeline': 'Diagnosis steps',
+      'section.incident': 'Incident timeline',
+      'section.failureProcess': 'Failure process (logs)',
+      'incident.env': 'Environment: ',
+      'incident.count': '{n} item(s)',
+      'incident.unknownCount': '{n} with unknown time',
+      'incident.noTimeCount': '{n} with date only',
+      'incident.unknown': 'time unknown',
+      'incident.dateOnly': 'time not recorded',
+      'incident.legacyChip': 'not recorded',
+      'incident.legacyTitle': 'not recorded · old trace, not backfilled',
+      'incident.legacy': 'No incident timeline in this trace',
+      'incident.legacyNote': 'The trace is kept as recorded and not backfilled; the timeline is not guessed. The background and evidence above still stand.',
+      'incident.empty': 'No incident facts yet',
+      'incident.emptyNote': 'No field-side observable event (symptom, change, workaround, recovery) has been written to this trace yet.',
+      'incident.corrected': 'corrected',
+      'incident.foot': 'Field-side observable events only (symptom, change, workaround, recovery). Logs and upstream verification are the next two sections; inference belongs to the diagnosis steps.',
+      'failureProcess.count': '{n} item(s)',
+      'failureProcess.clockOff': 'log clock differs from wall clock',
+      'failureProcess.window': 'Window {range}',
+      'failureProcess.windowUnknown': 'Window not recorded',
+      'failureProcess.foot': 'Raw log lines live in the evidence files; only state turns and repeat spans are kept here. Judgement belongs to the diagnosis steps.',
+      'action.expandProcess': 'Show process',
+      'action.collapseProcess': 'Hide process',
+      'timelineSource.log': 'log',
+      'timelineSource.user': 'user',
+      'timelineSource.issue': 'issue',
+      'timelineSource.comment': 'comment',
+      'timelineSource.commit': 'commit',
+      'timelineSource.doc': 'doc',
+      'timelineSource.field_test': 'field test',
+      'timelineSource.observation': 'observation',
+      'timelineSource.maintainer': 'maintainer',
+      'timelineSource.vendor': 'vendor',
+      'chip.revisions': 'revised {n}×',
+      'layers.loading': 'Reading the timeline…',
+      'layers.failed': 'Cannot read the timeline: {message}',
+      'layers.failedShort': 'read failed',
+      'truncated.showFirst': 'showing the first {n}',
+      'history.revision': 'revision',
+      'revision.kind.fact_corrected': 'fact corrected',
+      'revision.kind.conclusion_overturned': 'conclusion overturned',
+      'revision.kind.scope_changed': 'scope changed',
+      'revision.kind.severity_changed': 'severity changed',
+      'revision.kind.sediment_changed': 'sediment changed',
+      'revision.removed': 'removed {id}',
       'materials.none': 'No specific material recorded; continue from Waiting above.',
       'action.copyMaterials': 'Copy list',
       'action.materialResume': 'Fill resume command',
@@ -752,7 +962,7 @@ window.__ModuleLoader__.load({
       'report.none': 'No report yet.',
       'evidence.none': 'No evidence files recorded',
       'candidates.none': 'No sediment candidates',
-      'shortcut.open': '{keys} opens the overview',
+      'shortcut.open': '{keys} opens the workbench',
       'hint.undo': 'Reopened; only the closing kind (ending) is cleared; the close time and stop reason stay.',
       'hint.reopened': 'The last close was undone.',
       'hint.readonly': 'This session is read-only; state cannot be changed.',
@@ -805,20 +1015,23 @@ window.__ModuleLoader__.load({
       'write.requirements': ' (missing: {fields})',
       'write.permissionHint': 'The panel cannot write this trace (refused by the sandbox or file permissions). Generate a command so the agent in this session can write it with the script; nothing is sent automatically.',
       'write.permissionRetry': 'Generate a command (fill input)',
-      'palette.title': 'Diagnosis overview',
+      'palette.title': 'Diagnosis workbench',
       'palette.filterLabel': 'Filter',
       'palette.filter.all': 'All',
       'palette.filter.open': 'Open',
       'palette.filter.pending': 'Outcome pending',
       'palette.filter.sediment': 'To sediment',
       'palette.empty': 'No diagnosis matches.',
+      'palette.emptyAll': 'No diagnoses yet. Run /diagnose once and this list shows every diagnosis.',
+      'palette.emptyFiltered': 'No diagnosis matches the current filter.',
+      'palette.clearFilters': 'Clear filters and search',
       'palette.loading': 'Reading traces/…',
       'palette.unavailable': 'Cannot read traces/: {message}',
       'palette.count': '{n} total',
       'palette.loadFailed': 'Read failed',
       'palette.reading': 'Reading…',
-      'palette.close': 'Close the diagnosis overview',
-      'tool.title': 'Diagnosis overview',
+      'palette.close': 'Close the diagnosis workbench',
+      'tool.title': 'Diagnosis workbench',
       'tool.pending': '{n} pending outcomes',
       // ── Sediment queue (v1) ────────────────────────────────────────
       'palette.view.diagnosis': 'Diagnosis',
@@ -829,6 +1042,7 @@ window.__ModuleLoader__.load({
       'sediment.error': 'Cannot read the sediment queue: {message}',
       'sediment.empty': 'Queue is clear',
       'sediment.emptyHint': 'Use "Draft a case" at diagnosis wrap-up; drafts wait here for the weekly batch.',
+      'sediment.emptyFiltered': 'No draft matches the current filter.',
       'sediment.goDiagnosis': 'Go to diagnosis',
       'sediment.history': 'Recently completed',
       'sediment.target.pick': 'Multiple remotes; choose one first',
@@ -912,11 +1126,19 @@ window.__ModuleLoader__.load({
       'diag.batch.fill': 'Generate batch sediment prompt',
       'diag.batch.sub': 'Scope = {n} sessions under the current filter; generates an instruction, writes no trace',
       'diag.batch.subSelected': 'Scope = {n} selected sessions; generates an instruction, writes no trace',
+      'diag.batch.fillCount': 'Sediment {n} in this filter',
       'diag.batch.flow': 'Flow: group and re-check with sediment_batch.py --json, then draft and write back per session.',
       'diag.batch.boundary': 'Boundary: only sedimented and updated_at change; status, feedback.outcome, and the knowledge base stay untouched.',
       'diag.batch.search': 'search: {q}',
       'diag.batch.readonly': 'Read-only: copy the instruction to a writable session; write-back is rejected here.',
       'sel.check': 'Select "{title}"',
+      'sel.enter': 'Select',
+      'sel.enterHint': 'Enter selection: check rows to act in batch',
+      'sel.emptyTitle': 'Choose rows to act on',
+      'sel.emptyHint': 'Check the box before a row; Space toggles the focused row',
+      'sel.exit': 'Exit selection',
+      'sel.allVisible': 'Select all in this filter',
+      'sel.allBatch': 'Select these {n} rows',
       'sel.all': 'Select all {n} in this filter',
       'sel.count': '{n} selected',
       'sel.inFilter': '{n} in this filter',
@@ -1014,6 +1236,9 @@ window.__ModuleLoader__.load({
       'sediment.table.decision': 'Decision',
       'sediment.detail.postmortem': 'postmortem',
       'sediment.detail.stale': 'Rerun needed: {reason}',
+      'sediment.row.stale': 'Assessment stale',
+      'sediment.detail.staleLabel': 'Assessment stale',
+      'sediment.detail.stalePrNote': 'If the pre-merge review reports a stale assessment, rerun groom and update the PR first.',
       'sediment.detail.target': 'Compare target',
       'sediment.detail.targetWarnings': 'Target hints',
       'sediment.targetState.ref_missing': 'target ref unavailable',
@@ -1051,6 +1276,8 @@ window.__ModuleLoader__.load({
       'none': 'not recorded',
       // Knowledge base behind notice: attached by the host half after a check.
       'kb.behind': 'Knowledge base is {n} commit(s) behind',
+      'kb.panelBehind': 'Panel code is {n} commit(s) behind: restart DSH after syncing to load the new panel',
+      'kb.checked': ' (checked {time})',
       'kb.panel': 'These changes include panel code: restart DSH after syncing to load the new panel.',
       'kb.go': 'Sync',
       'kb.later': 'Later',
@@ -1059,6 +1286,7 @@ window.__ModuleLoader__.load({
       'kb.laterUnavailable': 'Could not record the later reminder: the status bar cannot reach the host. Try again later.',
       'kb.missing': 'Ascend Sleuth page not found. Check that the panel package is installed, or try again later.',
       'kb.collapsed': 'Knowledge base has updates',
+      'kb.panelCollapsed': 'Panel code has updates',
       'kb.degraded': 'The remote has new commits (behind count unknown)',
       'kb.error': 'Background check failed: {time} {reason}',
       'kb.errorDenied': 'permission denied',
@@ -1090,10 +1318,13 @@ window.__ModuleLoader__.load({
       }
     }
 
+    // 工作台两条快捷键都带 Shift：DSH 自己把 Primary+K 绑给了「搜索会话」，宿主的分发器
+    // 先 preventDefault，本包的 keydown 会被 defaultPrevented 守卫挡掉，主键不加 Shift
+    // 等于点了没反应。要改这两条，先核对 DSH 已注册的组合，别只改这里。
     function shortcutKeys(name) {
       const mac = isMacPlatform()
       if (name === 'open') return mac ? '⌘⇧D' : 'Ctrl+Shift+D'
-      return mac ? '⌘K' : 'Ctrl+K'
+      return mac ? '⌘⇧K' : 'Ctrl+Shift+K'
     }
 
     function shortcutOpenLabel() {
@@ -1102,22 +1333,22 @@ window.__ModuleLoader__.load({
 
     // ── 样式 ────────────────────────────────────────────────────────────────
     const CSS = [
-      '.scp-root,.scp-pal{--scp-surface:#ffffff;--scp-surface-2:#f6f7f9;--scp-surface-3:#eceff4;--scp-border:#e5e8ee;--scp-border-strong:#d7dce5;--scp-text:#1a1f29;--scp-muted:#647082;--scp-faint:#98a2b3;--scp-accent:#3b63e0;--scp-accent-soft:#eef2fe;--scp-accent-line:#c9d5fb;--scp-on-accent:#ffffff;--scp-ok:#0e8a5f;--scp-ok-soft:#e7f6ef;--scp-warn:#b25e09;--scp-warn-soft:#fdf2e4;--scp-bad:#c42b1c;--scp-bad-soft:#fdecea;--scp-idle:#98a2b3;--scp-shadow:0 1px 2px rgba(16,24,40,.04),0 12px 30px -20px rgba(16,24,40,.22);}',
-      'body[data-ds-dark-theme] .scp-root,body[data-ds-dark-theme] .scp-pal,[data-theme="dark"] .scp-root,[data-theme="dark"] .scp-pal{--scp-surface:#1c1f26;--scp-surface-2:#242832;--scp-surface-3:#2e333e;--scp-border:#2e3441;--scp-border-strong:#3d4553;--scp-text:#eaedf3;--scp-muted:#a6afbd;--scp-faint:#7a8494;--scp-accent:#8aa5ff;--scp-accent-soft:rgba(138,165,255,.14);--scp-accent-line:rgba(138,165,255,.3);--scp-on-accent:#10131a;--scp-ok:#45d08a;--scp-ok-soft:rgba(69,208,138,.12);--scp-warn:#f5b34a;--scp-warn-soft:rgba(245,179,74,.12);--scp-bad:#f0796e;--scp-bad-soft:rgba(240,121,110,.12);--scp-idle:#6f7886;--scp-shadow:0 1px 2px rgba(0,0,0,.4),0 16px 36px -20px rgba(0,0,0,.7);}',
+      '.scp-root,.scp-pal,.scp-tool-btn{--scp-surface:#ffffff;--scp-surface-2:#f6f7f9;--scp-surface-3:#eceff4;--scp-border:#e5e8ee;--scp-border-strong:#d7dce5;--scp-text:#1a1f29;--scp-muted:#647082;--scp-faint:#98a2b3;--scp-accent:#3b63e0;--scp-accent-soft:#eef2fe;--scp-accent-line:#c9d5fb;--scp-on-accent:#ffffff;--scp-ok:#0e8a5f;--scp-ok-soft:#e7f6ef;--scp-warn:#b25e09;--scp-warn-soft:#fdf2e4;--scp-bad:#c42b1c;--scp-bad-soft:#fdecea;--scp-idle:#647082;--scp-shadow:0 1px 2px rgba(16,24,40,.04),0 12px 30px -20px rgba(16,24,40,.22);--scp-fs-cap:10.5px;--scp-fs-meta:11px;--scp-fs-label:11.5px;--scp-fs-sm:12px;--scp-fs-body:12.5px;--scp-fs-row:13px;--scp-fs-title:15px;--scp-fw-regular:400;--scp-fw-medium:500;--scp-fw-semi:600;--scp-fw-bold:650;--scp-lh-tight:1.35;--scp-lh-base:1.55;--scp-lh-prose:1.75;--scp-sp-1:4px;--scp-sp-2:8px;--scp-sp-3:12px;--scp-sp-4:16px;--scp-sp-5:20px;--scp-sp-6:24px;}',
+      'body[data-ds-dark-theme] .scp-root,body[data-ds-dark-theme] .scp-pal,body[data-ds-dark-theme] .scp-tool-btn,[data-theme="dark"] .scp-root,[data-theme="dark"] .scp-pal,[data-theme="dark"] .scp-tool-btn{--scp-surface:#1c1f26;--scp-surface-2:#242832;--scp-surface-3:#2e333e;--scp-border:#2e3441;--scp-border-strong:#3d4553;--scp-text:#eaedf3;--scp-muted:#a6afbd;--scp-faint:#7a8494;--scp-accent:#8aa5ff;--scp-accent-soft:rgba(138,165,255,.14);--scp-accent-line:rgba(138,165,255,.3);--scp-on-accent:#10131a;--scp-ok:#45d08a;--scp-ok-soft:rgba(69,208,138,.12);--scp-warn:#f5b34a;--scp-warn-soft:rgba(245,179,74,.12);--scp-bad:#f0796e;--scp-bad-soft:rgba(240,121,110,.12);--scp-idle:#6f7886;--scp-shadow:0 1px 2px rgba(0,0,0,.4),0 16px 36px -20px rgba(0,0,0,.7);}',
       '.scp-root{position:relative;container-type:inline-size;width:calc(100% - 2 * var(--dsh-composer-side-clearance, 0px));max-width:var(--dsh-composer-card-max-width, 100%);margin:0 auto;box-sizing:border-box;font-family:inherit;color:var(--scp-text);--scp-tone:var(--scp-accent);}',
       // 浮层改成向下展开时会盖到输入卡上；状态条是输入卡前面的兄弟节点，抬一层才点得到。
       '.scp-root[data-popover-down="true"]{z-index:9;}',
       '.scp-root *,.scp-pal *{box-sizing:border-box;}',
       '.scp-handle-wrap{display:flex;justify-content:center;width:100%;}',
-      '.scp-handle{display:inline-flex;align-items:center;gap:7px;max-width:min(72%,560px);height:22px;padding:0 10px;border-radius:999px;border:1px solid var(--scp-border);background:color-mix(in srgb,var(--scp-surface) 62%,transparent);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:var(--scp-muted);font:inherit;font-size:11px;line-height:1;cursor:pointer;transition:background-color 160ms ease,color 160ms ease,border-color 160ms ease,opacity 360ms ease;}',
-      '.scp-handle-title,.scp-handle-meta{transition:opacity 360ms ease;}',
-      '.scp-handle[data-idle="true"] .scp-handle-title,.scp-handle[data-idle="true"] .scp-handle-meta{opacity:.42;}',
-      '.scp-handle[data-idle="true"]:hover .scp-handle-title,.scp-handle[data-idle="true"]:hover .scp-handle-meta,.scp-handle[data-idle="true"]:focus-visible .scp-handle-title,.scp-handle[data-idle="true"]:focus-visible .scp-handle-meta{opacity:1;}',
+      '.scp-handle{display:inline-flex;align-items:center;gap:7px;max-width:min(72%,560px);height:22px;padding:0 10px;border-radius:999px;border:1px solid var(--scp-border);background:color-mix(in srgb,var(--scp-surface) 62%,transparent);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);color:var(--scp-muted);font:inherit;font-size:var(--scp-fs-meta);line-height:1;cursor:pointer;transition:background-color 160ms ease,color 160ms ease,border-color 160ms ease,opacity 360ms ease;}',
+      '.scp-handle .scp-ring,.scp-handle .scp-chevron{transition:opacity 360ms ease;}',
+      '.scp-handle[data-idle="true"] .scp-ring,.scp-handle[data-idle="true"] .scp-chevron{opacity:.45;}',
+      '.scp-handle[data-idle="true"]:hover .scp-ring,.scp-handle[data-idle="true"]:hover .scp-chevron,.scp-handle[data-idle="true"]:focus-visible .scp-ring,.scp-handle[data-idle="true"]:focus-visible .scp-chevron{opacity:1;}',
       '.scp-handle:hover{background:var(--scp-surface-2);color:var(--scp-text);border-color:var(--scp-border-strong);}',
       '.scp-handle .scp-ring{width:7px;height:7px;}',
-      '.scp-handle-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;color:var(--scp-text);}',
+      '.scp-handle-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:var(--scp-fw-medium);color:var(--scp-text);}',
       '.scp-handle-meta{flex:none;font-variant-numeric:tabular-nums;color:var(--scp-muted);}',
-      '.scp-handle-pending{flex:none;color:var(--scp-warn);font-weight:600;}',
+      '.scp-handle-pending{flex:none;color:var(--scp-warn);font-weight:var(--scp-fw-semi);}',
       '.scp-handle .scp-chevron{opacity:.65;}',
       '.scp-surface{display:flex;flex-direction:column;gap:6px;padding:6px 10px;border:1px solid var(--scp-border);border-radius:12px;background:color-mix(in srgb, var(--scp-surface) 76%, transparent);transition:border-color 180ms ease,background-color 180ms ease;}',
       '.scp-root[data-mode="bound"] .scp-surface,.scp-root[data-mode="recent"] .scp-surface{padding:7px 10px;}',
@@ -1126,125 +1357,120 @@ window.__ModuleLoader__.load({
       '.scp-ring{flex:none;width:8px;height:8px;border-radius:50%;background:var(--scp-tone);}',
       '.scp-root[data-live="true"] .scp-ring{animation:scp-pulse 2.8s ease-out infinite;}',
       '@keyframes scp-pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--scp-tone) 30%, transparent)}70%{box-shadow:0 0 0 6px transparent}100%{box-shadow:0 0 0 0 transparent}}',
-      '.scp-scope{flex:none;display:inline-flex;align-items:center;gap:1px;padding:1px 3px;border:none;border-radius:6px;background:transparent;font:inherit;font-size:10.5px;line-height:1.6;color:var(--scp-muted);cursor:pointer;transition:background-color 120ms ease,color 120ms ease;}',
+      '.scp-scope{flex:none;display:inline-flex;align-items:center;gap:1px;padding:1px 3px;border:none;border-radius:6px;background:transparent;font:inherit;font-size:var(--scp-fs-cap);line-height:1.6;color:var(--scp-muted);cursor:pointer;transition:background-color 120ms ease,color 120ms ease;}',
       '.scp-scope:hover{background:var(--scp-surface-2);color:var(--scp-text);}',
       '.scp-scope svg{opacity:.7;}',
       '.scp-case{flex:1 1 auto;min-width:0;padding:0;border:none;background:transparent;font:inherit;font-size:13px;font-weight:600;line-height:1.55;letter-spacing:.005em;text-align:left;color:var(--scp-text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;border-radius:6px;}',
       '.scp-case:hover{color:var(--scp-accent);}',
-      '.scp-season{flex:none;font-size:11px;color:var(--scp-faint);}',
       '.scp-spacer{flex:1 1 auto;min-width:6px;}',
-      '.scp-step{flex:none;font-size:10.5px;font-variant-numeric:tabular-nums;color:var(--scp-muted);}',
+      '.scp-step{flex:none;font-size:var(--scp-fs-cap);font-variant-numeric:tabular-nums;color:var(--scp-muted);}',
       '.scp-foot{display:flex;align-items:center;gap:8px;min-width:0;padding:0 2px;overflow:hidden;}',
       '.scp-track{flex:none;display:inline-flex;align-items:center;gap:2px;}',
       '.scp-tick{width:7px;height:3px;border-radius:2px;background:var(--scp-surface-3);transition:background-color 180ms ease;}',
       '.scp-tick[data-state="done"]{background:color-mix(in srgb, var(--scp-tone) 32%, transparent);}',
       '.scp-tick[data-state="now"]{background:var(--scp-tone);}',
-      '.scp-now{font-size:11px;line-height:1.6;color:var(--scp-muted);margin-left:2px;font-variant-numeric:tabular-nums;}',
-      '.scp-meta{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:11px;line-height:1.6;color:var(--scp-muted);white-space:nowrap;}',
-      '.scp-wait{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:1.6;color:var(--scp-text);}',
-      '.scp-wait b{font-weight:600;color:var(--scp-text);}',
-      '.scp-wait-tag{color:var(--scp-muted);font-weight:500;}',
+      '.scp-now{font-size:var(--scp-fs-meta);line-height:1.6;color:var(--scp-muted);margin-left:2px;font-variant-numeric:tabular-nums;}',
+      '.scp-meta{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;font-size:var(--scp-fs-meta);line-height:1.6;color:var(--scp-muted);white-space:nowrap;}',
+      '.scp-wait{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--scp-fs-sm);line-height:1.6;color:var(--scp-text);}',
+      '.scp-wait b{font-weight:var(--scp-fw-semi);color:var(--scp-text);}',
+      '.scp-wait-tag{color:var(--scp-muted);font-weight:var(--scp-fw-medium);}',
       '.scp-chips{flex:none;display:inline-flex;align-items:center;gap:5px;}',
-      '.scp-chip{flex:none;font-size:11px;line-height:1.6;padding:0 5px;border-radius:5px;white-space:nowrap;color:var(--scp-muted);background:var(--scp-surface-2);}',
+      '.scp-chip{flex:none;font-size:var(--scp-fs-meta);line-height:1.6;padding:0 5px;border-radius:5px;white-space:nowrap;color:var(--scp-muted);background:var(--scp-surface-2);}',
       '.scp-chip[data-tone="brand"]{color:color-mix(in srgb,var(--scp-accent) 66%,var(--scp-text));background:var(--scp-accent-soft);}',
       '.scp-chip[data-tone="warn"]{color:color-mix(in srgb,var(--scp-warn) 66%,var(--scp-text));background:var(--scp-warn-soft);}',
       '.scp-chip[data-tone="success"]{color:color-mix(in srgb,var(--scp-ok) 66%,var(--scp-text));background:var(--scp-ok-soft);}',
       '.scp-chip[data-tone="error"]{color:color-mix(in srgb,var(--scp-bad) 66%,var(--scp-text));background:var(--scp-bad-soft);}',
-      '.scp-badge{flex:none;font-size:10.5px;line-height:1.6;font-weight:600;padding:1px 7px;border-radius:5px;color:color-mix(in srgb,var(--scp-tone) 66%,var(--scp-text));background:color-mix(in srgb, var(--scp-tone) 9%, transparent);}',
-      '.scp-btn{font:inherit;font-size:12.5px;line-height:1.7;padding:3px 10px;border-radius:8px;border:1px solid var(--scp-border);background:var(--scp-surface);color:var(--scp-text);cursor:pointer;white-space:nowrap;transition:background-color 120ms ease,border-color 120ms ease,color 120ms ease;}',
+      '.scp-badge{flex:none;font-size:var(--scp-fs-cap);line-height:1.6;font-weight:var(--scp-fw-semi);padding:1px 7px;border-radius:5px;color:color-mix(in srgb,var(--scp-tone) 66%,var(--scp-text));background:color-mix(in srgb, var(--scp-tone) 9%, transparent);}',
+      '.scp-btn{font:inherit;font-size:var(--scp-fs-body);line-height:1.7;padding:3px 10px;border-radius:8px;border:1px solid var(--scp-border);background:var(--scp-surface);color:var(--scp-text);cursor:pointer;white-space:nowrap;transition:background-color 120ms ease,border-color 120ms ease,color 120ms ease;}',
       '.scp-btn:hover{background:var(--scp-surface-2);border-color:var(--scp-border-strong);}',
       '.scp-btn:disabled{opacity:.45;cursor:not-allowed;}',
-      '.scp-btn--primary{border:none;border-radius:999px;padding:5px 14px;background:var(--scp-accent);color:var(--scp-on-accent);font-weight:600;}',
+      '.scp-btn--primary{border:none;border-radius:999px;padding:5px 14px;background:var(--scp-accent);color:var(--scp-on-accent);font-weight:var(--scp-fw-semi);}',
       '.scp-btn--primary:hover{background:color-mix(in srgb, var(--scp-accent) 88%, var(--scp-text));}',
-      '.scp-btn--quiet{border:none;background:transparent;border-radius:999px;padding:3px 9px;color:var(--scp-accent);font-weight:600;}',
+      '.scp-btn--quiet{border:none;background:transparent;border-radius:999px;padding:3px 9px;color:var(--scp-accent);font-weight:var(--scp-fw-semi);}',
       '.scp-btn--quiet:hover{background:var(--scp-accent-soft);color:var(--scp-accent);}',
       '.scp-btn--ghost{background:transparent;border-color:transparent;}',
       '.scp-btn--ghost:hover{background:var(--scp-surface-2);}',
       '.scp-icon{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:none;border-radius:7px;background:transparent;color:var(--scp-muted);cursor:pointer;transition:background-color 120ms ease,color 120ms ease;}',
       '.scp-icon:hover{background:var(--scp-surface-2);color:var(--scp-text);}',
-      '.scp-icon:focus-visible,.scp-collapse:focus-visible,.scp-btn:focus-visible,.scp-tool-btn:focus-visible,.scp-case:focus-visible,.scp-scope:focus-visible,.scp-pal-row:focus-visible,.scp-filter-item:focus-visible,.scp-picker-row:focus-visible{outline:2px solid var(--scp-accent);outline-offset:2px;}',
+      '.scp-icon:focus-visible,.scp-collapse:focus-visible,.scp-btn:focus-visible,.scp-tool-btn:focus-visible,.scp-case:focus-visible,.scp-scope:focus-visible,.scp-dock-sed-open:focus-visible,.scp-pal-row:focus-visible,.scp-filter-item:focus-visible,.scp-picker-row:focus-visible{outline:2px solid var(--scp-accent);outline-offset:2px;}',
       '.scp-icon svg{display:block;}',
       '.scp-pin[data-on="true"]{background:var(--scp-accent-soft);color:var(--scp-accent);}',
-      '.scp-collapse{flex:none;display:inline-flex;align-items:center;gap:2px;height:24px;padding:0 4px;border:none;border-radius:7px;background:transparent;color:var(--scp-muted);font:inherit;font-size:11px;line-height:1;cursor:pointer;transition:background-color 120ms ease,color 120ms ease;}',
+      '.scp-collapse{flex:none;display:inline-flex;align-items:center;gap:2px;height:24px;padding:0 4px;border:none;border-radius:7px;background:transparent;color:var(--scp-muted);font:inherit;font-size:var(--scp-fs-meta);line-height:1;cursor:pointer;transition:background-color 120ms ease,color 120ms ease;}',
       '.scp-collapse:hover{background:var(--scp-surface-2);color:var(--scp-text);}',
       '.scp-collapse .scp-chevron{opacity:.7;}',
       '.scp-collapse-text{display:none;}',
       '.scp-chevron{transition:transform 180ms ease;}',
       '.scp-chevron[data-open="true"]{transform:rotate(180deg);}',
-      '.scp-empty-note{font-size:11px;line-height:1.6;color:var(--scp-faint);}',
-      '.scp-pal-notice{margin:0 0 8px;padding:6px 9px;border-radius:8px;border:1px solid color-mix(in srgb, var(--scp-warn) 30%, var(--scp-border));background:var(--scp-warn-soft);color:var(--scp-text);font-size:11.5px;line-height:1.6;display:flex;align-items:center;gap:10px;}',
+      '.scp-empty-note{font-size:var(--scp-fs-meta);line-height:1.6;color:var(--scp-muted);}',
+      '.scp-pal-notice{margin:0 0 8px;padding:6px 9px;border-radius:8px;border:1px solid color-mix(in srgb, var(--scp-warn) 30%, var(--scp-border));background:var(--scp-warn-soft);color:var(--scp-text);font-size:var(--scp-fs-label);line-height:1.6;display:flex;align-items:center;gap:10px;}',
       '.scp-pal-notice-text{flex:1 1 auto;min-width:0;}',
       '.scp-pal-notice .scp-btn{flex:none;height:24px;padding:0 10px;font-size:var(--scp-fs-label);}',
-      '.scp-pal-error{display:flex;align-items:center;gap:10px;padding:18px 22px;color:var(--scp-muted);font-size:12.5px;line-height:1.7;border-top:1px solid var(--scp-border);border-bottom:1px solid var(--scp-border);}',
+      '.scp-pal-error{display:flex;align-items:center;gap:10px;padding:18px 22px;color:var(--scp-muted);font-size:var(--scp-fs-body);line-height:1.7;border-top:1px solid var(--scp-border);border-bottom:1px solid var(--scp-border);}',
       '.scp-pal-error-title{flex:0 1 auto;min-width:0;text-align:center;}',
       '.scp-pal-error--center{flex-direction:column;justify-content:center;gap:var(--scp-sp-3);border:0;padding:var(--scp-sp-6);}',
-      '.scp-hint{padding:2px 4px 0;font-size:11px;line-height:1.6;color:var(--scp-muted);}',
-      '.scp-picker{position:absolute;left:8px;bottom:calc(100% + 8px);z-index:45;width:340px;max-height:min(52vh,380px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--scp-border-strong);border-radius:14px;background:var(--scp-surface);box-shadow:var(--scp-shadow);animation:scp-pop 150ms ease-out;}',
+      '.scp-hint{padding:2px 4px 0;font-size:var(--scp-fs-meta);line-height:1.6;color:var(--scp-muted);}',
+      '.scp-picker{position:absolute;left:8px;bottom:calc(100% + 8px);z-index:45;width:340px;max-height:min(52vh,380px);display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--scp-border-strong);border-radius:12px;background:var(--scp-surface);box-shadow:var(--scp-shadow);animation:scp-pop 150ms ease-out;}',
       '.scp-picker-head{padding:9px 10px;border-bottom:1px solid var(--scp-border);}',
-      '.scp-picker-title{font-size:11.5px;line-height:1.7;color:var(--scp-muted);padding:0 2px 6px;}',
-      '.scp-picker-search{width:100%;font:inherit;font-size:12.5px;line-height:1.6;padding:5px 9px;border-radius:8px;border:1px solid var(--scp-border);background:var(--scp-surface-2);color:var(--scp-text);}',
-      '.scp-picker-search:focus{outline:2px solid var(--scp-accent-line);outline-offset:0;}',
+      '.scp-picker-title{font-size:var(--scp-fs-label);line-height:1.7;color:var(--scp-muted);padding:0 2px 6px;}',
+      '.scp-picker-search{width:100%;font:inherit;font-size:var(--scp-fs-body);line-height:1.6;padding:5px 9px;border-radius:8px;border:1px solid var(--scp-border);background:var(--scp-surface-2);color:var(--scp-text);}',
+      '.scp-picker-search:focus{outline:2px solid var(--scp-accent);outline-offset:0;}',
       '.scp-picker-list{overflow:auto;padding:6px;}',
       '.scp-picker-row{display:flex;align-items:center;gap:8px;width:100%;padding:7px 8px;border:none;border-radius:8px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 100ms ease;}',
       '.scp-picker-row:hover{background:var(--scp-surface-2);}',
       '.scp-picker-row[data-on="true"]{background:var(--scp-accent-soft);}',
-      '.scp-picker-current{flex:none;font-size:10.5px;font-weight:600;line-height:1;padding:2px 6px;border-radius:4px;color:var(--scp-accent);background:var(--scp-accent-soft);}',
-      '.scp-picker-foot-note{flex:1 1 auto;min-width:0;font-size:11.5px;line-height:1.6;color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
+      '.scp-picker-current{flex:none;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);line-height:1;padding:2px 6px;border-radius:4px;color:var(--scp-accent);background:var(--scp-accent-soft);}',
+      '.scp-picker-foot-note{flex:1 1 auto;min-width:0;font-size:var(--scp-fs-label);line-height:1.6;color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
       '.scp-picker-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:1px;}',
-      '.scp-picker-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12.5px;font-weight:550;line-height:1.5;}',
-      '.scp-picker-meta{font-size:11px;line-height:1.5;color:var(--scp-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
+      '.scp-picker-name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--scp-fs-body);font-weight:var(--scp-fw-semi);line-height:1.5;}',
+      '.scp-picker-meta{font-size:var(--scp-fs-meta);line-height:1.5;color:var(--scp-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
       '.scp-picker-foot{display:flex;align-items:center;gap:8px;padding:8px 10px;border-top:1px solid var(--scp-border);}',
-      '.scp-picker-empty{padding:18px 10px;text-align:center;font-size:11.5px;color:var(--scp-faint);}',
-      '.scp-menu{position:absolute;right:8px;bottom:calc(100% + 8px);z-index:50;width:302px;max-height:min(64vh,540px);display:flex;flex-direction:column;overflow:hidden;padding:6px;border:1px solid var(--scp-border-strong);border-radius:14px;background:var(--scp-surface);box-shadow:var(--scp-shadow);animation:scp-pop 150ms ease-out;}',
+      '.scp-picker-empty{padding:18px 10px;text-align:center;font-size:var(--scp-fs-label);color:var(--scp-muted);}',
+      '.scp-menu{position:absolute;right:8px;bottom:calc(100% + 8px);z-index:50;width:302px;max-height:min(64vh,540px);display:flex;flex-direction:column;overflow:hidden;padding:6px;border:1px solid var(--scp-border-strong);border-radius:12px;background:var(--scp-surface);box-shadow:var(--scp-shadow);animation:scp-pop 150ms ease-out;}',
       '.scp-menu-scroll{flex:1 1 auto;min-height:0;overflow:auto;}',
       '.scp-menu-scroll[data-overflow="true"]{-webkit-mask-image:linear-gradient(180deg,transparent,#000 8px,#000 calc(100% - 12px),transparent);mask-image:linear-gradient(180deg,transparent,#000 8px,#000 calc(100% - 12px),transparent);}',
       '@keyframes scp-pop{from{opacity:0;transform:translateY(6px) scale(.99)}to{opacity:1;transform:none}}',
       '.scp-menu-head{display:flex;align-items:center;justify-content:space-between;padding:2px 6px 6px;}',
-      '.scp-menu-title{font-size:11px;line-height:1.7;color:var(--scp-muted);}',
-      '.scp-menu-group{margin:4px 0 2px;padding:7px 7px 0;font-size:11px;line-height:1.6;letter-spacing:.05em;color:var(--scp-faint);border-top:1px solid var(--scp-border);}',
+      '.scp-menu-title{font-size:var(--scp-fs-meta);line-height:1.7;color:var(--scp-muted);}',
+      '.scp-menu-group{margin:4px 0 2px;padding:7px 7px 0;font-size:var(--scp-fs-meta);line-height:1.6;letter-spacing:.05em;color:var(--scp-muted);border-top:1px solid var(--scp-border);}',
       '.scp-menu-group:first-of-type{border-top:none;}',
-      '.scp-menu-item{display:flex;width:100%;align-items:center;gap:8px;padding:7px 9px;border:none;border-radius:7px;background:transparent;color:var(--scp-text);font:inherit;font-size:12.5px;line-height:1.6;text-align:left;cursor:pointer;transition:background-color 100ms ease;}',
+      '.scp-menu-item{display:flex;width:100%;align-items:center;gap:8px;padding:7px 9px;border:none;border-radius:7px;background:transparent;color:var(--scp-text);font:inherit;font-size:var(--scp-fs-body);line-height:1.6;text-align:left;cursor:pointer;transition:background-color 100ms ease;}',
       '.scp-menu-item:hover{background:var(--scp-surface-2);}',
       '.scp-menu-item:disabled{opacity:.45;cursor:not-allowed;}',
       '.scp-menu-item[data-danger="true"]{color:var(--scp-bad);}',
       '.scp-form{display:flex;flex-direction:column;gap:9px;padding:4px 8px 8px;}',
       '.scp-field{display:flex;flex-direction:column;gap:4px;}',
-      '.scp-field-label{font-size:11.5px;line-height:1.6;color:var(--scp-muted);}',
-      '.scp-input,.scp-select,.scp-textarea{font:inherit;font-size:12.5px;line-height:1.6;padding:5px 9px;border-radius:8px;border:1px solid var(--scp-border);background:var(--scp-surface-2);color:var(--scp-text);width:100%;}',
-      '.scp-input:focus,.scp-select:focus,.scp-textarea:focus{outline:2px solid var(--scp-accent-line);outline-offset:0;}',
+      '.scp-field-label{font-size:var(--scp-fs-label);line-height:1.6;color:var(--scp-muted);}',
+      '.scp-input,.scp-select,.scp-textarea{font:inherit;font-size:var(--scp-fs-body);line-height:1.6;padding:5px 9px;border-radius:8px;border:1px solid var(--scp-border);background:var(--scp-surface-2);color:var(--scp-text);width:100%;}',
+      '.scp-input:focus,.scp-select:focus,.scp-textarea:focus{outline:2px solid var(--scp-accent);outline-offset:0;}',
       '.scp-textarea{resize:vertical;min-height:96px;}',
       '.scp-form-actions{display:flex;justify-content:flex-end;gap:6px;margin-top:4px;}',
-      '.scp-form-error{font-size:11.5px;line-height:1.6;color:var(--scp-bad);}',
-      '.scp-form-hint{font-size:11px;line-height:1.6;color:var(--scp-muted);}',
-      '.scp-preview{display:flex;flex-direction:column;gap:4px;padding:9px 10px;border-radius:9px;background:var(--scp-surface-2);border:1px solid var(--scp-border);}',
-      '.scp-preview-label{font-size:10.5px;letter-spacing:.04em;color:var(--scp-muted);}',
-      '.scp-preview-text{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;line-height:1.7;color:var(--scp-text);white-space:pre-wrap;overflow-wrap:anywhere;max-height:132px;overflow:auto;}',
+      '.scp-form-error{font-size:var(--scp-fs-label);line-height:1.6;color:var(--scp-bad);}',
+      '.scp-form-hint{font-size:var(--scp-fs-meta);line-height:1.6;color:var(--scp-muted);}',
+      '.scp-preview{display:flex;flex-direction:column;gap:4px;padding:9px 10px;border-radius:10px;background:var(--scp-surface-2);border:1px solid var(--scp-border);}',
+      '.scp-preview-label{font-size:var(--scp-fs-cap);letter-spacing:.04em;color:var(--scp-muted);}',
+      '.scp-preview-text{margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-meta);line-height:1.7;color:var(--scp-text);white-space:pre-wrap;overflow-wrap:anywhere;max-height:132px;overflow:auto;}',
       '.scp-root[data-pending="true"] .scp-ring{background:var(--scp-warn);}',
       '.scp-root[data-flash="true"] .scp-ring{animation:scp-flash 1.4s ease-out;}',
       '@keyframes scp-flash{0%{box-shadow:0 0 0 0 color-mix(in srgb, var(--scp-tone) 45%, transparent)}55%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}',
-      '.scp-pal-list,.scp-pal-side,.scp-menu,.scp-picker-list{scrollbar-width:thin;scrollbar-color:var(--scp-border-strong) transparent;}',
-      '.scp-pal-list::-webkit-scrollbar,.scp-pal-side::-webkit-scrollbar,.scp-menu::-webkit-scrollbar,.scp-picker-list::-webkit-scrollbar{width:10px;height:10px;}',
-      '.scp-pal-list::-webkit-scrollbar-thumb,.scp-pal-side::-webkit-scrollbar-thumb,.scp-menu::-webkit-scrollbar-thumb,.scp-picker-list::-webkit-scrollbar-thumb{background:var(--scp-border-strong);border-radius:999px;border:3px solid transparent;background-clip:content-box;}',
-      '.scp-pal-list::-webkit-scrollbar-track,.scp-pal-side::-webkit-scrollbar-track,.scp-menu::-webkit-scrollbar-track,.scp-picker-list::-webkit-scrollbar-track{background:transparent;}',
+      '.scp-pal-list,.scp-pal-side,.scp-menu-scroll,.scp-actions-menu,.scp-cmd-list,.scp-prompt,.scp-report,.scp-modal-body,.scp-picker-list{scrollbar-width:thin;scrollbar-color:var(--scp-border-strong) transparent;}',
+      '.scp-pal-list::-webkit-scrollbar,.scp-pal-side::-webkit-scrollbar,.scp-menu-scroll::-webkit-scrollbar,.scp-actions-menu::-webkit-scrollbar,.scp-cmd-list::-webkit-scrollbar,.scp-prompt::-webkit-scrollbar,.scp-report::-webkit-scrollbar,.scp-modal-body::-webkit-scrollbar,.scp-picker-list::-webkit-scrollbar{width:10px;height:10px;}',
+      '.scp-pal-list::-webkit-scrollbar-thumb,.scp-pal-side::-webkit-scrollbar-thumb,.scp-menu-scroll::-webkit-scrollbar-thumb,.scp-actions-menu::-webkit-scrollbar-thumb,.scp-cmd-list::-webkit-scrollbar-thumb,.scp-prompt::-webkit-scrollbar-thumb,.scp-report::-webkit-scrollbar-thumb,.scp-modal-body::-webkit-scrollbar-thumb,.scp-picker-list::-webkit-scrollbar-thumb{background:var(--scp-border-strong);border-radius:999px;border:3px solid transparent;background-clip:content-box;}',
+      '.scp-pal-list::-webkit-scrollbar-track,.scp-pal-side::-webkit-scrollbar-track,.scp-menu-scroll::-webkit-scrollbar-track,.scp-actions-menu::-webkit-scrollbar-track,.scp-cmd-list::-webkit-scrollbar-track,.scp-prompt::-webkit-scrollbar-track,.scp-report::-webkit-scrollbar-track,.scp-modal-body::-webkit-scrollbar-track,.scp-picker-list::-webkit-scrollbar-track{background:transparent;}',
       '.scp-tool-btn{position:relative;display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;padding:0;border:none;border-radius:8px;background:transparent;color:var(--scp-muted);cursor:pointer;transition:background-color 120ms ease,color 120ms ease;}',
       '.scp-tool-btn:hover{background:var(--scp-surface-2);color:var(--scp-text);}',
       '.scp-tool-btn[data-tone="brand"]{color:var(--scp-accent);}',
       '.scp-tool-btn[data-tone="success"]{color:var(--scp-ok);}',
       '.scp-tool-btn[data-tone="warn"]{color:var(--scp-warn);}',
       '.scp-tool-btn[data-tone="error"]{color:var(--scp-bad);}',
-      '.scp-tool-badge{position:absolute;top:-2px;right:-3px;min-width:14px;height:14px;padding:0 4px;border-radius:999px;background:var(--scp-warn);color:#ffffff;font-size:9.5px;line-height:14px;text-align:center;font-weight:600;}',
+      '.scp-tool-badge{position:absolute;top:-2px;right:-3px;min-width:14px;height:14px;padding:0 4px;border-radius:999px;background:var(--scp-warn);color:var(--scp-on-accent);font-size:var(--scp-fs-cap);line-height:14px;text-align:center;font-weight:var(--scp-fw-semi);}',
       '.scp-pal-backdrop{position:fixed;inset:0;z-index:60;display:flex;align-items:flex-start;justify-content:center;padding:9vh 18px 18px;background:rgba(20,26,38,.26);-webkit-backdrop-filter:blur(8px) saturate(1.04);backdrop-filter:blur(8px) saturate(1.04);}',
       'body[data-ds-dark-theme] .scp-pal-backdrop,[data-theme="dark"] .scp-pal-backdrop{background:rgba(0,0,0,.5);}',
-      `/* ── 诊断总览：排版、布局与控件 ─────────────────────────────────────
-   新控件的字号取八档：--scp-fs-cap 10.5 / meta 11 / label 11.5 / sm 12 /
-   body 12.5 / row 13 / title 15 / hero 16.5；字重取四档 400 / 500 / 600 / 650。
-   间距集中在 4 / 8 / 12 / 16 / 20 / 24；圆角按控件、卡片、窗口分三档。
-   状态条共用的 .scp-menu-note / .scp-case 仍是固定值；间距与圆角沿用既有档位，未逐项 token 化。 */
-.scp-pal{position:relative;display:flex;flex-direction:column;width:min(960px,94vw);max-height:78vh;overflow:hidden;border:1px solid var(--scp-border-strong);border-radius:18px;background:var(--scp-surface);color:var(--scp-text);box-shadow:var(--scp-shadow);outline:none;animation:scp-pop 190ms cubic-bezier(.2,.9,.3,1);
-  --scp-fs-cap:10.5px;--scp-fs-meta:11px;--scp-fs-label:11.5px;--scp-fs-sm:12px;--scp-fs-body:12.5px;--scp-fs-row:13px;--scp-fs-title:15px;
-  --scp-fw-regular:400;--scp-fw-medium:500;--scp-fw-semi:600;--scp-fw-bold:650;
-  --scp-lh-tight:1.35;--scp-lh-base:1.55;--scp-lh-prose:1.75;
-  --scp-sp-1:4px;--scp-sp-2:8px;--scp-sp-3:12px;--scp-sp-4:16px;--scp-sp-5:20px;--scp-sp-6:24px;
+      `/* ── 诊断工作台：排版、布局与控件 ─────────────────────────────────────
+   字号七档：--scp-fs-cap 10.5 / meta 11 / label 11.5 / sm 12 / body 12.5 / row 13 / title 15；
+   字重四档 400 / 500 / 600 / 650。间距集中在 4 / 8 / 12 / 16 / 20 / 24；
+   圆角按控件 / 卡片 / 浮层 / 窗口四档 8 / 10 / 12 / 16。
+   状态条共用的 .scp-case 仍是固定值；.scp-menu-note 与其余控件一样从 token 取值；间距档未重新洗牌。 */
+.scp-pal{position:relative;display:flex;flex-direction:column;width:min(960px,94vw);max-height:78vh;overflow:hidden;border:1px solid var(--scp-border-strong);border-radius:16px;background:var(--scp-surface);color:var(--scp-text);box-shadow:var(--scp-shadow);outline:none;animation:scp-pop 190ms cubic-bezier(.2,.9,.3,1);
   --scp-ctl-h:32px;--scp-ctl-h-sm:28px;--scp-ctl-h-input:34px;--scp-ctl-r:8px;--scp-side-pad-x:24px;}
 .scp-pal-top{display:flex;align-items:center;gap:var(--scp-sp-3);padding:var(--scp-sp-4) var(--scp-sp-5);border-bottom:1px solid var(--scp-border);}
 .scp-pal-heading{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px;}
@@ -1254,15 +1480,15 @@ window.__ModuleLoader__.load({
 .scp-view-tab{display:inline-flex;align-items:center;gap:5px;height:var(--scp-ctl-h-sm);padding:0 12px;border:0;background:transparent;font:inherit;font-size:var(--scp-fs-sm);font-weight:var(--scp-fw-medium);line-height:1;border-radius:7px;color:var(--scp-muted);cursor:pointer;white-space:nowrap;transition:background-color 120ms ease,color 120ms ease;}
 .scp-view-tab:hover{color:var(--scp-text);}
 .scp-view-tab[data-on="true"]{background:var(--scp-surface);color:var(--scp-text);font-weight:var(--scp-fw-semi);box-shadow:0 1px 2px rgba(16,24,40,.08);}
-.scp-view-tab b{font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);color:var(--scp-faint);font-variant-numeric:tabular-nums;}
+body[data-ds-dark-theme] .scp-view-tab[data-on="true"],[data-theme="dark"] .scp-view-tab[data-on="true"]{box-shadow:0 1px 2px rgba(0,0,0,.5);}
+.scp-view-tab b{font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);color:var(--scp-muted);font-variant-numeric:tabular-nums;}
 .scp-view-tab[data-on="true"] b{color:var(--scp-accent);}
 .scp-pal .scp-icon{width:28px;height:28px;border-radius:8px;}
 .scp-pal-main{display:flex;min-height:0;flex:1 1 auto;}
 .scp-pal-main--empty{display:flex;align-items:center;justify-content:center;}
 .scp-pal-main--empty .scp-pal-empty{flex:0 1 auto;}
-.scp-pal-list{flex:0 0 clamp(280px,34%,380px);max-width:380px;min-width:280px;overflow:auto;padding:var(--scp-sp-3);border-right:1px solid var(--scp-border);}
-@media (min-width:1200px){.scp-pal-list{flex:0 0 400px;max-width:400px;min-width:280px;}}
-.scp-search{display:flex;align-items:center;gap:6px;margin:0 0 var(--scp-sp-2);padding:0 10px;height:var(--scp-ctl-h-input);border:1px solid var(--scp-border);border-radius:9px;background:var(--scp-surface);}
+.scp-pal-list{flex:0 0 clamp(300px,40%,400px);max-width:400px;min-width:280px;overflow:auto;padding:var(--scp-sp-3);border-right:1px solid var(--scp-border);}
+.scp-search{display:flex;align-items:center;gap:6px;margin:0 0 var(--scp-sp-2);padding:0 10px;height:var(--scp-ctl-h-input);border:1px solid var(--scp-border);border-radius:8px;background:var(--scp-surface);}
 .scp-search input{flex:1;min-width:0;border:0;outline:none;background:transparent;color:var(--scp-text);font:inherit;font-size:var(--scp-fs-body);line-height:1.5;}
 .scp-search input::placeholder{color:var(--scp-faint);}
 .scp-search .scp-kbd{flex:none;}
@@ -1270,7 +1496,7 @@ window.__ModuleLoader__.load({
 .scp-filter-item{display:inline-flex;align-items:center;gap:5px;height:var(--scp-ctl-h-sm);padding:0 10px;border:1px solid transparent;border-radius:999px;background:var(--scp-surface-2);font:inherit;font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);line-height:1;color:var(--scp-muted);cursor:pointer;white-space:nowrap;transition:background-color 120ms ease,border-color 120ms ease,color 120ms ease;}
 .scp-filter-item:hover{background:var(--scp-surface-3);color:var(--scp-text);}
 .scp-filter-item[data-on="true"]{background:var(--scp-accent-soft);border-color:var(--scp-accent-line);color:var(--scp-accent);font-weight:var(--scp-fw-semi);}
-.scp-filter-item b{font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);color:var(--scp-faint);font-variant-numeric:tabular-nums;}
+.scp-filter-item b{font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);color:var(--scp-muted);font-variant-numeric:tabular-nums;}
 .scp-filter-item[data-on="true"] b{color:var(--scp-accent);}
 .scp-pal-row{position:relative;display:flex;align-items:center;gap:10px;width:100%;padding:10px 12px;border:none;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 120ms ease;}
 .scp-pal-row:hover{background:var(--scp-surface-2);}
@@ -1283,20 +1509,20 @@ window.__ModuleLoader__.load({
 .scp-pal-row-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:4px;}
 .scp-pal-row-line{display:flex;align-items:baseline;gap:8px;min-width:0;}
 .scp-pal-row-meta-main{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-.scp-pal-row-meta-main .scp-chip{margin-left:6px;height:16px;padding:0 5px;font-size:10.5px;}
+.scp-pal-row-meta-main .scp-chip{margin-left:6px;height:16px;padding:0 5px;font-size:var(--scp-fs-cap);}
 .scp-pal-row-time{flex:none;font-size:var(--scp-fs-meta);font-variant-numeric:tabular-nums;color:var(--scp-muted);}
-.scp-pal-row-title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--scp-fs-row);font-weight:var(--scp-fw-semi);line-height:var(--scp-lh-base);color:var(--scp-text);}
+.scp-pal-row-title{flex:1 1 auto;min-width:0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:break-word;font-size:var(--scp-fs-row);font-weight:var(--scp-fw-semi);line-height:var(--scp-lh-base);color:var(--scp-text);}
 .scp-pal-row-meta{display:flex;align-items:center;justify-content:space-between;gap:8px;min-width:0;font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);white-space:nowrap;}
 .scp-pal-row-step{flex:none;font-size:var(--scp-fs-meta);font-weight:var(--scp-fw-medium);font-variant-numeric:tabular-nums;color:var(--scp-muted);}
 .scp-pal-side{flex:1 1 auto;min-width:0;overflow:auto;padding:var(--scp-sp-5) var(--scp-side-pad-x) 0;display:flex;flex-direction:column;background:var(--scp-surface-2);}
 .scp-pal-side>*:not(.scp-pal-empty){flex:none;}
 .scp-pal-side>.scp-callout{margin-top:var(--scp-sp-3);}
-.scp-pal .scp-badge{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:6px;font-size:var(--scp-fs-label);font-weight:var(--scp-fw-semi);line-height:1;color:var(--scp-tone);background:color-mix(in srgb,var(--scp-tone) 12%,transparent);}
+.scp-pal .scp-badge{display:inline-flex;align-items:center;height:22px;padding:0 9px;border-radius:6px;font-size:var(--scp-fs-label);font-weight:var(--scp-fw-semi);line-height:1;color:color-mix(in srgb,var(--scp-tone) 66%,var(--scp-text));background:color-mix(in srgb,var(--scp-tone) 12%,transparent);}
 .scp-pal .scp-chip{display:inline-flex;align-items:center;height:22px;padding:0 9px;border:1px solid var(--scp-border);border-radius:6px;font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);line-height:1;white-space:nowrap;color:var(--scp-muted);background:var(--scp-surface);}
-.scp-pal .scp-chip[data-tone="brand"]{color:var(--scp-accent);background:var(--scp-accent-soft);border-color:var(--scp-accent-line);}
-.scp-pal .scp-chip[data-tone="warn"]{color:var(--scp-warn);background:var(--scp-warn-soft);border-color:color-mix(in srgb,var(--scp-warn) 26%,var(--scp-border));}
-.scp-pal .scp-chip[data-tone="success"]{color:var(--scp-ok);background:var(--scp-ok-soft);border-color:color-mix(in srgb,var(--scp-ok) 26%,var(--scp-border));}
-.scp-pal .scp-chip[data-tone="error"]{color:var(--scp-bad);background:var(--scp-bad-soft);border-color:color-mix(in srgb,var(--scp-bad) 26%,var(--scp-border));}
+.scp-pal .scp-chip[data-tone="brand"]{color:color-mix(in srgb,var(--scp-accent) 66%,var(--scp-text));background:var(--scp-accent-soft);border-color:var(--scp-accent-line);}
+.scp-pal .scp-chip[data-tone="warn"]{color:color-mix(in srgb,var(--scp-warn) 66%,var(--scp-text));background:var(--scp-warn-soft);border-color:color-mix(in srgb,var(--scp-warn) 26%,var(--scp-border));}
+.scp-pal .scp-chip[data-tone="success"]{color:color-mix(in srgb,var(--scp-ok) 66%,var(--scp-text));background:var(--scp-ok-soft);border-color:color-mix(in srgb,var(--scp-ok) 26%,var(--scp-border));}
+.scp-pal .scp-chip[data-tone="error"]{color:color-mix(in srgb,var(--scp-bad) 66%,var(--scp-text));background:var(--scp-bad-soft);border-color:color-mix(in srgb,var(--scp-bad) 26%,var(--scp-border));}
 .scp-pal .scp-step{font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);font-variant-numeric:tabular-nums;color:var(--scp-muted);}
 /* 诊断详情抬头（识别行）：一行状态与身份 + 问题背景（可展开）。
    真机 trace 的 summary 首句常见一两百到七八百字，当标题放大加粗会占掉详情的大半屏；这里把它降到
@@ -1347,18 +1573,56 @@ window.__ModuleLoader__.load({
 .scp-def dd{margin:0;font-size:var(--scp-fs-body);font-weight:var(--scp-fw-regular);line-height:var(--scp-lh-base);color:var(--scp-text);overflow-wrap:anywhere;}
 .scp-tl-row{display:grid;grid-template-columns:56px 1fr;gap:2px 12px;padding:var(--scp-sp-2) 0;border-top:1px solid var(--scp-border);}
 .scp-tl-row:first-of-type{border-top:0;}
-.scp-tl-step{font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);line-height:var(--scp-lh-base);font-variant-numeric:tabular-nums;color:var(--scp-faint);}
+.scp-tl-step{font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);line-height:var(--scp-lh-base);font-variant-numeric:tabular-nums;color:var(--scp-muted);}
 .scp-tl-body{min-width:0;font-size:var(--scp-fs-body);line-height:var(--scp-lh-prose);color:var(--scp-text);}
 .scp-tl-meta{font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);}
-.scp-tl-reason{margin-top:2px;font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);color:var(--scp-faint);}
+.scp-tl-reason{margin-top:2px;font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);color:var(--scp-muted);}
+/* 段头一行：标题 + 右侧计数 / 提示（现场条数、日志条数、上游条数）。 */
+.scp-section-row{display:flex;align-items:baseline;gap:8px;margin:var(--scp-sp-5) 0 var(--scp-sp-2);min-width:0;}
+.scp-section-row .scp-section-label{margin:0;}
+.scp-section-note{margin-left:auto;flex:none;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-faint);}
+/* 现场故障时间线：时间两行（日期 / 时刻）+ 竖轨圆点 + 事实与来源片。 */
+.scp-it{display:flex;flex-direction:column;padding:var(--scp-sp-1) var(--scp-sp-4);border-radius:10px;background:var(--scp-surface);border:1px solid color-mix(in srgb,var(--scp-border) 72%,transparent);}
+.scp-it-env{padding:2px 2px 0;font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);}
+.scp-it-row{display:grid;grid-template-columns:86px 12px 1fr;column-gap:12px;padding:9px 0;min-width:0;}
+.scp-it-time{display:flex;flex-direction:column;gap:1px;padding-top:1px;line-height:1.35;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.scp-it-date{font-size:var(--scp-fs-cap);letter-spacing:.02em;color:var(--scp-faint);}
+.scp-it-hm{font-size:var(--scp-fs-body);font-weight:var(--scp-fw-medium);color:var(--scp-text);}
+.scp-it-hm[data-missing="true"]{font-size:var(--scp-fs-meta);font-weight:var(--scp-fw-regular);color:var(--scp-faint);}
+.scp-it-unknown{font-size:var(--scp-fs-meta);color:var(--scp-faint);padding-top:2px;}
+.scp-it-rail{position:relative;min-height:100%;}
+.scp-it-dot{position:absolute;left:3px;top:6px;width:6px;height:6px;border-radius:50%;background:var(--scp-accent);box-shadow:0 0 0 3px var(--scp-surface);}
+.scp-it-row[data-time="unknown"] .scp-it-dot{background:var(--scp-surface);border:1px solid var(--scp-border-strong);}
+.scp-it-row:not(:last-child) .scp-it-rail::after{content:"";position:absolute;left:5px;top:16px;bottom:-18px;width:1px;background:color-mix(in srgb,var(--scp-border-strong) 82%,transparent);}
+.scp-it-body{min-width:0;}
+.scp-it-text{font-size:var(--scp-fs-body);line-height:var(--scp-lh-prose);color:var(--scp-text);overflow-wrap:anywhere;}
+.scp-it-meta{margin-top:3px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);}
+.scp-it-src{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:5px;font-size:var(--scp-fs-cap);line-height:1;color:var(--scp-muted);background:var(--scp-surface-2);}
+.scp-it-note{font-size:var(--scp-fs-label);line-height:var(--scp-lh-prose);color:var(--scp-muted);}
+.scp-it-foot{margin:2px 0 0;padding:0 2px;font-size:var(--scp-fs-cap);line-height:var(--scp-lh-base);color:var(--scp-faint);}
+/* 故障过程（日志）：默认收起；时钟偏差用 warn，节点 quote 与文件:行走等宽。 */
+.scp-lp-clock{margin:0 0 2px;font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-warn);}
+.scp-lp-list{display:flex;flex-direction:column;padding-left:12px;border-left:1px solid color-mix(in srgb,var(--scp-border-strong) 60%,transparent);}
+.scp-lp-row{display:grid;grid-template-columns:64px 1fr;column-gap:10px;padding:6px 0;min-width:0;}
+.scp-lp-time{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-label);line-height:var(--scp-lh-prose);color:var(--scp-muted);white-space:nowrap;}
+.scp-lp-body{min-width:0;}
+.scp-lp-what{font-size:var(--scp-fs-body);line-height:var(--scp-lh-prose);color:var(--scp-text);overflow-wrap:anywhere;}
+.scp-lp-quote{margin-top:2px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-cap);line-height:1.6;color:var(--scp-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.scp-lp-meta{margin-top:2px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:var(--scp-fs-cap);line-height:1.6;color:var(--scp-muted);}
+/* 上游与查证的时间线：>3 条折叠时保留前三条，展开不换段。 */
+.scp-up-list{display:flex;flex-direction:column;gap:3px;padding-top:6px;border-top:1px solid var(--scp-border);}
+.scp-up-row{display:grid;grid-template-columns:128px 1fr;column-gap:12px;min-width:0;font-size:var(--scp-fs-body);line-height:var(--scp-lh-prose);}
+.scp-up-when{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-label);line-height:var(--scp-lh-prose);color:var(--scp-muted);white-space:nowrap;}
+.scp-up-what{min-width:0;color:var(--scp-text);overflow-wrap:anywhere;}
+.scp-up-note{font-size:var(--scp-fs-label);line-height:var(--scp-lh-prose);color:var(--scp-muted);}
 .scp-history-row{display:flex;align-items:baseline;gap:8px;min-width:0;font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);}
-.scp-history-when{flex:none;font-size:var(--scp-fs-meta);font-variant-numeric:tabular-nums;color:var(--scp-faint);}
+.scp-history-when{flex:none;font-size:var(--scp-fs-meta);font-variant-numeric:tabular-nums;color:var(--scp-muted);}
 .scp-history-kind{flex:none;font-size:var(--scp-fs-cap);line-height:1.6;padding:1px 7px;border-radius:5px;background:var(--scp-surface-2);color:var(--scp-muted);font-weight:var(--scp-fw-medium);}
 .scp-history-text{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--scp-text);}
-.scp-history-note{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--scp-faint);}
+.scp-history-note{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--scp-muted);}
 .scp-actions{position:sticky;bottom:0;display:flex;flex-wrap:wrap;align-items:center;gap:var(--scp-sp-2);margin:var(--scp-sp-5) calc(-1 * var(--scp-side-pad-x)) 0;padding:var(--scp-sp-3) var(--scp-side-pad-x) var(--scp-sp-4);border-top:1px solid var(--scp-border);background:var(--scp-surface-2);box-shadow:0 -8px 16px -12px color-mix(in srgb,var(--scp-text) 24%,transparent);}
-.scp-actions::before,.scp-sed-actions::before{top:-20px;height:20px;}
-.scp-actions-menu{position:absolute;right:calc(var(--scp-side-pad-x) + 4px);bottom:100px;z-index:7;width:min(340px,calc(100% - 32px));max-height:min(58vh,520px);display:flex;flex-direction:column;overflow:auto;padding:6px;border:1px solid var(--scp-border-strong);border-radius:14px;background:var(--scp-surface);box-shadow:var(--scp-shadow);outline:none;}
+.scp-actions::before,.scp-sed-actions::before{content:"";position:absolute;left:0;right:0;top:-20px;height:20px;background:linear-gradient(to top,var(--scp-surface-2),transparent);pointer-events:none;}
+.scp-actions-menu{position:absolute;right:calc(var(--scp-side-pad-x) + 4px);bottom:100px;z-index:7;width:min(340px,calc(100% - 32px));max-height:min(58vh,520px);display:flex;flex-direction:column;overflow:auto;padding:6px;border:1px solid var(--scp-border-strong);border-radius:12px;background:var(--scp-surface);box-shadow:var(--scp-shadow);outline:none;}
 .scp-actions-menu .scp-menu-scroll{flex:1 1 auto;min-height:0;overflow:auto;}
 .scp-cmd-group{padding:6px 10px 2px;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);letter-spacing:.04em;color:var(--scp-muted);}
 .scp-pal .scp-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:var(--scp-ctl-h);padding:0 14px;border:1px solid var(--scp-border);border-radius:var(--scp-ctl-r);background:var(--scp-surface);color:var(--scp-text);font:inherit;font-size:var(--scp-fs-sm);font-weight:var(--scp-fw-medium);line-height:1;white-space:nowrap;cursor:pointer;transition:background-color 120ms ease,border-color 120ms ease,color 120ms ease;}
@@ -1370,9 +1634,9 @@ window.__ModuleLoader__.load({
 .scp-pal .scp-btn--ghost:hover{background:var(--scp-surface-2);color:var(--scp-text);}
 .scp-pal .scp-btn--quiet{border-color:transparent;background:transparent;color:var(--scp-accent);font-weight:var(--scp-fw-semi);padding:0 10px;}
 .scp-pal .scp-btn--quiet:hover{background:var(--scp-accent-soft);color:var(--scp-accent);}
-.scp-pal .scp-cmd-backdrop{position:absolute;inset:0;z-index:4;display:flex;justify-content:center;align-items:flex-start;padding-top:11vh;background:color-mix(in srgb,var(--scp-text) 12%,transparent);}
+.scp-pal .scp-cmd-backdrop{position:absolute;inset:0;z-index:9;display:flex;justify-content:center;align-items:flex-start;padding-top:11vh;background:color-mix(in srgb,var(--scp-text) 12%,transparent);}
 .scp-pal .scp-cmd{width:min(520px,calc(100% - 32px));max-height:58vh;display:flex;flex-direction:column;border:1px solid var(--scp-border-strong);border-radius:12px;background:var(--scp-surface);box-shadow:var(--scp-shadow);overflow:hidden;}
-.scp-pal .scp-cmd:focus-within{border-color:var(--scp-accent-line);box-shadow:0 0 0 2px var(--scp-accent-line);}
+.scp-pal .scp-cmd:focus-within{border-color:var(--scp-accent);box-shadow:0 0 0 2px var(--scp-accent);}
 .scp-pal .scp-cmd input{border:0;border-bottom:1px solid var(--scp-border);outline:none;padding:var(--scp-sp-3) var(--scp-sp-4);font:inherit;font-size:var(--scp-fs-row);background:transparent;color:var(--scp-text);}
 .scp-pal .scp-cmd-where{padding:var(--scp-sp-2) var(--scp-sp-4) 0;font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .scp-pal[data-cmd="true"]>.scp-pal-foot{visibility:hidden;}
@@ -1386,15 +1650,16 @@ window.__ModuleLoader__.load({
 .scp-pal .scp-preview{display:flex;flex-direction:column;gap:var(--scp-sp-1);padding:var(--scp-sp-3);border-radius:var(--scp-ctl-r);background:var(--scp-surface-2);border:1px solid var(--scp-border);}
 .scp-pal .scp-preview-label{font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);letter-spacing:.02em;color:var(--scp-muted);}
 .scp-pal .scp-preview-text{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-label);line-height:var(--scp-lh-prose);}
-.scp-search:focus-within{border-color:var(--scp-accent-line);box-shadow:0 0 0 2px var(--scp-accent-line);}
+.scp-search:focus-within{border-color:var(--scp-accent);box-shadow:0 0 0 2px var(--scp-accent);}
 .scp-link{border:0;background:transparent;padding:0;font:inherit;font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);line-height:var(--scp-lh-base);color:var(--scp-accent);cursor:pointer;text-align:left;overflow-wrap:anywhere;}
 .scp-link:hover{text-decoration:underline;}
 .scp-pal-foot{display:flex;align-items:center;gap:var(--scp-sp-3);min-width:0;padding:10px var(--scp-sp-5);border-top:1px solid var(--scp-border);font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);background:var(--scp-surface);}
 .scp-kbd{display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:18px;padding:0 4px;border-radius:5px;border:1px solid var(--scp-border);background:var(--scp-surface-2);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-medium);color:var(--scp-muted);}
 .scp-version{font-size:var(--scp-fs-cap);color:var(--scp-faint);font-variant-numeric:tabular-nums;}
 .scp-pal-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:var(--scp-sp-2);flex:1 1 auto;min-height:200px;padding:var(--scp-sp-6);color:var(--scp-muted);font-size:var(--scp-fs-body);line-height:var(--scp-lh-prose);text-align:center;}
-.scp-menu-note{margin-left:auto;max-width:52%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10.5px;line-height:1.6;color:var(--scp-warn);}
-.scp-toast{position:absolute;left:50%;bottom:18px;transform:translateX(-50%);max-width:min(80%,520px);padding:7px 14px;border-radius:var(--scp-r-pill,999px);background:var(--scp-surface);border:1px solid var(--scp-border-strong);box-shadow:var(--scp-shadow);font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);color:var(--scp-text);white-space:normal;text-align:center;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;animation:scp-toast 170ms ease-out;}
+.scp-menu-note{margin-left:auto;max-width:52%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--scp-fs-cap);line-height:1.6;color:var(--scp-warn);}
+.scp-sr-only{position:absolute!important;width:1px!important;height:1px!important;margin:-1px!important;padding:0!important;border:0!important;overflow:hidden!important;clip-path:inset(50%)!important;white-space:nowrap!important;}
+.scp-toast{position:absolute;left:50%;bottom:52px;transform:translateX(-50%);max-width:min(80%,520px);padding:7px 14px;border-radius:var(--scp-r-pill,999px);background:var(--scp-surface);border:1px solid var(--scp-border-strong);box-shadow:var(--scp-shadow);font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);color:var(--scp-text);white-space:normal;text-align:center;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere;animation:scp-toast 170ms ease-out;}
 @keyframes scp-toast{from{opacity:0;transform:translate(-50%,6px)}to{opacity:1;transform:translate(-50%,0)}}
 .scp-skel{height:12px;border-radius:6px;background:linear-gradient(90deg,var(--scp-surface-2),color-mix(in srgb, var(--scp-surface-2) 30%, transparent),var(--scp-surface-2));background-size:200% 100%;animation:scp-shimmer 1.5s ease-in-out infinite;}
 @keyframes scp-shimmer{from{background-position:120% 0}to{background-position:-80% 0}}
@@ -1403,9 +1668,13 @@ window.__ModuleLoader__.load({
 .scp-root[data-tone="warn"]{--scp-tone:var(--scp-warn);}
 .scp-root[data-tone="error"]{--scp-tone:var(--scp-bad);}
 .scp-root[data-tone="idle"]{--scp-tone:var(--scp-idle);}
+/* 按下反馈：主按钮与安静按钮保持自己的底色，其余按钮 / 行在按住时压暗一档。 */
+.scp-btn:not(.scp-btn--primary):not(.scp-btn--quiet):not(.scp-btn--ghost):active{background:var(--scp-surface-3);border-color:var(--scp-border-strong);}
+.scp-icon:active,.scp-collapse:active,.scp-scope:active,.scp-tool-btn:active,.scp-dock-sed-open:active,.scp-filter-item:active,.scp-view-tab:active{background:var(--scp-surface-3);}
+.scp-pal-row:active,.scp-sed-row:active,.scp-menu-item:active:not(:disabled),.scp-picker-row:active,.scp-batch-item:active:not(:disabled){background:var(--scp-surface-3);}
 .scp-pal button:focus-visible,.scp-view-tab:focus-visible,.scp-check-action:focus-visible,.scp-sed-row:focus-visible,.scp-cmd-item:focus-visible,.scp-pick:focus-visible,.scp-details-toggle:focus-visible,.scp-link:focus-visible{outline:2px solid var(--scp-accent);outline-offset:2px;}
 .scp-pal ::selection{background:var(--scp-accent-line);}
-@container (max-width: 720px){.scp-meta,.scp-chips{display:none;}.scp-case{font-size:12px;}.scp-collapse-text{display:none;}}
+@container (max-width: 720px){.scp-meta{display:none;}.scp-chips{flex-wrap:nowrap;}.scp-collapse-text{display:none;}}
 @media (max-width: 900px){
   .scp-pal{--scp-side-pad-x:16px;}
   .scp-pal-main{flex-direction:column;}
@@ -1418,25 +1687,25 @@ window.__ModuleLoader__.load({
   .scp-pal-foot .scp-foot-note{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 }
 @media (max-width: 520px){.scp-pal-backdrop{padding:4vh 10px 10px;}.scp-pal{max-height:88vh;}.scp-picker{width:min(330px,calc(100vw - 32px));}}
-@media (prefers-reduced-motion: reduce){.scp-handle{transition:none;}.scp-ring{animation:none;}.scp-btn,.scp-icon,.scp-tick,.scp-pal-row,.scp-sed-row,.scp-chevron,.scp-check-action,.scp-filter-item,.scp-view-tab,.scp-write-side .scp-menu-item{transition:none;}.scp-pal,.scp-menu,.scp-toast,.scp-picker{animation:none;}.scp-skel{animation:none;}}`,
+`,
       `/* ── 沉淀队列（v1）──────────────────────────────────────────────── */
-.scp-batch{display:flex;align-items:center;gap:var(--scp-sp-2);padding:10px var(--scp-sp-5);border-bottom:1px solid var(--scp-border);background:var(--scp-surface);flex:none;min-width:0;}
+.scp-batch{display:flex;align-items:center;gap:var(--scp-sp-2);flex-wrap:wrap;padding:10px var(--scp-sp-5);border-bottom:1px solid var(--scp-border);background:var(--scp-surface);flex:none;min-width:0;}
 .scp-batch-strong{font-size:var(--scp-fs-body);font-weight:var(--scp-fw-semi);line-height:var(--scp-lh-base);white-space:nowrap;}
 .scp-batch-chip{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:5px;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);line-height:1;white-space:nowrap;}
-.scp-batch-chip[data-tone="warn"]{background:var(--scp-warn-soft);color:var(--scp-warn);}
-.scp-batch-chip[data-tone="accent"]{background:var(--scp-accent-soft);color:var(--scp-accent);}
-.scp-batch-chip[data-tone="ok"]{background:var(--scp-ok-soft);color:var(--scp-ok);}
-.scp-batch-chip[data-tone="bad"]{background:var(--scp-bad-soft);color:var(--scp-bad);}
+.scp-batch-chip[data-tone="warn"]{background:var(--scp-warn-soft);color:color-mix(in srgb,var(--scp-warn) 66%,var(--scp-text));}
+.scp-batch-chip[data-tone="accent"]{background:var(--scp-accent-soft);color:color-mix(in srgb,var(--scp-accent) 66%,var(--scp-text));}
+.scp-batch-chip[data-tone="ok"]{background:var(--scp-ok-soft);color:color-mix(in srgb,var(--scp-ok) 66%,var(--scp-text));}
+.scp-batch-chip[data-tone="bad"]{background:var(--scp-bad-soft);color:color-mix(in srgb,var(--scp-bad) 66%,var(--scp-text));}
 .scp-batch-chip[data-tone="gray"]{background:var(--scp-surface-3);color:var(--scp-muted);}
-.scp-batch-age{font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-faint);white-space:nowrap;}
+.scp-batch-age{font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);white-space:nowrap;}
 .scp-batch-age[data-over="true"]{color:var(--scp-bad);font-weight:var(--scp-fw-semi);}
 .scp-sed-side{gap:0;padding:var(--scp-sp-5) var(--scp-side-pad-x) 0;}
 .scp-sed-side>.scp-callout{margin-top:var(--scp-sp-3);}
 .scp-sed-side>.scp-list-block{margin-top:var(--scp-sp-3);}
 .scp-sed-side>.scp-sed-hint{margin-top:6px;}
 .scp-sed-side>.scp-list-block>.scp-section-label{margin:0 0 var(--scp-sp-2);}
-.scp-sed-group{display:flex;align-items:center;justify-content:space-between;padding:var(--scp-sp-3) 8px 6px;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);letter-spacing:.02em;color:var(--scp-faint);}
-.scp-sed-row{position:relative;display:flex;gap:10px;width:100%;padding:10px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 120ms ease;}
+.scp-sed-group{display:flex;align-items:center;justify-content:space-between;padding:var(--scp-sp-3) 8px 6px;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);letter-spacing:.02em;color:var(--scp-muted);}
+.scp-sed-row{position:relative;display:flex;gap:10px;width:100%;padding:10px 10px 10px 14px;border:0;border-radius:10px;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer;transition:background-color 120ms ease;}
 .scp-sed-row:hover{background:var(--scp-surface-2);}
 .scp-sed-row[data-on="true"]{background:var(--scp-accent-soft);}
 .scp-sed-row::before{content:"";position:absolute;left:4px;top:50%;width:2px;height:18px;margin-top:-9px;border-radius:1px;background:transparent;pointer-events:none;}
@@ -1445,9 +1714,9 @@ window.__ModuleLoader__.load({
 .scp-sed-main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:3px;}
 .scp-sed-line{display:flex;align-items:baseline;gap:8px;min-width:0;}
 .scp-sed-title{flex:1 1 auto;min-width:0;font-size:var(--scp-fs-row);font-weight:var(--scp-fw-semi);line-height:var(--scp-lh-base);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.scp-sed-age{flex:none;font-size:var(--scp-fs-meta);font-variant-numeric:tabular-nums;color:var(--scp-faint);}
+.scp-sed-age{flex:none;font-size:var(--scp-fs-meta);font-variant-numeric:tabular-nums;color:var(--scp-muted);}
 .scp-sed-age[data-over="true"]{color:var(--scp-bad);font-weight:var(--scp-fw-semi);}
-.scp-sed-meta{display:flex;align-items:center;gap:6px;min-width:0;font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.scp-sed-meta{display:flex;align-items:center;gap:6px;min-width:0;font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .scp-sed-meta .scp-chip{height:20px;padding:0 7px;font-size:var(--scp-fs-cap);}
 .scp-stepper{display:flex;padding:2px 0;}
 .scp-sed-step{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:0;}
@@ -1461,22 +1730,23 @@ window.__ModuleLoader__.load({
 .scp-sed-step-label{font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);line-height:var(--scp-lh-tight);color:var(--scp-muted);text-align:center;white-space:nowrap;}
 .scp-sed-step[data-state="done"] .scp-sed-step-label,.scp-sed-step[data-state="current"] .scp-sed-step-label{color:var(--scp-text);}
 .scp-sed-step[data-state="current"] .scp-sed-step-label{font-weight:var(--scp-fw-semi);}
-.scp-sed-step-note{font-size:var(--scp-fs-cap);line-height:var(--scp-lh-tight);color:var(--scp-faint);text-align:center;white-space:nowrap;}
+.scp-sed-step-note{font-size:var(--scp-fs-cap);line-height:var(--scp-lh-tight);color:var(--scp-muted);text-align:center;white-space:nowrap;}
 .scp-sed-step-note[data-bad="true"]{color:var(--scp-bad);}
 .scp-target-row{display:flex;align-items:center;gap:var(--scp-sp-2);padding:var(--scp-sp-2) var(--scp-sp-3);border:1px solid var(--scp-border);border-radius:10px;background:var(--scp-surface-2);font-size:var(--scp-fs-label);min-width:0;}
-.scp-target-label{color:var(--scp-faint);flex:none;}
+.scp-target-label{color:var(--scp-muted);flex:none;}
 .scp-target-pill{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:6px;background:var(--scp-surface);border:1px solid var(--scp-border-strong);font-weight:var(--scp-fw-semi);font-size:var(--scp-fs-label);color:var(--scp-text);white-space:nowrap;}
 .scp-target-hint{color:var(--scp-muted);font-size:var(--scp-fs-meta);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .scp-veil{position:absolute;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;background:rgba(20,26,38,.38);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);}
 body[data-ds-dark-theme] .scp-veil,[data-theme="dark"] .scp-veil{background:rgba(0,0,0,.55);}
+body[data-ds-dark-theme] .scp-pal .scp-cmd-backdrop,[data-theme="dark"] .scp-pal .scp-cmd-backdrop{background:rgba(0,0,0,.45);}
 .scp-modal{width:min(680px,calc(100% - 40px));max-height:74vh;display:flex;flex-direction:column;background:var(--scp-surface);border:1px solid var(--scp-border-strong);border-radius:16px;box-shadow:var(--scp-shadow);overflow:hidden;}
 .scp-modal-top{display:flex;align-items:flex-start;gap:var(--scp-sp-3);padding:var(--scp-sp-4) var(--scp-sp-5) var(--scp-sp-3);border-bottom:1px solid var(--scp-border);}
 .scp-modal-title{font-size:var(--scp-fs-title);font-weight:var(--scp-fw-bold);line-height:var(--scp-lh-tight);}
 .scp-modal-sub{font-size:var(--scp-fs-label);font-weight:var(--scp-fw-regular);color:var(--scp-muted);margin-top:3px;line-height:var(--scp-lh-base);}
 .scp-modal-body{overflow:auto;padding:var(--scp-sp-3) var(--scp-sp-5);display:flex;flex-direction:column;gap:var(--scp-sp-3);}
 .scp-modal-foot{display:flex;align-items:center;gap:var(--scp-sp-2);padding:var(--scp-sp-3) var(--scp-sp-5);border-top:1px solid var(--scp-border);}
-.scp-prompt{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-label);line-height:var(--scp-lh-prose);white-space:pre-wrap;background:var(--scp-surface-2);border:1px solid var(--scp-border);border-radius:9px;padding:var(--scp-sp-3) var(--scp-sp-3);color:var(--scp-text);max-height:250px;overflow:auto;-webkit-mask-image:linear-gradient(to bottom,#000 88%,transparent);mask-image:linear-gradient(to bottom,#000 88%,transparent);}
-.scp-prompt-cap{font-size:var(--scp-fs-cap);color:var(--scp-faint);margin-top:-5px;}
+.scp-prompt{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:var(--scp-fs-label);line-height:var(--scp-lh-prose);white-space:pre-wrap;background:var(--scp-surface-2);border:1px solid var(--scp-border);border-radius:10px;padding:var(--scp-sp-3) var(--scp-sp-3);color:var(--scp-text);max-height:250px;overflow:auto;-webkit-mask-image:linear-gradient(to bottom,#000 88%,transparent);mask-image:linear-gradient(to bottom,#000 88%,transparent);}
+.scp-prompt-cap{font-size:var(--scp-fs-cap);color:var(--scp-muted);margin-top:-5px;}
 .scp-details-toggle{width:fit-content;border:0;background:transparent;color:var(--scp-accent);font:inherit;font-size:var(--scp-fs-label);font-weight:var(--scp-fw-medium);padding:1px 0;cursor:pointer;}
 .scp-details-toggle:hover{text-decoration:underline;}
 .scp-warn-list{display:flex;flex-direction:column;gap:var(--scp-sp-1);font-size:var(--scp-fs-label);color:var(--scp-muted);line-height:var(--scp-lh-base);}
@@ -1484,14 +1754,14 @@ body[data-ds-dark-theme] .scp-veil,[data-theme="dark"] .scp-veil{background:rgba
 .scp-pick-list{display:flex;flex-direction:column;gap:var(--scp-sp-2);}
 .scp-pick{display:flex;gap:var(--scp-sp-3);align-items:flex-start;padding:var(--scp-sp-3);border:1px solid var(--scp-border);border-radius:10px;background:var(--scp-surface);cursor:pointer;text-align:left;}
 .scp-pick[data-on="true"]{background:var(--scp-accent-soft);border-color:var(--scp-accent-line);}
-.scp-pick:disabled{opacity:.55;cursor:not-allowed;}
+.scp-pick:disabled{opacity:.45;cursor:not-allowed;}
 .scp-radio{width:14px;height:14px;border-radius:50%;border:2px solid var(--scp-border-strong);flex:none;margin-top:1px;}
 .scp-pick[data-on="true"] .scp-radio{border-color:var(--scp-accent);background:var(--scp-accent);box-shadow:inset 0 0 0 3px var(--scp-accent-soft);}
 .scp-pick-title{font-size:var(--scp-fs-body);font-weight:var(--scp-fw-semi);display:flex;gap:6px;align-items:center;flex-wrap:wrap;}
 .scp-pick-sub{font-size:var(--scp-fs-label);color:var(--scp-muted);margin-top:2px;line-height:var(--scp-lh-base);}
 .scp-sed-table{width:100%;border-collapse:collapse;font-size:var(--scp-fs-label);}
-.scp-sed-table th{text-align:left;font-weight:var(--scp-fw-semi);color:var(--scp-faint);font-size:var(--scp-fs-cap);letter-spacing:.02em;padding:0 6px 5px;border-bottom:1px solid var(--scp-border);}
-.scp-sed-table td{padding:6px;border-bottom:1px solid color-mix(in srgb,var(--scp-border) 60%,transparent);vertical-align:top;}
+.scp-sed-table th{text-align:left;font-weight:var(--scp-fw-semi);color:var(--scp-muted);font-size:var(--scp-fs-cap);letter-spacing:.02em;padding:0 6px 5px;border-bottom:1px solid var(--scp-border);}
+.scp-sed-table td{padding:6px;border-bottom:1px solid color-mix(in srgb,var(--scp-border) 72%,transparent);vertical-align:top;}
 .scp-sed-table tr:last-child td{border-bottom:0;}
 .scp-sed-kv{display:flex;flex-direction:column;gap:6px;font-size:var(--scp-fs-body);line-height:var(--scp-lh-base);}
 .scp-sed-kv-row{display:grid;grid-template-columns:64px 1fr;gap:var(--scp-sp-2);min-width:0;}
@@ -1501,63 +1771,83 @@ body[data-ds-dark-theme] .scp-veil,[data-theme="dark"] .scp-veil{background:rgba
 .scp-sed-link:hover{text-decoration:underline;}
 .scp-sed-actions{position:sticky;bottom:0;display:flex;align-items:center;gap:var(--scp-sp-2);flex-wrap:wrap;margin:var(--scp-sp-5) calc(-1 * var(--scp-side-pad-x)) 0;padding:var(--scp-sp-3) var(--scp-side-pad-x) var(--scp-sp-4);border-top:1px solid var(--scp-border);background:var(--scp-surface-2);box-shadow:0 -8px 16px -12px color-mix(in srgb,var(--scp-text) 24%,transparent);}
 .scp-sed-hint{font-size:var(--scp-fs-label);line-height:var(--scp-lh-base);color:var(--scp-muted);}
-.scp-sed-history{display:flex;flex-direction:column;gap:6px;width:100%;margin-top:10px;padding-top:var(--scp-sp-2);border-top:1px solid var(--scp-border);}
-.scp-sed-history-row{display:flex;align-items:center;gap:var(--scp-sp-2);font-size:var(--scp-fs-label);color:var(--scp-muted);min-width:0;}
-.scp-sed-history-title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--scp-text);}
-.scp-dock-sed{display:flex;align-items:center;gap:7px;min-width:0;margin-top:1px;padding:5px 2px 0;border-top:1px solid var(--scp-border);font-size:11px;}
+/* 最近完成落在宽 300–400px 的左列里：标题、状态、PR 链接、时间挤一行时，链接与时间会在中间断行
+   （#482 被拆成两行、时间拆成日期与时刻）。改成两行：标题 + 时间；状态 + PR 链接。 */
+.scp-sed-history{display:flex;flex-direction:column;gap:2px;width:100%;margin-top:10px;padding-top:var(--scp-sp-2);border-top:1px solid var(--scp-border);}
+.scp-sed-history-row{display:flex;flex-direction:column;align-items:stretch;gap:2px;padding:4px 0;font-size:var(--scp-fs-label);color:var(--scp-muted);min-width:0;text-align:left;}
+.scp-sed-history-row+.scp-sed-history-row{border-top:1px solid color-mix(in srgb,var(--scp-border) 60%,transparent);}
+.scp-sed-history-line{display:flex;align-items:baseline;gap:var(--scp-sp-2);min-width:0;}
+.scp-sed-history-title{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:var(--scp-fs-sm);font-weight:var(--scp-fw-medium);line-height:var(--scp-lh-base);color:var(--scp-text);}
+.scp-sed-history-time{flex:none;font-size:var(--scp-fs-meta);font-variant-numeric:tabular-nums;color:var(--scp-muted);}
+.scp-sed-history-pr{flex:none;white-space:nowrap;}
+.scp-dock-sed{display:flex;align-items:center;gap:7px;min-width:0;margin-top:1px;padding:5px 2px 0;border-top:1px solid var(--scp-border);font-size:var(--scp-fs-meta);}
 .scp-dock-sed-dot{width:6px;height:6px;border-radius:50%;background:var(--scp-warn);flex:none;}
 .scp-dock-sed-dot[data-tone="ok"]{background:var(--scp-ok);}
 .scp-dock-sed-dot[data-tone="bad"]{background:var(--scp-bad);}
 .scp-dock-sed-dot[data-tone="accent"]{background:var(--scp-accent);}
-.scp-dock-sed-label{color:var(--scp-faint);flex:none;}
-.scp-dock-sed-stage{color:var(--scp-text);font-weight:550;white-space:nowrap;}
+.scp-dock-sed-label{color:var(--scp-muted);flex:none;}
+.scp-dock-sed-stage{color:var(--scp-text);font-weight:var(--scp-fw-semi);white-space:nowrap;}
 .scp-dock-sed-sep{color:var(--scp-border-strong);flex:none;}
-.scp-dock-sed-days{color:var(--scp-warn);font-weight:650;flex:none;font-variant-numeric:tabular-nums;}
+.scp-dock-sed-days{color:var(--scp-warn);font-weight:var(--scp-fw-bold);flex:none;font-variant-numeric:tabular-nums;}
 .scp-dock-sed-next{color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
-.scp-dock-sed-open{flex:none;border:0;background:var(--scp-accent-soft);color:var(--scp-accent);font:inherit;font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:6px;cursor:pointer;}
+.scp-dock-sed-open{flex:none;border:0;background:var(--scp-accent-soft);color:var(--scp-accent);font:inherit;font-size:var(--scp-fs-cap);font-weight:var(--scp-fw-semi);padding:2px 7px;border-radius:6px;cursor:pointer;}
 /* 知识库落后提示：一行内联提示，不占诊断状态的位置；琥珀是「欠账」色，沿用 warn 变量。 */
-.scp-kb-notice{display:flex;align-items:center;gap:6px;min-width:0;padding:0 2px;color:var(--scp-warn);font-size:11px;line-height:1.6;}
+.scp-kb-notice{display:flex;align-items:center;gap:6px;min-width:0;padding:0 2px;color:var(--scp-warn);font-size:var(--scp-fs-meta);line-height:1.6;}
 .scp-kb-notice-dot{flex:none;width:5px;height:5px;border-radius:50%;background:var(--scp-warn);}
 .scp-kb-notice-main{flex:0 1 auto;min-width:0;display:flex;align-items:baseline;gap:6px;overflow:hidden;}
-.scp-kb-notice-text{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.scp-kb-notice-note{font-size:10.5px;line-height:1.6;color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.scp-kb-notice .scp-btn{flex:none;font-size:11px;line-height:1.5;padding:0 4px;border:0;background:transparent;color:var(--scp-warn);font-weight:600;}
+.scp-kb-notice-text{font-weight:var(--scp-fw-semi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.scp-kb-notice-note{font-size:var(--scp-fs-cap);line-height:1.6;color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.scp-kb-notice .scp-btn{flex:none;font-size:var(--scp-fs-meta);line-height:1.5;padding:0 4px;border:0;background:transparent;color:var(--scp-warn);font-weight:var(--scp-fw-semi);}
 .scp-kb-notice .scp-kb-go:hover{background:var(--scp-warn-soft);}
-.scp-kb-notice .scp-kb-later{color:var(--scp-muted);font-weight:500;}
+.scp-kb-notice .scp-kb-later{color:var(--scp-muted);font-weight:var(--scp-fw-medium);}
 .scp-kb-notice .scp-kb-later:hover{background:var(--scp-surface-2);color:var(--scp-text);}
 /* 连败上屏：同样是一行内联提示，用错误色与「有更新」区分。 */
-.scp-kb-error{display:flex;align-items:center;gap:6px;min-width:0;padding:0 2px;color:var(--scp-bad);font-size:11px;line-height:1.6;}
+.scp-kb-error{display:flex;align-items:center;gap:6px;min-width:0;padding:0 2px;color:var(--scp-bad);font-size:var(--scp-fs-meta);line-height:1.6;}
 .scp-kb-error-dot{flex:none;width:5px;height:5px;border-radius:50%;background:var(--scp-bad);}
 .scp-kb-error-main{flex:1 1 auto;min-width:0;display:flex;}
-.scp-kb-error-text{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-.scp-kb-error .scp-btn{flex:none;font-size:11px;line-height:1.5;padding:0 4px;border:0;background:transparent;color:var(--scp-bad);font-weight:600;}
+.scp-kb-error-text{font-weight:var(--scp-fw-semi);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.scp-kb-error .scp-btn{flex:none;font-size:var(--scp-fs-meta);line-height:1.5;padding:0 4px;border:0;background:transparent;color:var(--scp-bad);font-weight:var(--scp-fw-semi);}
 .scp-kb-error .scp-btn:hover{background:var(--scp-bad-soft);}
 @container (max-width: 720px){.scp-kb-notice,.scp-kb-error{flex-wrap:wrap;}.scp-kb-notice-note{display:none;}}
 body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,[data-theme="dark"] .scp-actions,[data-theme="dark"] .scp-sed-actions{box-shadow:0 -8px 16px -12px rgba(0,0,0,.55);}
-.scp-row-wrap{display:flex;align-items:center;gap:2px;min-width:0;}
+.scp-row-wrap{position:relative;display:flex;align-items:center;gap:2px;min-width:0;}
 .scp-row-wrap>.scp-pal-row,.scp-row-wrap>.scp-sed-row{flex:1 1 auto;min-width:0;}
-.scp-row-check{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-left:3px;padding:0;border:0;border-radius:6px;background:transparent;cursor:pointer;}
+.scp-row-check{flex:none;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;margin-left:3px;padding:0;border:0;border-radius:6px;background:transparent;cursor:pointer;opacity:0;pointer-events:none;transition:opacity 120ms ease;}
+/* 行前复选框覆在状态点的位置上：默认不占宽，悬停 / 选择态 / 已勾选时盖住状态点，行首不再留 24px 空槽。 */
+.scp-row-wrap>.scp-row-check{position:absolute;left:6px;top:50%;transform:translateY(-50%);z-index:2;margin-left:0;}
+/* 沉淀行的状态点贴行首（10px 内边距 + 7px 上边距 + 6px 圆点，中心在 20px），复选框跟着它对齐。 */
+.scp-row-wrap--sed>.scp-row-check{top:8px;transform:none;}
+.scp-row-wrap:hover .scp-row-check,.scp-row-wrap:focus-within .scp-row-check{opacity:1;pointer-events:auto;}
+.scp-pal-list[data-selecting="true"] .scp-row-check{opacity:1;pointer-events:auto;}
+.scp-row-check[aria-checked="true"]{opacity:1;pointer-events:auto;}
+.scp-batch .scp-row-check{opacity:1;pointer-events:auto;}
 .scp-row-check:hover{background:var(--scp-surface-2);}
+.scp-select-toggle{margin-left:auto;flex:none;display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 8px;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--scp-muted);font:inherit;font-size:var(--scp-fs-label);line-height:1;cursor:pointer;}
+.scp-select-toggle:hover{background:var(--scp-surface-2);color:var(--scp-text);}
+.scp-select-toggle::before{content:"";width:12px;height:12px;border:1.5px solid var(--scp-border-strong);border-radius:3px;background:var(--scp-surface);}
 .scp-row-check-box{width:15px;height:15px;border:1.5px solid var(--scp-border-strong);border-radius:4px;background:var(--scp-surface);display:grid;place-items:center;font-size:10px;line-height:1;color:transparent;}
 .scp-row-check[aria-checked="true"] .scp-row-check-box{background:var(--scp-accent);border-color:var(--scp-accent);color:var(--scp-on-accent);}
 .scp-row-check[data-mixed="true"] .scp-row-check-box{border-color:var(--scp-accent);background:var(--scp-surface);position:relative;}
 .scp-row-check[data-mixed="true"] .scp-row-check-box::after{content:"";width:7px;height:2px;border-radius:1px;background:var(--scp-accent);}
 .scp-pal-row[data-sel="true"],.scp-sed-row[data-sel="true"]{background:var(--scp-surface-2);}
 .scp-pal-row[data-on="true"][data-sel="true"],.scp-sed-row[data-on="true"][data-sel="true"]{background:var(--scp-accent-soft);}
-.scp-batch{position:relative;display:block;}
-.scp-batch-line{display:flex;align-items:center;gap:var(--scp-sp-2);min-width:0;flex-wrap:wrap;}
-.scp-batch-line + .scp-batch-line{margin-top:4px;}
-.scp-batch-note{font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+.scp-batch{position:relative;display:flex;}
+.scp-batch-line{display:flex;align-items:center;gap:var(--scp-sp-2);min-width:0;max-width:100%;flex-wrap:wrap;}
+/* 动作组靠右；一行放得下时与左侧读数同一行，放不下才整组换到下一行。 */
+.scp-batch-line + .scp-batch-line{margin-left:auto;}
+.scp-batch-note{font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
 .scp-batch-menu{position:absolute;right:var(--scp-sp-5);top:calc(100% - 2px);z-index:8;width:min(300px,calc(100% - 32px));padding:5px;border:1px solid var(--scp-border-strong);border-radius:12px;background:var(--scp-surface);box-shadow:var(--scp-shadow);}
 .scp-batch-item{display:flex;align-items:center;gap:8px;width:100%;padding:7px 9px;border:0;border-radius:8px;background:transparent;color:var(--scp-text);font:inherit;font-size:var(--scp-fs-body);text-align:left;cursor:pointer;}
 .scp-batch-item:hover{background:var(--scp-surface-2);}
-.scp-batch-item:disabled{opacity:.55;cursor:not-allowed;}
-.scp-batch-item-n{margin-left:auto;font-size:var(--scp-fs-cap);color:var(--scp-faint);font-variant-numeric:tabular-nums;}
+.scp-batch-item:disabled{opacity:.45;cursor:not-allowed;}
+.scp-batch-item-n{margin-left:auto;font-size:var(--scp-fs-cap);color:var(--scp-muted);font-variant-numeric:tabular-nums;}
 .scp-batch-empty{padding:6px 9px;font-size:var(--scp-fs-meta);color:var(--scp-muted);line-height:var(--scp-lh-base);}
 .scp-receipt{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:7px var(--scp-sp-5);border-bottom:1px solid var(--scp-border);background:var(--scp-surface-2);font-size:var(--scp-fs-meta);line-height:var(--scp-lh-base);color:var(--scp-muted);flex:none;}
 .scp-receipt-strong{color:var(--scp-text);font-weight:var(--scp-fw-medium);}
 .scp-receipt .scp-btn{height:22px;padding:0 8px;font-size:var(--scp-fs-meta);}
-@media (max-width:760px){.scp-batch{flex-wrap:wrap;gap:6px 8px;}.scp-batch .scp-spacer{display:none;}.scp-sed-step-label,.scp-sed-step-note{font-size:var(--scp-fs-cap);}.scp-target-row{flex-wrap:wrap;}}`,
+@media (max-width:760px){.scp-batch{flex-wrap:wrap;gap:6px 8px;}.scp-batch .scp-spacer{display:none;}.scp-sed-step-label,.scp-sed-step-note{font-size:var(--scp-fs-cap);}.scp-target-row{flex-wrap:wrap;}}
+/* 减少动态效果：过渡全部归零（含状态条、菜单、选择器、复选框）；静置淡出仍是瞬时变化。 */
+@media (prefers-reduced-motion: reduce){.scp-handle,.scp-handle-title,.scp-handle-meta,.scp-ring,.scp-surface,.scp-scope,.scp-collapse,.scp-case,.scp-btn,.scp-icon,.scp-tick,.scp-pal-row,.scp-sed-row,.scp-chevron,.scp-check-action,.scp-filter-item,.scp-view-tab,.scp-menu-item,.scp-menu-note,.scp-tool-btn,.scp-picker-row,.scp-row-check,.scp-select-toggle,.scp-batch-item,.scp-dock-sed-open,.scp-pick{transition:none;}.scp-pal,.scp-menu,.scp-toast,.scp-picker,.scp-cmd,.scp-skel,.scp-ring{animation:none;}}`,
     ].join('\n')
 
     // ── 兜底中文名（词表缺项时用，正常路径由 scripts/_trace_state.py 给）──────
@@ -1911,6 +2201,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         })
       })
       if (!patched) return
+      announceCheckProgress(run)
       store.sediment = Object.assign({}, store.sediment, {
         data: Object.assign({}, data, { drafts: nextDrafts }),
       })
@@ -2103,6 +2394,19 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       return pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' + pad(date.getHours()) + ':' + pad(date.getMinutes())
     }
 
+    // 核对时刻：当天只给 HH:MM，隔天带日期——提示行放不下完整时间。
+    function shortClock(iso) {
+      if (!iso) return ''
+      const date = new Date(iso)
+      if (Number.isNaN(date.getTime())) return String(iso)
+      const pad = (n) => String(n).padStart(2, '0')
+      const now = new Date()
+      const sameDay = date.getFullYear() === now.getFullYear()
+        && date.getMonth() === now.getMonth() && date.getDate() === now.getDate()
+      const clock = pad(date.getHours()) + ':' + pad(date.getMinutes())
+      return sameDay ? clock : pad(date.getMonth() + 1) + '-' + pad(date.getDate()) + ' ' + clock
+    }
+
     function stepsText(extra) {
       const current = Number(extra && extra.currentStep) || 0
       const max = Number(extra && extra.maxSteps) || 6
@@ -2115,7 +2419,95 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       return tr('stepsShort', { n: current > 0 ? current : '—', m: max })
     }
 
+    // 现场时间线的时间写到材料给到的那一级：日期必有、时刻可能缺。解析不出就是 null，
+    // 由调用方渲染成「时点未知」；不换算时区、不补精度。
+    function stampParts(at) {
+      if (!at) return null
+      const match = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2}(?::\d{2})?))?/.exec(String(at))
+      if (!match) return null
+      return { date: match[1], time: match[2] || '' }
+    }
+
+    function stampText(at) {
+      const parts = stampParts(at)
+      if (!parts) return tr('incident.unknown')
+      return parts.time ? parts.date + ' ' + parts.time : parts.date
+    }
+
+    // 证据按钮只写文件名（+ 行号），完整路径进 title 与剪贴板；长路径不撑开一行。
+    function fileLabel(path) {
+      const text = String(path || '')
+      const parts = text.split('/')
+      return parts[parts.length - 1] || text
+    }
+
+    function fileLineLabel(path, line) {
+      const label = fileLabel(path)
+      return line ? label + ':' + line : label
+    }
+
+    function timelineSourceLabel(source) {
+      const value = String(source || '')
+      if (!value) return ''
+      const key = 'timelineSource.' + value
+      const label = tr(key)
+      return label === key ? value : label
+    }
+
+    function revisionKindLabel(kind) {
+      const value = String(kind || '')
+      if (!value) return ''
+      const key = 'revision.kind.' + value
+      const label = tr(key)
+      return label === key ? value : label
+    }
+
+    function revisionTargetLabel(target) {
+      const value = String(target || '')
+      if (value.indexOf('removed:') === 0) return tr('revision.removed', { id: value.slice(8) })
+      return value
+    }
+
+    // 修订行正文：每条 change 写「目标：旧值 → 新值」；删除条目没有新值，只写旧值。
+    function revisionText(revision) {
+      const changes = revision && Array.isArray(revision.changes) ? revision.changes : []
+      return changes.map((change) => {
+        const target = revisionTargetLabel(change && change.target)
+        const before = String((change && change.before) || '') || tr('label.none')
+        const removed = String((change && change.target) || '').indexOf('removed:') === 0
+        if (removed) return target + '：' + before
+        const after = String((change && change.after) || '') || tr('label.none')
+        return target + '：' + before + ' → ' + after
+      }).join('；')
+    }
+
+    // 选中行的三段时间线 + 修订（copilot-timeline 的 layers）：null 与缺键都按「未记录」，
+    // [] 才是「查过但为空」；*Total 是截断前的条数，段头用它并写明「显示前 N 条」。
+    function normalizeTimelineLayers(value) {
+      const doc = value && typeof value === 'object' ? value : {}
+      const listOrNull = (item) => {
+        if (item === null || item === undefined) return null
+        return Array.isArray(item) ? item : null
+      }
+      const countOf = (item, total) => {
+        const number = Number(total)
+        if (Number.isFinite(number) && number >= 0) return number
+        return Array.isArray(item) ? item.length : 0
+      }
+      return {
+        incidentEnv: String(doc.incidentEnv || ''),
+        incident: listOrNull(doc.incident),
+        incidentTotal: countOf(doc.incident, doc.incidentTotal),
+        failureProcess: doc.failureProcess && typeof doc.failureProcess === 'object' ? doc.failureProcess : null,
+        upstream: listOrNull(doc.upstream),
+        upstreamTotal: countOf(doc.upstream, doc.upstreamTotal),
+        revisions: Array.isArray(doc.revisions) ? doc.revisions : [],
+        revisionsTotal: countOf(doc.revisions, doc.revisionsTotal),
+      }
+    }
+
     // 案例标题：状态条与总览显示给人看的一句话；单号只进 tooltip 与详情。
+    // 案例标题：状态条与工作台显示给人看的一句话；单号只进 tooltip 与详情。
     // 取 summary 第一句（到第一个句读），截断交给 CSS——不手写省略号，也不把内部单号当标题。
     function caseTitle(row) {
       const summary = String((row && row.summary) || '').trim()
@@ -2154,12 +2546,22 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
     }
 
     // 身份标签：这单到底是什么——命中的 case、知识库覆盖与否、欠什么、排除了多少。
-    function identityChips(row) {
+    function identityChips(row, onSample) {
       const derived = (row && row.derived) || {}
       const extra = (row && row.extra) || {}
       const chips = []
       if (row && row.activeCase) chips.push({ key: 'hit', tone: 'brand', text: tr('chip.hit', { id: row.activeCase }) })
       else if (derived.caseKind === 'none') chips.push({ key: 'miss', tone: 'idle', text: tr('chip.miss') })
+      const sample = extra.sample || (row && row.sample)
+      if (sample && sample.state) {
+        const tone = sample.state === 'ready' ? 'brand'
+          : sample.state === 'absorbed' ? 'idle' : 'warn'
+        chips.push({
+          key: 'sample', tone, text: tr('chip.sample.' + sample.state),
+          title: [sample.id, ...(sample.reasons || []), ...(sample.duplicates || [])].filter(Boolean).join(' · '),
+          onSelect: onSample ? () => onSample(sample) : undefined,
+        })
+      }
       if (isPending(row)) chips.push({ key: 'feedback', tone: 'warn', text: tr('chip.feedback') })
       if (derived.needSed) chips.push({ key: 'sediment', tone: 'brand', text: tr('chip.sediment') })
       if (derived.needPromote) chips.push({ key: 'promote', tone: 'warn', text: tr('chip.promote') })
@@ -2180,6 +2582,15 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       if (derived.needPromote) chips.push({ key: 'promote', tone: 'warn', text: tr('chip.promote') })
       if (derived.needReview) chips.push({ key: 'review', tone: 'brand', text: tr('chip.review') })
       if (derived.needReportReview) chips.push({ key: 'reportReview', tone: 'warn', text: tr('chip.reportReview') })
+      if (extra.sample && extra.sample.state) {
+        const sample = extra.sample
+        const tone = sample.state === 'ready' ? 'brand'
+          : sample.state === 'absorbed' ? 'idle' : 'warn'
+        chips.push({
+          key: 'sample', tone, text: tr('chip.sample.' + sample.state),
+          title: [sample.id, ...(sample.reasons || []), ...(sample.duplicates || [])].filter(Boolean).join(' · '),
+        })
+      }
       if (derived.upstreamPending) chips.push({ key: 'upstream', tone: 'idle', text: tr('chip.upstream') })
       if (row.activeCase) chips.push({ key: 'hit', tone: 'brand', text: tr('chip.hit', { id: row.activeCase }) })
       if (extra.excludedCases && extra.excludedCases.length) {
@@ -2202,6 +2613,11 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
     function sedimentDraft(row) {
       return '用 /to-postmortem 沉淀 ' + row.sessionId + '（来源 ' + traceSource(row) + '）'
+    }
+
+    function sampleDraft(row) {
+      return '用 /eval-ingest 从 ' + traceSource(row) + ' 生成候选样本，'
+        + '先跑 sample new --from trace --dry-run 看完整性与查重'
     }
 
     // 能不能起沉淀：看「这单还没沉淀、有内容、不是已有 case 覆盖的单」，不看 agent 有没有
@@ -2228,8 +2644,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const total = Number(options.total) || ids.length
       const totalText = query && total > ids.length ? '；该筛选全量 ' + total + ' 单' : ''
       const scopeText = bySelection
-        ? '范围 = 诊断总览所选的 ' + ids.length + ' 单'
-        : '范围 = 诊断总览「可沉淀」筛选当前列出的 ' + ids.length + ' 单' + scope + totalText
+        ? '范围 = 诊断工作台所选的 ' + ids.length + ' 单'
+        : '范围 = 诊断工作台「可沉淀」筛选当前列出的 ' + ids.length + ' 单' + scope + totalText
       return '用 /to-postmortem 批量沉淀这些 session：' + ids.join('、') + '\n'
         + scopeText + '；trace 在 traces/<session>.yaml。\n'
         + '先跑 python3 scripts/sediment_batch.py --json 核对分组与证据：名单外、或名单内被判「已沉淀 / 没素材」的，'
@@ -2399,8 +2815,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       return !isOpen(row) || isPending(row) || !!derived.needSed || !!derived.needPromote || !!derived.needReview || sedState !== 'none'
     }
 
-    // 写入历史：transitions / reports / reviews 合成一条时间线，只展示最近几条。
-    function historyEntries(row, data) {
+    // 写入历史：transitions / reports / reviews / revisions 合成一条时间线，只展示最近几条。
+    function historyEntries(row, data, revisions) {
       const entries = []
       for (const item of Array.isArray(row.transitions) ? row.transitions : []) {
         if (!item || typeof item !== 'object') continue
@@ -2428,6 +2844,19 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           at: String(item.at || ''),
           text: REVIEW_LABELS[item.verdict] || String(item.verdict || ''),
           note: String(item.note || ''),
+        })
+      }
+      // 修订记录：类别、before → after、改的原因都在一行里；正文走 revisionText。
+      const revisionList = Array.isArray(revisions) ? revisions : []
+      for (const item of revisionList) {
+        if (!item || typeof item !== 'object') continue
+        entries.push({
+          kind: 'revision',
+          // 类别列写修订的种类（事实更正 / 结论翻转 …），不回落到笼统的「修订」。
+          label: revisionKindLabel(item.kind) || tr('history.revision'),
+          at: String(item.at || ''),
+          text: revisionText(item),
+          note: String(item.reason || ''),
         })
       }
       entries.sort((left, right) => String(right.at).localeCompare(String(left.at)))
@@ -2656,7 +3085,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
     // ── 沉淀队列的小工具（只排版，不判状态；状态来自 sediment_state.py）──────
     const SED_CHIP_TONE = { warn: 'warn', bad: 'error', accent: 'brand', ok: 'success', gray: '' }
-    const SED_DOT = { warn: 'var(--scp-warn)', bad: 'var(--scp-bad)', accent: 'var(--scp-accent)', ok: 'var(--scp-ok)', gray: 'var(--scp-faint)' }
+    const SED_DOT = { warn: 'var(--scp-warn)', bad: 'var(--scp-bad)', accent: 'var(--scp-accent)', ok: 'var(--scp-ok)', gray: 'var(--scp-muted)' }
 
     function sedGroupOf(draft) {
       const state = String((draft && draft.state) || '')
@@ -2860,6 +3289,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       })
       // 必填项缺值：给一行说明，不要按了提交像没反应。
       const [localError, setLocalError] = React.useState('')
+      const formSeqRef = React.useRef(0)
+      if (!formSeqRef.current) formSeqRef.current = ++formSeq
       function change(name, value) {
         if (localError) setLocalError('')
         setValues((prev) => Object.assign({}, prev, { [name]: value }))
@@ -2885,10 +3316,15 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         form.fields.map((field) => {
           if (field.showWhen && !field.showWhen(values)) return null
           const label = h('span', { className: 'scp-field-label' }, field.label + (field.required ? ' *' : ''))
+          const fieldId = 'scp-field-' + formSeqRef.current + '-' + field.name
+          const hintId = fieldId + '-hint'
           if (field.type === 'select') {
             return h('label', { key: field.name, className: 'scp-field' }, label,
               h('select', {
                 className: 'scp-select',
+                id: fieldId,
+                required: field.required ? true : undefined,
+                'aria-describedby': field.hint ? hintId : undefined,
                 autoFocus: field === firstVisible,
                 value: values[field.name],
                 onChange: (event) => change(field.name, event.target.value),
@@ -2896,34 +3332,42 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 field.emptyValue && String(field.placeholder || '')
                   ? h('option', { value: '' }, field.placeholder)
                   : null,
-                field.options.map((option) => h('option', { key: String(option.value), value: option.value }, option.label))))
+                field.options.map((option) => h('option', { key: String(option.value), value: option.value }, option.label))),
+              field.hint ? h('span', { className: 'scp-form-hint', id: hintId }, field.hint) : null)
           }
           if (field.type === 'textarea') {
             return h('label', { key: field.name, className: 'scp-field' }, label,
               h('textarea', {
                 className: 'scp-textarea',
+                id: fieldId,
+                required: field.required ? true : undefined,
+                'aria-describedby': field.hint ? hintId : undefined,
                 rows: field.rows || undefined,
                 autoFocus: field === firstVisible,
                 value: values[field.name],
                 placeholder: field.placeholder || '',
                 onChange: (event) => change(field.name, event.target.value),
-              }))
+              }),
+              field.hint ? h('span', { className: 'scp-form-hint', id: hintId }, field.hint) : null)
           }
           return h('label', { key: field.name, className: 'scp-field' }, label,
             h('input', {
               className: 'scp-input',
               type: 'text',
+              id: fieldId,
+              required: field.required ? true : undefined,
+              'aria-describedby': field.hint ? hintId : undefined,
               autoFocus: field === firstVisible,
               value: values[field.name],
               placeholder: field.placeholder || '',
               onChange: (event) => change(field.name, event.target.value),
             }),
-            field.hint ? h('span', { className: 'scp-form-hint' }, field.hint) : null)
+            field.hint ? h('span', { className: 'scp-form-hint', id: hintId }, field.hint) : null)
         }),
         preview ? h('div', { className: 'scp-preview' },
           h('span', { className: 'scp-preview-label' }, tr('form.preview')),
           h('pre', { className: 'scp-preview-text' }, preview)) : null,
-        error || localError ? h('div', { className: 'scp-form-error' }, error || localError) : null,
+        error || localError ? h('div', { className: 'scp-form-error', role: 'alert' }, error || localError) : null,
         h('div', { className: 'scp-form-actions' },
           h('button', { type: 'button', className: 'scp-btn scp-btn--ghost', onClick: onCancel }, tr('form.cancel')),
           h('button', { type: 'submit', className: 'scp-btn scp-btn--primary', disabled: busy },
@@ -3384,23 +3828,27 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       })
       groups.push({ key: 'state', title: tr('group.state'), items: stateItems })
 
-      groups.push({
-        key: 'copy',
-        title: tr('group.copy'),
-        items: [{
-          key: 'summary',
-          label: tr('action.copySummary'),
-          onSelect: () => copyItem({ text: summaryText(row, data) }),
-        }, {
-          key: 'issue',
-          label: tr('copy.issue'),
-          onSelect: () => copyItem({ text: issueText(row), message: tr('hint.copiedIssue') }),
-        }, {
-          key: 'resume-copy',
-          label: tr('action.copyResume'),
-          onSelect: () => copyItem({ text: resumeDraft(row) }),
-        }],
-      })
+      const copyItems = [{
+        key: 'summary',
+        label: tr('action.copySummary'),
+        onSelect: () => copyItem({ text: summaryText(row, data) }),
+      }, {
+        key: 'issue',
+        label: tr('copy.issue'),
+        onSelect: () => copyItem({ text: issueText(row), message: tr('hint.copiedIssue') }),
+      }, {
+        key: 'resume-copy',
+        label: tr('action.copyResume'),
+        onSelect: () => copyItem({ text: resumeDraft(row) }),
+      }]
+      if (row && ['resolved', 'escalated', 'archived'].includes(row.status)) {
+        copyItems.push({
+          key: 'sample-copy',
+          label: tr('action.copySample'),
+          onSelect: () => copyItem({ text: sampleDraft(row) }),
+        })
+      }
+      groups.push({ key: 'copy', title: tr('group.copy'), items: copyItems })
 
       const navItems = []
       const frequentItems = [{
@@ -3465,7 +3913,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             title: item.disabled ? disabledReason : undefined,
             onClick: item.onSelect,
           }, item.label, item.note ? h('span', { className: 'scp-menu-note' }, item.note) : null)))),
-        error ? h('div', { className: 'scp-form-error', style: { padding: '4px 6px' } }, error) : null,
+        error ? h('div', { className: 'scp-form-error', role: 'alert', style: { padding: '4px 6px' } }, error) : null,
         fallbackBlock())
     }
 
@@ -3510,6 +3958,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         useSessionSync(props)
         const [menuOpen, setMenuOpen] = React.useState(false)
         const [menuForm, setMenuForm] = React.useState(null)
+        const [samplePop, setSamplePop] = React.useState(null)
         const [pickerOpen, setPickerOpen] = React.useState(false)
         const [idle, setIdle] = React.useState(false)
         const [flashStep, setFlashStep] = React.useState('')
@@ -3534,9 +3983,16 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const [anchor, setAnchor] = React.useState(null)
         // 键盘收起后把焦点放回收起态胶囊，别落回 body
         const restoreFocusRef = React.useRef(false)
+        // 内层浮层（更多操作 / 选择器）关闭后把焦点还给触发它的按钮；展开时给第一个控件。
+        const moreBtnRef = React.useRef(null)
+        const scopeBtnRef = React.useRef(null)
+        const menuWasOpenRef = React.useRef(false)
+        const pickerWasOpenRef = React.useRef(false)
+        const expandFocusRef = React.useRef(false)
 
         const flash = React.useCallback((text) => {
           setHint(text)
+          announce(text)
           if (hintTimer.current) clearTimeout(hintTimer.current)
           hintTimer.current = setTimeout(() => setHint(''), 4600)
         }, [])
@@ -3599,9 +4055,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           }
         }, [s.prefs.dockCollapsed, bumpIdle])
 
+        React.useEffect(() => {
+          ensureAnnouncementRegions()
+        }, [])
+
         React.useEffect(() => () => {
           if (idleTimer.current) clearTimeout(idleTimer.current)
           if (flashTimer.current) clearTimeout(flashTimer.current)
+          removeAnnouncementRegions()
         }, [])
 
         // 步骤前进时让状态点轻闪一次；只在同一单上比较，首屏不闪。
@@ -3624,14 +4085,22 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           return undefined
         }, [s.data, s.sessionId])
 
-        // ⌘⇧D / Ctrl+Shift+D 打开诊断总览；⌘K / Ctrl+K 打开总览并进入命令面板。
+        // ⌘⇧D / Ctrl+Shift+D 打开诊断工作台；⌘⇧K / Ctrl+Shift+K 打开工作台并进入命令面板。
+        // 命令面板那条为什么不带主键的 ⌘K：DSH 把 Primary+K 注册成「搜索会话」，宿主的分发器
+        // 先跑并 preventDefault，下面的 defaultPrevented 守卫据此让路——留着主键等于点了没反应。
         React.useEffect(() => {
           const onKey = (event) => {
+            // 宿主已经处理过的组合不再抢；状态条不该覆盖别的应用级快捷键。
+            if (event.defaultPrevented) return
             const key = String(event.key || '').toLowerCase()
             const mod = event.metaKey || event.ctrlKey
             if (!mod) return
-            if (key === 'k') {
+            if (key === 'k' && event.shiftKey) {
+              // 工作台开着时这组键归工作台自己（切进命令面板），这里不重复处理。
+              if (store.paletteOpen) return
               event.preventDefault()
+              setMenuOpen(false)
+              setPickerOpen(false)
               const current = store.data && store.data.ok !== false ? store.data : null
               if (!current) return
               const all = current.all || []
@@ -3794,6 +4263,12 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const kbDegraded = !!kbNotice && kbNotice.behind === null
         const kbBehind = kbNotice ? Math.max(0, Number(kbNotice.behind) || 0) : 0
         const kbPanel = kbNotice ? Math.max(0, Number(kbNotice.panel) || 0) : 0
+        // 只有面板代码的提交说「面板代码落后」；其余（含读不到改动面的旧状态）说知识库。
+        const kbKind = kbNotice && kbNotice.kind === 'panel' ? 'panel' : 'knowledge'
+        const kbTagKey = kbKind === 'panel' ? 'kb.panelCollapsed' : 'kb.collapsed'
+        const kbWhen = kbNotice && !kbDegraded && kbNotice.checkedAt
+          ? tr('kb.checked', { time: shortClock(String(kbNotice.checkedAt)) })
+          : ''
         // 连败上屏：连续失败 3 次或权限拒绝时 host 才给 kbError；成功检查后随刷新消失。
         const kbError = data && data.ok !== false && data.kbError && typeof data.kbError === 'object'
           ? data.kbError
@@ -3802,6 +4277,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         function toggleCollapsed() {
           // 展开是新一轮交互：上一次「关菜单」的标记不该带到现在
           if (collapsed) menuDismissedAtRef.current = 0
+          if (collapsed) expandFocusRef.current = true
           savePrefs({ dockCollapsed: !collapsed })
           setMenuOpen(false)
           setPickerOpen(false)
@@ -3866,6 +4342,30 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           if (node && typeof node.focus === 'function') node.focus()
         }, [collapsed])
 
+        // 展开方向：胶囊被卸载后焦点会回 body，落到展开态的第一个控件（范围标签）。
+        React.useEffect(() => {
+          if (collapsed || !expandFocusRef.current) return
+          expandFocusRef.current = false
+          const node = scopeBtnRef.current
+          if (node && typeof node.focus === 'function') { try { node.focus() } catch { /* 替身无焦点 API */ } }
+        }, [collapsed])
+
+        // 内层浮层关闭：把焦点还给触发按钮，用户的 Tab 起点不丢。
+        React.useEffect(() => {
+          if (menuWasOpenRef.current && !menuOpen) {
+            const node = moreBtnRef.current
+            if (node && typeof node.focus === 'function') { try { node.focus() } catch { /* 同上 */ } }
+          }
+          menuWasOpenRef.current = menuOpen
+        }, [menuOpen])
+        React.useEffect(() => {
+          if (pickerWasOpenRef.current && !pickerOpen) {
+            const node = scopeBtnRef.current
+            if (node && typeof node.focus === 'function') { try { node.focus() } catch { /* 同上 */ } }
+          }
+          pickerWasOpenRef.current = pickerOpen
+        }, [pickerOpen])
+
         // 焦点在状态条内时 Esc 收起；菜单或选择器开着就先关内层。
         function onRootKeyDown(event) {
           if (!event || event.key !== 'Escape') return
@@ -3924,7 +4424,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               type: 'button',
               className: 'scp-handle',
               'data-idle': idle ? 'true' : 'false',
-              'aria-label': tr('action.expand'),
+              'aria-label': tr('action.expand') + '：' + title + (meta ? '，' + meta : '') + (pending ? '，' + tr('chip.feedback') : ''),
               title,
               onClick: toggleCollapsed,
             },
@@ -4006,7 +4506,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             h('span', { className: 'scp-kb-notice-dot', 'aria-hidden': 'true' }),
             h('span', { className: 'scp-kb-notice-main' },
               h('span', { className: 'scp-kb-notice-text' },
-                kbDegraded ? tr('kb.degraded') : tr('kb.behind', { n: kbBehind })),
+                kbDegraded ? tr('kb.degraded')
+                  : tr(kbKind === 'panel' ? 'kb.panelBehind' : 'kb.behind', { n: kbBehind })
+                    + (kbWhen ? ' ' + kbWhen : '')),
               kbPanel > 0 ? h('span', { className: 'scp-kb-notice-note' }, tr('kb.panel')) : null),
             h('span', { className: 'scp-spacer' }),
             h('button', {
@@ -4095,7 +4597,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         if (!primary) {
           if (collapsed) {
             return h('section', Object.assign({}, rootProps, { className: 'scp-root', 'data-mode': 'empty', 'data-tone': 'idle' }),
-              renderHandle(tr('empty.collapsed'), kbNotice ? tr('kb.collapsed') : null, false))
+              renderHandle(tr('empty.collapsed'), kbNotice ? tr(kbTagKey) : null, false))
           }
           return h('section', Object.assign({}, rootProps, { ref: rootRef, className: 'scp-root', 'data-mode': 'empty', 'data-tone': 'idle', onKeyDown: onRootKeyDown }),
             h('div', { className: 'scp-surface' },
@@ -4115,7 +4617,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               collapsed ? null : h('div', { className: 'scp-foot' },
                 h('span', { className: 'scp-empty-note' }, tr('empty.body')))),
             // 这个分支也要挂 hint：没有诊断单时点「去同步 / 稍后」的结果得看得见。
-            hint ? h('div', { className: 'scp-hint', role: 'status' }, hint) : null)
+            hint ? h('div', { className: 'scp-hint' }, hint) : null)
         }
 
         const bound = !!data.bound && primary.sessionId === data.bound.sessionId
@@ -4126,7 +4628,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const derived = primary.derived || {}
         const waiting = derived.waitingFor || extra.evidenceMissing || ''
         const action = primaryFor(primary, bound)
-        const chips = identityChips(primary).filter((chip) => chip.key !== 'excluded').slice(0, 3)
+        const chips = identityChips(primary, (sample) => setSamplePop(sample)).filter((chip) => chip.key !== 'excluded').slice(0, 3)
         if (s.stale) chips.push({ key: 'stale', tone: 'warn', text: tr('chip.stale') })
         const metaBits = []
         if (status && status.label) metaBits.push(status.label)
@@ -4202,6 +4704,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               className: 'scp-picker-search',
               type: 'text',
               value: query,
+              'aria-label': tr('picker.search'),
               placeholder: tr('picker.search'),
               onChange: (event) => setQuery(event.target.value),
             })),
@@ -4253,7 +4756,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
         const menu = menuOpen ? h('div', {
           className: 'scp-menu',
-          role: 'menu',
+          // 表单态里只有 form / 输入 / 普通按钮；继续用 menu 角色会让读屏按菜单模式导航。
+          role: menuForm ? 'dialog' : 'menu',
           'aria-label': tr('menu.title'),
           style: menuStyle || undefined,
         },
@@ -4280,7 +4784,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           }), renderHandle(
             caseTitle(primary),
             (flashStep || stepsShort(extra)) + (s.stale ? ' · ' + tr('chip.stale') : '')
-              + (kbNotice ? ' · ' + tr('kb.collapsed') : ''),
+              + (kbNotice ? ' · ' + tr(kbTagKey) : ''),
             isPending(primary)))
         }
 
@@ -4303,7 +4807,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('button', {
                 type: 'button',
                 className: 'scp-scope',
-                'aria-label': tr('picker.title'),
+                ref: scopeBtnRef,
+                'aria-label': tr('picker.title') + '：' + scopeLabel,
                 title: tr('picker.title'),
                 'aria-expanded': pickerOpen ? 'true' : 'false',
                 onClick: () => { setPickerOpen((value) => !value); setMenuOpen(false) },
@@ -4321,7 +4826,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('button', { type: 'button', className: 'scp-btn scp-btn--quiet', onClick: runPrimary }, action.label),
               collapsed ? null : h('button', {
                 type: 'button', className: 'scp-icon', title: tr('action.more'), 'aria-label': tr('action.more'),
-                'aria-haspopup': 'menu',
+                ref: moreBtnRef,
+                'aria-haspopup': menuForm ? 'dialog' : 'menu',
                 'aria-expanded': menuOpen ? 'true' : 'false',
                 onClick: () => { setMenuForm(null); setMenuOpen((value) => !value); setPickerOpen(false) },
               }, IconMore()),
@@ -4337,9 +4843,33 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 : h('span', { className: 'scp-wait-tag' }, tr('label.updated') + ' ' + (formatTime(primary.updatedAt) || tr('none')))),
               chips.length ? h('span', { className: 'scp-chips' }, chips.map((chip) => h('span', {
                 key: chip.key, className: 'scp-chip', 'data-tone': chip.tone,
+                title: chip.title || undefined,
+                onClick: chip.onSelect,
+                style: chip.onSelect ? { cursor: 'pointer' } : undefined,
               }, chip.text))) : null),
             sedimentRow),
-          hint ? h('div', { className: 'scp-hint', role: 'status' }, hint) : null)
+          samplePop ? h('div', {
+            className: 'scp-menu scp-sample-pop', role: 'dialog',
+            'aria-label': tr('sample.pop.title'), style: { width: '360px' },
+          },
+            h('div', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px 8px' } },
+              h('b', null, tr('sample.pop.title')), h('span', { className: 'scp-spacer' }),
+              h('button', {
+                type: 'button', className: 'scp-btn scp-btn--quiet',
+                onClick: () => setSamplePop(null),
+              }, tr('sample.pop.close'))),
+            h('div', { className: 'scp-kv' }, tr('sample.pop.state') + '：' + tr('chip.sample.' + samplePop.state)),
+            samplePop.id ? h('div', { className: 'scp-kv' }, 'ID：' + samplePop.id) : null,
+            samplePop.reasons && samplePop.reasons.length
+              ? h('div', { className: 'scp-kv' }, tr('sample.pop.reasons') + '：' + samplePop.reasons.join('、')) : null,
+            samplePop.duplicates && samplePop.duplicates.length
+              ? h('div', { className: 'scp-kv' }, tr('sample.pop.duplicates') + '：' + samplePop.duplicates.join('、')) : null,
+            h('div', { className: 'scp-upstream-row' },
+              h('button', {
+                type: 'button', className: 'scp-check-action',
+                onClick: () => copyToClipboard('python3 scripts/evolve.py sample status --id ' + samplePop.id),
+              }, tr('sample.pop.copy')))) : null,
+          hint ? h('div', { className: 'scp-hint' }, hint) : null)
       }
     }
 
@@ -4368,7 +4898,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         pending > 0 ? h('span', { className: 'scp-tool-badge' }, pending > 9 ? '9+' : String(pending)) : null)
     }
 
-    // ── 面 3：诊断总览（浮层）─────────────────────────────────────────────
+    // ── 面 3：诊断工作台（浮层）─────────────────────────────────────────────
     function Palette() {
       const s = useStore()
       const data = s.data && s.data.ok !== false ? s.data : null
@@ -4394,6 +4924,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const [cmdQuery, setCmdQuery] = React.useState('')
       const [cmdIndex, setCmdIndex] = React.useState(0)
       const [timelineState, setTimelineState] = React.useState({ open: false, loading: false, items: [], error: '' })
+      // 故障过程（日志）默认收起，按单号记住展开态；上游时间线超过 3 条才折叠，同样按单号记。
+      const [processOpenId, setProcessOpenId] = React.useState('')
+      const [upstreamOpenId, setUpstreamOpenId] = React.useState('')
       const [toast, setToast] = React.useState('')
       const [reportState, setReportState] = React.useState({ open: false, loading: false, text: '', error: '' })
       const reportToken = React.useRef(0)
@@ -4422,6 +4955,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       // 选择撤销栈：只收选择集本身与当时的筛选/搜索词，最多 5 步；切视图清空（两边的 id 不同域）。
       const [selHist, setSelHist] = React.useState([])
       const [onlySel, setOnlySel] = React.useState({ diagnosis: false, sediment: false })
+      // 显式选择态：默认不显示行前复选框（悬停才露），点「选择」或有勾选后全部露出。
+      const [selecting, setSelecting] = React.useState({ diagnosis: false, sediment: false })
       const [batchMenu, setBatchMenu] = React.useState(false)
       // 动作回执：prompt = 指令类（只写「已填入，未确认发送」）；write = 面板自己写台账，可反写。
       const [receipt, setReceipt] = React.useState(null)
@@ -4431,9 +4966,16 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const promptRef = React.useRef(null)
       const promptToken = React.useRef(0)
       const targetRef = React.useRef(null)
+      const manualRef = React.useRef(null)
+      const cmdRef = React.useRef(null)
+      const moreBtnRef = React.useRef(null)
+      const menuWasOpenRef = React.useRef(false)
+      const modalReturnRef = React.useRef(null)
       const toastTimer = React.useRef(null)
       const panelRef = React.useRef(null)
       const actionMenuRef = React.useRef(null)
+      const diagTabRef = React.useRef(null)
+      const sedTabRef = React.useRef(null)
       React.useEffect(() => {
         if (!menuOpen) return undefined
         const el = actionMenuRef.current
@@ -4474,7 +5016,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const commandsRef = React.useRef([])
       const filtered = filterRows(rows, filter).filter((item) => matchesQuery(item, searchText))
       // 诊断视图批量沉淀的范围 = 当前筛选（含搜索词）；单条与批量共用这一份名单。
-      const diagSedRows = filter === 'sediment' ? filtered.filter((item) => item && item.sessionId) : []
+      // 批量沉淀不再绑「可沉淀」筛选：范围是当前筛选里被标为可沉淀的单（与筛选的定义一致）。
+      // 筛选仍是一个视图，不是动作入口的前提；没被标候选的单仍可勾选后按 trace 起草。
+      const diagSedentable = filtered.filter((item) => item && item.sessionId
+        && !!(item.derived && item.derived.needSed))
 
       const view = s.paletteView === 'sediment' ? 'sediment' : 'diagnosis'
       const sedDoc = s.sediment && s.sediment.data && s.sediment.data.ok !== false ? s.sediment.data : null
@@ -4544,6 +5089,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const selectedCount = selIds.length
       const selectedValid = selRows.length
       const onlySelOn = !!onlySel[view]
+      const selectingOn = !!selecting[view] || selectedCount > 0
+      const setSelectingFor = (value) => setSelecting((current) => (
+        current[view] === value ? current : Object.assign({}, current, { [view]: value })
+      ))
       // 当前可见列表里被选中的条数 / 全部条数：全选复选框的勾、半选与全选比较都用这一对。
       const visibleSelected = visibleRows.filter((item) => selSet.has(idOfRow(item))).length
 
@@ -4558,6 +5107,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       function toggleRowSelection(item, index, mode) {
         const id = idOfRow(item)
         if (!id) return
+        setSelectingFor(true)
         if (mode === 'range') {
           const anchor = selAnchor[view]
           const from = anchor >= 0 && anchor < visibleRows.length ? anchor : index
@@ -4582,13 +5132,31 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       function selectAllVisible() {
         const ids = visibleBase.map(idOfRow).filter(Boolean)
         const allOn = ids.length > 0 && ids.every((id) => selSet.has(id))
+        setSelectingFor(true)
         commitSel(allOn ? [] : ids)
         if (allOn && onlySel[view]) setOnlySel((current) => Object.assign({}, current, { [view]: false }))
       }
+      // 清空选择同时退出选择态：行前复选框回到悬停才露的默认形态。
       function clearSelection() {
-        if (!selIds.length) return
-        commitSel([])
+        if (selIds.length) commitSel([])
         setOnlySel((current) => Object.assign({}, current, { [view]: false }))
+        setSelectingFor(false)
+      }
+      function enterSelection() {
+        setSelectingFor(true)
+      }
+      // 整批条上的勾选只管这条批次的动作对象（如可沉淀的 n 单），不是「当前筛选全部行」。
+      function toggleBatchSelection(list) {
+        const ids = (list || []).map(idOfRow).filter(Boolean)
+        if (!ids.length) return
+        const allOn = ids.every((id) => selSet.has(id))
+        setSelectingFor(true)
+        commitSel(allOn
+          ? selIds.filter((id) => ids.indexOf(id) < 0)
+          : Array.from(new Set(selIds.concat(ids))))
+      }
+      function exitSelection() {
+        clearSelection()
       }
       function removeInvalidSelection() {
         if (!invalidSel.length) return
@@ -4600,6 +5168,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const last = selHist[selHist.length - 1]
         setSelHist((hist) => hist.slice(0, -1))
         setSel((current) => Object.assign({}, current, { [last.view]: last.ids }))
+        if (last.ids.length) {
+          setSelecting((current) => Object.assign({}, current, { [last.view]: true }))
+        }
         if (last.view === view) {
           setSearchText(last.search || '')
           if (view === 'sediment') setSedFilter(last.sedFilter || 'all')
@@ -4633,6 +5204,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
       const flash = React.useCallback((text) => {
         setToast(text)
+        announce(text)
         if (toastTimer.current) clearTimeout(toastTimer.current)
         toastTimer.current = setTimeout(() => setToast(''), 4600)
       }, [])
@@ -4665,6 +5237,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         setSel({ diagnosis: [], sediment: [] })
         setSelHist([])
         setOnlySel({ diagnosis: false, sediment: false })
+        setSelecting({ diagnosis: false, sediment: false })
         setReceipt(null)
         setReceiptAsk(false)
         setBatchMenu(false)
@@ -4766,6 +5339,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         setSel({ diagnosis: [], sediment: [] })
         setSelHist([])
         setOnlySel({ diagnosis: false, sediment: false })
+        setSelecting({ diagnosis: false, sediment: false })
         // 回执不随面板关闭清掉：填完指令面板会自己收起，读者再打开时要能看到刚才那批并撤回。
         setReceiptAsk(false)
         setBatchMenu(false)
@@ -4810,6 +5384,27 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         }
       }, [s.paletteOpen])
 
+      // 内层浮层（指令 / 推送目标 / 手动改状态）关闭后把焦点还给打开它的按钮。
+      const anyModalOpen = !!promptKind || targetOpen || manualOpen
+      React.useEffect(() => {
+        if (anyModalOpen) {
+          modalReturnRef.current = typeof document !== 'undefined' ? document.activeElement : null
+          return
+        }
+        const node = modalReturnRef.current
+        modalReturnRef.current = null
+        if (node && node.isConnected && typeof node.focus === 'function') { try { node.focus() } catch { /* 同上 */ } }
+      }, [anyModalOpen])
+
+      // 「更多操作」关闭后焦点回到触发按钮（打开时焦点已移进浮层）。
+      React.useEffect(() => {
+        if (menuWasOpenRef.current && !menuOpen) {
+          const node = moreBtnRef.current
+          if (node && node.isConnected && typeof node.focus === 'function') { try { node.focus() } catch { /* 同上 */ } }
+        }
+        menuWasOpenRef.current = menuOpen
+      }, [menuOpen])
+
       React.useEffect(() => {
         if (!s.paletteOpen) return undefined
         const node = panelRef.current
@@ -4818,8 +5413,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           const target = event.target
           const typing = target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName || '')
           // Tab 在浮层内环绕：aria-modal=true 时焦点不该跑到遮罩下面。
-          if (event.key === 'Tab' && !cmdOpen && !promptKind) {
-            const root = panelRef.current
+          if (event.key === 'Tab') {
+            // 最上层弹层里环绕：指令 / 目标 / 手动 / 命令面板盖在列表上时，Tab 不能落到背景。
+            const root = promptRef.current || targetRef.current || manualRef.current || cmdRef.current || panelRef.current
             if (root && typeof root.querySelectorAll === 'function') {
               const focusables = Array.from(root.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'))
                 .filter((item) => item && item.offsetParent !== null)
@@ -4835,9 +5431,13 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               }
             }
           }
-          if ((event.metaKey || event.ctrlKey) && String(event.key || '').toLowerCase() === 'k') {
+          if ((event.metaKey || event.ctrlKey) && event.shiftKey && String(event.key || '').toLowerCase() === 'k') {
             event.preventDefault()
             if (view === 'sediment') return
+            // 指令 / 推送目标 / 手动改状态的弹层盖在命令面板之上：这时开面板只会开在遮罩下面。
+            if (promptKind || targetOpen || manualOpen) return
+            setMenuOpen(false)
+            setMenuForm(null)
             setCmdOpen(true)
             setCmdQuery('')
             setCmdIndex(0)
@@ -4914,6 +5514,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             if (batchMenu) { setBatchMenu(false); return }
             if (menuOpen) { setMenuOpen(false); return }
             if (selectedCount) { clearSelection(); return }
+            if (selectingOn) { exitSelection(); return }
             setPaletteOpen(false)
             return
           }
@@ -4940,7 +5541,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         window.addEventListener('keydown', onKey)
         return () => window.removeEventListener('keydown', onKey)
       }, [s.paletteOpen, visibleRows, selected, menuOpen, cmdOpen, cmdQuery, cmdIndex, promptKind,
-        selectedCount, batchMenu, onlySelOn])
+        selectedCount, batchMenu, onlySelOn, selectingOn])
 
       React.useEffect(() => {
         if (!s.paletteOpen || view !== 'sediment') return undefined
@@ -4998,6 +5599,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             event.preventDefault()
             if (batchMenu) { setBatchMenu(false); return }
             if (selectedCount) { clearSelection(); return }
+            if (selectingOn) { exitSelection(); return }
             setPaletteOpen(false)
             return
           }
@@ -5025,11 +5627,11 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         window.addEventListener('keydown', onKey)
         return () => window.removeEventListener('keydown', onKey)
       }, [s.paletteOpen, view, visibleRows.length, sedSel, promptKind, targetOpen, manualOpen, cmdOpen,
-        selectedCount, batchMenu, onlySelOn])
+        selectedCount, batchMenu, onlySelOn, selectingOn])
 
-      // 详情抬头的三个钩子必须放在任何提前 return 之前：总览关着时 Palette 提前返回，打开后
+      // 详情抬头的三个钩子必须放在任何提前 return 之前：工作台关着时 Palette 提前返回，打开后
       // 又多出这三个钩子，React 会报「hook 数量与上次渲染不一致」，整个 shell.overlay 槽位崩掉，
-      // 表现就是点「诊断总览」没有反应。依赖值都从已声明的 state 现算，不依赖后面才赋值的局部变量。
+      // 表现就是点「诊断工作台」没有反应。依赖值都从已声明的 state 现算，不依赖后面才赋值的局部变量。
       const ledeRow = visibleRows[selected] || null
       const ledeText = ledeRow ? (String(ledeRow.summary || '').trim() || caseTitle(ledeRow)) : ''
       const ledeOpen = Boolean(ledeRow) && ledeOpenId === ledeRow.sessionId
@@ -5043,6 +5645,55 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         }
         setLedeOverflow(ledeOpen || el.scrollHeight > el.clientHeight + 1)
       }, [ledeRow ? ledeRow.sessionId : '', ledeText, ledeOpen])
+
+      // 选中行的三段时间线 + 修订：选中即取（同一 sessionId + updatedAt 命中缓存，10 秒轮询不重复拉）；
+      // 步骤列表仍由「展开步骤」按需取，两者互不替代。
+      const [layersState, setLayersState] = React.useState({ key: '', loading: false, error: '', data: null })
+      const [layersRetry, setLayersRetry] = React.useState(0)
+      const layersCacheRef = React.useRef(new Map())
+      const layersToken = React.useRef(0)
+      const layersKey = s.paletteOpen && view === 'diagnosis' && ledeRow
+        ? String(ledeRow.sessionId || '') + '|' + String(ledeRow.updatedAt || '')
+        : ''
+      React.useEffect(() => {
+        // 换行 / 关面板都让上一单的在途响应作废：token 先自增，命中缓存也要作废，
+        // 否则旧请求晚到会把上一单的时间线写进这一单的状态。
+        layersToken.current += 1
+        const token = layersToken.current
+        // 只在诊断视图取：沉淀视图的选中行不是诊断单，不用起这一次子进程。
+        if (!s.paletteOpen || view !== 'diagnosis' || !ledeRow) return
+        const key = layersKey
+        const cached = layersCacheRef.current.get(key)
+        if (cached) {
+          setLayersState({ key, loading: false, error: '', data: cached })
+          return
+        }
+        const target = ledeRow
+        setLayersState({ key, loading: true, error: '', data: null })
+        // 去抖：连按方向键时先清掉上一个 timer，只让停留的那一单起子进程。
+        const timer = setTimeout(() => {
+          if (layersToken.current !== token) return
+          rpcCall('copilot-timeline', {
+            cwd: store.cwd,
+            tracesDir: data && data.tracesDir,
+            sessionId: store.sessionId,
+            traceFile: target.file,
+          }).then((res) => {
+            if (layersToken.current !== token) return
+            if (res && res.ok) {
+              const layers = normalizeTimelineLayers(res)
+              layersCacheRef.current.set(key, layers)
+              setLayersState({ key, loading: false, error: '', data: layers })
+            } else {
+              setLayersState({ key, loading: false, error: (res && res.message) || tr('layers.failedShort'), data: null })
+            }
+          }, (error) => {
+            if (layersToken.current !== token) return
+            setLayersState({ key, loading: false, error: String((error && error.message) || error), data: null })
+          })
+        }, LAYERS_DEBOUNCE_MS)
+        return () => clearTimeout(timer)
+      }, [s.paletteOpen, view, layersKey, layersRetry])
 
       // 沉淀详情抬头同样按「识别行 + 正文背景」渲染：与诊断详情共用一套样式与展开逻辑，
       // 只把正文换成草稿标题（标题就是来源 trace 的 summary 首句）。
@@ -5169,6 +5820,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       }
 
       function candidateAction(target, candidate) {
+        if (candidate && String(candidate.status || '') === 'produced') return
         const summary = String((candidate && candidate.summary) || '')
         const evidence = String((candidate && candidate.evidence) || '')
         if (candidate && candidate.kind === 'reference') fillDraft(referenceDraft(target, summary, evidence))
@@ -5236,8 +5888,16 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         type: 'button',
         className: 'scp-filter-item',
         'data-on': filter === key ? 'true' : 'false',
+        'aria-pressed': filter === key ? 'true' : 'false',
         onClick: () => savePrefs({ paletteFilter: key }),
       }, tr('palette.filter.' + key), h('b', {}, data ? String(filterCounts[key] || 0) : '—')))
+
+      // 首屏不铺满复选框：给一个小入口，点开才把行前的框全部露出来（触屏没有悬停）。
+      const selectToggle = h('button', {
+        type: 'button', className: 'scp-select-toggle', title: tr('sel.enterHint'),
+        'aria-pressed': selectingOn ? 'true' : 'false',
+        onClick: enterSelection,
+      }, tr('sel.enter'))
 
       const skeleton = Array.from({ length: 5 }, (_, index) => h('div', { key: 'skel-' + index, className: 'scp-pal-row' },
         h('span', { className: 'scp-ring', style: { background: 'var(--dsw-alias-bg-layer-2)', boxShadow: 'none' } }),
@@ -5251,7 +5911,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       }, h('circle', { cx: 20, cy: 20, r: 13, strokeDasharray: '3 4' }),
         h('path', { d: 'M14 20h12M20 14v12', strokeLinecap: 'round' }))
 
-      const list = h('div', { ref: listRef, className: 'scp-pal-list', role: 'region', 'aria-label': tr('palette.title') },
+      const list = h('div', {
+        ref: listRef, className: 'scp-pal-list', role: 'region',
+        'aria-label': tr('palette.title'), 'data-selecting': selectingOn ? 'true' : 'false',
+      },
         h('div', { className: 'scp-search' },
           h('input', {
             ref: searchRef, type: 'search', value: searchText,
@@ -5260,9 +5923,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             onKeyDown: (event) => { if (event.key === 'Escape') { setSearchText(''); event.stopPropagation() } },
           }),
           h('span', { className: 'scp-kbd' }, '/')),
-        h('div', { className: 'scp-filters', role: 'group', 'aria-label': tr('palette.filterLabel') }, filterButtons),
+        h('div', { className: 'scp-filters', role: 'group', 'aria-label': tr('palette.filterLabel') },
+          filterButtons, selectingOn ? null : selectToggle),
         !data ? skeleton
-          : visibleRows.length === 0 ? h('div', { className: 'scp-pal-empty' }, emptyMark, tr('palette.empty'))
+          : visibleRows.length === 0 ? h('div', { className: 'scp-pal-empty' }, emptyMark, tr('palette.emptyFiltered'),
+            h('button', {
+              type: 'button', className: 'scp-btn',
+              onClick: () => { setSearchText(''); savePrefs({ paletteFilter: 'all' }); selectIndex(0) },
+            }, tr('palette.clearFilters')))
             : visibleRows.map((item, index) => {
               const extra = item.extra || {}
               const metaPieces = []
@@ -5293,6 +5961,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   'data-pending': isPending(item) ? 'true' : 'false',
                   'data-on': index === selected ? 'true' : 'false',
                   'data-sel': checked ? 'true' : 'false',
+                  onFocus: () => { if (selected !== index) selectIndex(index) },
                   style: { '--scp-tone': TONE_VAR[toneOf(item)] || TONE_VAR.idle },
                   onClick: (event) => {
                     const e = event || {}
@@ -5334,11 +6003,275 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const upstream = row && row.derived ? (row.derived.upstream || null) : null
       const evidenceList = row ? (extra.evidenceList || []) : []
       const candidateList = row ? (extra.sedimentCandidateList || []) : []
-      const history = row ? historyEntries(row, data) : []
       const closeInfo = row ? lastClose(row) : null
       const originSession = row ? (row.harnessSession || '') : ''
       const resumedSessions = row ? (row.resumeSessions || []).filter((sid) => sid && sid !== originSession) : []
       const currentSession = store.sessionId || ''
+
+      // ── 三段时间线 + 修订（选中即取；面板第四层诊断步骤来自 trace 的步骤列表）────────
+      // 明细来自 copilot-timeline 的 layers：null 与缺键都按「未记录」，[] 是「查过但为空」；
+      // 加载中 / 读取失败在「现场故障时间线」段里单独给一行，其余三段等数据到了再渲染。
+      const rowLayerKey = row ? String(row.sessionId || '') + '|' + String(row.updatedAt || '') : ''
+      const layerData = layersState.data && layersState.key === rowLayerKey ? layersState.data : null
+      const layersError = row && layersState.key === rowLayerKey ? layersState.error : ''
+      const layersLoading = Boolean(row) && !layerData && !layersError
+      const incidentEnv = layerData ? String(layerData.incidentEnv || '') : ''
+      const incidentItems = layerData ? layerData.incident : null
+      const failureProcess = layerData ? layerData.failureProcess : null
+      const upstreamTimeline = layerData ? layerData.upstream : null
+      const revisions = layerData ? layerData.revisions : []
+      const incidentTotal = layerData ? layerData.incidentTotal : 0
+      const upstreamTotal = layerData ? layerData.upstreamTotal : 0
+      const revisionsTotal = layerData ? layerData.revisionsTotal : 0
+      const history = row ? historyEntries(row, data, revisions) : []
+      const processOpen = Boolean(row) && processOpenId === row.sessionId
+      const upstreamOpen = Boolean(row) && upstreamOpenId === row.sessionId
+      const retryLayers = () => {
+        layersCacheRef.current.delete(rowLayerKey)
+        setLayersRetry(layersRetry + 1)
+      }
+      // 被修订改过的条目 id：现场条目据此加「已更正」片；删除动作（removed:<id>）不在此列。
+      const correctedTargets = new Set()
+      revisions.forEach((revision) => {
+        const changes = revision && Array.isArray(revision.changes) ? revision.changes : []
+        changes.forEach((change) => {
+          const target = String((change && change.target) || '')
+          if (target && target.indexOf('removed:') !== 0) correctedTargets.add(target)
+        })
+      })
+
+      // 现场故障时间线：默认展开。加载中 / 读取失败各给一行；日期只有与上一条已知日期
+      // 不同才写（同日不再重复），时点未知与只有日期各有自己的写法。
+      const incidentBlock = (() => {
+        if (!row) return null
+        let noteText = ''
+        let body
+        let showFoot = false
+        if (layersLoading) {
+          body = h('div', { className: 'scp-mono' }, tr('layers.loading'))
+        } else if (layersError) {
+          body = h('div', { className: 'scp-list-block' },
+            h('div', { className: 'scp-form-error' }, tr('layers.failed', { message: layersError })),
+            h('button', { type: 'button', className: 'scp-check-action', onClick: retryLayers }, tr('action.retry')))
+        } else {
+          showFoot = true
+          const items = incidentItems || []
+          const unknownCount = items.filter((item) => !stampParts(item && item.at)).length
+          const dateOnlyCount = items.filter((item) => {
+            const parts = stampParts(item && item.at)
+            return Boolean(parts) && !parts.time
+          }).length
+          const notePieces = []
+          if (incidentItems === null) {
+            notePieces.push(tr('incident.legacyTitle'))
+          } else {
+            notePieces.push(tr('incident.count', { n: incidentTotal }))
+            if (unknownCount) notePieces.push(tr('incident.unknownCount', { n: unknownCount }))
+            if (dateOnlyCount) notePieces.push(tr('incident.noTimeCount', { n: dateOnlyCount }))
+            // 截断不藏：条数写总数，另加一句「显示前 N 条」。
+            if (incidentTotal > items.length) notePieces.push(tr('truncated.showFirst', { n: items.length }))
+          }
+          noteText = notePieces.join(' · ')
+          const envNode = incidentEnv
+            ? h('div', { className: 'scp-it-env' }, tr('incident.env'), inlineTokens(incidentEnv))
+            : null
+          let lastDate = null
+          body = incidentItems === null
+            ? h('div', { className: 'scp-list-block' },
+              envNode,
+              h('div', { className: 'scp-upstream-row' },
+                h('span', { className: 'scp-chip', 'data-tone': 'warn' }, tr('incident.legacyChip')),
+                h('span', { className: 'scp-check-state' }, tr('incident.legacy'))),
+              h('div', { className: 'scp-it-note' }, tr('incident.legacyNote')))
+            : !items.length
+              ? h('div', { className: 'scp-list-block' },
+                envNode,
+                h('div', { className: 'scp-it-note' }, tr('incident.empty'), ' · ', tr('incident.emptyNote')))
+              : h('div', { className: 'scp-it' },
+                envNode,
+                items.map((item, index) => {
+                  const parts = stampParts(item && item.at)
+                  // 同日只写一次日期：与上一条已知日期相同就不重复，只有日期没有时刻也照此去重。
+                  const showDate = Boolean(parts) && parts.date !== lastDate
+                  if (parts) lastDate = parts.date
+                  const evidence = (item && item.evidence) || {}
+                  const files = Array.isArray(evidence.files) ? evidence.files : []
+                  const line = evidence.line
+                  const corrected = correctedTargets.has(String((item && item.id) || ''))
+                  return h('div', {
+                    key: 'incident-' + index,
+                    className: 'scp-it-row',
+                    'data-time': parts ? (parts.time ? 'known' : 'date') : 'unknown',
+                  },
+                    h('div', { className: 'scp-it-time' },
+                      parts
+                        ? [
+                          showDate ? h('span', { key: 'date', className: 'scp-it-date' }, parts.date) : null,
+                          h('span', {
+                            key: 'time',
+                            className: 'scp-it-hm',
+                            'data-missing': parts.time ? 'false' : 'true',
+                          }, parts.time || tr('incident.dateOnly')),
+                        ]
+                        : h('span', { className: 'scp-it-unknown' }, tr('incident.unknown'))),
+                    h('div', { className: 'scp-it-rail', 'aria-hidden': 'true' }, h('span', { className: 'scp-it-dot' })),
+                    h('div', { className: 'scp-it-body' },
+                      h('div', { className: 'scp-it-text' }, inlineTokens((item && item.what) || '')),
+                      h('div', { className: 'scp-it-meta' },
+                        item && item.source
+                          ? h('span', { key: 'source', className: 'scp-it-src' }, timelineSourceLabel(item.source))
+                          : null,
+                        corrected
+                          ? h('span', { key: 'corrected', className: 'scp-chip', 'data-tone': 'warn' }, tr('incident.corrected'))
+                          : null,
+                        item && item.atNote ? h('span', { key: 'at-note' }, inlineTokens(item.atNote)) : null,
+                        files.map((filePath, fileIndex) => h('button', {
+                          key: 'evidence-' + fileIndex,
+                          type: 'button',
+                          className: 'scp-link',
+                          title: line ? String(filePath) + ':' + line : String(filePath),
+                          onClick: () => copyAndFlash(line ? String(filePath) + ':' + line : String(filePath)),
+                        }, fileLineLabel(filePath, line))))))
+                }))
+        }
+        return h('div', { key: 'incident' },
+          h('div', { className: 'scp-section-row' },
+            h('div', { className: 'scp-section-label' }, tr('section.incident')),
+            noteText ? h('div', { className: 'scp-section-note' }, noteText) : null),
+          body,
+          showFoot ? h('p', { className: 'scp-it-foot' }, tr('incident.foot')) : null)
+      })()
+
+      // 故障过程（日志）：默认收起；段头给条数，有 clock_note 时提示日志时间与墙钟不一致。
+      const processBlock = (() => {
+        if (!row || !failureProcess) return null
+        const nodes = Array.isArray(failureProcess.nodes) ? failureProcess.nodes : []
+        const windowValue = failureProcess.window || null
+        const windowRange = windowValue
+          ? [windowValue.from, windowValue.to].filter(Boolean).join(' – ')
+          : ''
+        const notePieces = [tr('failureProcess.count', { n: nodes.length })]
+        if (failureProcess.clockNote) notePieces.push(tr('failureProcess.clockOff'))
+        return h('div', { key: 'failure-process' },
+          h('div', { className: 'scp-section-row' },
+            h('div', { className: 'scp-section-label' }, tr('section.failureProcess')),
+            h('div', { className: 'scp-section-note' }, notePieces.join(' · '))),
+          h('div', { className: 'scp-list-block' },
+            h('div', { className: 'scp-upstream-row' },
+              h('button', {
+                type: 'button',
+                className: 'scp-check-action',
+                onClick: () => setProcessOpenId(processOpen ? '' : row.sessionId),
+              }, processOpen ? tr('action.collapseProcess') : tr('action.expandProcess')),
+              h('span', { className: 'scp-check-state' }, windowRange
+                ? tr('failureProcess.window', { range: windowRange })
+                : tr('failureProcess.windowUnknown'))),
+            processOpen && failureProcess.clockNote
+              ? h('div', { className: 'scp-lp-clock' }, failureProcess.clockNote)
+              : null,
+            processOpen
+              ? h('div', { className: 'scp-lp-list' }, nodes.map((node, index) => {
+                const parts = stampParts(node && node.at)
+                const evidence = (node && node.evidence) || {}
+                const filePath = evidence.file ? String(evidence.file) : ''
+                const line = evidence.line
+                return h('div', { key: 'log-node-' + index, className: 'scp-lp-row' },
+                  h('div', { className: 'scp-lp-time' }, parts ? (parts.time || parts.date) : tr('incident.unknown')),
+                  h('div', { className: 'scp-lp-body' },
+                    h('div', { className: 'scp-lp-what' }, inlineTokens((node && node.what) || '')),
+                    node && node.quote ? h('div', { className: 'scp-lp-quote', title: node.quote }, node.quote) : null,
+                    h('div', { className: 'scp-lp-meta' },
+                      node && node.repeat ? h('span', { key: 'repeat' }, inlineTokens(node.repeat)) : null,
+                      filePath ? h('button', {
+                        key: 'evidence',
+                        type: 'button',
+                        className: 'scp-link',
+                        title: line ? filePath + ':' + line : filePath,
+                        onClick: () => copyAndFlash(line ? filePath + ':' + line : filePath),
+                      }, fileLineLabel(filePath, line)) : null)))
+              }))
+              : null,
+            processOpen ? h('p', { className: 'scp-it-foot' }, tr('failureProcess.foot')) : null))
+      })()
+
+      // 上游与查证：现有状态行（锚点 / 查证 / 查上游按钮）+ 上游时间线。
+      // 默认 >3 条折叠；upstream 为 null 时只显示状态行（有 case 才出现）。
+      const upstreamBlock = (() => {
+        if (!row) return null
+        if (!row.activeCase && upstreamTimeline === null) return null
+        const upstreamRows = upstreamTimeline || []
+        const visibleRows = upstreamOpen ? upstreamRows : upstreamRows.slice(0, 3)
+        const hiddenCount = Math.max(upstreamRows.length - visibleRows.length, 0)
+        const notePieces = []
+        if (upstreamTimeline !== null) {
+          notePieces.push(tr('upstream.fixCount', { n: upstreamTotal }))
+          // 截断不藏：段头写总数，另加一句「显示前 N 条」。
+          if (upstreamTotal > upstreamRows.length) notePieces.push(tr('truncated.showFirst', { n: upstreamRows.length }))
+        }
+        notePieces.push(tr('upstream.note'))
+        const timelineNode = upstreamTimeline === null
+          ? null
+          : (upstreamRows.length
+            ? h('div', { key: 'upstream-list', className: 'scp-up-list' },
+              visibleRows.map((item, index) => {
+                const files = item && item.evidence && Array.isArray(item.evidence.files)
+                  ? item.evidence.files : []
+                return h('div', { key: 'upstream-row-' + index, className: 'scp-up-row' },
+                  h('span', { className: 'scp-up-when' }, stampText(item && item.at)),
+                  h('span', { className: 'scp-up-what' },
+                    inlineTokens((item && item.what) || ''),
+                    item && item.ref ? h('span', { key: 'ref', className: 'scp-chip' }, item.ref) : null,
+                    item && item.source
+                      ? h('span', { key: 'source', className: 'scp-it-src' }, timelineSourceLabel(item.source))
+                      : null,
+                    files.map((filePath, fileIndex) => h('button', {
+                      key: 'evidence-' + fileIndex,
+                      type: 'button',
+                      className: 'scp-link',
+                      title: String(filePath),
+                      onClick: () => copyAndFlash(String(filePath)),
+                    }, fileLabel(filePath)))))
+              }))
+            : h('div', { key: 'upstream-none', className: 'scp-up-note' }, tr('upstream.noFix')))
+        const toggleNode = upstreamTimeline !== null && (hiddenCount > 0 || upstreamOpen)
+          ? h('div', { key: 'upstream-toggle', className: 'scp-upstream-row' },
+            h('button', {
+              type: 'button',
+              className: 'scp-check-action',
+              onClick: () => setUpstreamOpenId(upstreamOpen ? '' : row.sessionId),
+            }, upstreamOpen ? tr('upstream.collapse') : tr('upstream.expand', { n: hiddenCount })))
+          : null
+        return h('div', { key: 'upstream' },
+          h('div', { className: 'scp-section-row' },
+            h('div', { className: 'scp-section-label' }, tr('section.upstream')),
+            h('div', { className: 'scp-section-note' }, notePieces.join(' · '))),
+          h('div', { className: 'scp-upstream' },
+            row.activeCase
+              ? h('div', { className: 'scp-upstream-row' },
+                h('span', { className: 'scp-check-label' }, tr('upstream.anchors')),
+                upstream && upstream.anchors && upstream.anchors.length
+                  ? upstream.anchors.map((anchor) => h('span', { key: anchor, className: 'scp-chip' }, anchor))
+                  : h('span', { className: 'scp-mono' }, tr('upstream.none')))
+              : null,
+            row.activeCase && upstream && upstream.lastVerified
+              ? h('div', { className: 'scp-upstream-row' },
+                h('span', { className: 'scp-check-state' }, tr('upstream.lastVerified') + '：' + upstream.lastVerified),
+                upstream.verificationSource
+                  ? h('span', { className: 'scp-check-state' }, tr('upstream.source') + '：' + upstream.verificationSource)
+                  : null)
+              : null,
+            row.activeCase
+              ? h('div', { className: 'scp-upstream-row' },
+                h('span', { className: 'scp-chip' }, data.upstream && data.upstream.ready ? tr('upstream.ready') : tr('upstream.notReady')),
+                h('button', {
+                  type: 'button',
+                  className: 'scp-check-action',
+                  onClick: () => fillDraft(upstreamDraft(row, data.upstream)),
+                }, tr('action.upstream')))
+              : null,
+            timelineNode,
+            toggleNode))
+      })()
 
       const diagSed = row
         ? (sedDrafts.find((draft) => draft && draft.source && draft.source.sessionId === row.sessionId) || null)
@@ -5397,7 +6330,18 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('span', { className: 'scp-badge' }, statusMeta(data.vocab, row.status).label),
               identityChips(row).slice(0, 3).map((chip) => h('span', {
                 key: chip.key, className: 'scp-chip', 'data-tone': chip.tone,
+                title: chip.title || undefined,
               }, chip.text)),
+              revisionsTotal
+                ? h('span', {
+                  key: 'revisions',
+                  className: 'scp-chip',
+                  'data-tone': 'warn',
+                  title: revisionsTotal > revisions.length
+                    ? tr('truncated.showFirst', { n: revisions.length })
+                    : undefined,
+                }, tr('chip.revisions', { n: revisionsTotal }))
+                : null,
               store.sessionId && pinnedIdFor(store.sessionId) === row.sessionId
                 ? h('span', { key: 'pinned', className: 'scp-chip', 'data-tone': 'brand' }, tr('chip.pinned'))
                 : null,
@@ -5448,23 +6392,6 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 type: 'button', className: 'scp-check-action',
                 onClick: () => checklistAction(row, item),
               }, item.action) : null))) : null,
-            row.activeCase ? h('div', {},
-              h('div', { className: 'scp-section-label' }, tr('section.upstream')),
-              h('div', { className: 'scp-upstream' },
-                h('div', { className: 'scp-upstream-row' },
-                  h('span', { className: 'scp-check-label' }, tr('upstream.anchors')),
-                  upstream && upstream.anchors && upstream.anchors.length
-                    ? upstream.anchors.map((anchor) => h('span', { key: anchor, className: 'scp-chip' }, anchor))
-                    : h('span', { className: 'scp-mono' }, tr('upstream.none'))),
-                upstream && upstream.lastVerified ? h('div', { className: 'scp-upstream-row' },
-                  h('span', { className: 'scp-check-state' }, tr('upstream.lastVerified') + '：' + upstream.lastVerified),
-                  upstream.verificationSource ? h('span', { className: 'scp-check-state' }, tr('upstream.source') + '：' + upstream.verificationSource) : null) : null,
-                h('div', { className: 'scp-upstream-row' },
-                  h('span', { className: 'scp-chip' }, data.upstream && data.upstream.ready ? tr('upstream.ready') : tr('upstream.notReady')),
-                  h('button', {
-                    type: 'button', className: 'scp-check-action',
-                    onClick: () => fillDraft(upstreamDraft(row, data.upstream)),
-                  }, tr('action.upstream'))))) : null,
             h('div', { className: 'scp-section-label' }, tr('section.sessions')),
             h('div', { className: 'scp-list-block' },
               originSession
@@ -5495,19 +6422,27 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 }, tr('action.copyLinkCommand'))
                 : null,
               h('div', { className: 'scp-check-state' }, tr('sessions.hint'))),
+            incidentBlock,
+            processBlock,
+            upstreamBlock,
             h('div', { className: 'scp-section-label' }, tr('section.evidence')),
             h('div', { className: 'scp-list-block' },
               evidenceList.length ? evidenceList.map((filePath) => h('div', { key: filePath, className: 'scp-evidence-row' },
                 h('span', { className: 'scp-evidence-path', title: filePath }, filePath),
                 h('button', { type: 'button', className: 'scp-check-action', onClick: () => copyPathAndFlash(filePath, flash) }, tr('action.copyPath'))))
                 : h('div', { className: 'scp-mono' }, tr('evidence.none')),
-              candidateList.length ? candidateList.map((candidate, index) => h('div', { key: 'cand-' + index, className: 'scp-candidate' },
-                h('span', { className: 'scp-chip' }, candidate.kind || 'case'),
-                h('span', { className: 'scp-candidate-text', title: candidate.summary }, candidate.summary || tr('none')),
-                h('button', {
-                  type: 'button', className: 'scp-check-action',
-                  onClick: () => candidateAction(row, candidate),
-                }, tr('action.sedimentGeneric'))))
+              candidateList.length ? candidateList.map((candidate, index) => {
+                const produced = String(candidate.status || '') === 'produced'
+                return h('div', { key: 'cand-' + index, className: 'scp-candidate' },
+                  h('span', { className: 'scp-chip' }, candidate.kind || 'case'),
+                  h('span', { className: 'scp-candidate-text', title: candidate.summary }, candidate.summary || tr('none')),
+                  produced
+                    ? h('span', { className: 'scp-check-state' }, tr('label.produced') + (candidate.refId ? ' · ' + candidate.refId : ''))
+                    : h('button', {
+                      type: 'button', className: 'scp-check-action',
+                      onClick: () => candidateAction(row, candidate),
+                    }, tr('action.sedimentGeneric')))
+              })
                 : h('div', { className: 'scp-mono' }, tr('candidates.none')),
               h('div', { className: 'scp-upstream-row' },
                 h('button', {
@@ -5517,7 +6452,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 h('span', { className: 'scp-check-state' }, extra.hasReport ? tr('label.hasReport') : tr('report.none'))),
               reportState.open
                 ? (reportState.loading ? h('div', { className: 'scp-mono' }, tr('report.loading'))
-                  : reportState.error ? h('div', { className: 'scp-form-error' }, reportState.error)
+                  : reportState.error ? h('div', { className: 'scp-form-error', role: 'alert' }, reportState.error)
                     : h('pre', { className: 'scp-report' }, reportState.text))
                 : null),
             h('div', { className: 'scp-section-label' }, tr('section.timeline')),
@@ -5532,7 +6467,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   : null),
               timelineState.open
                 ? (timelineState.loading ? h('div', { className: 'scp-mono' }, tr('timeline.loading'))
-                  : timelineState.error ? h('div', { className: 'scp-form-error' }, timelineState.error)
+                  : timelineState.error ? h('div', { className: 'scp-form-error', role: 'alert' }, timelineState.error)
                     : timelineState.items.length
                       ? timelineState.items.map((entry, index) => h('div', { key: 'tl-' + index, className: 'scp-tl-row' },
                         h('span', { className: 'scp-tl-step' }, entry.step ? '第 ' + entry.step + ' 步' : '—'),
@@ -5561,7 +6496,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             h('div', { className: 'scp-history' },
               history.length ? history.map((item, index) => h('div', { key: 'h-' + index, className: 'scp-history-row' },
                 h('span', { className: 'scp-history-when' }, formatTime(item.at) || tr('none')),
-                h('span', { className: 'scp-history-kind' }, tr('history.' + item.kind)),
+                h('span', { className: 'scp-history-kind' }, item.label || tr('history.' + item.kind)),
                 h('span', { className: 'scp-history-text', title: item.text }, item.text),
                 item.note ? h('span', { className: 'scp-history-note', title: item.note }, item.note) : null))
                 : h('div', { className: 'scp-mono' }, tr('history.none')),
@@ -5583,6 +6518,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 rowAction.key === 'copy' ? null : h('button', { type: 'button', className: 'scp-btn', onClick: () => copyAndFlash(summaryText(row, data)) }, tr('action.copySummary')),
                 h('button', {
                   type: 'button', className: 'scp-btn scp-btn--ghost',
+                  ref: moreBtnRef,
                   'aria-haspopup': 'dialog', 'aria-expanded': menuOpen ? 'true' : 'false',
                   'data-more-button': 'true',
                   onClick: () => {
@@ -5598,7 +6534,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         : (data && filtered.length === 0 ? null : h('div', { className: 'scp-pal-side' },
           h('div', { className: 'scp-pal-empty' },
             emptyMark,
-            !data ? tr('palette.loading') : tr('palette.empty'))))
+            !data ? tr('palette.loading') : tr('palette.emptyFiltered'))))
 
       const actionMenu = menuOpen && row && !loadFailed && view === 'diagnosis'
         ? h('div', { className: 'scp-actions-menu', role: 'dialog', 'aria-label': tr('menu.title'), ref: actionMenuRef, tabIndex: -1 },
@@ -5681,7 +6617,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
       // 批量沉淀：名单在打开弹层时冻结（未选时 = 当前筛选，含搜索词；已选时 = 所选）。
       function openBatchSediment(rowsOverride) {
-        const list = Array.isArray(rowsOverride) ? rowsOverride : diagSedRows
+        const list = Array.isArray(rowsOverride) ? rowsOverride : diagSedentable
         if (!list.length) return
         const query = String(searchText || '').trim()
         const bySelection = Array.isArray(rowsOverride)
@@ -6367,11 +7303,25 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
 
       const allChecked = visibleRows.length > 0 && visibleSelected === visibleRows.length
       const someChecked = visibleSelected > 0 && !allChecked
+      const batchSelectControl = (list) => {
+        const ids = (list || []).map(idOfRow).filter(Boolean)
+        const all = ids.length > 0 && ids.every((id) => selSet.has(id))
+        const some = !all && ids.some((id) => selSet.has(id))
+        return h('button', {
+          type: 'button', className: 'scp-row-check', role: 'checkbox',
+          'aria-checked': all ? 'true' : (some ? 'mixed' : 'false'),
+          'data-mixed': some ? 'true' : 'false',
+          'aria-label': tr('sel.allBatch', { n: ids.length }),
+          tabIndex: -1,
+          onClick: () => toggleBatchSelection(list),
+        }, h('span', { className: 'scp-row-check-box', 'aria-hidden': 'true' }, all ? '✓' : ''))
+      }
+
       const selectAllControl = h('button', {
         type: 'button',
         className: 'scp-row-check',
         role: 'checkbox',
-        'aria-checked': allChecked ? 'true' : 'false',
+        'aria-checked': allChecked ? 'true' : (someChecked ? 'mixed' : 'false'),
         'data-mixed': someChecked ? 'true' : 'false',
         'aria-label': tr('sel.all', { n: visibleRows.length }),
         tabIndex: -1,
@@ -6387,7 +7337,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       }
 
       const receiptMine = receipt && (receipt.view || 'sediment') === view
-      const receiptBar = receiptMine ? h('div', { className: 'scp-receipt', role: 'status' },
+      const receiptBar = receiptMine ? h('div', { className: 'scp-receipt' },
         h('span', { className: 'scp-receipt-strong' }, receipt.kind === 'write'
           ? (receipt.undone
             ? tr('sel.receiptRestored', { state: tr('sediment.prState.' + receipt.prev) })
@@ -6436,40 +7386,51 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const checkingLabel = checkBusy === '__all__' && checkRun && checkRun.active && checkRun.total > 0
         ? tr('sel.checkingSelected', { n: Math.min(checkRun.seen, checkRun.total), m: checkRun.total })
         : ''
-      const selBar = h('div', { className: 'scp-batch', 'data-kind': 'selection', role: 'group', 'aria-label': tr('sel.count', { n: selectedCount }) },
+      // 选择态分两档：已勾选（给范围与动作）与刚进入（给全选 / 退出，不摆一个按不动的主按钮）。
+      const noSelectionYet = selectedCount === 0
+      const selBar = h('div', {
+        className: 'scp-batch', 'data-kind': 'selection', role: 'group',
+        'aria-label': noSelectionYet ? tr('sel.emptyTitle') : tr('sel.count', { n: selectedCount }),
+      },
         h('div', { className: 'scp-batch-line' },
-          selectAllControl,
-          h('span', { className: 'scp-batch-strong' }, tr('sel.count', { n: selectedCount })),
-          h('span', { className: 'scp-batch-note' }, tr('sel.inFilter', { n: selVisibleRows.length })),
-          selChips),
+          noSelectionYet ? null : selectAllControl,
+          h('span', { className: 'scp-batch-strong' },
+            noSelectionYet ? tr('sel.emptyTitle') : tr('sel.count', { n: selectedCount })),
+          h('span', { className: 'scp-batch-note' },
+            noSelectionYet ? tr('sel.emptyHint') : tr('sel.inFilter', { n: selVisibleRows.length })),
+          noSelectionYet ? null : selChips),
         h('div', { className: 'scp-batch-line' },
-          h('button', {
-            type: 'button', className: 'scp-btn scp-btn--ghost',
-            onClick: () => setOnlySel((current) => Object.assign({}, current, { [view]: !current[view] })),
-          }, onlySelOn ? tr('sel.showAll') : tr('sel.only')),
-          h('button', {
-            type: 'button', className: 'scp-btn scp-btn--ghost',
-            onClick: clearSelection,
-          }, tr('sel.clear')),
+          noSelectionYet
+            ? h('button', {
+              type: 'button', className: 'scp-btn', onClick: selectAllVisible,
+            }, tr('sel.allVisible'))
+            : h('button', {
+              type: 'button', className: 'scp-btn scp-btn--ghost',
+              onClick: () => setOnlySel((current) => Object.assign({}, current, { [view]: !current[view] })),
+            }, onlySelOn ? tr('sel.showAll') : tr('sel.only')),
           staleBlocked
             ? h('span', { className: 'scp-batch-note', style: { color: 'var(--scp-warn)' } }, tr('sel.stale'))
             : null,
           h('span', { className: 'scp-spacer' }),
-          h('button', {
-            type: 'button',
-            className: 'scp-btn scp-btn--primary',
-            disabled: primaryBlocked || checkBusy === '__all__',
-            onClick: runSelPrimary,
-          }, checkingLabel || selPrimaryLabel()),
-          h('button', {
-            type: 'button', className: 'scp-btn', 'data-batch-menu': 'true',
-            onClick: () => setBatchMenu((value) => !value),
-          }, tr('sel.more') + ' ▾'),
-          batchMenuEl))
+          noSelectionYet
+            ? h('button', {
+              type: 'button', className: 'scp-btn scp-btn--ghost', onClick: clearSelection,
+            }, tr('sel.exit'))
+            : h('button', {
+              type: 'button', className: 'scp-btn scp-btn--primary',
+              disabled: primaryBlocked || checkBusy === '__all__',
+              onClick: runSelPrimary,
+            }, checkingLabel || selPrimaryLabel()),
+          noSelectionYet
+            ? null
+            : h('button', {
+              type: 'button', className: 'scp-btn', 'data-batch-menu': 'true',
+              onClick: () => setBatchMenu((value) => !value),
+            }, tr('sel.more') + ' ▾'),
+          noSelectionYet ? null : batchMenuEl))
 
       const sedWholeBatch = h('div', { className: 'scp-batch' },
         h('div', { className: 'scp-batch-line' },
-          selectAllControl,
           h('span', { className: 'scp-batch-strong' }, tr('sediment.batch.total', { n: sedDrafts.length })),
           sedUnassessed + sedNeedDecision > 0
             ? h('span', { className: 'scp-batch-chip', 'data-tone': 'warn' }, String(sedUnassessed + sedNeedDecision) + ' ' + tr('sediment.filter.decision'))
@@ -6516,14 +7477,14 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             }, tr('sediment.undo.batchAction', { n: sedUndoRows.length }))
             : null))
 
-      // 诊断视图的批量沉淀：未选时只在「可沉淀」筛选下出现，范围是当前筛选（含搜索词）；
+      // 诊断视图的批量沉淀：未选时范围是当前筛选里能起沉淀的单（任何筛选都出现，不再绑「可沉淀」）；
       // 已选时范围是选择集，主操作写「沉淀所选 n 单」。都只生成指令，不写 trace 与知识库。
-      const diagWholeBatch = filter === 'sediment' && diagSedRows.length ? h('div', {
+      const diagWholeBatch = diagSedentable.length ? h('div', {
         className: 'scp-batch', 'data-kind': 'sediment-batch', role: 'group', 'aria-label': tr('diag.batch.fill'),
       },
         h('div', { className: 'scp-batch-line' },
-          selectAllControl,
-          h('span', { className: 'scp-batch-strong' }, tr('diag.batch.count', { n: diagSedRows.length })),
+          batchSelectControl(diagSedentable),
+          h('span', { className: 'scp-batch-strong' }, tr('diag.batch.count', { n: diagSedentable.length })),
           h('span', { className: 'scp-batch-chip', 'data-tone': 'gray' }, tr('sel.scopeAll')),
           h('span', { className: 'scp-batch-age' }, tr('diag.batch.scope')),
           searchText.trim() ? h('span', { className: 'scp-batch-chip', 'data-tone': 'gray' }, tr('diag.batch.search', { q: searchText.trim() })) : null,
@@ -6536,10 +7497,11 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             type: 'button',
             className: 'scp-btn scp-btn--primary',
             onClick: () => openBatchSediment(),
-          }, tr('diag.batch.fill')))) : null
+          }, tr('diag.batch.fillCount', { n: diagSedentable.length })))) : null
 
-      const sedBatch = view === 'sediment' ? (selectedCount ? selBar : sedWholeBatch) : null
-      const diagBatch = view === 'diagnosis' ? (selectedCount ? selBar : diagWholeBatch) : null
+      const selActive = selectedCount > 0 || selectingOn
+      const sedBatch = view === 'sediment' ? (selActive ? selBar : sedWholeBatch) : null
+      const diagBatch = view === 'diagnosis' ? (selActive ? selBar : diagWholeBatch) : null
 
       const sedHistory = sedDoc && Array.isArray(sedDoc.history) ? sedDoc.history.slice(0, 5) : []
       const sedListInner = !sedDoc
@@ -6563,18 +7525,20 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               ? h('div', { className: 'scp-sed-history' },
                 h('div', { className: 'scp-section-label' }, tr('sediment.history')),
                 sedHistory.map((item) => h('div', { key: item.key, className: 'scp-sed-history-row' },
-                  h('span', { className: 'scp-sed-history-title' }, item.title || item.key),
-                  h('span', { className: 'scp-chip' }, item.state === 'knowledge' ? tr('sediment.stepper.promoted') : tr('sediment.history.archived')),
-                  item.pr && item.pr.url && /^https?:\/\//i.test(String(item.pr.url))
-                    ? h('a', {
-                      className: 'scp-link', href: String(item.pr.url), target: '_blank',
-                      rel: 'noopener noreferrer', title: String(item.pr.url),
-                    }, (item.pr.number ? '#' + item.pr.number : tr('sediment.detail.pr')) + ' ↗')
-                    : null,
-                  item.at ? h('span', { className: 'scp-sed-hint' }, formatTime(item.at) || item.at) : null)))
+                  h('span', { className: 'scp-sed-history-line' },
+                    h('span', { className: 'scp-sed-history-title', title: item.title || item.key }, item.title || item.key),
+                    item.at ? h('span', { className: 'scp-sed-history-time' }, formatTime(item.at) || item.at) : null),
+                  h('span', { className: 'scp-sed-meta' },
+                    h('span', { className: 'scp-chip' }, item.state === 'knowledge' ? tr('sediment.stepper.promoted') : tr('sediment.history.archived')),
+                    item.pr && item.pr.url && /^https?:\/\//i.test(String(item.pr.url))
+                      ? h('a', {
+                        className: 'scp-link scp-sed-history-pr', href: String(item.pr.url), target: '_blank',
+                        rel: 'noopener noreferrer', title: String(item.pr.url),
+                      }, (item.pr.number ? '#' + item.pr.number : tr('sediment.detail.pr')) + ' ↗')
+                      : null))))
               : null)
           : visibleRows.length === 0
-            ? h('div', { className: 'scp-pal-empty' }, tr('palette.empty'))
+            ? h('div', { className: 'scp-pal-empty' }, tr('sediment.emptyFiltered'))
             : (() => {
               const order = ['groom', 'pr', 'check', 'other']
               const labels = {
@@ -6607,6 +7571,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                     className: 'scp-sed-row',
                     'data-on': index === sedSel ? 'true' : 'false',
                     'data-sel': checked ? 'true' : 'false',
+                    onFocus: () => { if (sedSel !== index) setSedSel(index) },
                     onClick: (event) => {
                       const e = event || {}
                       if (e.shiftKey) toggleRowSelection(draft, index, 'range')
@@ -6631,6 +7596,15 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                         runState
                           ? null
                           : h('span', { className: 'scp-chip', 'data-tone': SED_CHIP_TONE[draft.stageTone] || 'none' }, draft.stage || draft.state),
+                        // 待合入 / 已关闭的行遇到评估过期：阶段仍跟平台状态，过期只在行内提示。
+                        // 已合入的行不给：下一步是收尾，过期没有对应动作。
+                        (draft.state === 'pr_open' || draft.state === 'pr_closed') && draft.stale
+                          ? h('span', {
+                            className: 'scp-chip',
+                            'data-tone': 'warn',
+                            title: (draft.staleReasons || []).join('；'),
+                          }, tr('sediment.row.stale'))
+                          : null,
                         draft.pr && draft.pr.number
                           ? h('span', { className: 'scp-chip' }, '#' + draft.pr.number)
                           : null,
@@ -6640,13 +7614,13 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                         runState
                           ? h('span', {
                             className: 'scp-chip',
-                            'data-tone': runState.ok ? 'ok' : 'bad',
+                            'data-tone': runState.ok ? 'success' : 'error',
                             title: runState.ok ? (runState.checkedAt || '') : (runState.message || ''),
                           }, runState.ok
                             ? tr('sediment.prState.' + runState.state)
                             : checkErrorText(runState.error))
                           : (runPending
-                            ? h('span', { className: 'scp-chip', 'data-tone': 'accent' }, tr('sediment.checking'))
+                            ? h('span', { className: 'scp-chip', 'data-tone': 'brand' }, tr('sediment.checking'))
                             : null),
                         draft.decision
                           ? h('span', {}, sedDecisionLabel(draft.decision))
@@ -6654,7 +7628,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                         draft.source && draft.source.sessionId
                           ? h('span', {}, draft.source.sessionId)
                           : null)))
-                  return h('div', { key: draft.key, className: 'scp-row-wrap' },
+                  return h('div', { key: draft.key, className: 'scp-row-wrap scp-row-wrap--sed' },
                     h('button', {
                       key: 'check',
                       type: 'button',
@@ -6673,7 +7647,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                 })))
             })()
 
-      const sedList = h('div', { className: 'scp-pal-list', role: 'region', 'aria-label': tr('palette.sedimentTitle') },
+      const sedList = h('div', {
+        className: 'scp-pal-list', role: 'region',
+        'aria-label': tr('palette.sedimentTitle'), 'data-selecting': selectingOn ? 'true' : 'false',
+      },
         h('div', { className: 'scp-search' },
           h('input', {
             ref: searchRef, type: 'search', value: searchText,
@@ -6689,7 +7666,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             className: 'scp-filter-item',
             'data-on': sedFilter === item.key ? 'true' : 'false',
             onClick: () => setSedFilter(item.key),
-          }, item.label, h('b', {}, String(item.n))))),
+          }, item.label, h('b', {}, String(item.n)))), selectingOn ? null : selectToggle),
         sedListInner)
 
       const sedStepsOf = sedPick ? sedSteps(sedPick) : []
@@ -6882,9 +7859,16 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('span', { className: 'scp-callout-text' }, sedPick.targetWarnings.join('；'))))
           }
           if (sedPick.stale) {
+            // PR 行标「评估过期」，原因后补一句合入前复核怎么办；需要重跑的行（含批准失效）
+            // 阶段已经是「需重跑」，标签沿用「已评估」，具体原因由文字给出。
+            const staleReasonsText = (sedPick.staleReasons || []).join('；')
+            const stalePrState = sedPick.state === 'pr_open' || sedPick.state === 'pr_closed'
+            const staleText = sedPick.state === 'pr_open'
+              ? [staleReasonsText, tr('sediment.detail.stalePrNote')].filter(Boolean).join('；')
+              : staleReasonsText
             head.push(h('div', { key: 'stale', className: 'scp-callout', style: { background: 'var(--scp-bad-soft)', borderColor: 'color-mix(in srgb, var(--scp-bad) 26%, var(--scp-border))' } },
-              h('span', { className: 'scp-callout-label' }, tr('sediment.stepper.assessed')),
-              h('span', { className: 'scp-callout-text' }, (sedPick.staleReasons || []).join('；'))))
+              h('span', { className: 'scp-callout-label' }, tr(stalePrState ? 'sediment.detail.staleLabel' : 'sediment.stepper.assessed')),
+              h('span', { className: 'scp-callout-text' }, staleText)))
           }
           if (sedMismatch !== 'none') {
             head.push(h('div', { key: 'mismatch', className: 'scp-callout', style: { background: 'var(--scp-warn-soft)', borderColor: 'color-mix(in srgb, var(--scp-warn) 26%, var(--scp-border))' } },
@@ -6980,7 +7964,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               ? h('div', { className: 'scp-sed-hint' }, tr('sel.scopedLoading'))
               : null,
             scopedActive && scopedPrompt.error
-              ? h('div', { className: 'scp-form-error' }, tr('sel.scopedFailed', { reason: scopedPrompt.error }))
+              ? h('div', { className: 'scp-form-error', role: 'alert' }, tr('sel.scopedFailed', { reason: scopedPrompt.error }))
               : null,
             promptText
               ? h('div', { className: 'scp-prompt' }, promptText)
@@ -7030,6 +8014,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   type: 'button',
                   className: 'scp-pick',
                   'data-on': targetRemote === name ? 'true' : 'false',
+                  'aria-pressed': targetRemote === name ? 'true' : 'false',
                   onClick: () => {
                     setTargetRemote(name)
                     if (item.base) setTargetBase(String(item.base))
@@ -7052,6 +8037,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('span', { className: 'scp-target-label' }, tr('sediment.target.base')),
               h('input', {
                 className: 'scp-input', style: { width: '180px' }, type: 'text',
+                'aria-label': tr('sediment.target.base'),
                 value: targetBase, onChange: (event) => setTargetBase(event.target.value),
               }),
               h('span', { className: 'scp-target-hint' }, tr('sediment.targetNote')))),
@@ -7073,7 +8059,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       },
         h('div', {
           className: 'scp-modal', style: { width: 'min(520px, calc(100% - 40px))' },
-          role: 'dialog', 'aria-modal': 'true', 'aria-label': tr('sediment.manualTitle'), tabIndex: -1,
+          role: 'dialog', 'aria-modal': 'true', 'aria-label': tr('sediment.manualTitle'), tabIndex: -1, ref: manualRef,
         },
           h('div', { className: 'scp-modal-top' },
             h('div', { style: { flex: '1 1 auto', minWidth: 0 } },
@@ -7091,6 +8077,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               type: 'button',
               className: 'scp-pick',
               'data-on': ((sedPick.pr && sedPick.pr.state) || 'unknown') === state ? 'true' : 'false',
+              'aria-pressed': ((sedPick.pr && sedPick.pr.state) || 'unknown') === state ? 'true' : 'false',
               disabled: checkBusy === sedPick.key || checkBusy === '__all__' || !canWrite,
               onClick: () => markState(sedPick.key, state),
             },
@@ -7133,16 +8120,30 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               h('span', { className: 'scp-pal-sub' }, view === 'sediment'
                 ? [tr('sediment.batch.total', { n: sedDrafts.length }), sedTargetHint].join(' · ')
                 : subParts.join(' · '))),
-            h('div', { className: 'scp-views', role: 'tablist', 'aria-label': tr('palette.title') },
+            h('div', {
+              className: 'scp-views', role: 'tablist', 'aria-label': tr('palette.title'),
+              onKeyDown: (event) => {
+                if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+                event.preventDefault()
+                const next = view === 'diagnosis' ? 'sediment' : 'diagnosis'
+                setMenuOpen(false); setMenuForm(null); setPaletteView(next)
+                const node = next === 'diagnosis' ? diagTabRef.current : sedTabRef.current
+                if (node && typeof node.focus === 'function') { try { node.focus() } catch { /* 同上 */ } }
+              },
+            },
               h('button', {
-                type: 'button', role: 'tab',
+                type: 'button', role: 'tab', ref: diagTabRef,
+                id: 'scp-tab-diagnosis', 'aria-controls': 'scp-pal-panel',
+                tabIndex: view === 'diagnosis' ? 0 : -1,
                 className: 'scp-view-tab',
                 'aria-selected': view === 'diagnosis' ? 'true' : 'false',
                 'data-on': view === 'diagnosis' ? 'true' : 'false',
                 onClick: () => { setMenuOpen(false); setMenuForm(null); setPaletteView('diagnosis') },
               }, tr('palette.view.diagnosis'), h('b', {}, loadFailed ? '—' : loading ? '…' : String(rows.length))),
               h('button', {
-                type: 'button', role: 'tab',
+                type: 'button', role: 'tab', ref: sedTabRef,
+                id: 'scp-tab-sediment', 'aria-controls': 'scp-pal-panel',
+                tabIndex: view === 'sediment' ? 0 : -1,
                 className: 'scp-view-tab',
                 'aria-selected': view === 'sediment' ? 'true' : 'false',
                 'data-on': view === 'sediment' ? 'true' : 'false',
@@ -7159,15 +8160,24 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           loadFailed ? null : diagBatch,
           loadFailed ? null : receiptBar,
           loadFailed
-            ? h('div', { className: 'scp-pal-main scp-pal-main--empty' },
+            ? h('div', {
+              className: 'scp-pal-main scp-pal-main--empty',
+              id: 'scp-pal-panel', role: 'tabpanel', 'aria-labelledby': view === 'sediment' ? 'scp-tab-sediment' : 'scp-tab-diagnosis',
+            },
               h('div', { className: 'scp-pal-error scp-pal-error--center' },
                 h('div', { className: 'scp-pal-error-title' }, tr('palette.unavailable', { message: (s.data && s.data.message) || s.message || '' })),
                 h('button', { type: 'button', className: 'scp-btn', onClick: () => refresh(true) }, tr('action.retry'))))
             : data && view === 'diagnosis' && rows.length === 0
-              ? h('div', { className: 'scp-pal-main scp-pal-main--empty' },
-                h('div', { className: 'scp-pal-empty' }, emptyMark, tr('palette.empty'),
+              ? h('div', {
+                className: 'scp-pal-main scp-pal-main--empty',
+                id: 'scp-pal-panel', role: 'tabpanel', 'aria-labelledby': view === 'sediment' ? 'scp-tab-sediment' : 'scp-tab-diagnosis',
+              },
+                h('div', { className: 'scp-pal-empty' }, emptyMark, tr('palette.emptyAll'),
                   h('button', { type: 'button', className: 'scp-btn', onClick: () => refresh(true) }, tr('action.refresh'))))
-              : h('div', { className: 'scp-pal-main' }, view === 'sediment' ? sedList : list, view === 'sediment' ? sedSide : side),
+              : h('div', {
+                className: 'scp-pal-main',
+                id: 'scp-pal-panel', role: 'tabpanel', 'aria-labelledby': view === 'sediment' ? 'scp-tab-sediment' : 'scp-tab-diagnosis',
+              }, view === 'sediment' ? sedList : list, view === 'sediment' ? sedSide : side),
           h('div', { className: 'scp-pal-foot' },
             loadFailed ? null : h('span', { className: 'scp-foot-hints' },
               h('span', { className: 'scp-kbd' }, '↑'),
@@ -7181,8 +8191,10 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               view === 'diagnosis' ? ' 命令 · ' : null,
               selectedCount ? h('span', { className: 'scp-kbd' }, 'Cmd/Ctrl+Z') : null,
               selectedCount ? ' 撤销选择 · ' : null,
+              selectingOn && !selectedCount ? h('span', { className: 'scp-kbd' }, 'Space') : null,
+              selectingOn && !selectedCount ? ' 勾选 · ' : null,
               h('span', { className: 'scp-kbd' }, 'Esc'),
-              selectedCount ? ' 清空选择' : ' 关闭'),
+              selectedCount ? ' 清空选择' : (selectingOn ? ' 退出选择' : ' 关闭')),
             h('span', { className: 'scp-spacer' }),
             view === 'sediment' ? h('span', { className: 'scp-foot-note' }, sedTargetHint) : null,
             h('span', { className: 'scp-version' }, 'v' + PLUGIN_VERSION)),
@@ -7194,7 +8206,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             className: 'scp-cmd-backdrop',
             onMouseDown: (event) => { if (event.target === event.currentTarget) setCmdOpen(false) },
           },
-            h('div', { className: 'scp-cmd', role: 'dialog', 'aria-modal': 'true', 'aria-label': tr('cmd.placeholder') },
+            h('div', { className: 'scp-cmd', role: 'dialog', 'aria-modal': 'true', 'aria-label': tr('cmd.placeholder'), ref: cmdRef },
               h('div', { className: 'scp-cmd-where' }, tr('cmd.where') + (row ? caseTitle(row) : '')),
               h('input', {
                 ref: cmdInputRef, value: cmdQuery, placeholder: tr('cmd.placeholder'),
@@ -7222,7 +8234,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
                   })
                   : h('div', { className: 'scp-cmd-empty' }, tr('cmd.empty'))),
               h('div', { className: 'scp-pal-foot' }, h('span', {}, tr('cmd.hint'))))) : null,
-          toast ? h('span', { className: 'scp-toast', role: 'status', title: toast }, toast) : null))
+          toast ? h('span', { className: 'scp-toast', title: toast }, toast) : null))
     }
 
     // ── 打开其它会话（轨迹写了 harness_session 时可用）────────────────────

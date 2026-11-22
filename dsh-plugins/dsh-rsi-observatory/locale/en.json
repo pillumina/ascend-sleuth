@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "RSI experiment observatory",
+    "description": "Read-only view of RSI experiments, proposals and decisions: experiment and proposal lists, derived stages, verdict and rollback, event history."
+  }
+}

@@ -1,0 +1,25 @@
+# RSI 流水线预设。默认预设随仓库提供；做消融时复制本文件（或新建
+# config/rsi/ablations.yaml）覆盖/追加同名 preset，再把文件加进
+# sleuth.config.yaml 的 evolution.pipeline_config 列表。
+pipelines:
+  default:
+    description: 六个环节全开：规则归因、区域选择、best 候选、agent 提案、subagent judge、paired gate。
+    stages:
+      attribute: attribute.trace_rule
+      select_region: select.region_hardcount
+      select_candidate: select.best
+      propose: propose.agent
+      judge: judge.subagent
+      gate: gate.paired
+
+  no_proposal:
+    description: 消融“提案”环节：保留评估，propose 使用 propose.none。
+    extends: default
+    stages:
+      propose: propose.none
+
+  no_selection:
+    description: 消融“候选选择”环节：select_candidate 使用 select.none。
+    extends: default
+    stages:
+      select_candidate: select.none

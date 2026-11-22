@@ -1,0 +1,45 @@
+id: REG-VLLM-ASC-10303
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: https://github.com/vllm-project/vllm-ascend/issues/10303
+input:
+  phenomenon: 310P（npu-smi 310P/310P3）上部署 Qwen3-TTS-12Hz（vllm-omni：--omni + --deploy-config
+    qwen3_tts.yaml）失败/不可用——quay.io/ascend/vllm-omni 镜像是 910B 适配，310P 未测试；310P 芯片不支持
+    bf16，qwen3_tts.yaml 默认 dtype（bf16 系）在 310P 不可用，需各 stage 改 float16
+  environment: 310P
+  evidence:
+    case: VLLM-ASC-10303
+    references:
+    - https://github.com/vllm-project/vllm-ascend/issues/10303
+    - https://github.com/vllm-project/vllm-omni/pull/4283
+expected:
+  resolution: 'vllm-omni 官方镜像/代码按 910B 适配（310P 未测试/无 310P 算子与数据格式适配层），且 Qwen3-TTS
+    部署配置 qwen3_tts.yaml 默认 dtype 为 bf16 系——310P 芯片不支持 bf16，无法按 910B 路径在 310P 部署。需
+    310P 源码安装特定版本组合（vllm 0.22.0 + vllm-ascend dde19f7 + vllm-omni main 含 PR#4283 的
+    _310p patch），并把 qwen3_tts.yaml 各 stage dtype 全改为 float16。
+
+
+
+    310P 源码安装组合部署：vllm 0.22.0 + vllm-ascend commit dde19f7b06ed24d9e3cc9fed45595408424364a4
+    + vllm-omni main（PR#4283 已合入），qwen3_tts.yaml 各 stage dtype 改为 float16（310P 不支持
+    bf16），vllm serve --dtype float16 --omni 启动。用户实测 310P 部署成功（issue#10303 评论附 Dockerfile
+    与 qwen3_tts_310p.yaml 可复刻）。'
+  case: VLLM-ASC-10303
+  confidence: maintainer-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: postmortem
+  report_ref: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10303.yaml
+  captured_at: '2026-11-19T14:13:03+00:00'
+  kb_rev: unknown
+  sanitized: true
+  redactions: []
+  confidence: maintainer-reviewed
+  extraction: auto
+created_at: '2026-11-19T14:13:03+00:00'
+updated_at: '2026-11-19T14:13:03+00:00'
+history: []
+notes: core regression derived from knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10303.yaml

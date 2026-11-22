@@ -72,9 +72,10 @@ DSH_HOME 位置、profile 名、命令行是否随包、token 是否落日志、
 | 没有上面两件、但有 `plugin_manager` | 路由二：常驻插件包（见附录） |
 | 要在装之前确认包能加载，或界面不可用 | 路由四：HTTP 脚本安装（先要有日志地址与 token） |
 
-**默认装四个包**：面板包 `dsh-sleuth-panels`、`dsh-sleuth-vllm-kb`（设置页左侧栏的「vllm-kb」一栏，
-四个 `vllm_kb_*` 工具默认关）、独立的 `dsh-sleuth-copilot`（输入框上方的诊断状态条与诊断总览）、
-独立的 `dsh-sleuth-canvas`（左侧栏「诊断画布」整页，离线渲染 `traces/`）。路由三对后三个包各再跑一次
+**默认装五个包**：面板包 `dsh-sleuth-panels`、`dsh-sleuth-vllm-kb`（设置页左侧栏的「vllm-kb」一栏，
+四个 `vllm_kb_*` 工具默认关）、独立的 `dsh-sleuth-copilot`（输入框上方的诊断状态条与诊断工作台）、
+独立的 `dsh-sleuth-canvas`（左侧栏「诊断画布」整页，离线渲染 `traces/`）、独立的
+`dsh-rsi-observatory`（侧栏「实验台」整页，只读 RSI store）。路由三对后四个包各再跑一次
 `add`；路由五在插件页粘贴四次；路由四用 `--all` 一次装齐；路由二用 `install_bundle` 装四次。四个包
 分开登记：装面板不会带上另外三个。状态条与诊断画布都是独立包，卸掉它们不影响面板。
 
@@ -107,6 +108,7 @@ stderr（面板包冒烟会打 `RPC 路由已注册`），以退出码为准；�
    <dsh> plugin --profile <profile> add "<仓库绝对路径>/dsh-plugins/dsh-sleuth-vllm-kb"
    <dsh> plugin --profile <profile> add "<仓库绝对路径>/dsh-plugins/dsh-sleuth-copilot"
    <dsh> plugin --profile <profile> add "<仓库绝对路径>/dsh-plugins/dsh-sleuth-canvas"
+   <dsh> plugin --profile <profile> add "<仓库绝对路径>/dsh-plugins/dsh-rsi-observatory"
    ```
 
    四条都要跑：第一条装面板，第二条装 vllm-kb（设置页左侧栏那一栏），第三条装诊断状态条
@@ -389,7 +391,7 @@ version 与 `lib/client.js` 的 `PLUGIN_VERSION` 一起改，再按原路重装�
 |---|---|---|
 | 状态条 | `dsh-plugins/dsh-sleuth-copilot/` | `conversation.input.dock` id `sleuth-copilot`(55) |
 | 输入区入口 | 同上 | `conversation.input.right` id `sleuth-copilot-toolbar`(5) |
-| 诊断总览 | 同上 | `shell.overlay` id `sleuth-copilot-palette`(60) |
+| 诊断工作台 | 同上 | `shell.overlay` id `sleuth-copilot-palette`(60) |
 
 它只读 `traces/`（Host 半跑 `lib/copilot_state.py`）；状态修改只在用户点开表单、确认提交后经
 `scripts/trace_transition.py` 写回，带内容指纹做并发保护。上游查证不发网络请求：菜单按
@@ -465,7 +467,7 @@ node scripts/panel_install.js --spec "<仓库绝对路径>/dsh-plugins/dsh-sleut
   面板」处理。
 - 面板是只读可视化加指令生成器：展示状态、生成续接/沉淀指令供用户触发，面板自身不做决策与写入
   （唯一例外：诊断面板的沉淀状态标记由用户在面板确认后更新）。自演进看板纯只读：展示卡状态与演进
-  信号，产卡/验证走 agent 与攒批。
+  信号；产卡/验证只在显式深度轮之后进入，不在收尾自动执行。
 - 诊断状态条同样以只读为主：状态修改仅在用户点开表单并提交后经 `scripts/trace_transition.py` 写回
   `traces/`；「回报结果」与各类生成指令只写输入框草稿，发送与否由用户按 Enter 决定。
 

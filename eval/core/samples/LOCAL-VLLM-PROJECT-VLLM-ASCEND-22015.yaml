@@ -1,0 +1,208 @@
+id: LOCAL-VLLM-PROJECT-VLLM-ASCEND-22015
+status: active
+object_type: diagnosis
+origin: core
+purpose: test
+source: local/vllm-project/vllm-ascend#22015
+input:
+  title: '[Bug]: Graph padding rows are dispatched to experts in Ascend MC2 decode'
+  body: '### Your current environment
+
+
+    This is a retrospective bug-tracking issue for the fix merged in #20242, not a
+    new reproduction run.
+
+
+    Environment recorded in that PR:
+
+
+    - Atlas 800I A3, single node.
+
+    - Kimi-K3 W4A8, a 48-layer truncated checkpoint, TP16 / EP16, DSpark k=7, `FULL_DECODE_ONLY`,
+    FlashComm1.
+
+    - DeepSeek-V4-Flash DSpark W4A8 on 4 cards for the draft-model symptom.
+
+    - vLLM main: vllm-project/vllm@24420b7a341af37a9bc3186e6fc6062512e0aa58.
+
+    - Full `collect_env.py` output is not attached; exact CANN and torch_npu versions
+    are not asserted here.
+
+
+    ### Describe the bug
+
+
+    In FULL decode graphs every step is padded up to a captured batch size. On Ascend,
+    the MC2 and FusedMC2 MoE paths dispatched those graph padding rows to experts
+    as if they were real tokens, even with `VLLM_MOE_SKIP_PADDING` enabled, which
+    is the upstream default.
+
+
+    The padding rows all carry the same input, so they route to the same experts,
+    and in MC2 those experts sit on one rank. That rank becomes the straggler of every
+    MoE layer, and the other ranks wait for it inside `MoeDistributeCombineV2`.
+
+
+    A second symptom shows up as soon as MC2 honours `is_padding`: the Ascend Triton
+    replacement `prepare_dflash_inputs_triton` never wrote `is_padding`, so after
+    draft graph capture the buffer stayed all `True`. An MoE draft such as the DeepSeek-V4
+    DSpark MTP layer then treats every row as padding in FULL replay.
+
+
+    #### Expected behavior
+
+
+    With `VLLM_MOE_SKIP_PADDING=1`, rows that the runner marks in `is_padding` are
+    not dispatched to experts, as on GPU after vllm-project/vllm#56079 and vllm-project/vllm#46428.
+    Model outputs do not change.
+
+
+    #### Actual behavior
+
+
+    Graph padding rows were dispatched. On the Kimi-K3 setup at concurrency 9 (8 padding
+    rows out of 80), the `torch_npu` profiler gives these medians per MoE layer call:
+
+
+    | | Padding rows dispatched | Padding rows masked |
+
+    | --- | --- | --- |
+
+    | Slowest rank GroupedMatmul (gmm1 + gmm2) | 491 us | 353 us |
+
+    | MoeDistributeCombineV2 (mostly waiting) | 201 us | 118 us |
+
+    | MoE layer, dispatch start to combine end | 654 us | ~583 us |
+
+
+    Median TPOT on the same setup:
+
+
+    | Concurrency | Padding rows | Dispatched | Masked | Change |
+
+    | --- | --- | --- | --- | --- |
+
+    | 1 | 8 of 16 | 92.5 ms | 83.9 ms | -9.3% |
+
+    | 9 | 8 of 80 | 108.5 ms | 106.1 ms | -2.2% |
+
+    | 16 | 0 of 128 | 113.1 ms | 113.3 ms | flat |
+
+
+    #### Reproduction sequence
+
+
+    1. Serve an MoE model on Ascend with expert parallelism, MC2 dispatch and a FULL
+    decode graph.
+
+    2. Choose a load that leaves graph padding. In the setup above the captured sizes
+    are 16..128 in steps of 16 and each request takes 8 rows, so an odd number of
+    concurrent requests adds 8 padding rows.
+
+    3. Profile a decode step and compare GroupedMatmul time across ranks.
+
+
+    Before the fix, one rank is much slower than the rest. `VLLM_MOE_SKIP_PADDING`
+    makes no difference there, because the MC2 path never reads `is_padding`.
+
+
+    ### Root cause and resolution
+
+
+    `mc2_mask` is built in the platform forward-context hook from the token count
+    after graph padding. It masks SP padding and DP-alignment padding, but it marks
+    graph padding rows as valid, and nothing on the MC2 path read `forward_context.is_padding`.
+
+
+    Fixed by #20242:
+
+
+    - `PrepareAndFinalizeWithMC2.prepare` derives a mask from `is_padding` in the
+    same SP / TP layout as `mc2_mask` and ANDs the two, once per forward. FusedMC2
+    uses the same prepare class, so it is covered as well.
+
+    - `prepare_dflash_inputs_triton` writes `is_padding` after the kernel, the same
+    way upstream''s draft prepare does.
+
+
+    The fix depends on `is_padding` being refreshed for every real batch. #21475 added
+    that to Model Runner V2.
+
+
+    ### Validation recorded in the fixing PR
+
+
+    - CPU-mode unit tests for the MC2 prepare path passed, including the new cases
+    for the non-SP TP split, the SP layout, per-forward caching, and the cases that
+    must keep the old mask.
+
+    - With greedy decoding, outputs with and without the mask are token-identical:
+    9 concurrent requests and 1 single request, 128 tokens each.
+
+    - DeepSeek-V4-Flash DSpark `test_dspark_spec_decoding`, `full_decode_only`: acceptance
+    0.58 / 0.45 / 0.37 / 0.32 / 0.28 without the draft `is_padding` write, 0.87 /
+    0.73 / 0.61 / 0.53 / 0.45 with it.
+
+
+    Not covered by that validation: A2, 310P, the AllGather and AllToAll dispatch
+    paths, multi-node deployments, and accuracy benchmarks. PCP (`pcp_size > 1`),
+    profile runs and forwards where `is_padding` is `None` keep the previous mask.
+
+
+    ### Resolution status
+
+
+    PR #20242 was merged into `main` on 2026-11-13. This issue is added retrospectively
+    to complete the bug-to-fix traceability record.
+
+    '
+expected:
+  resolution: 'Ascend MC2 decode 的 graph padding rows 被派发给了专家；修复 PR #20242（2026-11-13
+    合入 main）在 dispatch 前跳过 padding rows，避免无效 token 进入 AllGather/AllToAll 之外的专家路径。'
+  namespace: inference/vllm-ascend
+  category: interrupt
+  confidence: agent-reviewed
+expected_kind: resolution
+non_diagnostic: false
+proposed:
+  repo: vllm-project/vllm-ascend
+  issue: 22015
+  labels:
+  - bug
+  closed_at: '2026-11-16T09:40:19Z'
+  url: https://github.com/vllm-project/vllm-ascend/issues/22015
+  quality:
+    score: 0.95
+    namespace: inference/vllm-ascend
+    category: interrupt
+    answer: 'Ascend MC2 decode 的 graph padding rows 被派发给了专家；修复 PR #20242（2026-11-13
+      合入 main）在 dispatch 前跳过 padding rows，避免无效 token 进入 AllGather/AllToAll 之外的专家路径。'
+    accepted: true
+provenance:
+  trigger: issue_import
+  sanitized: true
+  redactions: []
+  confidence: issue-verified
+  extraction: auto
+created_at: '2026-11-19T22:57:41+00:00'
+updated_at: '2026-11-19T22:57:47+00:00'
+history:
+- from: candidate
+  to: active
+  reason: fresh closed issue with merged fix
+  actor: lead
+  at: '2026-11-19T22:57:44+00:00'
+- from: active
+  to: active
+  reason: test candidate
+  actor: lead
+  at: '2026-11-19T22:57:44+00:00'
+  from_origin: field
+  to_origin: core
+- from: active
+  to: active
+  reason: sealed test
+  actor: lead
+  at: '2026-11-19T22:57:47+00:00'
+  from_purpose: evaluation
+  to_purpose: test

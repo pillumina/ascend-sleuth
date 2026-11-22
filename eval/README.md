@@ -19,7 +19,7 @@ LLM 有非确定性，所以断言的是"top-3 命中"而不是"必须第一"。
 | 目录 / 文件 | 是什么 | 谁在跑 |
 |---|---|---|
 | [golden/](golden/) | 回归夹具：固定输入（症状、框架、日志片段）+ 期望输出（namespace、case、fix 关键内容）。构造示例与真实投影两类 | 改 skill 前后各跑一遍 replay，见 [docs/guide/eval.md](../docs/guide/eval.md) |
-| [s2/](s2/) | S2 校准集：ground truth 是 issue 实际的 resolution（PR 号），由 [s2_calibration.py](../scripts/s2_calibration.py) 生成；`vllm-ascend-cross.yaml` 放 cross-validation 样本 | 检索与内容正确性的校准，见 [docs/mechanism/eval-arena.md](../docs/mechanism/eval-arena.md) |
+| [s2/](s2/) | S2 校准集：ground truth 是 issue 实际的 resolution（PR 号），由 [s2_calibration.py](../scripts/s2_calibration.py) 生成；`vllm-ascend-cross.yaml` 放 cross-validation 样本 | 检索与内容正确性的校准，见 [docs/mechanism/evaluation.md](../docs/mechanism/evaluation.md) |
 | [flow/](flow/) | 流程类先验知识的评测池：ground truth 是对应 case 的 root_cause，用来判"加载哪条流程、加载多深" | 池内口径与命令见 [flow/README.md](flow/README.md) |
 | [ixn-arena/](ixn-arena/) | 交互型 replay 的样本规格（追问召回、决定性字段是否在链、是否过早结论） | [ixn_replay.py](../scripts/ixn_replay.py)，设计见 [docs/mechanism/ixn-replay.md](../docs/mechanism/ixn-replay.md) |
 | [holdout.yaml](holdout.yaml) | 封存对照集：由维护者独占的那部分夹具，按内容哈希钉住 | `python3 scripts/holdout.py --check` / `--list` / `--reseal` |
@@ -30,7 +30,7 @@ LLM 有非确定性，所以断言的是"top-3 命中"而不是"必须第一"。
 ## 4 从哪读起
 
 - 第一次改 skill：读 [docs/guide/eval.md](../docs/guide/eval.md)，它给出"改哪里测哪里"的门禁分级、怎么跑、以及对照集封存的规则。
-- 要判候选改动该不该收：读 [docs/mechanism/eval-arena.md](../docs/mechanism/eval-arena.md)（元层 eval 台的门控协议与影响账本）。
+- 要判候选改动该不该收：读 [docs/mechanism/evaluation.md](../docs/mechanism/evaluation.md)（元层 eval 台的门控协议与影响账本）。
 - 要改交互面：读 [docs/mechanism/ixn-replay.md](../docs/mechanism/ixn-replay.md)。
 - 只在流程先验层做事：直接读 [flow/README.md](flow/README.md)。
 

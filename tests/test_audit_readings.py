@@ -273,7 +273,7 @@ class S2CandidateScreenTest(unittest.TestCase):
     为什么值得单测（2026-10 实测）：旧规则是「标题不在 6 项黑名单里」且「labels 为空**或**含
     `bug`/`triaged`」，其中 `triaged` 近乎恒真，于是流程单进了判定池——`#12490 [Misc]: Close
     cherry-pick PR #12265`（labels 只有 `triaged`）被当 bug 候选收进校准集，回放到一半才发现它没有
-    可诊断内容（三组症状正则命中数全 0），按 `docs/mechanism/eval-arena.md` §2 的筛选规则本不该进池。
+    可诊断内容（三组症状正则命中数全 0），按 `docs/mechanism/evaluation.md` §2 的筛选规则本不该进池。
     这里钉住：流程/文档类前缀连 `--include-weak` 也拒；无前缀或只有 `triaged` 的默认拒、但列出来给
     人看（`--include-weak` 可收）；标题前缀或 `bug` 标签任一成立就照收。
     """

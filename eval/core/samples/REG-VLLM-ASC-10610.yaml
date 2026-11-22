@@ -1,0 +1,45 @@
+id: REG-VLLM-ASC-10610
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: https://github.com/vllm-project/vllm-ascend/issues/10610
+input:
+  phenomenon: 'GLM-5.2-w8a8 + --quantization ascend 拉起 vllm serve，模型加载阶段抛 KeyError:
+    ''model.layers.N.self_attn.indexer.wq_b.weight''，服务无法启动；vllm-ascend v0.21.0rc2
+    与 releases/v0.22.1rc 均复现（Dbgsaoge/211840040/xw1216 多用户），910b2 同现；报错栈定位到 vllm_ascend/quantization/modelslim_config.py
+    get_linear_quant_type → quant_description[prefix + ''.weight'']'
+  environment: A2-910B
+  evidence:
+    case: VLLM-ASC-10610
+    references:
+    - https://github.com/vllm-project/vllm-ascend/issues/10610
+    - https://github.com/vllm-project/vllm-ascend/pull/10441
+expected:
+  resolution: 'GLM-5.2 引入 indexer 注意力结构（model.layers.N.self_attn.indexer.wq_b 等权重），而
+    vllm_ascend/quantization/modelslim_config.py 的 get_linear_quant_type 直接索引 quant_description[prefix
+    + ".weight"] 取量化类型；modelslim 量化描述（quant_description） 未包含 indexer 层权重 key，旧版本加载即抛
+    KeyError，w8a8 服务无法启动。修复在 PR #10441 （合入 main），vLLM v0.23.0 + 含该 PR 的 vllm-ascend
+    可正常加载。
+
+
+
+    升级至 vLLM v0.23.0 + 包含 PR #10441 的 vllm-ascend main 源码重新编译（或使用含该 commit 的 官方镜像）；不要修改模型文件或
+    --quantization 参数。'
+  case: VLLM-ASC-10610
+  confidence: maintainer-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: postmortem
+  report_ref: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10610.yaml
+  captured_at: '2026-11-19T14:13:03+00:00'
+  kb_rev: unknown
+  sanitized: true
+  redactions: []
+  confidence: maintainer-reviewed
+  extraction: auto
+created_at: '2026-11-19T14:13:03+00:00'
+updated_at: '2026-11-19T14:13:03+00:00'
+history: []
+notes: core regression derived from knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10610.yaml

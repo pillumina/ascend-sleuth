@@ -373,8 +373,13 @@ async function main() {
     surfaces.every(s => ev.text.includes(s)), surfaces.join('、'))
   expect('② 触及面：说明本表表示层次、不表示改善幅度',
     /表示改动落在哪一层，不表示改善幅度/.test(ev.text))
-  // 诚实退化：能力轴不可解读时必须明说，不得画趋势线称"稳定"
-  expect('② 触及面：能力轴标注不可解读（不是"稳定"）', /不可解读/.test(ev.text) && !/能力轴[^。]{0,20}稳定/.test(ev.text))
+  // 诚实退化：能力轴不可解读时必须明说；可读时不能反过来说"不可解读"。
+  const capability = (health.readability || {}).capability_readout || {}
+  if (capability.readable === false) {
+    expect('② 触及面：能力轴标注不可解读（不是"稳定"）', /不可解读/.test(ev.text) && !/能力轴[^。]{0,20}稳定/.test(ev.text))
+  } else {
+    expect('② 触及面：能力轴可读时不标不可解读', !/能力轴[^。]{0,20}不可解读/.test(ev.text))
+  }
   expect('② 触及面：标注归类依据字段（并说明依据较弱时的局限）',
     /归类依据/.test(ev.text) && /可能不是实际改动位置/.test(ev.text))
   // 两条**已在本仓库另一面板踩过**的文案缺陷，这里一并钉住（同类缺陷复发 ≥2 次才进 CI 的口径）：
@@ -428,7 +433,7 @@ async function main() {
   if ((board.stats.negative_terminal || 0) === 0 && (board.stats.terminal_count || 0) > 0) {
     expect('采纳率 100% 旁点明其含义（没有否决记录）', /没有否决记录/.test(ev.text), ev.text.slice(0, 200))
   }
-  expect('自演进度量：验证方式分布', /验证方式分布/.test(ev.text) && /S2 issue 回放/.test(ev.text))
+  expect('自演进度量：验证方式分布', /验证方式分布/.test(ev.text) && /issue 回放/.test(ev.text))
   expect('信号来源分布', /信号来源/.test(ev.text))
   // EV 面板的容量节：判据量是**读入 token**，与「指标」tab 必须说同一件事。
   // 为什么补这条（预核 2026-09-29）：该节此前零断言——index_counts 的每格记录去掉 `cap` 之后，
@@ -1605,7 +1610,7 @@ print(json.dumps(n))
     expect('误诊率在本期指标里出现且带标记',
       new RegExp('误诊率[\\s\\S]{0,120}?不可解读').test(vt) || new RegExp('不可解读[\\s\\S]{0,120}?误诊率').test(vt))
   } else {
-    expect('无可解读性违规时不渲染「不可解读」标记', !vt.includes('不可解读'))
+    expect('无可解读性违规时不渲染「读数不可解读」标记', !vt.includes('读数不可解读'))
   }
   expect('反馈捕获为 0 时点明「不可解读」（不是 0）', !unreadMetrics.length || /不是 0/.test(vt))
   // drift：两个方向都测，不依赖"本机此刻索引恰好陈旧"（那是会腐烂的假设——
@@ -4124,6 +4129,12 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       }
       const withReport = Object.assign({}, b, { sessionId: 's-rep', file: 's-rep.yaml', reportFile: 's-rep.report.md', sedimented: { state: 'none' } })
       const withCands = Object.assign({}, b, { sessionId: 's-cand', file: 's-cand.yaml', sedimentCandidates: 2, sedimented: { state: 'none' } })
+      // 先验候选全部 produced：列表不应再挂「待复核」，另挂「已产出先验词条」。
+      const withProduced = Object.assign({}, b, {
+        sessionId: 's-produced', file: 's-produced.yaml', reportFile: 's-produced.report.md',
+        sedimentCandidates: 1, referenceCandidates: 1, producedReferenceCandidates: 1,
+        sedimented: { state: 'none' },
+      })
       const bare = Object.assign({}, b, { sessionId: 's-bare', file: 's-bare.yaml', sedimented: { state: 'none' } })
       const host2 = (m) => m === 'ascend-traces-list'
         ? { ok: true, sessions: [withReport, withCands, bare] }
@@ -4137,6 +4148,24 @@ print(json.dumps([{'role': s(t.get('role')), 'step': s(t.get('step')), 'action':
       expect('只有 reference / triage 候选也算有材料：两单各挂一个「待复核」徽标',
         (t2.match(/待复核/g) || []).length >= 2, '徽标=' + (t2.match(/待复核/g) || []).length)
       expect('既无报告也无候选、状态还挂着的单归「未收尾」', /未收尾 1/.test(t2), t2.slice(0, 300))
+      const host3 = (m) => m === 'ascend-traces-list'
+        ? { ok: true, sessions: [withReport, withCands, withProduced, bare] }
+        : { ok: true, steps: [], summary: null }
+      const t3 = (await renderAsync(ascSrc, { sessionId: 'sess-1' }, host3)).text
+      // title 里也会出现「待复核」（徽标说明写着「全部产出后不再算」），比较时先剥掉 title，
+      // 只看界面上真正可点的文字。
+      const bareText = x => String(x || '').replace(/«title:[^»]*»/g, '')
+      expect('先验候选全部产出的单不再挂「待复核」',
+        (bareText(t3).match(/待复核/g) || []).length === (bareText(t2).match(/待复核/g) || []).length,
+        '待复核=' + (bareText(t3).match(/待复核/g) || []).length
+        + '，对照=' + (bareText(t2).match(/待复核/g) || []).length)
+      expect('已产出的先验候选在列表挂「已产出先验词条」',
+        /已产出先验词条 1 条/.test(t3), t3.slice(0, 400))
+      // 详情里的候选行：produced 的候选不再出「沉淀此条」，改显示已产出与 ref_id。
+      expect('已产出的先验候选在详情里不再渲染「沉淀此条」',
+        /const done = String\(c\.status \|\| ''\) === 'produced'/.test(ascSrc)
+        && /\(!done && withAction\)/.test(ascSrc)
+        && /'已产出' \+ \(c\.refId/.test(ascSrc))
     }
     {
       expect('host 的会话列表带沉淀状态（列表才能筛待沉淀 / 待升格）',

@@ -82,7 +82,7 @@ python3 scripts/groom_snapshot.py --list-remotes
 
 同步源与诊断读侧共用同一份配置：读主检出 `.local/settings.json` 的 `sync` 段（`remote` / `branch`）。配置在就按它同步，不再问远端；配置缺失才回到上一节走原有选源（单个远端直接用，多个才问用户）。有配置时下面的命令省略 `--remote`，脚本自己取配置。
 
-个人配置的 `sync.enabled` 只管诊断读侧的自动检查，不影响本步：groom 是显式动作，即使关掉自动检查也要 fetch。整机离线用 `deployment.yaml` 的 `sync.mode: "offline"`。
+个人配置的 `sync.enabled` 只管诊断读侧的自动检查，不影响本步：groom 是显式动作，即使关掉自动检查也要 fetch。整机离线用 `sleuth.config.yaml` 的 `sync.mode: "offline"`。
 
 有配置时，或没有配置且只有一个远端时：
 
@@ -461,15 +461,15 @@ python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --post-merge \
 `python3 scripts/log_skill_exec.py --skill knowledge-groom --products "<升格 case id(knowledge),...>" --reason "<一句话：批审 N 条 / 升格 M 条 / 退休 K 条>" --source knowledge-groom --tokens <估算>`
 
 批审产出、出变更摘要前，执行一次伴随演进评估（`read skills/evolve-check/SKILL.md`
-遵循；**先按它的第 0 步读部署声明，`record-only` / `off` 下不产卡**）：本轮暴露覆盖缺口（T2）、容量格子压线/健康指标恶化（T6）、reference 家族需扩
-（T5）、或批审环节有重复手动动作与流程摩擦（T3/T4）时，**agent 自动记录并产卡**：观察交给
-`python3 scripts/evolve_intake.py record …`（按部署声明落卡或落台账），产卡后接验证 → 进攒批；无信号则摘要加一行"evolve-check：无演进信号"。
+遵循；**先按它的第 0 步读部署角色**）：本轮暴露覆盖缺口、容量格子压线/健康指标恶化、reference 家族需扩
+、或批审环节有重复手动动作与流程摩擦时，**只记录信号**：观察交给
+`python3 scripts/evolve_intake.py record …`；收尾不产 EV 卡、不跑 RSI。无信号则摘要加一行"evolve-check：无演进信号"。
 这是流程默认收尾，**不需要用户另说"改进系统"**。
 
 > 为什么 groom 也要挂：groom 是**批量改动知识库的收尾动作**（升格 / 退休 / 汇总使用记录），
 > 一轮 groom 天然产生"同族沉淀是否达归纳阈值""格子是否压线""哪条 case 反复被复测"这类
 > 演进信号——它不挂收尾，这批信号就只存在于 agent 记忆里（此前 groom 从未落过 exec-log、
-> 也没有收尾协议，`docs/mechanism/run.md` 的"已落地含 groom"曾是纸面承诺）。
+> 也没有收尾协议，`docs/mechanism/operations.md` 的"已落地含 groom"曾是纸面承诺）。
 
 ## v2 职责（路线图，v1 不做）
 

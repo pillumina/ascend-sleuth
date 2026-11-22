@@ -15,7 +15,7 @@
 
 训练或推理在昇腾 NPU 上中断、精度异常、性能退化时，把日志与版本信息交给 agent。它按症状路由，查先验知识（官方文档与已沉淀事实）框定方向，再加载候选 case 逐条验证。未命中时继续深度排查，可按版本拉源码分析。输出定位结论与修复方案。
 
-定位结束后，新知识进待审队列，每周例行维护去重、升格为 case，同类问题下次直接命中。共性另归纳成先验知识。系统也按使用记录演进：未命中、执行出错、条目过期都记为改进卡。改动按影响面验证，提 PR 人审。
+定位结束后，新知识进待审队列，每周例行维护去重、升格为 case，同类问题下次直接命中。共性另归纳成先验知识。系统也按使用记录演进：未命中、执行出错、条目过期先记为 signal；深度轮只分诊，确定性 bug 走回归测试，内容缺口走内容 skill，行为质量才显式进入 RSI，高风险改动另做授权。所有改动最终仍走 PR 人审。
 
 skill 按 [Agent Skills](https://agentskills.io/) 标准打包。可在 pi、Claude Code、Codex、DeepSeek Harness（DSH）等支持该标准的 agent 中运行。
 
@@ -104,13 +104,9 @@ knowledge/
 |---|---|---|---|
 | 诊断闭环 | 每次问题（分钟级） | `/skill:diagnose` | 修复建议 + trace |
 | 沉淀闭环 | 定位结束后 / 定期批量 | `/skill:to-postmortem`、`/skill:to-reference`、`/skill:issue-ingest` | 待审队列 → case / reference 词条 |
-| 演进闭环 | 内容流程收尾 / 全库体检轮 | `/skill:evolve-check`、`/skill:self-evolve` | 改进卡 → 验证 → 攒批 PR（人审） |
+| 演进闭环 | 内容流程收尾 / 全库体检轮 | `/skill:evolve-check`、`/skill:self-evolve` | signal → 分诊 → 确定性修复 / 内容 / 显式 RSI / 高风险授权 → PR（人审） |
 
 ![ascend-sleuth 架构](docs/diagrams/ascend-sleuth-architecture.png)
-
-自演进机制的完整流程（[交互图](docs/diagrams/self-evolve-flow.html)，可切主题与导出 PNG）：
-
-![自演进机制全流程](docs/diagrams/self-evolve-flow.png)
 
 每个机制配了什么护栏、每周实际要做什么，见 [自演进元机制](docs/mechanism/rsi-mechanism.md)。
 
@@ -125,11 +121,11 @@ knowledge/
 ## skill 清单
 
 <!-- BEGIN generated: skill-roster (scripts/build_docs_index.py；由 docs/_manifest.yaml 生成，勿手改) -->
-本仓共 **13 个面向使用者的 skill**，按使用场景分 4 组：
+本仓共 **14 个面向使用者的 skill**，按使用场景分 4 组：
 - **日常问答**（1）：`ask`（一句话能问完的问题直接答（码、变量值、某类怎么定位、术语、库里有吗），症状定位转 diagnose）
 - **日常诊断**（2）：`diagnose` · `resume-diagnosis`
 - **知识沉淀**（4）：`to-postmortem` · `to-reference` · `issue-ingest` · `reference-ingest`
-- **维护与演进**（6）：`knowledge-groom` · `self-evolve` · `evolve-check`（内部协议，由内容流程收尾自动转接，不单独调用） · `skill-review`（内部协议，由用户显式触发做 skill 质量审视） · `preload-panel`（仅 DSH：按本机给模型的工具定装载路，有 cordis_define / cordis_run 热加载，有 plugin_manager 装常驻插件包，DSH Desktop 用安装目录自带的 dsh 命令行装（profile 记成 link），另有脚本经 /api 通路装与插件页粘贴两条备用路；含「装了但 tab 不出现」的排查顺序） · `doctor`（本机环境体检：一条命令报「哪些流程能跑、哪些会降级」并给修法；只读，不装包）
+- **维护与演进**（7）：`eval-ingest`（评测集补充入口：从 GitHub/本地 issue 建 candidate，补答案、复核入池；不产 case、不自动 active） · `knowledge-groom` · `self-evolve` · `evolve-check`（内部协议，由内容流程收尾自动转接，不单独调用） · `skill-review`（内部协议，由用户显式触发做 skill 质量审视） · `preload-panel`（仅 DSH：按本机给模型的工具定装载路，有 cordis_define / cordis_run 热加载，有 plugin_manager 装常驻插件包，DSH Desktop 用安装目录自带的 dsh 命令行装（profile 记成 link），另有脚本经 /api 通路装与插件页粘贴两条备用路；含「装了但 tab 不出现」的排查顺序） · `doctor`（本机环境体检：一条命令报「哪些流程能跑、哪些会降级」并给修法；只读，不装包）
 <!-- END generated: skill-roster -->
 
 每个 skill 的触发条件与操作细节见各自的 `skills/<name>/SKILL.md`。

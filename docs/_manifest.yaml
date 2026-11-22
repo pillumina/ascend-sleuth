@@ -73,40 +73,43 @@ docs:
   - path: docs/spec/test-portability.md
     layer: spec
     purpose: 测试在 Windows/Linux/macOS 上同一结论的判定口径（编码、路径、字节夹具、平台 API、外网用例），以及哪几条已进 CI、哪几条只能人审
+  - path: docs/spec/terminology.md
+    layer: spec
+    purpose: 内部行话、易混词与禁用词：禁用词改写、五个英文词的一译一义、六个多义词按语境改；业界通用词不进表
   - path: docs/evolution.md
     layer: mechanism
     purpose: "旧链接入口（保留以免旧链接失效）：内容已并入 mechanism/rsi-mechanism.md，本文只是一页指路，不要在此续写"
+  - path: docs/mechanism/evolution-config.md
+    layer: mechanism
+    purpose: 自演进配置的唯一入口：sleuth.config.yaml 的角色、policy、profile、store、sync、pipeline 组合与信号/RSI/EV 边界
+  - path: docs/mechanism/rsi-acceptance.md
+    layer: mechanism
+    purpose: RSI 真实数据验收记录：样本、候选、A/B gate、full flow、store 缺口与插件验证结论
   - path: docs/mechanism/rsi-mechanism.md
     layer: mechanism
-    purpose: "机制技术说明（这一层的入口）：三环主线、什么时候触发、验证怎么闭环、哪一步需要人、每周做什么"
-  - path: docs/mechanism/pipeline.md
+    purpose: "机制技术入口：目标、三条环路、一轮演进、角色、人工介入等级、八篇文档地图"
+  - path: docs/mechanism/evaluation.md
     layer: mechanism
-    purpose: 三层闭环（知识 / 流程 / 编排）与 proposal 状态机、卡 schema
-  - path: docs/mechanism/execution.md
+    purpose: 评估对象与评估集、rubric、配对判定、成本、版本，以及评估台（arena）的池与结论
+  - path: docs/mechanism/records.md
     layer: mechanism
-    purpose: proposal 信息契约、评审判据、follow-up 验证、指标分层
-  - path: docs/mechanism/orchestration.md
+    purpose: 记录与数据契约：改进项卡 schema、样本、执行、结论、接口、存储归属、版本坐标
+  - path: docs/mechanism/operations.md
     layer: mechanism
-    purpose: 自演进会话协议、目标函数与停止条件、token 预算
-  - path: docs/mechanism/run.md
-    layer: mechanism
-    purpose: 长期运行、issue 三重角色、统一执行记录、可视化
-  - path: docs/mechanism/eval-arena.md
-    layer: mechanism
-    purpose: 元层 eval 台（train/val 门控）与影响账本
+    purpose: 运行节奏：触发入口、运行模式与授权、停止条件、每周流程、采样、内容维护、长期任务
   - path: docs/mechanism/ixn-replay.md
     layer: mechanism
-    purpose: 交互面评测（追问 / 信息充分性 / 过早结论）
+    purpose: "交互面评测（延后项）：追问、信息充分性、过早结论的样本、评分与门槛"
   - path: docs/mechanism/diagnosis-observability.md
     layer: mechanism
-    purpose: 诊断观测的目标态：一次诊断记什么字段、十次诊断怎么汇总成一份上仓读数、与知识库的解耦边界、并发与冲突处理、反馈联动、指标清单与面板；取舍在 ADR-0011
+    purpose: 一次诊断记什么字段、怎么汇总上仓、与知识库的解耦、反馈联动、指标清单与面板；取舍在 ADR-0011
   - path: docs/mechanism/status.md
     layer: mechanism
     purpose: 机制状态总表、未建与空转、代码与文件入口对照、相邻文档分工（全库唯一一份）
     note: 各篇机制文档只留一行指向本文的指针，状态变化改本文
   - path: docs/mechanism/agent-groom.md
     layer: mechanism
-    purpose: Agent Groom 的同步快照、有界子 agent 语义比对、本地评估状态、合入前过期复核与边界
+    purpose: Agent Groom 的知识快照、有界语义比对、证据绑定、合入前复核与收尾撤销
   - path: docs/guide/evolution-user-guide.md
     layer: guide
     purpose: 使用者侧：能说什么、一句话后发生什么、怎么读进度
@@ -161,6 +164,9 @@ skills:
     scope: 知识沉淀
   - name: issue-ingest
     scope: 知识沉淀
+  - name: eval-ingest
+    scope: 维护与演进
+    note: 评测集补充入口：从 GitHub/本地 issue 建 candidate，补答案、复核入池；不产 case、不自动 active
   - name: reference-ingest
     scope: 知识沉淀
   # internal: true = 项目自用、不面向使用者：不进 README 名单，也不进"共 N 个"的计数。

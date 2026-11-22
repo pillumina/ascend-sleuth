@@ -1,0 +1,44 @@
+id: REG-SGL-PD-HEAP-001
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: gitcode:Ascend/memfabric_hybrid/issues/347
+input:
+  phenomenon: PD 分离 --disaggregation-transfer-backend ascend，KV cache 跨 NPU 传输偶发失败；decode
+    侧日志：halShmemCreateHandle → 'Size is bad' → size > heap_size → Create_para_check
+    fail；大模型(GLM W8A8 ~17GB KV)偶发失败、小模型(Qwen3-4B)成功；非必现：page_num ±1（torch.npu.mem_get_info
+    整数除法精度）决定 K end 是否等于 V base
+  environment: A3-910C
+  evidence:
+    case: SGL-PD-HEAP-001
+    references:
+    - gitcode:Ascend/memfabric_hybrid/issues/347
+expected:
+  resolution: 'CombineMemories 将物理相邻的 K 半区和 V 半区合并为单块。当 K end 恰好等于 V base （由 page_num
+    ±1 控制，源于 torch.npu.mem_get_info 整数除法的浮点精度）时， 合并触发。合并后 size(19.13 GiB) 超过 K 段所属
+    heap_size(17.0 GiB)， 驱动 halShmemCreateHandle 校验拒绝，decode 进程崩溃。
+
+
+
+    三个选项： (1) 规避（SGLang 侧）：conn.py:31-41 拆 batch_register <=4 层/批，~5 行 Python。 (2)
+    修复1（memfabric，推荐）：smem_trans_entry.cpp:394-435 去掉 CombineMemories 调用，~3 行——前提驱动允许
+    overlap。 (3) 修复2（memfabric）：smem_trans_entry.cpp:394-435 合并后超 MAX_SHM_SIZE(4GB)
+    沿 2MB 边界拆分，~20 行 C++。'
+  case: SGL-PD-HEAP-001
+  confidence: maintainer-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: postmortem
+  report_ref: knowledge/inference/sglang/SGL-PD-HEAP-001.yaml
+  captured_at: '2026-11-19T14:13:03+00:00'
+  kb_rev: unknown
+  sanitized: true
+  redactions: []
+  confidence: maintainer-reviewed
+  extraction: auto
+created_at: '2026-11-19T14:13:03+00:00'
+updated_at: '2026-11-19T14:13:03+00:00'
+history: []
+notes: core regression derived from knowledge/inference/sglang/SGL-PD-HEAP-001.yaml

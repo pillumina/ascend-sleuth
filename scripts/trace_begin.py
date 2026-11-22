@@ -41,8 +41,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import kb_sync  # noqa: E402  （知识库同步；失败不阻塞建单）
+try:
+    import kb_sync  # noqa: E402  （知识库同步；失败不阻塞建单）
+except Exception:  # 最小环境缺 PyYAML 等依赖时，同步降级但不挡建单
+    kb_sync = None
 from exec_log_path import resolve_traces  # noqa: E402  （运行时件锚主检出，同 shared_dir.py）
+from evolve.harness_usage import model_of, tokens_of  # noqa: E402  （模型名与 token 只从 DSH 会话记录读）
 
 SLUG_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[A-Za-z0-9._-]+$")
 
@@ -92,6 +96,9 @@ def kb_rev_of(root: Path) -> tuple[str, bool | None]:
 
 def sync_of(root: Path, *, no_sync: bool = False, no_network: bool = False) -> dict:
     """调 kb_sync；`--no-sync` 与 `--print-only` 只读本机状态，不联网。"""
+    if kb_sync is None:
+        return {"ok": False, "merge": "none", "reason": "unavailable",
+                "offline": True, "remote": "", "branch": ""}
     settings, config, config_error = kb_sync.load_settings(root)
     cfg = settings["sync"]
     if no_sync or no_network:
@@ -233,7 +240,8 @@ def build_header(*, slug: str, harness_session: str, created_at: str, kb_rev: st
                  kb_behind: int | str = "unknown", kb_sync_state: str = "off",
                  kb_sync_reason: str = "", kb_merge: str = "none",
                  framework: str = "", platform: str = "", category: str = "",
-                 summary: str = "") -> str:
+                 summary: str = "", model: str = "",
+                 tokens_start: int | None = None) -> str:
     """顶层 header → YAML 文本。纯函数：给定输入就有确定输出（测试直接打它）。
 
     字段顺序与真实 trace 相近（人读时不用来回找）；`trace: []` 留在最后，每步由 agent 追加。
@@ -244,6 +252,8 @@ def build_header(*, slug: str, harness_session: str, created_at: str, kb_rev: st
         "# 每步由 skills/diagnose 往 trace[] 追加事件；字段口径见 skills/diagnose/references/diagnosis-trace.md。",
         "session_id: " + q(slug),
         "harness_session: " + q(harness_session) + ("" if harness_session else "   # 缺！建会话时取 $DSH_SESSION_ID；取不到就留空"),
+        "model: " + q(model) + ("" if model else "   # 取不到模型名就留空，不猜"),
+        "tokens_start: " + (str(tokens_start) if isinstance(tokens_start, int) and not isinstance(tokens_start, bool) else "null") + "   # 建单时会话累计；收尾按差值算单次 token",
         "status: in_progress",
         "current_step: 0",
         "summary: " + q(summary),
@@ -295,6 +305,9 @@ def main() -> int:
     ap.add_argument("--platform", default="", help="detected_platform（如 A2-910B）")
     ap.add_argument("--category", default="", help="detected_category（interrupt | precision | performance）")
     ap.add_argument("--summary", default="", help="问题背景一段（可后补，别留空到收尾）")
+    ap.add_argument("--harness-session", default="", help="非 DSH agent 显式给会话号；DSH 下省略，取 $DSH_SESSION_ID")
+    ap.add_argument("--model", default="", help="非 DSH agent 显式给模型名；DSH 下省略，从会话记录取")
+    ap.add_argument("--tokens-start", type=int, default=None, help="建单时累计 token；DSH 下省略，从会话记录取")
     ap.add_argument("--repo", default=str(Path(__file__).resolve().parent.parent), help="仓库根")
     ap.add_argument("--print-only", action="store_true", help="只打印 YAML，不落盘")
     ap.add_argument("--no-sync", action="store_true", help="不联网：不 fetch、不合并，只读本机状态")
@@ -304,12 +317,24 @@ def main() -> int:
 
     root = Path(args.repo).resolve()
     session, why = harness_session_of()
+    if args.harness_session:
+        session, why = args.harness_session, "由 --harness-session 显式指定"
+    if args.tokens_start is not None and args.tokens_start < 0:
+        print("--tokens-start 不能为负数", file=sys.stderr)
+        return 2
 
     if args.dry_run_env:
         kb, _dirty = kb_rev_of(root)
+        if kb_sync is None:
+            print("kb_sync: unavailable（缺少 PyYAML；不联网）")
+            print("traces 目录: " + str(resolve_traces(root)))
+            return 0
         settings, config, _problem = kb_sync.load_settings(root)
         cfg = settings["sync"]
         print("harness_session: " + (session or "（取不到）" + "——" + why))
+        print("model: " + (args.model or (model_of(session) if session else "") or "（取不到）"))
+        print("tokens_start: " + str(args.tokens_start if args.tokens_start is not None
+                                      else (tokens_of(session) if session else None)))
         print("kb_rev: " + kb)
         print(f"kb_sync: {cfg['remote']}/{cfg['branch']}（配置：{config}；不联网）")
         print("traces 目录: " + str(resolve_traces(root)))
@@ -340,10 +365,15 @@ def main() -> int:
 
     result = sync_of(root, no_sync=args.no_sync, no_network=args.print_only)
     kb, kb_dirty = kb_rev_of(root)
+    model = args.model or (model_of(session) if session else "") or ""
+    tokens_start = args.tokens_start
+    if tokens_start is None and session:
+        tokens_start = tokens_of(session)
     text = build_header(slug=args.slug, harness_session=session, created_at=now_stamp(),
                         kb_rev=kb, kb_rev_dirty=kb_dirty, **kb_fields(result),
                         framework=args.framework, platform=args.platform,
-                        category=args.category, summary=args.summary)
+                        category=args.category, summary=args.summary,
+                        model=model, tokens_start=tokens_start)
 
     if args.print_only:
         sys.stdout.write(text)

@@ -4,7 +4,7 @@
 
 **管**：所有"给人看或给人审"的文本怎么写——共用条目见 §1，各面的定制条款见 §3。
 **不管**：篇章结构（每类文本有哪些节、按什么顺序、多长、图放哪、状态怎么标）与结论准确性（那是诊断、沉淀、评测各自的口径）。
-篇章结构的口径在 `skills/doc-standards/`——见 §6。
+篇章结构的口径在 `skills/doc-standards/`——见 §6。内部行话、易混词与禁用词在 [terminology.md](terminology.md)——见 §7。
 
 **前提：准确严谨优先于好读。** 当"说人话"与"不漏事实"冲突时，事实优先——见 §2 有意保留的例外。
 这条前提也决定了 §4 的红线：任何"为了顺口而删掉可核对信息"的写法都不算合格。
@@ -43,7 +43,7 @@
 
 ### 1.2 标点与排版（24–36）
 
-现状：本仓的中文与英文之间已按下面第 32 条的写法排，数字与中文之间也带空格（`26 条`、`150–500 行`）。剩下的紧贴处只在原值里，属有意保留（不再记数字——引一句带数字的原值就会多一处，记了必然过期）。数字与半角单位之间已按下面第 33 条加空格，还紧贴着的只有引号内的示例原值（`"A5 HBM 64GB"`）与 `%`、`°`：命令行与文件路径（`skills/issue-ingest/SKILL.md:24`、`skills/to-reference/SKILL.md:27`）、LaTeX 公式（`docs/spec/design-theory.md:93`）、占位符（`docs/mechanism/pipeline.md:42` 的 `<组件ID>`）、引用外部来源原值处（`docs/demo-walkthrough.md:278` 的 `[13评论]`、`skills/to-reference/SKILL.md:73` 的文档标题与作者行）、本表自身的反例列与上面这一句（它引了原值）。核对命令扫的是 `docs/**`、`skills/**` 与 `README.md`；`postmortems/**`、`research/**`、`eval/**` 这些面还没按本条清过，不在上面这句的范围内（命中数会随正文引用原值变化，看的是「命中的是不是原值」而不是总数）：
+现状：本仓的中文与英文之间已按下面第 32 条的写法排，数字与中文之间也带空格（`26 条`、`150–500 行`）。剩下的紧贴处只在原值里，属有意保留（不再记数字——引一句带数字的原值就会多一处，记了必然过期）。数字与半角单位之间已按下面第 33 条加空格，还紧贴着的只有引号内的示例原值（`"A5 HBM 64GB"`）与 `%`、`°`：命令行与文件路径（`skills/issue-ingest/SKILL.md:24`、`skills/to-reference/SKILL.md:27`）、LaTeX 公式（`docs/spec/design-theory.md:93`）、占位符（`docs/mechanism/records.md` 的 `<名字>`）、引用外部来源原值处（`docs/demo-walkthrough.md:278` 的 `[13评论]`、`skills/to-reference/SKILL.md:73` 的文档标题与作者行）、本表自身的反例列与上面这一句（它引了原值）。核对命令扫的是 `docs/**`、`skills/**` 与 `README.md`；`postmortems/**`、`research/**`、`eval/**` 这些面还没按本条清过，不在上面这句的范围内（命中数会随正文引用原值变化，看的是「命中的是不是原值」而不是总数）：
 
 ```bash
 python3 -c "import re,pathlib;pat=re.compile(r'[\u4e00-\u9fff][A-Za-z0-9]|[A-Za-z0-9][\u4e00-\u9fff]');[print(f'{p}:{i}') for p in [*pathlib.Path('docs').rglob('*.md'),*pathlib.Path('skills').rglob('*.md'),pathlib.Path('README.md')] for i,l in enumerate(p.read_text(encoding='utf-8').splitlines(),1) if pat.search(l)]"
@@ -115,7 +115,7 @@ python3 -c "import re,pathlib;pat=re.compile(r'[\u4e00-\u9fff]\(');[print(f'{p}:
 | 设计 / 方案文档 | `proposals/*.md`（顶层方案文档，进 git） | 评审要与接手人，多数没参与讨论 | 方案要让没参加讨论的人能决定**做不做**，写四件事：要解决什么问题；选哪条路、这条路放弃什么、可能坏在哪；做到什么算完成；不做会怎样。讨论过程与逐条论证留在会话，不搬进文档 | 无 |
 | PR body / 评审摘要 | `.github/PULL_REQUEST_TEMPLATE/`（五类模板）、`scripts/render_review_summary.py` | 评审人 | 结构按模板的 `##` 区块；首节写背景与动机（触发 / 不做的代价 / 做完的变化），不写实现；Agent 预核意见只写模板该区块列的几项（结论、核对的版本、按严重度排的问题、覆盖清单、反例与可复跑命令、三项判定、报告指针；四类模板另加一条随变更对象定的判定项），命令输出与逐条证据留预核报告；正文用工程师口吻（短句、动词开头、给具体读数，不写过程叙述与自我评价），证据节只列要核的 3 到 5 条（见 [git-workflow.md](../guide/git-workflow.md) 的「独立预核」一节）；代号写中文含义（`docs/glossary.yaml` 的 `scope` 规则） | `pr-template`、`render_review_summary.py --scan` |
 | 指标注记 | `metrics/timeline.d/*.yaml`、exec-log | 看面板趋势 | 读数带分母；趋势不可读时明说不可读，不画等高柱充数 | `verify_metrics.py`、`build_timeline.py --check` |
-| skill 与 docs 正文 | `skills/**`、`docs/**`、`README.md`、`CLAUDE.md`、`CONTEXT.md` | agent 载入 + 人读 | skill 正文的行为规则要内联（自包含）；不能出现 ADR 号、日期、卡号这类外部锚点；仓库根的人读文档与 `docs/` 正文同样适用 §1 的共用条目与 §2 的原值例外；动笔前读 §1、提交前对照 §1 自查，这两步与五类高频项写在 `CLAUDE.md` 的「人读文本的行文规范」条 | `skill-self-contained`、`docs-index`、`render_review_summary.py --scan`（代号未登记与越界）；§1 的其余条目由**独立预核**对照（三档强度见 [git-workflow.md](../guide/git-workflow.md) 的「评审把手」） |
+| skill 与 docs 正文 | `skills/**`、`docs/**`、`README.md`、`CLAUDE.md`、`CONTEXT.md` | agent 载入 + 人读 | skill 正文的行为规则要内联（自包含）；不能出现 ADR 号、日期、卡号这类外部锚点；仓库根的人读文档与 `docs/` 正文同样适用 §1 的共用条目与 §2 的原值例外；动笔前读 §1、提交前对照 §1 自查，这两步与五类高频项写在 `CLAUDE.md` 的「人读文本的行文规范」条 | `skill-self-contained`、`docs-index`、`render_review_summary.py --scan`（代号未登记与越界）；§1 的其余条目由**独立预核**对照（触发条件与三档上限见 [git-workflow.md](../guide/git-workflow.md) 的「独立预核」一节） |
 
 ### 写点在哪（改这些文件时才会读到本规范）
 
@@ -131,11 +131,12 @@ python3 -c "import re,pathlib;pat=re.compile(r'[\u4e00-\u9fff]\(');[print(f'{p}:
 | 设计 / 方案文档 | `proposals/README.md` 的「方案文档怎么写」一节（四件事的骨架）；目录与 git 归属同在该文件；idea 卡的结构由 `scripts/verify_proposals.py` 校验 |
 | case 词条 / postmortem | `skills/to-postmortem/SKILL.md` 的「产出落点」一节 |
 | reference 词条 | `skills/to-reference/SKILL.md` 的「产出词条」一节 |
-| EV 卡 | `docs/mechanism/pipeline.md` §7「改进项的 schema 与状态机」 |
+| EV 卡 | `docs/mechanism/records.md` §3.1「改进项卡」 |
 | 面板文案 | `dsh-plugins/README.md` 的「面板文案的定制条款」一节 |
 | PR body | `.github/PULL_REQUEST_TEMPLATE/methodology.md`（五类模板的首节都是「背景与动机」，各节自带填写要求） |
 | 指标注记 | **暂无写点**：注记直接写在 `metrics/timeline.d/*.yaml` 里，没有模板可挂。接入需先给它一个模板或 schema 约束，或把定制条款写进该目录的注释头 |
 | docs 与 skill 正文（含 README / CLAUDE.md / CONTEXT.md） | 无需在每个文件里指路：`CLAUDE.md` 的「Key constraints」一节（每个 agent 会话都会读到）+ `docs/_manifest.yaml` 的维护规则第 4 条（新增文档时读到），两处都指向本文件；动笔前与提交前的自查动作见 `CLAUDE.md` 的「人读文本的行文规范」条 |
+| 内部术语与禁用词 | `docs/spec/terminology.md`（本文件 §7 指向它；扫描命令与保留原值的边界都在那篇） |
 | 跨 harness 入口（所有面） | 根目录 `AGENTS.md`：Codex 与 WorkBuddy 读它，Trae 需在设置里开启导入才读；`CLAUDE.md` 被 DSH 与 Claude Code 读。两份都只有指路，正文仍在 `CLAUDE.md` 与本文件 |
 
 ## 4 新面接入时怎么判：共用还是定制
@@ -157,7 +158,7 @@ python3 -c "import re,pathlib;pat=re.compile(r'[\u4e00-\u9fff]\(');[print(f'{p}:
 并且出现在可复制的指令里被粘进对话。§1.2 与 §1.3 里的标点与格式类（第 25、32、33、34、35、36、37、41、42 条）
 在别的项目里由 zhlint 一类工具机械检查，本仓**具备可查性但缺复发证据**（准入第三条），
 现在只能以只报告的方式跑，不进阻断路径。第 43 条（错词对照表）不一样：zhlint 查不了它，但它的七个词是字面量，一条 `grep` 就能查——七个词在正文里零命中（命中只落在规则自身的文本上：§1 第 43 条、报告模板的这条副本、`skills/doc-standards/references/rule-sources.md` 各一处），缺的同样是准入第三条的复发证据，所以也只在报告侧跑。其余条目属判断性规范，对照 §1 与 §3 人审——
-**不为"AI 味"造硬门，那是假装硬化（原则六）**。
+**不为"AI 味"造强制检查，那是假装硬化（原则六）**。
 
 机检这几类时的三条纪律（借 GitLab 的 Vale 政策）：误报按三档处置——改写、进例外表、单行豁免；
 存量文档第一次接入时用基线，只对新增与改动的行报；**检查工具永不标记情态**，情态有没有升格只能人审。
@@ -197,3 +198,9 @@ python3 -c "import re,pathlib;pat=re.compile(r'[\u4e00-\u9fff]\(');[print(f'{p}:
 - **为什么要有这一篇**：本文件出现前，同一套条目在面板 README「文案规范」、`report-template.md` 第 4 节、
   `diagnosis-trace.md`「行文口径」三处各写一份，措辞与反例各异，"哪些能硬化"还在三处各判一次——
   事实被镜像到多处就会漂移（`docs/_manifest.yaml` 头注记的是同一种病）。
+
+## 7 内部术语与禁用词
+
+本文件的 §1 管一句话怎么写，不管一个词在本仓是什么意思。内部行话、同一概念的多写法、以及明确不再用的禁用词，收在 [terminology.md](terminology.md)：禁用词 15 个（夹具、判词、两臂、账本、成本轴、收题、半硬、硬门、软门、证据包、落点、留痕、收口、腐烂、咬人），五个英文词的一译一义（gate、holdout、verdict、ledger、fixture），六个多义词的按语境改（闸门、口径、闭环、门控、兜底、对齐）。
+
+两条边界：术语表只改正文，不改状态值、字段名、路径与命令（§2 的四类原值）；历史档案 `docs/adr/`、`postmortems/` 与 `proposals/` 不追溯。写新文本前查一次术语表，提交前用那篇 §5 的扫描命令过一遍目标文档，命中先判是不是原值。

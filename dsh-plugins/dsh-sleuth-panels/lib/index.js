@@ -1,7 +1,7 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-host.js  (sha256:f4370ba16031)
-//   dsh-plugins/ev-panel/panel-host.js  (sha256:27f2d4423c8d)
+//   dsh-plugins/ascend-panel/panel-host.js  (sha256:088d9c09d14a)
+//   dsh-plugins/ev-panel/panel-host.js  (sha256:717410b650e4)
 // 校验：`node scripts/build_panel_bundle.js --check`（源文件改了没重跑生成器即红）。
 //
 // 面板源码是动态插件方言（文件是函数体，靠沙箱提供的 harness 通信）；这里原文嵌入常驻
@@ -105,7 +105,7 @@ const PANELS = [
     id: 'ascend-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:f4370ba16031) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-host.js (sha256:088d9c09d14a) 原文开始 ----
 return {
   apply(ctx) {
     const fs = ctx.get('fs')
@@ -117,7 +117,7 @@ return {
 
     // 本插件加载时的那一版面板包版本。构建常驻包时生成器把占位符换成 package.json 的 version；
     // 热加载路直接读源文件，占位符不会被替换，这时按"版本未知"处理，不据此判新旧。
-    const PANEL_VERSION = '0.10.3'
+    const PANEL_VERSION = '0.11.0'
     const PANEL_VERSION_KNOWN = /^\d+\.\d+/.test(PANEL_VERSION)
 
     // fs 缺失时**只降级依赖它的功能**，不再让整个插件静默不注册。
@@ -625,7 +625,7 @@ return {
     // 缓存是派生物：读不到/损坏/版本不一致就整份重建，删掉也不影响正确性。
     // 存量不需要迁移——第一次刷新全量解析一遍并写缓存，之后都是增量。
     const INDEX_CACHE_FILE = '.panel-index.json'
-    const INDEX_SCHEMA = 6   // v6: 列表带 harnessSession（侧栏行按它匹配）；v5: feedbackPendingSince；v4: 成本带 scope；v3: severity 与 fixEmitted
+    const INDEX_SCHEMA = 7   // v7: 列表带先验候选产出数（referenceCandidates / producedReferenceCandidates）；v6: harnessSession；v5: feedbackPendingSince；v4: 成本带 scope；v3: severity 与 fixEmitted
     // 改 `buildCoreItem` 的字段必须同步这份清单：形状不符的缓存条目会被丢弃并重解析，
     // 避免"旧缓存把新字段喂成 undefined"在列表上静默少一列。
     const INDEX_CORE_FIELDS = ['sessionId', 'file', 'status', 'framework', 'platform', 'category', 'activeCase',
@@ -633,6 +633,7 @@ return {
       'feedbackPendingSince', 'harnessSession',
       'waitingFor', 'userSteps', 'agentSteps', 'lastAction', 'lastRole', 'lastOutput', 'createdAt', 'updatedAt',
       'recordedReport', 'activeCaseKind', 'sedimented', 'sedimentCandidates', 'caseCandidates',
+      'referenceCandidates', 'producedReferenceCandidates',
       'severity', 'fixEmitted', 'parseAnomaly']
     function coreShapeOk(item) {
       if (!item || typeof item !== 'object') return false
@@ -798,6 +799,14 @@ return {
             : null),
         caseCandidates: Array.isArray(doc.sediment_candidates)
           ? doc.sediment_candidates.filter(c => c && String(c.kind || '') === 'case').length
+          : 0,
+        // 先验候选与其中已产出的条数：面板据此把「这单产出了词条」与「手里只有材料待复核」分开。
+        referenceCandidates: Array.isArray(doc.sediment_candidates)
+          ? doc.sediment_candidates.filter(c => c && String(c.kind || '') === 'reference').length
+          : 0,
+        producedReferenceCandidates: Array.isArray(doc.sediment_candidates)
+          ? doc.sediment_candidates.filter(c => c && String(c.kind || '') === 'reference'
+              && String(c.status || '') === 'produced').length
           : 0,
         parseAnomaly: anomalyOf(stats),
       }
@@ -1770,6 +1779,7 @@ return {
             summary: c && c.summary ? String(c.summary) : '',
             suggestedSkill: c && (c.suggested_skill || c.suggestedSkill) ? String(c.suggested_skill || c.suggestedSkill) : '',
             status: c && c.status ? String(c.status) : '',
+            refId: c && c.ref_id ? String(c.ref_id) : '',
           })).filter(c => c.kind || c.summary),
           parseAnomaly: anomalyOf(stats),
         }
@@ -3056,7 +3066,7 @@ return {
     id: 'ev-panel',
     build(harness) {
       return (function () {
-// ---- dsh-plugins/ev-panel/panel-host.js (sha256:27f2d4423c8d) 原文开始 ----
+// ---- dsh-plugins/ev-panel/panel-host.js (sha256:717410b650e4) 原文开始 ----
 // ev-panel host —— 自演进看板数据服务（EV 卡 / 容量 / 归因聚合 / timeline）
 // 用法：cordis_define kind:new → code.host 用本文件全文；code.client 用 panel-client.js 全文。
 // host 侧通过 shell 跑 scripts/ev_board_data.py 汇总 JSON（确定性逻辑在脚本，遵循原则二）。
@@ -3658,6 +3668,21 @@ return {
         () => loadBoard(sessionId))
     })
 
+    const sampleActionDisposer = harness.handle('ev-sample-action', async (args) => {
+      const sessionId = args && args.sessionId ? String(args.sessionId) : null
+      const id = args && args.id ? String(args.id) : ''
+      if (!/^[A-Za-z0-9._:-]+$/.test(id)) return { ok: false, error: '样本 id 不合法' }
+      const action = args && args.action ? String(args.action) : ''
+      const commands = {
+        approve: `sample review --id ${id} --approve --json`,
+        reject: `sample review --id ${id} --reject --json`,
+        promote: `sample promote --id ${id} --to core --json` +
+          (args && args.export === true ? ' --export' : ''),
+      }
+      if (!commands[action]) return { ok: false, error: '未知的样本动作' }
+      return runScript(sessionId, 'scripts/evolve.py', commands[action])
+    })
+
     const healthDisposer = harness.handle('ev-health-load', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
       return cached('health|' + (await resolveCwd(sessionId) || '?'), !!(args && args.refresh === true),
@@ -3840,6 +3865,7 @@ return {
 
     return () => {
       if (handleDisposer) handleDisposer()
+      if (sampleActionDisposer) sampleActionDisposer()
       if (healthDisposer) healthDisposer()
       if (detailDisposer) detailDisposer()
       if (kbShowDisposer) kbShowDisposer()

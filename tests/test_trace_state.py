@@ -60,6 +60,24 @@ class DeriveTest(unittest.TestCase):
         self.assertTrue(st.derive(doc(), set())["needWork"])
         self.assertTrue(st.derive(doc(trace=[], summary=None), set())["skeleton"])
 
+    def test_produced_reference_candidates_clear_review(self):
+        done = [{"kind": "reference", "summary": "x", "status": "produced", "ref_id": "ref-a"}]
+        d = st.derive(doc(report_file="r.md", sediment_candidates=done), set())
+        self.assertFalse(d["needReview"])
+        self.assertEqual(d["refCandidates"], 1)
+        self.assertEqual(d["producedRefCandidates"], 1)
+        self.assertEqual(d["producedRefIds"], ["ref-a"])
+        # produced 不改价值序：面板的 valueRankOf 仍把 5 留给 sedimented 有值的单
+        self.assertEqual(d["valueRank"], 0)
+        # 尚有未产出的先验候选 → 仍待复核
+        mixed = done + [{"kind": "reference", "summary": "y", "status": "proposed"}]
+        self.assertTrue(st.derive(doc(report_file="r.md", sediment_candidates=mixed), set())["needReview"])
+        # 只有报告、没有候选 → 维持原判
+        self.assertTrue(st.derive(doc(report_file="r.md"), set())["needReview"])
+        # 有 triage 候选时，即使先验都产出了也仍待复核
+        triage = done + [{"kind": "triage", "summary": "路由词"}]
+        self.assertTrue(st.derive(doc(report_file="r.md", sediment_candidates=triage), set())["needReview"])
+
     def test_value_rank(self):
         self.assertEqual(st.derive(doc(sedimented={"state": "knowledge"}), set())["valueRank"], 5)
         self.assertEqual(st.derive(doc(active_case="VLLM-ASC-1"), {"VLLM-ASC-1"})["valueRank"], 4)

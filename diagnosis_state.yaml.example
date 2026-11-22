@@ -73,6 +73,50 @@ ending:                                # 终态必填：收尾方式（取值见
 transitions: []                        # 只追加：每次状态转移一条（scripts/trace_transition.py 写）
                                        # 每条含 at/from/to/ending/prev_ending/by/source/note
 
+# ── 面板四层时间线：现场 → 故障过程 → 上游 → 诊断步骤 ──
+# 本节五个字段给前三段（三段时间线）+ 修订记录；第四层「诊断步骤」来自 trace[]，不在本节。
+# 只放可观察事实；推断留在 trace[] 里那条 agent 事件的 reason。
+# 当前值只能经唯一写入口改：
+#   python3 scripts/trace_transition.py <sid> --field content --content-file <内容.json>
+# 写入口自动追加 revisions（before/after 与被改字段的 hash）；绕过它手改内容，会被
+# `verify_trace_status.py --all` 的 hash 校验抓到。旧 trace 没有这些字段就按「未记录」显示，不回填。
+incident_env: ""                       # 现场环境一行：平台 / 框架 / 版本 / 部署形态
+incident_timeline:                     # 现场侧事实，按材料时序（现象、变更、规避 / 恢复）；最多 16 条
+  - id: inc-1                          # inc-<n>，字段内唯一
+    at: "YYYY-MM-DDTHH:MM:SS+08:00"    # 或只到日期 "YYYY-MM-DD"；时点未知写 null（面板显示「时点未知」）
+    at_note: ""                        # 相对时间原文，例如「起服务约 8 分钟后」
+    what: "一句话事实"
+    source: log                        # log | user | issue | comment | commit | doc | field_test | observation
+    step: 1                            # 来自第几步（整数）
+    evidence: {files: ["traces/evidence/<session_id>/train.log"], quote: "原文", line: 1}
+failure_process:                       # 日志证据层；nodes 最多 8 条
+  axis: time                           # time | step | request（v1 面板只按 time 渲染）
+  window: {from: "", to: ""}           # 可选；按材料原值写
+  clock_note: ""                       # 有偏差必写，例如「日志时间比墙钟晚 8 h（日志 08:34:22 = 墙钟 16:34:22）」
+  nodes:
+    - id: fp-1                         # fp-<n>，字段内唯一
+      at: null                         # time 轴用；可为 null
+      x: null                          # step / request 轴用
+      what: "状态转折摘要"
+      quote: "日志原文一行"             # 必须是日志原文；全量日志不进 trace
+      repeat: ""                       # 重复规律，例如「每 ~1 s 一次，持续到 09:23:57」
+      evidence: {file: "traces/evidence/<session_id>/train.log", line: 1}
+upstream_timeline:                     # 上游与查证时间线（可选）；最多 12 条
+  - id: up-1                           # up-<n>，字段内唯一
+    at: null
+    what: "issue / PR / 维护者事件"
+    source: issue                      # issue | comment | commit | doc | maintainer | vendor | field_test | observation
+    ref: ""
+    evidence: {files: ["traces/evidence/<session_id>/issue.txt"]}
+revisions: []                          # append-only；写入口自动追加，不要手写：
+                                       #   - at: "YYYY-MM-DDTHH:MM:SS+08:00"
+                                       #     by: agent             # user | agent | cli
+                                       #     kind: fact_corrected   # fact_corrected | conclusion_overturned | scope_changed | severity_changed | sediment_changed
+                                       #     changes:              # 至少一条；删除条目的 target 写 removed:<id>
+                                       #       - {target: inc-1, before: "旧值", after: "新值"}
+                                       #     reason: "为什么改（新证据 / 用户更正）"
+                                       #     hashes: {incident_timeline: "sha256:..."}   # 写入口填
+
 sedimented:                           # 沉淀状态（零推断：动作发生时写；拒绝不记录）
   state: none                         # none → submitted（to-postmortem 产出草稿时）→ knowledge（升 Tier 2）/ archived（仅 Tier 3）
   case_id: ""                         # 已沉淀的 case id（state=knowledge/archived 时）

@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
-"""evolve_intake.py —— 演进记录的单一入口：先采集，再按部署声明分流
+"""evolve_intake.py —— 信号记录的单一入口：先采集，再按部署角色分流
 
 ## 为什么要有这个入口
 
-产卡动作原先散在七个 skill 里，每个都自己判断「要不要产卡」。文本判据会漂移，agent 也会绕。
+记录动作原先散在多个 skill 里，每个都自己判断「要不要记录」。文本判据会漂移，agent 也会绕。
 本脚本把这条策略收进结构：
 
     调用方（任何 skill）→ evolve_intake record <观察载荷>
-                              │ 读 deployment.yaml 的 evolution.mode
-                              ├─ full        → 预填一张卡骨架（source_signals/target 已填，measure 留空）
-                              ├─ record-only → 写 proposals/signals/<部署>-<哈希>.yaml
+                              │ 读 sleuth.config.yaml 的 evolution.role
+                              ├─ maintainer  → 写信号台账，上游分诊后走 RSI
+                              ├─ signal-only → 写 proposals/signals/<部署>-<哈希>.yaml
                               └─ off         → 不落盘，只打印一行
 
 ## 为什么采集在分流之前
 
-record-only 不该「什么都不记」：值得关注的信号恰恰出在下游部署。载荷在分流前定下来，模式只决定
-落到卡还是落到台账，信息不会因为模式而丢。
+记录不该「什么都不记」：值得关注的信号恰恰出在下游部署。载荷在分流前定下来，角色只决定
+是否落盘，信息不会因为角色而丢。
 
 ## 记录层能保证什么、不能保证什么
 
 能：证据不空、组件与出处可解析、同一信号去重计数。这些是确定性的，脚本可以判。
-不能：这条信号值不值得产卡——那要读组件、读卡库、读指标，是上游分诊层（深层轮 + 独立预核）的事。
+不能：这条信号值不值得升级成 RSI 候选——那要读组件、读候选队列、读指标，是上游分诊层的事。
 
 ## 用法
 
@@ -51,7 +51,7 @@ def repo_root(start: Path = None) -> Path:
 def validate(root: Path, target: str, evidence: str, trajectory) -> list:
     """记录层的完整性契约。返回错误列表（空 = 通过）。
 
-    只判「能不能被复核」，不判「值不值得产卡」——后者是上游分诊层的事。
+    只判「能不能被复核」，不判「值不值得升级」——后者是上游分诊层的事。
     """
     errors = []
     ev = (evidence or "").strip()
@@ -80,45 +80,13 @@ def soft_warnings(root: Path, trajectory) -> list:
     return out
 
 
-def _prefill_card(path: Path, *, signal: str, signal_text: str, target: str, evidence: str,
-                  trajectory, suggested: str) -> None:
-    """把骨架卡里最费手的几行填上，其余（hypothesis / measure / validation）留给人。
-
-    用行级替换而不是整文件 dump：模板里的注释是填卡指引，dump 会把它们冲掉。
-    """
-    text = path.read_text(encoding="utf-8")
-    title = f"{signal_text or signal} → {target}"
-    title = (title[:78] + "…") if len(title) > 79 else title
-    lines = text.splitlines()
-    block = ["source_signals:", f"  - signal: {signal}", f"    evidence: {evidence!r}",
-             "    trajectory:"]
-    block += [f"      - {str(t)!r}" for t in trajectory]
-    out, i = [], 0
-    while i < len(lines):
-        ln = lines[i]
-        if ln.startswith("target_component:"):
-            out.append(f"target_component: {target}")
-            i += 1
-            continue
-        if ln.startswith("title:"):
-            out.append(f"title: {title}")
-            i += 1
-            continue
-        if ln.startswith("source_signals:"):
-            out += block
-            i += 1
-            while i < len(lines) and not lines[i].startswith("hypothesis:"):
-                i += 1
-            continue
-        out.append(ln)
-        i += 1
-    path.write_text("\n".join(out) + "\n", encoding="utf-8")
-
 
 def record(root: Path, *, signal: str, signal_text: str, target: str, evidence: str,
            trajectory, suggested: str = "", source: str = "evolve-check",
-           session: str = "", force: bool = False) -> dict:
-    mode, mode_source = EM.read_mode(root)
+           session: str = "") -> dict:
+    role, mode_source = EM.read_role(root)
+    # 目标态：maintainer 先把观察落成信号；是否提升为 RSI 由分诊决定。
+    mode = "off" if role == "off" else "record-only"
     errors = validate(root, target, evidence, trajectory)
     if errors:
         raise ValueError("；".join(errors))
@@ -133,23 +101,14 @@ def record(root: Path, *, signal: str, signal_text: str, target: str, evidence: 
         return {"mode": mode, "mode_source": mode_source, "path": r["path"],
                 "occurrences": r["doc"]["occurrences"]}
 
-    # full：预填卡骨架。--force 让演练与测试能在非 full 部署里走通这条路。
-    if not force:
-        import ev_proposal as EP
-        p = EP.make_new(root)
-    else:
-        import ev_proposal as EP
-        p = EP.make_new(root, force=True)
-    _prefill_card(p, signal=signal, signal_text=signal_text, target=target,
-                  evidence=evidence, trajectory=trajectory, suggested=suggested)
-    return {"mode": mode, "mode_source": mode_source, "path": p}
+    raise AssertionError(f"unreachable mode: {mode}")
 
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description="演进记录入口：采集 → 按部署声明分流")
     ap.add_argument("--root", type=Path, default=None, help="仓库根（默认当前检出顶层）")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    r = sub.add_parser("record", help="记录一条演进观察（卡或台账由部署声明决定）")
+    r = sub.add_parser("record", help="记录一条演进观察（信号台账）")
     r.add_argument("--signal", required=True, help="信号编号或自由文本（如 T10）")
     r.add_argument("--signal-text", default="", help="信号的中文含义")
     r.add_argument("--target", required=True, help="要改的组件：仓库内路径或组件名")
@@ -158,7 +117,6 @@ def main(argv=None):
     r.add_argument("--suggested", default="", help="建议动作（可选）")
     r.add_argument("--source", default="evolve-check", help="来源 skill")
     r.add_argument("--session", default="", help="会话 id（如有）")
-    r.add_argument("--force", action="store_true", help="演练/测试：非 full 部署也产卡骨架")
 
     args = ap.parse_args(argv)
     root = (args.root or repo_root()).resolve()
@@ -166,10 +124,9 @@ def main(argv=None):
     try:
         res = record(root, signal=args.signal, signal_text=args.signal_text, target=args.target,
                      evidence=args.evidence, trajectory=args.trajectory,
-                     suggested=args.suggested, source=args.source, session=args.session,
-                     force=args.force)
+                     suggested=args.suggested, source=args.source, session=args.session)
     except EM.ModeError as e:
-        print(f"✗ 部署声明写坏：{e}", file=sys.stderr)
+        print(f"✗ 配置角色写坏：{e}", file=sys.stderr)
         return 2
     except ValueError as e:
         print(f"✗ {e}", file=sys.stderr)

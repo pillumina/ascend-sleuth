@@ -75,7 +75,7 @@
 
 ### 卡自审（`gaps`）
 
-面板按 `docs/mechanism/pipeline.md` §7「生命周期完整性规则」自审每张卡，报出机制缺口：
+面板按 `docs/mechanism/records.md` §3.1「改进项卡」的完整性规则自审每张卡，报出机制缺口：
 
 | gap | 判据 |
 |---|---|

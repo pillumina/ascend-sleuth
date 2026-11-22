@@ -1,0 +1,41 @@
+id: REG-COMMON-RMSNORM-WEIGHT-SCALE
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: msprobe docs/zh/best_practices/ascend_gemma_retrain_loss_diff_analysis.md（MindStudio
+  26.2.0.B050_003）
+input:
+  phenomenon: 随机初始化权重时两遍训练 Loss 对齐；加载权重时两遍 Loss 差异偏大，但两侧加载的权重确实完全一致；grad_norm 异常偏大；加载权重并减层处理后能对齐；master
+    分支与旧分支训练也存在差异；可视化溢出检测显示 RMSNorm 反向位于 high level；查前向 dump 发现该权重统计值很大（其他模型 RMSNorm
+    权重大多 <1，随机初始化时初值为全 1）；数值每经过一次 RMSNorm 量级约放大百倍，前几层尚在正常范围，深层尤甚
+  environment: ''
+  evidence:
+    case: COMMON-RMSNORM-WEIGHT-SCALE
+    references:
+    - msprobe docs/zh/best_practices/ascend_gemma_retrain_loss_diff_analysis.md（MindStudio
+      26.2.0.B050_003）
+expected:
+  resolution: '加载的 RMSNorm 权重数值异常放大：数值每经过一层 RMSNorm 放大约百倍，深层尤为严重。 该异常导致两遍训练的 Loss/grad_norm
+    差异偏大，并放大了确定性计算误差 （小数值相乘误差小、大数值相乘误差被放大）。根因不在昇腾软件栈。
+
+
+
+    仅将 RMSNorm 权重随机初始化、其余权重正常加载，即可规避。 验证：master 分支 grad_norm 从异常大量级降为正常水平；不开确定性时两遍差异明显缩小、分支间成功对齐。'
+  case: COMMON-RMSNORM-WEIGHT-SCALE
+  confidence: maintainer-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: postmortem
+  report_ref: knowledge/common/precision/COMMON-RMSNORM-WEIGHT-SCALE.yaml
+  captured_at: '2026-11-19T14:13:03+00:00'
+  kb_rev: unknown
+  sanitized: true
+  redactions: []
+  confidence: maintainer-reviewed
+  extraction: auto
+created_at: '2026-11-19T14:13:03+00:00'
+updated_at: '2026-11-19T14:13:03+00:00'
+history: []
+notes: core regression derived from knowledge/common/precision/COMMON-RMSNORM-WEIGHT-SCALE.yaml

@@ -180,7 +180,8 @@ def main() -> int:
                 print("  （期号相同、内容有差异：多半是源文件改了没重建）")
         return 1
 
-    out_path.write_text(wanted, encoding="utf-8", newline="\n")
+    with out_path.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write(wanted)
     print(f"已重建 {OUT_REL}（{len(periods)} 期 ← {SRC_DIR_REL}/）")
     for p in periods:
         print(f"  - {p.get('period'):<26} {p.get('kind')}")

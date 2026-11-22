@@ -1,0 +1,40 @@
+id: REG-COMMON-HCCL-ADDR-ALIGN
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: msprof docs/zh/best_practices/communication_address_misalignment.md（MindStudio
+  26.2.0.B060_001）
+input:
+  phenomenon: 8 卡训练（约 70B）单 step 通信耗时占比超过 40%，AllReduce 算子耗时波动大——部分 step 的通信耗时是其他
+    step 的 2~3 倍；计算耗时稳定（约 320ms），通信耗时在 195ms~410ms 之间剧烈波动；单卡推理正常（排除计算瓶颈）
+  environment: ''
+  evidence:
+    case: COMMON-HCCL-ADDR-ALIGN
+    references:
+    - msprof docs/zh/best_practices/communication_address_misalignment.md（MindStudio
+      26.2.0.B060_001）
+expected:
+  resolution: '自定义算子使用 torch.empty() 分配输出 tensor 内存时未指定 memory_format 对齐参数， 部分 tensor
+    起始地址不满足 HCCL 通信库的 128 字节对齐要求；HCCL 检测到未对齐后 自动做一次对齐拷贝，额外耗时约 200ms。
+
+
+
+    分配输出 tensor 时保证地址对齐（指定 memory_format 或改用对齐分配）， 避免 HCCL 内部对齐拷贝。'
+  case: COMMON-HCCL-ADDR-ALIGN
+  confidence: maintainer-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: postmortem
+  report_ref: knowledge/common/performance/COMMON-HCCL-ADDR-ALIGN.yaml
+  captured_at: '2026-11-19T14:13:03+00:00'
+  kb_rev: unknown
+  sanitized: true
+  redactions: []
+  confidence: maintainer-reviewed
+  extraction: auto
+created_at: '2026-11-19T14:13:03+00:00'
+updated_at: '2026-11-19T14:13:03+00:00'
+history: []
+notes: core regression derived from knowledge/common/performance/COMMON-HCCL-ADDR-ALIGN.yaml

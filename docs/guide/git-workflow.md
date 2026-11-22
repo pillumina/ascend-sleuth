@@ -70,7 +70,7 @@ worktree 与 detached HEAD 不自动合并。worktree 里通常在做提 PR 的�
 
 查看配置与状态用 `python3 scripts/kb_sync.py --show`（只读，不联网）；改配置用 `python3 scripts/pr_status.py --set-sync`（`--remote` / `--branch` / `--disable` / `--auto-merge off` / `--check-reminders on|off` / `--check-minutes 分钟` / `--check-full-access on|off`），改归属仓用 `--set-identity --remote <名字>`，不要手改 JSON。
 
-`sync.enabled` 只拦自动路径：开单时 `trace_begin.py` 的自动 fetch 与自动合并看它。后台提醒检查与手动同步不受它影响：提醒检查走 `python3 scripts/kb_sync.py --check`（只 fetch、不合并），手动「立即同步」走 `--merge --force`。`sync.auto_merge` 只管自动路径里的合并；groom 是显式动作，不看 `sync.enabled` 与 `sync.auto_merge`，关掉自动检查后周批仍会 fetch。要让整机不联网，用 `deployment.yaml` 的 `sync.mode: "offline"`。
+`sync.enabled` 只拦自动路径：开单时 `trace_begin.py` 的自动 fetch 与自动合并看它。后台提醒检查与手动同步不受它影响：提醒检查走 `python3 scripts/kb_sync.py --check`（只 fetch、不合并），手动「立即同步」走 `--merge --force`。`sync.auto_merge` 只管自动路径里的合并；groom 是显式动作，不看 `sync.enabled` 与 `sync.auto_merge`，关掉自动检查后周批仍会 fetch。要让整机不联网，用 `sleuth.config.yaml` 的 `sync.mode: "offline"`。
 
 `sync.check_enabled` 与 `sync.check_minutes` 管后台提醒检查。`check_enabled` 默认 true，关掉后不再检查，也不在诊断状态条提示知识库落后。`check_minutes` 是检查间隔，默认 30 分钟；读侧越界会夹到 5–720，写侧越界拒绝（`E_ARGS`）。
 `sync.check_full_access` 管这条检查的沙箱档位，默认 true：true 时以完全权限跑 `--check`（只 fetch、不改检出，但要读 git 凭据）；false 时跟随部署默认档（不是完全权限时收成 `workspace-write` + 主检出）。面板知识库页有对应开关，写侧是 `--check-full-access on|off`。
@@ -101,7 +101,7 @@ fetch 失败时标 `kb_sync: failed`，原因写进 `kb_sync_reason`。
 `--show` 以 `last_source` 带出。
 知识库页据此把失败写成「上次后台检查失败」还是「上次同步失败」。
 
-离线部署在 `deployment.yaml` 声明 `sync.mode: "offline"`：`--sync` / `--check` / `--merge` 都不联网，`--show` 仍可读本地状态。
+离线部署在 `sleuth.config.yaml` 声明 `sync.mode: "offline"`：`--sync` / `--check` / `--merge` 都不联网，`--show` 仍可读本地状态。
 
 ### 部署形态
 
@@ -130,11 +130,11 @@ fetch 失败时标 `kb_sync: failed`，原因写进 `kb_sync_reason`。
 它与「两边都写」的差别在追加的粒度：一周一个文件、一行一条自包含记录（每行带 `deployment`），配了 `merge=union`——同周并发时各人各写各的行、两侧都留住，行序不影响结果（前提是「一行一条」，见 `.gitattributes` 的注释）。读端按 `deployment` 分组，一个部署出一份生成物 `metrics/entry-activity/<部署>.yaml`，不跨部署合并：合并两侧的行只解决同部署的并发，两份部署的计数不会被加成一条排行。它与 `metrics/timeline.d/` 一样按自然周命名，一个文件里可能装两个部署的行。
 
 追加型（一信号一文件，跨部署不冲突）：`proposals/signals/`。
-文件名是内容哈希，不是序号——两个部署各写各的文件，不会撞号；同名文件表示同一条信号，只追加 `occurrences` 与 `last_seen`。`record-only` 部署用它交接收尾信号，`full` 部署不写这个目录。产卡在上游进行，本目录只放信号、证据与出处。
+文件名是内容哈希，不是序号——两个部署各写各的文件，不会撞号；同名文件表示同一条信号，只追加 `occurrences` 与 `last_seen`。`signal-only` 部署用它交接收尾信号；`maintainer` 也先写信号，再按分诊进入 RSI。本目录只放信号、证据与出处。
 
-每部署一份（不参与合并）：`deployment.yaml`、`metrics/timeline.d/`、`metrics/timeline.yaml`、`ingest-state.json`、`reference-ingest-state.json`、`eval/scorecard.yaml`、`.github/CODEOWNERS`（owner 名单各仓不同）。
+每部署一份（不参与合并）：`sleuth.config.yaml`、`metrics/timeline.d/`、`metrics/timeline.yaml`、`ingest-state.json`、`reference-ingest-state.json`、`eval/scorecard.yaml`、`.github/CODEOWNERS`（owner 名单各仓不同）。
 冲突时保留本仓那份。同期名的指标文件也按本仓处理——两份部署的读数混进一条趋势线本身不成立。
-`deployment.yaml` 声明这个部署的演进模式（`evolution.mode`：`full` / `record-only` / `off`），
+`sleuth.config.yaml` 声明这个部署的演进角色（`evolution.role`：`maintainer` / `signal-only` / `off`），
 读端只有 `scripts/evolve_mode.py`；fork 与上游的取值不同，改它属于本仓的部署配置，不是机制改动。
 
 生成物（重新生成，不逐行解）：`knowledge/_index.yaml` 与 `knowledge/_index/`、`triage-tree.yaml`、`references/_summary-index.yaml`、`references/_procedure-index.yaml` 与 `references/_procedure-index/`、`metrics/entry-activity/`（一个部署一份，由 `scripts/build_entry_activity.py` 从源重建）。
@@ -150,9 +150,9 @@ idea 卡（`proposals/ideas/`）是机制账本，归上游。两条原因：
 - 卡号在本地递增分配（`scripts/ev_proposal.py` 只扫自己检出里的卡），两个仓库各产各的必然重号；重号后同一个文件路径两边内容不同，冲突无法机械解决；
 - 上游 `docs/mechanism/`、`docs/plan/` 里引用的卡号会随合并落进 fork，在那里指向另一张卡——这种错不报错。
 
-fork 负载类型的机制缺口写进 MR 描述或 issue，由维护者拿到上游产卡。内容产出（补 case、补词条、扩错误码家族、从 case 归纳 reference）不产卡，产卡范围见 `skills/evolve-check/SKILL.md`。fork 长期无法访问上游、又确实需要本地决策档案时，用与上游不重叠的号段或前缀，并让该目录归 fork 独占——复用 `proposals/ideas/` 的号段会让重号问题原样保留。
+fork 负载类型的机制缺口写进 MR 描述或 issue，由维护者拿到上游产卡。内容产出（补 case、补词条、扩错误码家族、从 case 归纳 reference）不产卡；EV 卡只用于高风险授权，见 `skills/evolve-check/SKILL.md` 与 `skills/self-evolve/SKILL.md`。fork 长期无法访问上游、又确实需要本地决策档案时，用与上游不重叠的号段或前缀，并让该目录归 fork 独占——复用 `proposals/ideas/` 的号段会让重号问题原样保留。
 
-**这条规则由声明承载，不靠记性**：fork 在自己的 `deployment.yaml` 里写 `evolution.mode: record-only`，evolve-check 收尾与深度轮都先读它（`scripts/evolve_mode.py`）。不设时缺省 `full`，也就是上游行为——所以 fork 要做一次显式声明，否则收尾照常产卡。`record-only` 下信号照记、执行记录照落，只把"该产卡"的结论改成写进 MR 描述或 issue。
+**这条规则由声明承载，不靠记性**：fork 在自己的 `sleuth.config.yaml` 里写 `evolution.role: signal-only`，evolve-check 收尾与深度轮都先读它（`scripts/evolve_mode.py`）。不设时缺省 `maintainer`（上游行为）；fork 要显式声明 `signal-only`，否则收尾会按维护者路径处理。`signal-only` 下信号照记、执行记录照落，只把"该走 RSI"的结论改成写进信号台账或 MR 描述。
 
 ### Skill 自包含边界（SKILL.md 与 docs/ 的引用关系）
 
@@ -237,7 +237,7 @@ python3 scripts/rebuild_generated.py --sync --dry-run
 5. 越界用途可查：`python3 scripts/render_review_summary.py --scan docs/ README.md CONTEXT.md`（可传目录）会报三类——未登记代号、越界用途（新人可见面单列并优先清理，其余按文件计数可增量清理）、以及词表冲突。`docs/adr/` 与 `proposals/` 是只追加的档案，豁免越界检查（不追溯改历史）；
 6. 同形冲突登记而不改名：`A1/A2/A3` 同时是设计公理、roadmap 事项与平台代号前缀，`P0` 同时是优先级与（易混的）流程事项族——这类冲突在词表里各自登记、用 `scope` 消歧，不靠改历史编号（改编号会打烂只追加档案里的引用）。新增代号前先查是否已有同形；
 7. 跨文档引用不写裸小节号：引用别处的小节写 `文件名 §N` 或直接写小节标题，不写裸 `§N`（读者不知道是哪篇；且小节号会随文档重排失效——仓库里现存约 100 处这类引用，属历史欠账，见 EV-2026-052 残留）。不硬门化：无"复发 ≥2 次"的证据，不满足检查准入三条件；
-8. 不进 CI：prose 可读性是判断性规范（检查准入三条件不满足），由独立预核的黑话判定（见本文件「独立预核」节第 1 档）+ reviewer 抽审保证，不硬门化。唯一例外是机械可判的部分——名单/数字是否与 `docs/_manifest.yaml` 一致、`docs/` 有无未登记文档，由 `build_docs_index.py --check` 硬门（那是"生成物与清单一致性"，不是可读性判断）。
+8. 不进 CI：prose 可读性是判断性规范（检查准入三条件不满足），由独立预核的黑话判定（见本文件「独立预核」节的文档档）+ reviewer 抽审保证，不硬门化。唯一例外是机械可判的部分——名单/数字是否与 `docs/_manifest.yaml` 一致、`docs/` 有无未登记文档，由 `build_docs_index.py --check` 硬门（那是"生成物与清单一致性"，不是可读性判断）。
 
 ### 4 开 PR 与选模板
 
@@ -310,7 +310,7 @@ PR 经 required review 批准后合入 `main`。自动部署合并完没有任�
 | 脱敏 / severity 纪律 | to-postmortem 流程 + groom 周批审抽查 | 约定 |
 | eval 回归（改 skill 时） | 按 [eval.md](eval.md) 分级手动 replay；触及输出契约/交互形态时另出盲辨对照（同问题新旧输出各一份、交不知情者判）；replay 脚本化后并入 CI（属 roadmap 里「fixture replay 半自动化」一项） | 约定 → 半硬 |
 | eval 观测不陈旧 | CI：`scripts/eval_scorecard.py --check`（`eval/scorecard.yaml` 记"上次回放观测到什么"；夹具字节哈希变了而账本没重建即红） | 硬（夹具哈希）/ 软（目标 case 内容变了只进「待复核」，不挡 merge）；不判准确率——命中率仍要 agent 跑回放 |
-| 口径脚本算得对 | CI：`unit-tests` job 按改动选测试后跑（`scripts/select_unit_tests.py` 从 tests 的 import 与脚本名引用、scripts 间的 import 反向闭包算对应测试；`.github/**`、tests 的共享助手/夹具、基线不可比、脚本解析失败时回退全量——`build_index` / `trace_metrics` / `settle_trace_feedback` / `build_timeline` 的口径与边界）；触发面＝改 `scripts/**` 或 `tests/**`（只改 case / 文档的 PR 不跑这道） | 硬（红即挡 merge）；"断言是否真打在口径上"仍是约定；"选中的测试覆盖了改动"也是约定——测试用动态表达式拼脚本路径时静态扫描会漏，残余与修法见脚本头注 |
+| 口径脚本算得对 | CI：`unit-tests` job 按改动选测试后跑（`scripts/select_unit_tests.py` 从 tests 的 import 与脚本名引用、scripts 间的 import 反向闭包算对应测试；子包按点分模块名解析，改包 `__init__.py` 时包内模块一并算受影响，importlib 动态加载的目录按脚本里的 `DIR_CONSUMERS` 登记消费方；`.github/**`、tests 的共享助手/夹具、基线不可比、脚本解析失败、未登记的动态目录回退全量——`build_index` / `trace_metrics` / `settle_trace_feedback` / `build_timeline` 的口径与边界）；触发面＝改 `scripts/**` 或 `tests/**`（只改 case / 文档的 PR 不跑这道） | 硬（红即挡 merge）；"断言是否真打在口径上"仍是约定；"选中的测试覆盖了改动"也是约定——测试用动态表达式拼脚本路径时静态扫描会漏，残余与修法见脚本头注 |
 | EV 卡预测可复现 | CI：`scripts/verify_proposals.py --check`（`predicted_effect.measure` 必须有命令 + 期望，或声明不可度量） | 硬（结构）/ 约定（命令是否有意义） |
 | 面板契约（渲染 / 文案 / 数据口径） | CI：`panel-checks` job 跑 `scripts/check_panel_tokens.py` + `scripts/panel_render_check.js`（触发面＝改 `dsh-plugins/**`、`scripts/**`、`metrics/**`、`skills/**`、`docs/**`、`trace-status.yaml`——后两者是它实际读的：文案规范的唯一权威处与状态词表） | 硬（红即挡 merge）；"判据是否真在测那件事"仍是约定 |
 | 对照集不被改动者削弱 | CI：`scripts/holdout.py --check`（封存夹具按哈希钉住）+ `holdout-change` 标签闸门；CODEOWNERS 保护 `eval/holdout.yaml` | 硬（哈希）/ 半硬（谁有权 reseal——CODEOWNERS 落实前不是人把关） |
@@ -365,9 +365,9 @@ python3 scripts/rebuild_generated.py --check
 
 ### 评审把手（reviewer 怎么判"该不该合"）
 
-判据的独立性只有一条标准：改动者不能靠"写文字"通过它。PR 里的命题（success_criteria 达成、无回归、断言全过）多由制造改动的同一过程写成，而 CI 检查的是内部自洽（索引新鲜度、YAML 合法性、模板结构齐全）——因此"CI 绿 + 测试过"对"该不该合"的信息量接近于零，reviewer 会被逼在"开全文"与"直接批"之间二选一（`mechanism/execution.md` §7 把这一失效形态命名为"橡皮图章"）。
+判据的独立性只有一条标准：改动者不能靠"写文字"通过它。PR 里的命题（success_criteria 达成、无回归、断言全过）多由制造改动的同一过程写成，而 CI 检查的是内部自洽（索引新鲜度、YAML 合法性、模板结构齐全）——因此"CI 绿 + 测试过"对"该不该合"的信息量接近于零，reviewer 会被逼在"开全文"与"直接批"之间二选一（`mechanism/records.md` §3.1 把这一失效形态命名为"橡皮图章"）。
 
-改动侧义务：EV 卡带 `predicted_effect.measure`。reviewer 侧动作：
+改动侧义务：行为质量改动带 RSI 实验的 measure；高风险 EV 卡只记录授权与回滚。reviewer 侧动作：
 
 ```
 python3 scripts/ev_measure.py <card-id> --run    # 打印判据命令 + 期望，执行并比对
@@ -378,46 +378,82 @@ python3 scripts/ev_measure.py --audit            # 全库盘点：可复现 / �
 
 强度标注（原则十）：本把手证明效果（改动是否产生了它声称的变化），不证明价值（该变化是否值得做）；"命令是否真在测那件事"机器判不了，属约定强度，靠人审抽查。存量卡（`verify_proposals.py` 的 `MEASURE_CUTOVER` 之前创建）豁免强制要求——补写不恢复当时的判断，只造事后叙述；缺口由 `--audit` 报出。
 
-### 独立预核（提交前，由另一次会话做）
+### 独立预核（提交前，按触发条件做）
 
-PR body 里的「Agent 预核意见」由与作者不同的会话产出：另起一个 session，或派一个 subagent。
-本仓常见的 subagent 与作者同父会话，它看不到作者的推理，但这不是外部第三方独立，别读成担保。
+默认只跑机器自检。判断性预核（另一个会话读 diff、给结论）只在改动落到判断面时做。
+是否触发、哪一档、上限多少，由 `python3 scripts/precheck.py policy --base origin/main` 判定；
+同一套规则写在下面，脚本只是让它可复跑。
+
 作者自评不算：PR #282 的预核段由作者填写，独立预核在同一分支上又抓到 3 条（1 条阻断级）。
 差别不在模型，在两件事：另一次会话，以及被要求构造反例并跑出来。
+预核者与作者同父会话的 subagent 看不到作者的推理，但不是外部第三方，别读成担保。
 
-不重复跑 CI 已经跑的：PR 上的门以 `.github/workflows/` 下两个工作流为准（`kb-checks.yml` 与
-`pr-template.yml`），本文不抄命令清单，理由同 `CLAUDE.md`（抄了会腐烂且不报错）。
-预核只做这两类门判不了的事。
+#### 触发与上限
 
-| 改动类型 | 预核查什么 | 要跑反例吗 | 耗时 |
+| 改动面 | 模式与档 | 上限 |
+|---|---|---|
+| `scripts/**`、`dsh-plugins/**`、`.github/workflows/**`、`metrics/gates.yaml`、`eval/**`、`tests/**`、`proposals/**`、`triage-tree*`、`docs/guide/git-workflow.md`、`docs/spec/**`、`docs/mechanism/**` | 判断性预核，脚本/机制档 | 1 轮对抗 + 1 轮回应；最多 5 条；正文 ≤ 6000 字符 |
+| `knowledge/**`、`references/**` | 判断性预核，内容档 | 1 轮；最多 3 条；正文 ≤ 3000 字符 |
+| `docs/**`（除上一行）、`skills/**`、五类 PR 模板、`README.md`、`CLAUDE.md`、`AGENTS.md`、`CONTEXT.md` | 判断性预核，文档档 | 1 轮；最多 3 条；正文 ≤ 3000 字符 |
+| 带 `kb/high-risk` 标签 | 按脚本/机制档 | 同第 1 行 |
+| `metrics/timeline.d/`、`metrics/entry-activity.d/`、`assets/`、`sleuth.config.yaml`、`.gitignore` | 机器自检，不派会话 | 只跑该面的 `--check` |
+| 其余路径（含 `.github/CODEOWNERS`、根目录未列出的文件） | 按脚本/机制档兜底 | 同第 1 行 |
+
+一个 PR 同时碰到多档时按最高一档做。路径判不准时按脚本/机制档做（`precheck.py` 的默认）。
+预核不重复跑 CI 已经跑的：门清单以 `.github/workflows/` 下两个工作流为准。
+
+#### 每档做什么
+
+| 档 | 查什么 | 要跑反例吗 | 上限 |
 |---|---|---|---|
-| 文档与措辞（`skills/**`、`docs/**`、`README`、`CLAUDE.md`） | ① 三项判定各给一行结论：可读性（只读这一段的人能不能懂——简称与术语有没有就地定义、句子有没有明确主语、指代有没有歧义；对 `docs/spec/writing-norms.md` §1 第 1 到 3 条与第 10 条）、逻辑性（主张与依据对不对得上、有没有前后矛盾、结论有没有超出来源）、黑话（自造词、把内部标识符当正文用、未定义的简称）；② 对照 `docs/spec/writing-norms.md` §1 的共用条目逐条过改动段落，报命中项与行号；③ 文中每个可验证声明（路径、命令、字段名、代号、数字）逐个核对与实现是否一致；④ 改 skill 正文的另查 `docs/spec/writing-norms.md` §6 的内联要求；⑤ 新增代号是否登记 `docs/glossary.yaml`、`scope` 是否对；⑥ 作者提交前自查漏掉的项（自查动作与五类高频项见 `CLAUDE.md` 的「人读文本的行文规范」条） | 不用 | 5 分钟（只改几段时 2 到 3 分钟） |
-| 内容（case、reference、路由词） | ① 路由：`python3 scripts/route_check.py <case 文件>` 报出会被哪个分支接住、宽词是否跨分支重复；② `quickly_check.expected` 在输入里的真实报错上跑一次（CI 只查可编译）；③ 事实自洽与查重（与相邻 case 是否同一根因）；④ 脱敏 | 不用，但要真抽查 | 5 分钟 |
-| 脚本、机制、生成物、门语义 | ① 对改动的判定逻辑构造反例并跑出来（给命令与结果）；② 检查门本身有没有洞；③ 前几轮的临时件有没有残留；④ 受影响的文档承诺扫一遍 | 必须 | 15 到 30 分钟 |
+| 文档档 | ① 可读性 / 逻辑性 / 黑话三项各给一行结论；② 对照 `docs/spec/writing-norms.md` §1 逐条过改动段落，报命中项与行号；③ 文中每个可验证声明（路径、命令、字段名、代号、数字）逐个核对；④ 改 skill 正文另查 §6 的内联要求；⑤ 新增代号是否登记 `docs/glossary.yaml`、`scope` 是否对；⑥ 作者自查漏掉的项 | 不用 | 1 轮，≤3 条，≤3000 字符（约 5 分钟） |
+| 内容档 | ① `python3 scripts/route_check.py <case 文件>` 报出会落在哪个分支；② `quickly_check.expected` 在真实报错上跑一次（CI 只查可编译）；③ 与相邻 case 查重、事实自洽；④ 脱敏 | 不用，但要真抽查 | 1 轮，≤3 条，≤3000 字符（约 5 分钟） |
+| 脚本/机制档 | ① 对改动的判定逻辑构造反例并跑出来（给命令与结果）；② 检查门本身有没有洞；③ 前几轮的临时件有没有残留；④ 受影响的文档承诺扫一遍；⑤ 改测试时看断言是否真钉住行为、跨平台路径与错误路径有没有覆盖 | 必须 | 1+1 轮，≤5 条，≤6000 字符（15 到 30 分钟） |
 
-三条通用要求：
+#### 报告与轮次
 
-1. 没查出问题也要给覆盖清单（查了什么、跑了什么命令、结果如何）。否则没查与没问题在 PR 上长得一样。
-2. 每条结论带 `文件:行`、一条可复跑命令、实测结果。严重度写中文分级（阻断级、重要级、建议级），
-   不要用 `P0`/`P1`：那两个在 `docs/glossary.yaml` 里已是优先级与流程事项族的代号，撞了会歧义。
-   结论行给 `MERGE_READY: yes/no`。
-3. 第 1 档（文档与措辞）的三项判定逐项写结论，没发现就写「可读性：无发现」。合并成一句
-   「已对照规范检查」等于没查：三项各自可以被推翻，合并之后无法核对是哪一项没做。
+报告头三行固定：模式与档、轮次（第几轮 / 上限）、结局（采纳 / 驳回 / 未处理，合入后回填）。
+正文结论先行，问题按阻断级 / 重要级 / 建议级排；每条带 `文件:行`、一条可复跑命令、实测结果。
 
-PR body 上写多少：读 body 的人是 reviewer，要先看到结论与需要自己复核的点，所以 body 只写模板该区块
-列的那几项——共同的是结论行（`MERGE_READY`）、核对的版本、按严重度排的问题、覆盖清单、反例与可复跑
-命令、第 1 档的三项判定、预核报告指针；其中四类模板另有一条随变更对象定的判定项（knowledge_intake 的「期望正确性」、knowledge_modification 的「归因判定」、reference 的「来源可信度」、structure 的「影响方向」）。
-命令输出、逐条证据、核对过程留在预核报告里，body 末行给报告链接（或 `文件:行`）即可。字段的准确清单以
-`.github/PULL_REQUEST_TEMPLATE/` 的「Agent 预核意见」区块为准。理由：body 会被逐行读，
-报告只在复核某条结论时才展开；把过程复制进 body 会让结论不突出，reviewer 定位要复核的点更慢。
-正文用工程师口吻：短句、动词开头、给具体读数；证据节只列 reviewer 要核的 3 到 5 条，不写过程叙述、自我评价与比喻
-（全量门清单与其余命令输出留在 CI 或报告）。
+- 严重度写中文分级，不写 `P0` / `P1`（那两个在 `docs/glossary.yaml` 里已是别的代号）；结论行给 `MERGE_READY: yes/no`。
+- 三项判定逐项写；合并成「已对照规范检查」等于没查。
+- 5 条上限先装阻断级与重要级；建议级超出名额时只写一行汇总，不逐条展开。阻断级与重要级合计超过 5 条时按实际条数写，并注明超出上限的原因。
+- 没有证据的条目降为观察项，不写进问题清单；没查出问题也要给覆盖清单，写清查了什么、跑了什么。
+- 命令输出只留关键 20 行，完整输出不入报告；正文超过上限时删证据细节，不删结论。
+- PR body 只写模板该区块列的那几项；命令输出与逐条证据留在预核报告，末行给报告指针。
 
-为什么不进 CI：预核是判断性工作（非确定性、无机械判据），一旦成门就会变成「CI 能过的仪式」；它也不替代双签。
-CI 侧只有机械切片：模板结构（`pr-template.yml`）、docs 名单与未登记文档（`docs-index`）、skill 自包含（`skill-self-contained`）。
-代号未登记与越界的 `python3 scripts/render_review_summary.py --scan` 是手工命令，同样不进 CI（`writing-norms.md` §5）。
+第 2 轮起只审增量 diff 与受影响的断言，不重跑全部门。同一发现第 2 轮仍重复就停，不开第 3 轮；
+未闭环项由作者写进 PR body 的预核段，交 reviewer 判。
 
-抽审纪律（约定，同"渐进审序"的用意）：reviewer 每轮自行随机点一处核对，不从改动者列的 spot-check 清单里挑。不指望抓全，目的是让改动侧按实际强度标注成为占优策略。
+预核先读 diff 与相关代码，后读 PR body；不把作者的自我陈述当事实。PR 描述怎么写，评审就容易怎么信，
+先读代码能少一层偏差。
+
+#### 缺陷清单
+
+"对抗性审查"这个说法容易让预核者去挑措辞，而不是找会出错的路径。按下面五类找，找到哪类写哪类：
+
+1. 文案与机制文档、代码相反：同一份状态，两处给的下一步不同；文案被写进了断言。
+2. 入口与补救动作丢失：新增或改动的状态有没有入口；失败、过期、并发时人还能做什么。
+3. 断言没钉住行为：断言只在整页文本里找词，副标题或无关文案就能满足（假绿）。
+4. 跨平台路径与换行：路径、分隔符、换行只在 POSIX 上被覆盖。
+5. 错误路径与回退：失败、重试、回滚、并发窗口有没有测试或明确处理。
+
+内容档另加查重与脱敏；文档档另加三项判定与可验证声明。
+
+#### 效果怎么看
+
+每份报告头回填结局；每季度跑 `python3 scripts/precheck.py audit --dir <主检出的 proposals/reviews>`，
+看报告字符、结论次数、发现数与上限模拟。连续 3 批 PR 没有一条被采纳的预核意见，或采纳率低于 30%，
+把文档档降级为机器自检；脚本/机制档保留，因为它的反例能跑出结果。
+
+#### 为什么不进 CI
+
+预核是判断性工作（非确定性、无机械判据），一旦成门就会变成「CI 能过的仪式」；它也不替代双签。
+CI 侧只有机械切片：模板结构（`pr-template.yml`）、docs 名单与未登记文档（`docs-index`）、
+skill 自包含（`skill-self-contained`）。代号未登记与越界的 `python3 scripts/render_review_summary.py --scan`
+是手工命令，同样不进 CI（`writing-norms.md` §5）。
+
+抽审纪律不变：reviewer 每轮自行随机点一处核对，不从改动者列的 spot-check 清单里挑。
 
 ## 5 出错了怎么办
 

@@ -38,13 +38,15 @@ globalThis.window = {
     removeItem: (key) => storage.delete(key),
   },
 }
+const annNodes = new Map()
 globalThis.document = {
   visibilityState: 'visible',
+  getElementById: (id) => annNodes.get(id) || null,
   createElement: () => ({
     setAttribute() {}, remove() {}, appendChild() {}, select() {},
     style: {}, textContent: '', value: '',
   }),
-  body: { appendChild() {}, removeChild() {} },
+  body: { appendChild(node) { if (node && node.id) annNodes.set(node.id, node) }, removeChild() {} },
   head: { appendChild(tag) { if (tag && typeof tag.textContent === 'string') styleTags.push(tag) } },
   addEventListener(type, fn) {
     if (!documentHandlers.has(type)) documentHandlers.set(type, new Set())
@@ -81,6 +83,41 @@ globalThis.setInterval = (fn, ms) => {
 }
 globalThis.clearInterval = (id) => {
   intervalHandlers.delete(id)
+}
+
+// 面板 layers 去抖（130ms）的计时器替身：默认到点即执行（与真实计时的顺序一致）；
+// 需要验证「连按只发最后一次」时用 holdDebounce() 挂起、flushDebounce() 手动推进。
+const LAYERS_DEBOUNCE_MS = 130
+const realSetTimeout = globalThis.setTimeout
+const realClearTimeout = globalThis.clearTimeout
+const debounceTimers = new Map()
+let debounceSeq = 0
+let debounceHold = false
+globalThis.setTimeout = (fn, ms, ...args) => {
+  if (ms === LAYERS_DEBOUNCE_MS) {
+    if (!debounceHold) return realSetTimeout(fn, 0, ...args)
+    debounceSeq += 1
+    debounceTimers.set(debounceSeq, fn)
+    return debounceSeq
+  }
+  return realSetTimeout(fn, ms, ...args)
+}
+globalThis.clearTimeout = (id) => {
+  if (debounceTimers.has(id)) {
+    debounceTimers.delete(id)
+    return
+  }
+  realClearTimeout(id)
+}
+function holdDebounce() {
+  debounceHold = true
+  debounceTimers.clear()
+}
+function flushDebounce() {
+  debounceHold = false
+  const pending = Array.from(debounceTimers.values())
+  debounceTimers.clear()
+  pending.forEach((fn) => fn())
 }
 
 function pressKey(key, extra) {
@@ -300,6 +337,10 @@ function findButton(view, label) {
 function findAria(view, label) {
   return view.nodes.find((node) => node.type === 'button' && node.props && node.props['aria-label'] === label)
 }
+function findAriaPrefix(tree, prefix) {
+  return findNode(tree, (node) => node.props && typeof node.props['aria-label'] === 'string' && node.props['aria-label'].startsWith(prefix))
+}
+
 
 function findButtonContains(view, label) {
   return view.nodes.find((node) => node.type === 'button' && nodeText(node).includes(label))
@@ -332,6 +373,23 @@ function cssRule(selector) {
   if (start < 0) return ''
   const end = css.indexOf('}', start)
   return end < 0 ? '' : css.slice(start + selector.length + 1, end)
+}
+
+// 同一选择器可能有多段声明（后一段覆盖前一段）：排版契约要能看全部，不能只看第一处。
+function cssRules(selector) {
+  const tag = styleTags[styleTags.length - 1]
+  const css = tag && typeof tag.textContent === 'string' ? tag.textContent : ''
+  const out = []
+  let from = 0
+  for (;;) {
+    const start = css.indexOf(selector + '{', from)
+    if (start < 0) break
+    const end = css.indexOf('}', start)
+    if (end < 0) break
+    out.push(css.slice(start + selector.length + 1, end))
+    from = end + 1
+  }
+  return out
 }
 
 function byClass(view, className) {
@@ -412,6 +470,94 @@ function makeRow(overrides) {
 
 const CAPS = { canWrite: true, writeRoot: '/repo', reasonCode: '', reason: '' }
 
+// copilot-timeline 返回的四层 fixture（copilot-state 的薄行不再带这些明细）。
+// 现场 4 条覆盖「日期 + 时刻」「同日不重复日期」「只有日期」「时点未知」；
+// 其中 inc-2 被修订改过（加「已更正」片）；上游 2 条（≤3 默认展开）。
+const LAYERS_BASE = {
+  incidentEnv: 'vllm-ascend 0.23.0 · CANN 9.0.0 · A3-910C ×16（TP16 / EP）',
+  incidentTotal: 4,
+  incident: [
+    {
+      id: 'inc-1', at: '2026-09-08T15:20:00+08:00', atNote: '', what: '首个并发长 prompt 请求崩溃，WorkerProc 退出',
+      source: 'log', step: 1,
+      evidence: { files: ['traces/evidence/' + ID + '/crash.log'], quote: 'ERROR 09-08 15:20:00 WorkerProc hit an exception.', line: 17 },
+    },
+    {
+      id: 'inc-2', at: '2026-09-08T15:26:00+08:00', atNote: '', what: '关掉 TopK dispatch 后压测 2 小时未复现',
+      source: 'field_test', step: 5,
+      evidence: { files: ['traces/evidence/' + ID + '/crash.log'], line: 42 },
+    },
+    {
+      id: 'inc-3', at: '2026-09-08', atNote: '', what: '现场把日志与 npu-smi 输出一起贴回',
+      source: 'user', step: 2,
+    },
+    {
+      id: 'inc-4', at: null, atNote: '起服务约 8 分钟后', what: '起服务约 8 分钟后开始出现 507035',
+      source: 'user', step: 1,
+    },
+  ],
+  failureProcess: {
+    axis: 'time',
+    window: { from: '2026-09-08T15:20:00+08:00', to: '2026-09-08T15:29:00+08:00' },
+    clockNote: '日志时间比墙钟晚 8 h（日志 07:20:00 = 墙钟 15:20:00）',
+    nodes: [
+      {
+        id: 'fp-1', at: '2026-09-08T15:20:00+08:00', what: '首次崩溃，WorkerProc 退出',
+        quote: 'ERROR 09-08 15:20:00 WorkerProc hit an exception.', repeat: '每 ~1 s 一次，持续到 15:29:00',
+        evidence: { file: 'traces/evidence/' + ID + '/evidence.txt', line: 17 },
+      },
+      {
+        id: 'fp-2', at: '2026-09-08T15:29:00+08:00', what: '最后一个请求超时，之后不再有日志',
+        quote: 'INFO 09-08 15:29:00 EngineCore abort', evidence: { file: 'traces/evidence/' + ID + '/evidence.txt', line: 24 },
+      },
+    ],
+  },
+  upstreamTotal: 2,
+  upstream: [
+    { id: 'up-1', at: '2026-08-12', what: 'PR #13831 合入，修 dspark_proposer.py', source: 'commit', ref: '#13831' },
+    { id: 'up-2', at: '2026-10-13T11:58:14+08:00', what: '维护者给出根因与修复版本', source: 'maintainer', ref: '#13976' },
+  ],
+  revisionsTotal: 1,
+  revisions: [
+    {
+      at: '2026-09-08T15:26:00+08:00', by: 'agent', kind: 'fact_corrected',
+      changes: [{ target: 'inc-2', before: '首次崩溃后服务自动恢复', after: '服务未恢复，WorkerProc 退出' }],
+      reason: '新证据：日志显示 WorkerProc 退出后没有重启',
+    },
+  ],
+}
+
+function makeLayers(mode) {
+  if (mode === 'closed') {
+    return {
+      incidentEnv: '', incidentTotal: 0, incident: null, failureProcess: null,
+      upstreamTotal: 0, upstream: null, revisionsTotal: 0, revisions: [],
+    }
+  }
+  if (mode === 'emptyLayers') {
+    return {
+      incidentEnv: '', incidentTotal: 0, incident: [], failureProcess: null,
+      upstreamTotal: 0, upstream: [], revisionsTotal: 0, revisions: [],
+    }
+  }
+  if (mode === 'upstreamMany') {
+    return Object.assign({}, LAYERS_BASE, {
+      upstreamTotal: 4,
+      upstream: [
+        { id: 'up-1', at: '2026-08-11', what: '第一条上游事件', source: 'issue', ref: '#1' },
+        { id: 'up-2', at: '2026-08-12', what: '第二条上游事件', source: 'comment', ref: '#2' },
+        { id: 'up-3', at: '2026-08-13', what: '第三条上游事件', source: 'commit', ref: '#3' },
+        { id: 'up-4', at: '2026-08-14', what: '第四条上游事件', source: 'maintainer', ref: '#4' },
+      ],
+    })
+  }
+  if (mode === 'truncated') {
+    // 截断前的总数大于实际返回条数：段头写总数并注明「显示前 N 条」。
+    return Object.assign({}, LAYERS_BASE, { incidentTotal: 30, upstreamTotal: 5, revisionsTotal: 25 })
+  }
+  return LAYERS_BASE
+}
+
 function makeState(mode) {
   const row = makeRow()
   if (mode === 'empty') {
@@ -439,6 +585,7 @@ function makeState(mode) {
         platform: 'A3-910C', category: 'interrupt', framework: 'vllm-ascend',
         excludedCases: [], evidenceFiles: 1, evidenceList: ['traces/evidence/x/p0.log'],
         evidenceMissing: '', hasReport: true, reportFile: 'traces/x.report.md', sedimentCandidateList: [], missingMaterials: [],
+        sample: { id: '13934', state: 'ready', reasons: [], duplicates: [] },
       },
     })
     return {
@@ -595,7 +742,10 @@ function makeState(mode) {
         platform: 'A3-910C', category: 'interrupt', framework: 'vllm-ascend',
         excludedCases: [], evidenceFiles: 0, evidenceList: [], evidenceMissing: '',
         hasReport: true, reportFile: 'traces/' + ID + '.report.md',
-        sedimentCandidateList: [{ kind: 'triage', summary: 'triage 路由词候选' }],
+        sedimentCandidateList: [
+          { kind: 'triage', summary: 'triage 路由词候选' },
+          { kind: 'reference', summary: '已产出的先验候选', status: 'produced', refId: 'test-ref' },
+        ],
       },
     })
     return {
@@ -615,12 +765,23 @@ function makeState(mode) {
       counts: { open: 1, pendingFeedback: 1, toSediment: 0 }, vocab: VOCAB, capabilities: CAPS,
     }
   }
+  // 四层明细由 copilot-timeline 提供（见 makeLayers），薄行只带状态字段；
+  // 这几种 mode 共用同一行数据，差别只在 layers fixture 与选中态。
+  if (mode === 'emptyLayers' || mode === 'upstreamMany' || mode === 'truncated') {
+    return {
+      ok: true, tracesDir: '/repo/traces', bound: row, recent: [row], all: [row],
+      counts: { open: 1, pendingFeedback: 1, toSediment: 0 }, vocab: VOCAB, capabilities: CAPS,
+    }
+  }
   if (mode === 'readonly') {
     return {
       ok: true, tracesDir: '/repo/traces', bound: null, recent: [row], all: [row],
       counts: { open: 1, pendingFeedback: 1, toSediment: 0 }, vocab: VOCAB,
       capabilities: { canWrite: false, reasonCode: 'E_PERM', reason: '当前会话没有写权限' },
     }
+  }
+  if (mode === 'recent') {
+    row.extra.sample = { id: '13934', state: 'ready', reasons: [], duplicates: [] }
   }
   return {
     ok: true, tracesDir: '/repo/traces', bound: null, recent: [row], all: [row],
@@ -730,6 +891,15 @@ async function mount(mode, options) {
     ? new Promise((resolve) => { releaseCheckAllGate = resolve })
     : null
   const payload = makeState(mode)
+  // 四层明细走 copilot-timeline；按 mode 给默认 layers，用例可用 opts.layers 覆盖。
+  const layers = opts.layers !== undefined ? opts.layers : makeLayers(mode)
+  // 加载中的用例：把时间线响应挂起，用例手动 releaseTimeline。
+  let releaseTimelineGate = null
+  const timelineGate = opts.timelineGate
+    ? new Promise((resolve) => { releaseTimelineGate = resolve })
+    : null
+  // 读取失败的用例：第一次调用抛错，重试后成功。
+  let timelineFailuresLeft = opts.timelineFailFirst ? 1 : 0
   payload.upstream = opts.upstream === false
     ? { ready: false, reason: 'gh 未登录（gh auth login）' }
     : { ready: true, reason: '' }
@@ -803,10 +973,16 @@ async function mount(mode, options) {
                 return { ok: true, value: { ok: true, from: 'in_progress', to: 'resolved', changed: ['status'] } }
               }
               if (endpoint === 'copilot-timeline') {
-                return { ok: true, value: { ok: true, sessionId: ID, timeline: opts.timeline || [
+                if (timelineGate) await timelineGate
+                if (timelineFailuresLeft > 0) {
+                  timelineFailuresLeft -= 1
+                  throw new Error('时间线读取失败（夹具）')
+                }
+                const responseLayers = typeof opts.layersFor === 'function' ? opts.layersFor(args, layers) : layers
+                return { ok: true, value: Object.assign({ ok: true, sessionId: ID, timeline: opts.timeline || [
                   { role: 'user', step: 1, content: '用户贴了崩溃日志' },
                   { role: 'agent', step: 2, action: 'triage', output: '判定为推理中断类', reason: '签名命中 vector core exception' },
-                ] } }
+                ] }, responseLayers) }
               }
               if (endpoint === 'copilot-report') {
                 if (opts.reportError) return { ok: true, value: { ok: false, code: 'E_NOT_FOUND', message: '这单还没有人读报告' } }
@@ -933,6 +1109,12 @@ async function mount(mode, options) {
       releaseCheckAllGate = null
       release()
     },
+    releaseTimeline() {
+      if (!releaseTimelineGate) return
+      const release = releaseTimelineGate
+      releaseTimelineGate = null
+      release()
+    },
     // 触发一次延迟注册的 layout 回调（opts.layoutDeferred 时由用例调）。
     fireLayoutInject() {
       const fire = deferredInjects.shift()
@@ -986,7 +1168,13 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('最近一单：状态条不显示计数类标签', !view.text.includes('已排除 3 条'))
   expect('最近一单：版本串与 package.json 一致', view.nodes.some((node) => node.props && node.props['data-version'] === PKG_VERSION), PKG_VERSION)
   expect('工具条：带待回报角标', view.text.includes('1 单待回报'), view.text.slice(0, 400))
-  expect('标题按钮可打开台账', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断总览：')))
+  // 工具条是独立注册面，不在 .scp-root 里：token 必须同时挂到 .scp-tool-btn，否则角标没有底色。
+  const toolTokenRule = cssRule('.scp-root,.scp-pal,.scp-tool-btn')
+  const styleText = (styleTags[styleTags.length - 1] || {}).textContent || ''
+  expect('工具条：token 覆盖到入口按钮', toolTokenRule.includes('--scp-warn') && toolTokenRule.includes('--scp-fs-cap'),
+    toolTokenRule.slice(0, 120))
+  expect('工具条：暗色 token 也覆盖入口按钮', styleText.includes('body[data-ds-dark-theme] .scp-tool-btn'))
+  expect('标题按钮可打开台账', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断工作台：')))
 }
 
 {
@@ -994,7 +1182,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const view = t.view()
   expect('收起：只剩一行（无 foot）', byClass(view, 'scp-foot').length === 0)
   expect('收起：不显示完整单号', !view.text.includes(ID))
-  const expand = findAria(view, '展开状态条')
+  const expand = findAriaPrefix(view, '展开状态条')
   expect('收起：给出展开按钮', !!expand)
   click(expand)
   const after = await t.settle()
@@ -1116,7 +1304,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('默认收起：是居中的窄把手', byClass(view, 'scp-handle').length === 1)
   expect('默认收起：初始不透明', byClass(view, 'scp-handle')[0].props['data-idle'] === 'false')
   expect('默认收起：把手带案例标题', view.text.includes('vllm-ascend GLM-5.3'))
-  const expand = findAria(view, '展开状态条')
+  const expand = findAriaPrefix(view, '展开状态条')
   click(expand)
   const after = await t.settle()
   const prefs = JSON.parse(storage.get(PREFS_KEY))
@@ -1127,7 +1315,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const t = await mount('multi')
   const view = t.view()
   expect('多单：默认显示最近一单', view.text.includes('vllm-ascend GLM-5.3'))
-  click(findAria(view, '跟踪哪一单'))
+  click(findAriaPrefix(view, '跟踪哪一单'))
   const opened = await t.settle()
   expect('选择器：列出多单', opened.text.includes('vllm-ascend PD 分离'), opened.text.slice(0, 300))
   expect('选择器：当前行带「当前」标记', byClass(opened, 'scp-picker-current').length === 1,
@@ -1153,7 +1341,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 
 {
   const t = await mount('multi', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: { 'sess-1': '2026-09-07-glm53-pd-sfa-c8-hang' } } })
-  click(findAria(t.view(), '跟踪哪一单'))
+  click(findAriaPrefix(t.view(), '跟踪哪一单'))
   const opened = await t.settle()
   expect('选择器：已固定时脚注让位、给「取消固定」',
     byClass(opened, 'scp-picker-foot-note').length === 0 && !!findButton(opened, '取消固定'),
@@ -1162,7 +1350,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 
 {
   const t = await mount('multi', { upstream: false })
-  click(findAria(t.view(), '跟踪哪一单'))
+  click(findAriaPrefix(t.view(), '跟踪哪一单'))
   const opened = await t.settle()
   const target = opened.nodes.find((node) => node.type === 'button' && nodeText(node).includes('vllm-ascend PD 分离'))
   click(target)
@@ -1181,17 +1369,17 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('待回报：根节点标出 pending', section && section.props['data-pending'] === 'true')
   pressKey('d', { metaKey: true, shiftKey: true })
   const opened = await t.settle()
-  expect('快捷键：⌘⇧D 打开总览', byClass(opened, 'scp-pal').length === 1)
+  expect('快捷键：⌘⇧D 打开工作台', byClass(opened, 'scp-pal').length === 1)
 }
 
 {
   // 快捷键提示按平台显示：macOS 用 ⌘，Windows / Linux 用 Ctrl。
   const t = await mount('recent')
   const toolbar = findToolbar(t.view())
-  expect('快捷键：macOS 工具条提示 ⌘⇧D', String(toolbar.props.title).includes('⌘⇧D 打开总览'), toolbar.props.title)
+  expect('快捷键：macOS 工具条提示 ⌘⇧D', String(toolbar.props.title).includes('⌘⇧D 打开工作台'), toolbar.props.title)
   click(toolbar)
   const view = await t.settle()
-  expect('快捷键：macOS 底部提示 ⌘K', view.text.includes('⌘K'), view.text.slice(-160))
+  expect('快捷键：macOS 底部提示 ⌘⇧K', view.text.includes('⌘⇧K'), view.text.slice(-160))
 }
 
 {
@@ -1199,10 +1387,10 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   globalThis.navigator.userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
   const t = await mount('recent')
   const toolbar = findToolbar(t.view())
-  expect('快捷键：Windows 工具条提示 Ctrl+Shift+D', String(toolbar.props.title).includes('Ctrl+Shift+D 打开总览'), toolbar.props.title)
+  expect('快捷键：Windows 工具条提示 Ctrl+Shift+D', String(toolbar.props.title).includes('Ctrl+Shift+D 打开工作台'), toolbar.props.title)
   click(toolbar)
   const view = await t.settle()
-  expect('快捷键：Windows 底部提示 Ctrl+K', view.text.includes('Ctrl+K') && !view.text.includes('⌘K'), view.text.slice(-160))
+  expect('快捷键：Windows 底部提示 Ctrl+Shift+K', view.text.includes('Ctrl+Shift+K') && !view.text.includes('⌘K'), view.text.slice(-160))
   globalThis.navigator.platform = 'MacIntel'
   globalThis.navigator.userAgent = 'Mozilla/5.0 (Macintosh)'
 }
@@ -1326,6 +1514,10 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(findToolbar(t.view()))
   const view = await t.settle()
   expect('候选：triage 种类可见', view.text.includes('triage'))
+  expect('候选：已产出的先验候选显示产出状态', view.text.includes('已产出先验词条 · test-ref'), view.text.slice(0, 400))
+  expect('候选：已产出的先验候选不再给生成指令',
+    view.nodes.filter(n => n.type === 'button' && nodeText(n) === '生成沉淀指令').length === 1,
+    '生成沉淀指令按钮=' + view.nodes.filter(n => n.type === 'button' && nodeText(n) === '生成沉淀指令').length)
   click(findButton(view, '生成沉淀指令'))
   await t.settle()
   expect('候选：triage 生成补路由词指令', t.lastDraft().includes('triage-tree.d') && t.lastDraft().includes('build_triage_tree.py'), t.lastDraft())
@@ -1364,6 +1556,237 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 }
 
 {
+  // 四层详情：现场默认展开、日志过程默认收起、上游 ≤3 展开、修订片与「已更正」。
+  const t = await mount('recent')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('四层：现场故障时间线在（默认展开）', view.text.includes('现场故障时间线'))
+  expect('四层：故障过程（日志）在', view.text.includes('故障过程（日志）'))
+  expect('四层：上游与查证在', view.text.includes('上游与查证'))
+  expect('四层：诊断步骤在（改名）', view.text.includes('诊断步骤') && !view.text.includes('步骤时间线'))
+  expect('现场：环境行', view.text.includes('现场环境：') && view.text.includes('A3-910C ×16'), view.text.slice(0, 400))
+  expect('现场：默认展开事实', view.text.includes('首个并发长 prompt 请求崩溃'))
+  expect('现场：四个条目都在', byClass(view, 'scp-it-row').length === 4, String(byClass(view, 'scp-it-row').length))
+  // 3 条同日（含一条只有日期）只写 1 个日期：与上一条已知日期相同就不重复。
+  expect('现场：同一天只写一次日期', byClass(view, 'scp-it-date').length === 1, String(byClass(view, 'scp-it-date').length))
+  expect('现场：时点未知', view.text.includes('时点未知'))
+  expect('现场：只有日期给「时刻未记录」', view.text.includes('时刻未记录'))
+  expect('现场：来源片', byClass(view, 'scp-it-src').length >= 3, String(byClass(view, 'scp-it-src').length))
+  expect('现场：证据文件名:行', view.text.includes('crash.log:17'))
+  expect('现场：被修订条目加「已更正」', view.text.includes('已更正'))
+  click(findButton(view, 'crash.log:17'))
+  expect('现场：证据文件名:行可复制', copied[copied.length - 1].includes('/crash.log:17'), copied[copied.length - 1])
+  expect('过程：默认收起（节点不在）', !view.text.includes('WorkerProc hit an exception.') && !!findButton(view, '展开过程'))
+  expect('过程：段头给条数与时钟不一致', view.text.includes('2 条') && view.text.includes('日志时间与墙钟不一致'))
+  expect('过程：收起时给窗口', view.text.includes('窗口 2026-09-08T15:20:00+08:00 – 2026-09-08T15:29:00+08:00'))
+  click(findButton(view, '展开过程'))
+  const processOpenView = await t.settle()
+  expect('过程：展开后时钟说明与节点', processOpenView.text.includes('日志时间比墙钟晚 8 h')
+    && processOpenView.text.includes('WorkerProc hit an exception.'), processOpenView.text.slice(-600))
+  expect('过程：文件:行', processOpenView.text.includes('evidence.txt:17'))
+  expect('过程：给收起入口', !!findButton(processOpenView, '收起过程'))
+  click(findButton(processOpenView, '收起过程'))
+  const processClosedView = await t.settle()
+  expect('过程：收起后节点隐藏', !processClosedView.text.includes('WorkerProc hit an exception.'))
+  expect('上游：≤3 条默认展开', view.text.includes('13831') && view.text.includes('合入') && view.text.includes('维护者给出根因'))
+  expect('抬头：修订片写「修订 1 次」', view.text.includes('修订 1 次') && !view.text.includes('结论修订'))
+  expect('写入历史：修订行标类别', view.text.includes('事实更正'))
+  expect('写入历史：修订行给 before → after', view.text.includes('首次崩溃后服务自动恢复 → 服务未恢复'),
+    view.text.slice(-600))
+  expect('写入历史：修订行带原因', view.text.includes('新证据：日志显示 WorkerProc 退出后没有重启'))
+}
+
+{
+  // 上游时间线 >3 条：默认折叠前三条，展开给全量，收起回到三条。
+  const t = await mount('upstreamMany')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('上游：>3 条默认折叠', byClass(view, 'scp-up-row').length === 3 && !view.text.includes('第四条上游事件'),
+    String(byClass(view, 'scp-up-row').length))
+  expect('上游：折叠给展开入口', !!findButtonContains(view, '展开剩余 1 条'))
+  click(findButtonContains(view, '展开剩余 1 条'))
+  const opened = await t.settle()
+  expect('上游：展开后给全四条', byClass(opened, 'scp-up-row').length === 4 && opened.text.includes('第四条上游事件'))
+  // 页面里状态条也有一个「收起」：取详情里后出现的那个（上游段的折叠按钮）。
+  const upstreamCollapse = opened.nodes.filter((node) => node.type === 'button' && nodeText(node) === '收起').pop()
+  click(upstreamCollapse)
+  const collapsed = await t.settle()
+  expect('上游：收起回到三条', byClass(collapsed, 'scp-up-row').length === 3)
+}
+
+{
+  // 选中行自动取 layers：10 秒轮询命中 sessionId+updatedAt 缓存，不重复拉同一单。
+  const t = await mount('recent')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  const timelineCalls = t.rpcCalls.filter((call) => call.endpoint === 'copilot-timeline')
+  expect('四层：选中行自动调时间线', timelineCalls.length >= 1, String(timelineCalls.length))
+  const firstCall = timelineCalls[0]
+  expect('四层：自动取 layers 带 traceFile 与 sessionId', !!firstCall
+    && firstCall.args.traceFile === ID + '.yaml' && firstCall.args.sessionId === 'sess-1', JSON.stringify(firstCall && firstCall.args))
+  expect('四层：已渲染现场', view.text.includes('现场环境：'))
+  await t.fireInterval(10000)
+  const polled = await t.settle()
+  const afterPoll = t.rpcCalls.filter((call) => call.endpoint === 'copilot-timeline').length
+  expect('四层：10 秒轮询不重复拉同一单（sessionId+updatedAt 缓存）', afterPoll === timelineCalls.length,
+    JSON.stringify({ before: timelineCalls.length, after: afterPoll }))
+  expect('四层：轮询后现场仍在', polled.text.includes('现场环境：'))
+}
+
+{
+  // 去抖：选中行先挂 130ms 再起子进程；连按换行只发最后一次。
+  holdDebounce()
+  try {
+    const t = await mount('multi')
+    click(findToolbar(t.view()))
+    const opened = await t.settle()
+    expect('去抖：选中行不立即起子进程',
+      t.rpcCalls.filter((call) => call.endpoint === 'copilot-timeline').length === 0,
+      JSON.stringify(t.rpcCalls.map((call) => call.endpoint)))
+    expect('去抖：挂起期间给加载态', opened.text.includes('正在读时间线'))
+    const rowB = opened.nodes.find((node) => node.type === 'button' && nodeText(node).includes('vllm-ascend PD 分离'))
+    expect('去抖：换行前找到第二单', !!rowB)
+    click(rowB)
+    await t.settle()
+    flushDebounce()
+    const view = await t.settle()
+    const calls = t.rpcCalls.filter((call) => call.endpoint === 'copilot-timeline')
+    expect('去抖：连按换行只发最后一次',
+      calls.length === 1 && calls[0].args.traceFile === '2026-09-07-glm53-pd-sfa-c8-hang.yaml',
+      JSON.stringify(calls.map((call) => call.args.traceFile)))
+    expect('去抖：渲染停留的那一单', view.text.includes('现场环境：'))
+  } finally {
+    flushDebounce()
+  }
+}
+
+{
+  // 竞态：A 的响应挂起时切到 B，A 晚到不能覆盖 B 的数据。
+  const layersFor = (args) => {
+    const isA = args.traceFile === ID + '.yaml'
+    return Object.assign({}, LAYERS_BASE, {
+      incidentEnv: isA ? 'A 单环境' : 'B 单环境',
+      incidentTotal: 1,
+      incident: [{
+        id: 'inc-1', at: '2026-09-08T10:00:00+08:00',
+        what: isA ? 'A 单的现场事实' : 'B 单的现场事实', source: 'log', step: 1,
+      }],
+      failureProcess: null,
+      upstreamTotal: 0, upstream: null, revisionsTotal: 0, revisions: [],
+    })
+  }
+  const t = await mount('multi', { timelineGate: true, layersFor })
+  click(findToolbar(t.view()))
+  const opened = await t.settle()
+  const firstCalls = t.rpcCalls.filter((call) => call.endpoint === 'copilot-timeline')
+  expect('竞态：先为 A 发出挂起的时间线请求',
+    firstCalls.length === 1 && firstCalls[0].args.traceFile === ID + '.yaml',
+    JSON.stringify(firstCalls.map((call) => call.args.traceFile)))
+  const rowB = opened.nodes.find((node) => node.type === 'button' && nodeText(node).includes('vllm-ascend PD 分离'))
+  expect('竞态：找到第二单', !!rowB)
+  click(rowB)
+  await t.settle()
+  t.releaseTimeline()
+  const view = await t.settle()
+  expect('竞态：B 的数据生效', view.text.includes('B 单环境') && view.text.includes('B 单的现场事实'),
+    view.text.slice(0, 600))
+  expect('竞态：A 晚到不覆盖 B', !view.text.includes('A 单环境') && !view.text.includes('A 单的现场事实'))
+}
+
+{
+  // 沉淀视图不取诊断单的时间线；切回诊断时命中缓存，不重复拉。
+  const t = await mount('recent')
+  click(findToolbar(t.view()))
+  const opened = await t.settle()
+  const beforeSed = t.rpcCalls.filter((call) => call.endpoint === 'copilot-timeline').length
+  expect('沉淀视图：打开诊断详情先取了一次时间线', beforeSed === 1, String(beforeSed))
+  click(byClass(opened, 'scp-view-tab').find((node) => nodeText(node).includes('沉淀')))
+  const sedView = await t.settle()
+  const afterSed = t.rpcCalls.filter((call) => call.endpoint === 'copilot-timeline').length
+  expect('沉淀视图：不发起 copilot-timeline', afterSed === beforeSed, JSON.stringify({ beforeSed, afterSed }))
+  click(byClass(sedView, 'scp-view-tab').find((node) => nodeText(node).includes('诊断')))
+  await t.settle()
+  const afterBack = t.rpcCalls.filter((call) => call.endpoint === 'copilot-timeline').length
+  expect('沉淀视图：切回诊断命中缓存，不重复拉', afterBack === beforeSed, JSON.stringify({ beforeSed, afterBack }))
+}
+
+{
+  // 加载中：时间线响应挂起时只给一行；放开后渲染现场。
+  const t = await mount('recent', { timelineGate: true })
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('四层：加载中给一行', view.text.includes('正在读时间线'), view.text.slice(0, 400))
+  expect('四层：加载中不渲染现场条目', byClass(view, 'scp-it-row').length === 0)
+  t.releaseTimeline()
+  const loaded = await t.settle()
+  expect('四层：加载完成后渲染现场', loaded.text.includes('现场环境：') && byClass(loaded, 'scp-it-row').length === 4)
+}
+
+{
+  // 读取失败：给原因与重试；重试成功后渲染现场。
+  const t = await mount('recent', { timelineFailFirst: true })
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('四层：读取失败给原因', view.text.includes('读不到时间线') && view.text.includes('时间线读取失败（夹具）'),
+    view.text.slice(0, 500))
+  const retry = findButton(view, '重试')
+  expect('四层：失败给重试入口', !!retry)
+  click(retry)
+  const retried = await t.settle()
+  expect('四层：重试后渲染现场', retried.text.includes('现场环境：') && byClass(retried, 'scp-it-row').length === 4)
+}
+
+{
+  // 只写了 incident_env：现场条目为 null 也照常显示环境行。
+  const t = await mount('recent', {
+    layers: {
+      incidentEnv: 'A3-910C ×8 · CANN 9.0.0',
+      incidentTotal: 0, incident: null, failureProcess: null,
+      upstreamTotal: 0, upstream: null, revisionsTotal: 0, revisions: [],
+    },
+  })
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('现场：只写环境时也显示环境行', view.text.includes('现场环境：') && view.text.includes('A3-910C ×8'))
+  expect('现场：incident 为 null 仍显示未记录', view.text.includes('未记录 · 旧单不回填'))
+  expect('上游：upstream 为 null 且无 case 时整段不渲染', !view.text.includes('无上游修复记录'))
+}
+
+{
+  // 截断不藏：段头与修订片用总数，另写「显示前 N 条」。
+  const t = await mount('truncated')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('截断：现场段头用总数并注明显示前 N 条',
+    view.text.includes('30 条') && view.text.includes('显示前 4 条'), view.text.slice(0, 700))
+  expect('截断：上游段头用总数并注明显示前 N 条',
+    view.text.includes('5 条') && view.text.includes('显示前 2 条'), view.text.slice(0, 700))
+  expect('截断：修订片用总数', view.text.includes('修订 25 次'))
+}
+
+{
+  // 字段存在但为空（[]）与字段不存在（null）分开显示。
+  const t = await mount('emptyLayers')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('现场：空列表给「尚无现场事实」', view.text.includes('尚无现场事实') && byClass(view, 'scp-it-row').length === 0)
+  expect('上游：空列表给「无上游修复记录」', view.text.includes('无上游修复记录') && byClass(view, 'scp-up-row').length === 0)
+  expect('上游：空列表不给折叠入口', !findButtonContains(view, '展开剩余'))
+}
+
+{
+  // 旧单没有四层字段：现场给「未记录 · 旧单不回填」，过程不渲染，上游只留状态行。
+  const t = await mount('closed')
+  click(findToolbar(t.view()))
+  const view = await t.settle()
+  expect('现场：旧单给未记录 · 旧单不回填', view.text.includes('未记录 · 旧单不回填') && view.text.includes('这单没有现场时间线'))
+  expect('过程：没有 failureProcess 不渲染', !findButton(view, '展开过程') && !byClass(view, 'scp-lp-list').length)
+  expect('上游：upstream 为 null 只显示状态行', view.text.includes('上游与查证')
+    && view.text.includes('vllm-ascend#15903') && !view.text.includes('无上游修复记录'))
+  expect('修订：旧单不显示修订片', !view.text.includes('修订 1 次'))
+}
+
+{
   const t = await mount('closed')
   click(findToolbar(t.view()))
   const view = await t.settle()
@@ -1389,9 +1812,9 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const t = await mount('closed')
   click(findToolbar(t.view()))
   await t.settle()
-  pressKey('k', { metaKey: true })
+  pressKey('k', { metaKey: true, shiftKey: true })
   const cmdView = await t.settle()
-  expect('命令面板：⌘K 打开', byClass(cmdView, 'scp-cmd').length === 1)
+  expect('命令面板：⌘⇧K 打开', byClass(cmdView, 'scp-cmd').length === 1)
   expect('命令面板：说明作用于哪一单',
     byClass(cmdView, 'scp-cmd-where').length === 1
       && nodeText(byClass(cmdView, 'scp-cmd-where')[0]).includes('作用于'),
@@ -1407,7 +1830,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const t = await mount('closed')
   click(findToolbar(t.view()))
   await t.settle()
-  pressKey('k', { metaKey: true })
+  pressKey('k', { metaKey: true, shiftKey: true })
   await t.settle()
   pressKey('Escape')
   await t.settle()
@@ -1417,6 +1840,19 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(findToolbar(closedView))
   const reopened = await t.settle()
   expect('命令面板：普通重开不残留', byClass(reopened, 'scp-cmd').length === 0, String(byClass(reopened, 'scp-cmd').length))
+}
+
+{
+  // 主键不带 Shift 的组合归宿主（DSH 把它绑给「搜索会话」）：本包不能把它当成自己的一条，
+  // 否则真实页面里宿主先 preventDefault，本包的处理器会让路，读者看到的是「按了没反应」。
+  const t = await mount('closed')
+  click(findToolbar(t.view()))
+  const idle = await t.settle()
+  pressKey('k', { metaKey: true })
+  const after = await t.settle()
+  expect('命令面板：⌘K 不打开（归宿主的搜索会话）',
+    byClass(idle, 'scp-pal').length === 1 && byClass(after, 'scp-cmd').length === 0,
+    String(byClass(after, 'scp-cmd').length))
 }
 
 {
@@ -1511,7 +1947,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const t = await mount('recent')
   click(findToolbar(t.view()))
   let view = await t.settle()
-  expect('台账：标题在', view.text.includes('诊断总览'))
+  expect('台账：标题在', view.text.includes('诊断工作台'))
   expect('台账：列出人读案例标题', view.text.includes('vllm-ascend GLM-5.3 在 A3 跑推理时 MoE routing TopK 触发 vector core exception'))
   expect('台账：筛选按钮带计数', view.text.includes('全部 1') && view.text.includes('待回报 1'))
   const listNodes = byClass(view, 'scp-pal-list')
@@ -1561,16 +1997,17 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 }
 
 {
-  // 批量沉淀：只出现在「可沉淀」筛选下；范围 = 当前筛选，指令走 to-postmortem 并要求先跑只读清点脚本。
+  // 批量沉淀：任何筛选下都出现（范围 = 当前筛选里被标可沉淀的单），指令走 to-postmortem 并要求先跑只读清点脚本。
   const t = await mount('multi')
   click(findToolbar(t.view()))
   let view = await t.settle()
-  expect('批量沉淀：未筛选时不出现', byClass(view, 'scp-batch').length === 0)
+  expect('批量沉淀：默认筛选下也出现批次条', byClass(view, 'scp-batch').length === 1
+    && !!findButton(view, '沉淀当前筛选 1 单'), view.text.slice(-300))
   const sedimentFilter = byClass(view, 'scp-filter-item').find((node) => nodeText(node).includes('可沉淀'))
   click(sedimentFilter)
   view = await t.settle()
   expect('批量沉淀：筛选后出现批次条', byClass(view, 'scp-batch').length === 1 && view.text.includes('可沉淀 1 单'), view.text.slice(-300))
-  click(findButton(view, '生成批量沉淀指令'))
+  click(findButton(view, '沉淀当前筛选 1 单'))
   const modal = await t.settle()
   expect('批量沉淀：弹预览层', byClass(modal, 'scp-modal').length === 1 && modal.text.includes('生成批量沉淀指令'), modal.text.slice(-300))
   expect('批量沉淀：预览带范围与 session', modal.text.includes('范围 = 当前筛选的 1 单')
@@ -1596,7 +2033,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   search.props.onChange({ target: { value: 'PD 分离' } })
   view = await t.settle()
   expect('批量沉淀：搜索后带搜索词范围', view.text.includes('可沉淀 1 单') && view.text.includes('含搜索词「PD 分离」'), view.text.slice(-300))
-  click(findButton(view, '生成批量沉淀指令'))
+  click(findButton(view, '沉淀当前筛选 1 单'))
   const modal = await t.settle()
   expect('批量沉淀：预览写明搜索范围', modal.text.includes('（含搜索词「PD 分离」）'), modal.text.slice(-400))
   pressKey('Enter')
@@ -1632,6 +2069,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   click(findButton(await t.settle(), '更多操作'))
   const view = await t.settle()
   expect('更多操作：复制续接与固定仍在菜单里', view.text.includes('复制续接指令') && view.text.includes('固定到状态条'))
+  expect('更多操作：未收尾单不出现复制候选样本指令', !view.text.includes('复制候选样本指令'))
   click(findButton(view, '固定到状态条'))
   const pinnedView = await t.settle()
   const prefs = JSON.parse(storage.get(PREFS_KEY))
@@ -1729,17 +2167,17 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 
 {
   const t = await mount('recent')
-  const open = findNode(t.view(), (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断总览：'))
+  const open = findNode(t.view(), (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断工作台：'))
   click(open)
   const view = await t.settle()
-  expect('标题按钮：打开台账并选中该单', view.text.includes('诊断总览') && view.text.includes('vllm-ascend GLM-5.3'))
+  expect('标题按钮：打开台账并选中该单', view.text.includes('诊断工作台') && view.text.includes('vllm-ascend GLM-5.3'))
 }
 
 {
   const t = await mount('recent', { prefs: { dockCollapsed: true, paletteFilter: 'all', pins: {} } })
   const collapsed = t.view()
   expect('沉淀行：收起态不出现', byClass(collapsed, 'scp-dock-sed').length === 0)
-  click(findAria(collapsed, '展开状态条'))
+  click(findAriaPrefix(collapsed, '展开状态条'))
   await t.settle()
   const expanded = await t.settle()
   expect('沉淀行：展开后出现', byClass(expanded, 'scp-dock-sed').length === 1, expanded.text.slice(0, 240))
@@ -1926,6 +2364,8 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   view = await t.settle()
   expect('沉淀队列：批次条出现', byClass(view, 'scp-batch').length === 1)
   expect('沉淀队列：3 行草稿', byClass(view, 'scp-sed-row').length === 3, String(byClass(view, 'scp-sed-row').length))
+  expect('沉淀队列：行包装带沉淀标记', byClass(view, 'scp-row-wrap--sed').length === 3,
+    String(byClass(view, 'scp-row-wrap--sed').length))
   expect('沉淀队列：显示目标', view.text.includes('origin · main · GitCode'))
   expect('沉淀队列：按下一步分组', view.text.includes('待继续 groom') && view.text.includes('待提 PR'))
   expect('沉淀队列：显示年龄', view.text.includes('16 天'))
@@ -2091,6 +2531,105 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   await t.settle()
   const call = t.rpcCalls.filter((item) => item.endpoint === 'copilot-pr-target').pop()
   expect('PR 详情：标记已合入走 mark', call && call.args && call.args.action === 'mark' && call.args.state === 'merged', JSON.stringify(call && call.args))
+}
+
+{
+  // 已提 PR 的行评估过期：阶段仍跟平台状态（已提 PR · 合入未确认），过期只做行内提示；
+  // 详情给过期原因与「合入前复核」的说明，这一行不显示「需重跑」；已合入的行不给过期提示。
+  const staleReason = '目标 4823d40 落后于评估基准 8f1d2c 的 1 个知识文件'
+  const staleDraft = Object.assign({}, SEDIMENT.drafts[2], {
+    state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
+    stale: true, staleReasons: [staleReason],
+    pr: {
+      number: 433, url: 'https://github.com/pillumina/ascend-sleuth/pull/433',
+      platform: 'github', state: 'open', source: 'platform', checkedAt: '',
+    },
+    next: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+  })
+  const staleQueue = Object.assign({}, SEDIMENT, {
+    drafts: [staleDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 1, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
+    history: [],
+  })
+  const t = await mount('recent', { sediment: staleQueue, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let view = await openSedimentView(t)
+  const staleRow = rowText(view, 433)
+  expect('PR 行过期：阶段仍是已提 PR', staleRow.includes('已提 PR · 合入未确认'), staleRow)
+  expect('PR 行过期：行内标评估过期', staleRow.includes('评估过期'), staleRow)
+  expect('PR 行过期：行内不显示需重跑', !staleRow.includes('需重跑'), staleRow)
+  const staleChip = byClass(view, 'scp-chip').find((node) => nodeText(node) === '评估过期')
+  expect('PR 行过期：行内 chip 用 warn 语气并带过期原因',
+    !!staleChip && staleChip.props['data-tone'] === 'warn' && String(staleChip.props.title) === staleReason,
+    staleChip ? JSON.stringify({ tone: staleChip.props['data-tone'], title: staleChip.props.title }) : 'missing')
+  click(byClass(view, 'scp-sed-row')[0])
+  view = await t.settle()
+  const staleCallout = byClass(view, 'scp-callout').find((node) => nodeText(node).includes(staleReason))
+  const staleLabel = staleCallout && staleCallout.children ? staleCallout.children[0] : null
+  expect('PR 详情过期：标签写评估过期', !!staleLabel && nodeText(staleLabel) === '评估过期',
+    staleLabel ? nodeText(staleLabel) : 'missing')
+  expect('PR 详情过期：写出过期原因', !!staleCallout && nodeText(staleCallout).includes(staleReason),
+    staleCallout ? nodeText(staleCallout) : 'missing')
+  expect('PR 详情过期：说明合入前复核先重跑 groom 再更新 PR',
+    !!staleCallout && nodeText(staleCallout).includes('合入前复核报评估过期时，先重跑 groom 再更新 PR'),
+    staleCallout ? nodeText(staleCallout) : 'missing')
+  expect('PR 详情过期：抬头阶段仍是已提 PR', byClass(view, 'scp-identity').length === 1
+    && nodeText(byClass(view, 'scp-identity')[0]).includes('已提 PR · 合入未确认'),
+  byClass(view, 'scp-identity')[0] ? nodeText(byClass(view, 'scp-identity')[0]) : 'missing')
+}
+
+{
+  // 已合入的行评估过期：下一步是收尾，过期没有对应动作，行内不给「评估过期」提示。
+  const mergedDraft = Object.assign({}, SEDIMENT.drafts[2], {
+    state: 'pr_merged', stage: '已合入 · 待收尾', stageTone: 'ok',
+    stale: true, staleReasons: ['知识库在评估后前进了 1 个文件'],
+    pr: {
+      number: 434, url: 'https://github.com/pillumina/ascend-sleuth/pull/434',
+      platform: 'github', state: 'merged', source: 'platform', checkedAt: '',
+    },
+    next: { kind: 'close', label: '合入后收尾', prompt: '合入后收尾的指令' },
+  })
+  const mergedQueue = Object.assign({}, SEDIMENT, {
+    drafts: [mergedDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 0, decided: 0, prOpen: 0, prMerged: 1, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'close', label: '合入后收尾', prompt: '合入后收尾的指令' },
+    history: [],
+  })
+  const mergedMount = await mount('recent', { sediment: mergedQueue, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  const mergedView = await openSedimentView(mergedMount)
+  const mergedRow = rowText(mergedView, 434)
+  expect('已合入行过期：阶段是已合入', mergedRow.includes('已合入 · 待收尾'), mergedRow)
+  expect('已合入行过期：行内不给评估过期提示', !mergedRow.includes('评估过期'), mergedRow)
+}
+
+{
+  // 需要重跑的行（这里只有批准失效）：阶段已是「需重跑」，行内不再加「评估过期」；
+  // 详情 callout 标签沿用「已评估」，原因文字说明是批准没绑定，不写成评估过期。
+  const rerunReason = '人的批准没有绑定到当前评估/内容，需要重新确认'
+  const rerunDraft = Object.assign({}, SEDIMENT.drafts[2], {
+    state: 'need_rerun', stage: '需重跑', stageTone: 'bad',
+    stale: true, staleReasons: [rerunReason],
+    pr: null,
+    next: { kind: 'groom', label: '继续 groom', prompt: '继续 groom 的批次指令' },
+  })
+  const rerunQueue = Object.assign({}, SEDIMENT, {
+    drafts: [rerunDraft],
+    counts: { total: 1, unassessed: 0, needDecision: 0, needRerun: 1, decided: 0, prOpen: 0, prMerged: 0, overdue: 0, oldestDays: 0 },
+    primary: { kind: 'groom', label: '继续 groom', prompt: '继续 groom 的批次指令' },
+    history: [],
+  })
+  const rerunMount = await mount('recent', { sediment: rerunQueue, prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  let rerunView = await openSedimentView(rerunMount)
+  const rerunRow = nodeText(byClass(rerunView, 'scp-sed-row')[0])
+  expect('需重跑行：阶段是需重跑', rerunRow.includes('需重跑'), rerunRow)
+  expect('需重跑行：行内不加评估过期提示', !rerunRow.includes('评估过期'), rerunRow)
+  click(byClass(rerunView, 'scp-sed-row')[0])
+  rerunView = await rerunMount.settle()
+  const rerunCallout = byClass(rerunView, 'scp-callout').find((node) => nodeText(node).includes(rerunReason))
+  const rerunLabel = rerunCallout && rerunCallout.children ? rerunCallout.children[0] : null
+  expect('需重跑详情：标签不用评估过期', !!rerunLabel && nodeText(rerunLabel) === '已评估',
+    rerunLabel ? nodeText(rerunLabel) : 'missing')
+  expect('需重跑详情：原因照实写批准失效', !!rerunCallout && nodeText(rerunCallout).includes('人的批准'), rerunCallout ? nodeText(rerunCallout) : 'missing')
 }
 
 {
@@ -2707,6 +3246,50 @@ function rowText(view, prNumber) {
   expect('最近完成：显示 PR 链接', view.text.includes('#429'), view.text.slice(-300))
   const link = findNode(view, (node) => node.type === 'a' && node.props && node.props.href === 'https://github.com/pillumina/ascend-sleuth/pull/429')
   expect('最近完成：链接指向 PR', !!link)
+  // 左列宽 300–400px：标题、状态、PR 链接、时间挤一行时，链接（如 #429）与时间（日期与时刻）会在中间断行。
+  // 契约是两行——标题 + 时间、状态 + PR 链接——且链接与时间都不换行。按行断言爸爸子包含：把时间挪进次行、
+  // 或给 fixture 加历史行都要能判对；PR 链接可选（没有 PR 的历史行只有状态），只要求每行至多一条。
+  const classNamesOf = (node) => (node && node.props && typeof node.props.className === 'string'
+    ? node.props.className.split(/\s+/).filter(Boolean) : [])
+  const subtreeClassNames = (node) => {
+    const out = []
+    const walk = (one) => {
+      if (!one) return
+      out.push(classNamesOf(one))
+      for (const child of one.children || []) walk(child)
+    }
+    walk(node)
+    return out
+  }
+  const historyBlock = byClass(view, 'scp-sed-history')[0]
+  const historyRows = ((historyBlock && historyBlock.children) || [])
+    .filter((node) => classNamesOf(node).includes('scp-sed-history-row'))
+  const historyShapes = historyRows.map((row) => {
+    const direct = (row.children || []).filter((node) => node && node.props)
+    const line = direct.find((node) => classNamesOf(node).includes('scp-sed-history-line'))
+    const meta = direct.find((node) => classNamesOf(node).includes('scp-sed-meta'))
+    const inLine = subtreeClassNames(line)
+    const inMeta = subtreeClassNames(meta)
+    const has = (list, name) => list.some((names) => names.includes(name))
+    return {
+      line: !!line,
+      meta: !!meta,
+      titleInLine: has(inLine, 'scp-sed-history-title'),
+      timeInLine: has(inLine, 'scp-sed-history-time'),
+      metaInLine: has(inLine, 'scp-sed-meta'),
+      prInMeta: inMeta.filter((names) => names.includes('scp-sed-history-pr')).length,
+    }
+  })
+  expect('最近完成：每行首行标题与时间、次行状态与链接',
+    historyShapes.length > 0 && historyShapes.every((shape) => shape.line && shape.meta
+      && shape.titleInLine && shape.timeInLine && !shape.metaInLine && shape.prInMeta <= 1),
+    JSON.stringify(historyShapes))
+  expect('最近完成：链接与时间不换行',
+    cssRule('.scp-sed-history-pr').includes('white-space:nowrap')
+      && cssRule('.scp-sed-history-time').includes('flex:none'),
+    cssRule('.scp-sed-history-pr') + ' || ' + cssRule('.scp-sed-history-time'))
+  expect('最近完成：行是两行布局', cssRule('.scp-sed-history-row').includes('flex-direction:column'),
+    cssRule('.scp-sed-history-row'))
 }
 
 {
@@ -3115,6 +3698,7 @@ const KB_NOTICE = {
   expect('知识库落后：文案带提交数', view.text.includes('知识库落后 3 个提交'), view.text.slice(0, 300))
   expect('知识库落后：panel>0 提示重启 DSH',
     view.text.includes('这批改动含面板代码：同步后重启 DSH 才能加载新面板。'), view.text.slice(0, 400))
+  expect('知识库落后：带核对时刻', /核对/.test(view.text), view.text.slice(0, 400))
   expect('知识库落后：给「去同步」', !!findButton(view, '去同步'), view.text.slice(0, 400))
   expect('知识库落后：给「稍后」', !!findButton(view, '稍后'), view.text.slice(0, 400))
 
@@ -3245,6 +3829,19 @@ const KB_NOTICE = {
   const view = t.view()
   expect('知识库落后：panel=0 仍有提示行', byClass(view, 'scp-kb-notice').length === 1)
   expect('知识库落后：panel=0 不提示重启', !view.text.includes('含面板代码'), view.text.slice(0, 400))
+}
+
+{
+  // 只有面板代码的提交：文案说面板代码，不冒充知识库。
+  const t = await mount('recent', {
+    kbNotice: { rev: 'abc1234', behind: 2, panel: 0, kind: 'panel', checkedAt: '2026-11-09T14:10:00+08:00' },
+    prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
+  })
+  const view = t.view()
+  expect('面板代码落后：提示行出现', byClass(view, 'scp-kb-notice').length === 1, view.text.slice(0, 300))
+  expect('面板代码落后：文案说面板代码',
+    view.text.includes('面板代码落后 2 个提交，同步后重启 DSH'), view.text.slice(0, 400))
+  expect('面板代码落后：不说知识库落后', !view.text.includes('知识库落后'), view.text.slice(0, 400))
 }
 
 {
@@ -3759,7 +4356,7 @@ function clickWith(node, extra) {
   view = await t.settle()
   const modalText = byClass(view, 'scp-prompt').map((node) => nodeText(node)).join('\n')
   expect('多选沉淀：名单只含所选', modalText.includes(ID) && modalText.includes('2026-09-07-glm53-pd-sfa-c8-hang'), modalText.slice(0, 300))
-  expect('多选沉淀：指令写所选范围', modalText.includes('诊断总览所选的 2 单'), modalText.slice(0, 300))
+  expect('多选沉淀：指令写所选范围', modalText.includes('诊断工作台所选的 2 单'), modalText.slice(0, 300))
   click(findButton(view, '填入输入框'))
   await t.settle()
   expect('多选沉淀：填入含两单', t.lastDraft().includes(ID) && t.lastDraft().includes('2026-09-07-glm53-pd-sfa-c8-hang'), t.lastDraft())
@@ -3903,6 +4500,208 @@ function clickWith(node, extra) {
     && call.args && call.args.action === 'mark').pop()
   expect('写入回执：撤销写回旧状态', !!undoCall && undoCall.args.state === 'open', JSON.stringify(undoCall && undoCall.args))
   expect('写入回执：撤销后写已恢复', view.text.includes('已恢复：待合入'), view.text.slice(0, 400))
+}
+
+{
+  // 首屏不给每行铺复选框：默认藏起来，点「选择」或有勾选后才露出；触屏靠这个入口。
+  const t = await mount('multi', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await settleTimes(t, 2)
+  const panelList = byClass(view, 'scp-pal-list')[0]
+  expect('选择态：默认不进选择态', panelList && panelList.props['data-selecting'] === 'false',
+    String(panelList && panelList.props['data-selecting']))
+  expect('选择态：默认只留一个「选择」入口', !!findButton(view, '选择'), view.text.slice(0, 300))
+  expect('选择态：样式默认藏复选框', cssRule('.scp-row-check').includes('opacity:0'), cssRule('.scp-row-check'))
+  expect('选择态：进入后露出复选框', cssRule('.scp-pal-list[data-selecting="true"] .scp-row-check').includes('opacity:1'),
+    cssRule('.scp-pal-list[data-selecting="true"] .scp-row-check'))
+  // 行首不再给复选框留槽位：它绝对定位覆在状态点上，默认不占宽（否则首屏每行左侧都空一截）。
+  expect('排版：行前复选框不占行宽',
+    cssRule('.scp-row-wrap>.scp-row-check').includes('position:absolute')
+      && cssRule('.scp-row-wrap').includes('position:relative'),
+    cssRule('.scp-row-wrap') + ' || ' + cssRule('.scp-row-wrap>.scp-row-check'))
+  // 沉淀行的状态点贴行首（不是垂直居中），复选框要跟着它对齐，不能落在行中间。
+  expect('排版：沉淀行复选框贴行首状态点',
+    cssRule('.scp-row-wrap--sed>.scp-row-check').includes('top:8px')
+      && !cssRule('.scp-row-wrap--sed>.scp-row-check').includes('translateY'),
+    cssRule('.scp-row-wrap--sed>.scp-row-check'))
+  // 批次条左右两组同行：一行放得下就并排，放不下才整组换到下一行。
+  // 后一条 .scp-batch 规则会把 display 覆盖回去，必须看全部规则；只看第一条会在改回 block 时误绿。
+  const batchRules = cssRules('.scp-batch')
+  expect('排版：批次条一组一行放不下才换行',
+    batchRules.some((rule) => rule.includes('flex-wrap:wrap'))
+      && batchRules.some((rule) => rule.includes('position:relative') && rule.includes('display:flex'))
+      && cssRule('.scp-batch-line + .scp-batch-line').includes('margin-left:auto'),
+    batchRules.join(' || ') + ' || ' + cssRule('.scp-batch-line + .scp-batch-line'))
+  // 沉淀行标题列与诊断行对齐靠左内边距 14px；改回 10px 时复选框会压住标题首字。
+  expect('排版：沉淀行标题列与诊断行对齐',
+    cssRule('.scp-sed-row').includes('padding:10px 10px 10px 14px'),
+    cssRule('.scp-sed-row'))
+  click(findButton(view, '选择'))
+  view = await t.settle()
+  expect('选择态：进入后列表标 selecting', byClass(view, 'scp-pal-list')[0].props['data-selecting'] === 'true')
+  expect('选择态：空选择给全选与退出', view.text.includes('选择要处理的项')
+    && !!findButton(view, '全选当前筛选') && !!findButton(view, '退出选择'), view.text.slice(0, 400))
+  expect('选择态：空选择不摆主操作', !view.text.includes('沉淀所选 0 单'), view.text.slice(0, 400))
+  pressKey('Escape')
+  view = await t.settle()
+  expect('选择态：Esc 先退出选择、不关面板', byClass(view, 'scp-pal').length > 0
+    && byClass(view, 'scp-pal-list')[0].props['data-selecting'] === 'false', view.text.slice(0, 300))
+  pressKey('Escape')
+  await t.settle()
+  expect('选择态：再按 Esc 关面板', byClass(t.view(), 'scp-pal').length === 0)
+}
+
+{
+  // 任意筛选都能多选沉淀：不再要求先切到「可沉淀」。
+  const t = await mount('multi', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await settleTimes(t, 2)
+  clickWith(rowCheckNodes(view)[1])
+  view = await t.settle()
+  expect('多选沉淀：全部筛选下也能按所选沉淀', view.text.includes('已选 1 项')
+    && !!findButton(view, '沉淀所选 1 单'), view.text.slice(0, 400))
+}
+
+{
+  // 整批条的勾选只选这一批的动作对象（可沉淀的 1 单），不是当前筛选的全部 2 行。
+  const t = await mount('multi', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await settleTimes(t, 2)
+  const batchBox = byClass(view, 'scp-row-check').find((node) => String(node.props['aria-label'] || '').includes('选中这 1 单'))
+  expect('整批勾选：只覆盖批次对象', !!batchBox, view.text.slice(0, 300))
+  clickWith(batchBox)
+  view = await t.settle()
+  expect('整批勾选：选中 1 项而不是全部', view.text.includes('已选 1 项') && !!findButton(view, '沉淀所选 1 单'), view.text.slice(0, 400))
+}
+
+
+{
+  // 0.24：焦点行同步、筛选按下态、tab 关联、混合勾选、方向键切视图。
+  const t = await mount('multi', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await settleTimes(t, 2)
+
+  const filters = byClass(view, 'scp-filter-item')
+  expect('筛选：按下态对读屏可见', filters.length === 4
+    && filters.every((n) => n.props['aria-pressed'] === (n.props['data-on'] === 'true' ? 'true' : 'false')))
+
+  const tabs = byClass(view, 'scp-view-tab')
+  const panel = byClass(view, 'scp-pal-main')[0]
+  expect('视图切换：tab 关联 tabpanel', tabs.length === 2
+    && tabs.every((n) => n.props['aria-controls'] === 'scp-pal-panel')
+    && !!panel && panel.props.role === 'tabpanel' && panel.props.id === 'scp-pal-panel')
+
+  const rows = byClass(view, 'scp-pal-row')
+  expect('列表：多行夹具', rows.length >= 2, String(rows.length))
+  rows[1].props.onFocus()
+  view = await t.settle()
+  const afterFocus = byClass(view, 'scp-pal-row')
+  expect('键盘：焦点行成为当前行', afterFocus[1].props['data-on'] === 'true' && afterFocus[0].props['data-on'] !== 'true')
+
+  pressKey(' ')
+  view = await t.settle()
+  const allBox = byClass(view, 'scp-row-check').find((n) => String(n.props['aria-label'] || '').includes('全选当前筛选'))
+  expect('勾选：全选控件报半选', !!allBox && allBox.props['aria-checked'] === 'mixed', allBox && String(allBox.props['aria-checked']))
+
+  byClass(view, 'scp-views')[0].props.onKeyDown({ key: 'ArrowRight', preventDefault() {} })
+  view = await t.settle()
+  expect('视图切换：方向键切到沉淀', view.text.includes('沉淀队列'), view.text.slice(0, 300))
+}
+
+{
+  // 常驻 live region：区域在挂载时就建好，操作结果写进 role=status 容器。
+  const t = await mount('multi', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  const polite = annNodes.get('dsh-sleuth-copilot-status')
+  expect('播报：容器在挂载时就存在', !!polite)
+  click(findAria(t.view(), '展开后常驻'))
+  await t.settle()
+  expect('播报：结果写进常驻 status', String(polite.textContent).length > 0, String(polite.textContent))
+}
+
+{
+  // 表单字段带 required / aria-describedby；提交失败的错误行是 role=alert。
+  const t = await mount('recent')
+  click(findAria(t.view(), '更多操作'))
+  let view = await t.settle()
+  click(findButton(view, '已定位（根因明确）'))
+  view = await t.settle()
+  const requiredInput = findNode(view, (node) => node.type === 'select' && node.props && node.props.required === true)
+  expect('表单：必填字段带 required', !!requiredInput)
+  const form = findNode(view, (node) => node.type === 'form')
+  form.props.onSubmit({ preventDefault() {} })
+  view = await t.settle()
+  const err = byClass(view, 'scp-form-error')[0]
+  expect('表单：校验错误是 alert', !!err && err.props.role === 'alert' && view.text.includes('请先填'), err && String(err.props.role))
+}
+
+
+{
+  // 筛选无命中：给筛选空态与「清除筛选与搜索」，点一下回到全量。
+  const t = await mount('multi', { prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} } })
+  click(findToolbar(t.view()))
+  let view = await settleTimes(t, 2)
+  const search = findInput(view, '搜索单号 / case / 关键词')
+  search.props.onChange({ target: { value: 'zzz-没有这一单' } })
+  view = await t.settle()
+  expect('空态：筛选无命中用自己的文案', view.text.includes('当前筛选没有匹配的诊断') && !view.text.includes('还没有诊断记录'), view.text.slice(-300))
+  expect('空态：筛选无命中给清除入口', !!findButton(view, '清除筛选与搜索'))
+  click(findButton(view, '清除筛选与搜索'))
+  view = await t.settle()
+  expect('空态：清除后回到列表', byClass(view, 'scp-pal-row').length >= 2, String(byClass(view, 'scp-pal-row').length))
+}
+
+{
+  // 字段 id 带实例序号：同一角色重开表单不会复用同一批 id（两份表单可能同时存在）。
+  const t = await mount('recent')
+  click(findAria(t.view(), '更多操作'))
+  let view = await t.settle()
+  click(findButton(view, '已定位（根因明确）'))
+  view = await t.settle()
+  const idsOf = (tree) => tree.nodes.filter((n) => n.props && typeof n.props.id === 'string' && n.props.id.startsWith('scp-field-')).map((n) => n.props.id)
+  const first = idsOf(view)
+  expect('表单：字段 id 带实例序号', first.length > 0 && first.every((id) => /^scp-field-\d+-/.test(id)) && new Set(first).size === first.length, JSON.stringify(first))
+}
+
+{
+  // 指令弹层盖在命令面板之上：这时按 ⌘⇧K 不能再把命令面板开到遮罩下面。
+  const t = await mount('multi')
+  click(findToolbar(t.view()))
+  let view = await t.settle()
+  click(findButton(view, '沉淀当前筛选 1 单'))
+  view = await t.settle()
+  expect('弹层：先打开指令预览', byClass(view, 'scp-modal').length === 1)
+  pressKey('k', { metaKey: true, shiftKey: true })
+  view = await t.settle()
+  expect('弹层：⌘⇧K 不打开命令面板', byClass(view, 'scp-cmd').length === 0 && byClass(view, 'scp-modal').length === 1,
+    String(byClass(view, 'scp-cmd').length))
+}
+
+{
+  const t = await mount('closed')
+  click(findToolbar(t.view()))
+  await t.settle()
+  click(findButton(await t.settle(), '更多操作'))
+  const view = await t.settle()
+  expect('更多操作：已闭环单有复制候选样本指令', view.text.includes('复制候选样本指令'))
+}
+
+{
+  const t = await mount('recent')
+  let view = await t.settle()
+  const expand = findAriaPrefix(view, '展开状态条')
+  if (expand) {
+    click(expand)
+    view = await t.settle()
+  }
+  expect('状态条：候选样本标签', view.text.includes('候选样本：可提交'), view.text.slice(-500))
+  const sampleChip = view.nodes.find((node) => typeof (node.props && node.props.className) === 'string'
+    && node.props.className.split(/\s+/).includes('scp-chip') && nodeText(node) === '候选样本：可提交')
+  expect('状态条：候选样本标签可点', !!sampleChip)
+  if (sampleChip) {
+    sampleChip.props.onClick()
+    view = await t.settle()
+    expect('状态条：候选样本浮层显示 id 与原因', view.text.includes('ID：13934') && view.text.includes('候选样本'))
+  }
 }
 
 process.stdout.write('\n' + checks + ' 条断言，' + failures + ' 条失败\n')

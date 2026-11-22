@@ -1,0 +1,44 @@
+id: REG-VLLM-ASC-11127
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: https://github.com/vllm-project/vllm-ascend/issues/11127
+input:
+  phenomenon: 'GLM-5.1（w8a8）MTP/spec-decode 开启，PD 分离 decode 节点多 DP 压测 1-2 小时后接受率不足
+    1% 且无法恢复；手工 curl 出现精度问题（输出错误），非纯性能性接受率下降；关闭 MTP 可规避；kv_pool 池化开关不影响（开/关均复现）；vllm-ascend
+    0.20 版本复现；合入 PR #10117 后修复（thread 确认）'
+  environment: A3-910C
+  evidence:
+    case: VLLM-ASC-11127
+    references:
+    - https://github.com/vllm-project/vllm-ascend/issues/11127
+    - https://github.com/vllm-project/vllm-ascend/pull/10117
+expected:
+  resolution: 'GLM-5.1（w8a8）+ MTP（spec-decode）+ PD 分离（decode 节点多 DP）压测场景下， spec-decode
+    drafter 输入判断 input_fits_in_drafter 在多 DP 下处理不当，长时间压测后 MTP 接受率退化到不足 1% 且无法恢复，输出出现精度错误。PR
+    #10117 的修复=移除 drafter 侧有问题的 input_fits_in_drafter 判断，并把投机掩码填充改为 1（同修复 vllm#44185
+    moe multi-DP hang 与 #9221 回归）。thread（issue completed 关闭 2026-07-03）确认 “合入 pr10117
+    后问题修复”。
+
+
+
+    升级到含 PR #10117（vllm-ascend main，merged 2026-06-08）的版本并重启服务； workaround：升级前压测/联调关闭
+    MTP（thread 确认可规避精度问题）。 0.20.x 官方是否回传该修复以 changelog 为准。'
+  case: VLLM-ASC-11127
+  confidence: maintainer-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: postmortem
+  report_ref: knowledge/inference/vllm-ascend/precision/VLLM-ASC-11127.yaml
+  captured_at: '2026-11-19T14:13:03+00:00'
+  kb_rev: unknown
+  sanitized: true
+  redactions: []
+  confidence: maintainer-reviewed
+  extraction: auto
+created_at: '2026-11-19T14:13:03+00:00'
+updated_at: '2026-11-19T14:13:03+00:00'
+history: []
+notes: core regression derived from knowledge/inference/vllm-ascend/precision/VLLM-ASC-11127.yaml

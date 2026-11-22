@@ -46,37 +46,37 @@ entries:
     family: 演进对象层
     scope: ["*"]
     meaning: 知识内容层：case / reference / triage 内容
-    see: mechanism/pipeline.md §1
+    see: mechanism/records.md §3.1
   - token: L2
     short: 流程与 skill 层
     family: 演进对象层
     scope: ["*"]
     meaning: 流程与 skill 层：diagnose/groom/to-* 实现、triage 分支、scripts、新 skill
-    see: mechanism/pipeline.md §1
+    see: mechanism/records.md §3.1
   - token: L3
     short: 工作流与编排层
     family: 演进对象层
     scope: ["*"]
     meaning: 工作流与编排层：流水线、groom 节奏、roadmap 机制、evolution 文档本身
-    see: mechanism/pipeline.md §1
+    see: mechanism/records.md §3.1
   - token: S1
     short: 现场反馈（工程师回报）
     family: 评分源
     scope: ["*"]
     meaning: 现场反馈：工程师回报 fix 是否解决 → case.confidence（唯一现场 resolve 口径）
-    see: mechanism/pipeline.md §2.1
+    see: mechanism/operations.md §3.4
   - token: S2
-    short: issue 回放对照（内容验证）
+    short: issue 回放校准集（内部代号）
     family: 评分源
     scope: ["*"]
-    meaning: 内容验证：issue-replay 对照外部 resolution → case.validation_record
-    see: mechanism/pipeline.md §2.1
+    meaning: 内容验证：issue 回放对照外部 resolution → case.validation_record；人读面先写「issue 回放校准集」
+    see: mechanism/operations.md §3.4
   - token: S3
     short: golden 回归门
     family: 评分源
     scope: ["*"]
     meaning: 回归防护：golden 回放，只作验证门不改 case 数据
-    see: mechanism/pipeline.md §2.1
+    see: mechanism/operations.md §3.4
   - token: E1
     short: roadmap 事项：agent 自起草候选 case
     family: roadmap 可演进性
@@ -140,21 +140,21 @@ entries:
   - token: G3
     short: 治理缺口：自我指涉
     family: 治理缺口
-    scope: ["docs/plan/roadmap.md", "docs/mechanism/orchestration.md"]
+    scope: ["docs/plan/roadmap.md", "docs/mechanism/operations.md"]
     meaning: 治理缺口：系统改自己的 skill，防自我确认偏差
-    see: mechanism/orchestration.md §4
+    see: mechanism/rsi-mechanism.md §3.4
   - token: G5
     short: 治理缺口：无全局上下文
     family: 治理缺口
-    scope: ["docs/plan/roadmap.md", "docs/mechanism/orchestration.md"]
+    scope: ["docs/plan/roadmap.md", "docs/mechanism/operations.md"]
     meaning: 治理缺口：agent 每轮执行前无全局上下文
-    see: mechanism/orchestration.md §5.1
+    see: mechanism/operations.md §3.2
   - token: G6
     short: 治理缺口：无成本侧
     family: 治理缺口
-    scope: ["docs/plan/roadmap.md", "docs/mechanism/orchestration.md"]
+    scope: ["docs/plan/roadmap.md", "docs/mechanism/operations.md"]
     meaning: 治理缺口：卡无成本侧字段
-    see: mechanism/orchestration.md §3.2
+    see: mechanism/operations.md §3.2
   - token: T4
     short: 信号：执行错无归属→L2 卡
     family: 触发信号
@@ -181,49 +181,49 @@ entries:
     see: skills/self-evolve/SKILL.md
   - token: Phase A
     family: 落地阶段
-    scope: ["docs/plan/roadmap.md", "docs/mechanism/pipeline.md"]
+    scope: ["docs/plan/roadmap.md", "docs/mechanism/status.md"]
     meaning: 落地阶段 A：文档采纳
-    see: mechanism/pipeline.md §11
+    see: mechanism/status.md §2
   - token: Phase D
     family: 落地阶段
-    scope: ["docs/plan/roadmap.md", "docs/mechanism/pipeline.md"]
+    scope: ["docs/plan/roadmap.md", "docs/mechanism/status.md"]
     meaning: 落地阶段 D：自演进试点一轮
-    see: mechanism/pipeline.md §11
+    see: mechanism/status.md §2
   - token: Phase E
     family: 落地阶段
-    scope: ["docs/plan/roadmap.md", "docs/mechanism/pipeline.md"]
+    scope: ["docs/plan/roadmap.md", "docs/mechanism/status.md"]
     meaning: 落地阶段 E：auto 扩权/参数校准常态化
-    see: mechanism/pipeline.md §11
+    see: mechanism/status.md §2
   - token: G1
     family: 治理缺口
-    scope: ["docs/plan/roadmap.md", "docs/mechanism/orchestration.md"]
+    scope: ["docs/plan/roadmap.md", "docs/mechanism/operations.md"]
     short: 治理缺口：会话层缺失
     meaning: 治理缺口：会话层缺失（无会话协议）
-    see: mechanism/orchestration.md §1
+    see: mechanism/operations.md §3.2
   - token: G2
     family: 治理缺口
-    scope: ["docs/plan/roadmap.md", "docs/mechanism/orchestration.md"]
+    scope: ["docs/plan/roadmap.md", "docs/mechanism/operations.md"]
     short: 治理缺口：无目标与停止
     meaning: 治理缺口：无目标函数与停止条件
-    see: mechanism/orchestration.md §1
+    see: mechanism/operations.md §3.2
   - token: G4
     family: 治理缺口
-    scope: ["docs/plan/roadmap.md", "docs/mechanism/orchestration.md"]
+    scope: ["docs/plan/roadmap.md", "docs/mechanism/operations.md"]
     short: 治理缺口：同轮冲突
     meaning: 治理缺口：同轮多卡冲突无编排
-    see: mechanism/orchestration.md §1
+    see: mechanism/operations.md §3.2
   - token: G7
     family: 治理缺口
-    scope: ["docs/plan/roadmap.md", "docs/mechanism/orchestration.md"]
+    scope: ["docs/plan/roadmap.md", "docs/mechanism/operations.md"]
     short: 治理缺口：无稳态降频
     meaning: 治理缺口：无稳态降频机制
-    see: mechanism/orchestration.md §1
+    see: mechanism/operations.md §3.2
   - token: G8
     family: 治理缺口
-    scope: ["docs/plan/roadmap.md", "docs/mechanism/orchestration.md"]
+    scope: ["docs/plan/roadmap.md", "docs/mechanism/operations.md"]
     short: 治理缺口：无暂停重启
     meaning: 治理缺口：无暂停/重启机制
-    see: mechanism/orchestration.md §1
+    see: mechanism/operations.md §3.2
   - token: T1
     family: 触发信号
     scope: ["docs/plan/roadmap.md", "skills/evolve-check/SKILL.md"]
@@ -370,22 +370,22 @@ entries:
     see: roadmap.md
   - token: Phase B
     family: 落地阶段
-    scope: ["docs/plan/roadmap.md", "docs/mechanism/pipeline.md"]
+    scope: ["docs/plan/roadmap.md", "docs/mechanism/status.md"]
     short: 落地阶段 B（归因事件聚合跑通）
     meaning: 落地阶段 B：归因事件按需聚合跑通 + L2 首条候选卡
-    see: mechanism/pipeline.md §11
+    see: mechanism/status.md §2
   - token: Phase C
     family: 落地阶段
-    scope: ["docs/plan/roadmap.md", "docs/mechanism/pipeline.md"]
+    scope: ["docs/plan/roadmap.md", "docs/mechanism/status.md"]
     short: 落地阶段 C（golden 验证门常态化）
     meaning: 落地阶段 C：golden 验证门常态化
-    see: mechanism/pipeline.md §11
+    see: mechanism/status.md §2
   - token: Phase C2
     family: 落地阶段
-    scope: ["docs/plan/roadmap.md", "docs/mechanism/pipeline.md"]
-    short: 落地阶段 C2（S2 校准集）
-    meaning: 落地阶段 C2：S2 issue-replay 校准集建立
-    see: mechanism/pipeline.md §11
+    scope: ["docs/plan/roadmap.md", "docs/mechanism/status.md"]
+    short: 落地阶段 C2（issue 回放校准集）
+    meaning: 落地阶段 C2：issue 回放校准集建立
+    see: mechanism/status.md §2
   - token: O8
     family: roadmap 可观测性
     scope: ["docs/plan/roadmap.md"]
@@ -397,7 +397,7 @@ entries:
     family: roadmap 可演进性
     scope: ["docs/plan/roadmap.md"]
     short: roadmap 事项：元层 eval 台（arena）
-    meaning: roadmap 可演进性事项：train/val 分离 + golden/val 门控 + 影响账本，决议 EV-2026-013，设计 docs/mechanism/eval-arena.md
+    meaning: roadmap 可演进性事项：train/val 分离 + golden/val 验收条件 + 影响记录，决议 EV-2026-013，设计 docs/mechanism/evaluation.md
     see: roadmap.md
 
 # 系列级说明（无固定字面 token 的系列；渲染告警与速查表用）
@@ -440,7 +440,7 @@ families:
   - id: sources
     label: 评分源
     pattern: S[1-3]
-    note: S1 现场反馈 / S2 issue 回放对照 / S3 golden 回归
+    note: 现场反馈（S1） / issue 回放校准（S2） / golden 回归（S3）
   - id: roadmap
     label: roadmap 事项
     pattern: '[AEMOP][0-9]'
@@ -460,4 +460,4 @@ families:
   - id: phases
     label: 落地阶段
     pattern: Phase [A-E]
-    note: pipeline §11 落地阶段 A–E；与 roadmap 的 E# 无关联
+    note: 落地阶段见 status.md 的机制状态与未建表；与 roadmap 的 E# 无关联
