@@ -28,6 +28,12 @@ MAX_STEPS = 6
 SUMMARY_LIMIT = 600
 TEXT_LIMIT = 240
 MISSING_LIMIT = 160
+INCIDENT_LIMIT = 16
+FAILURE_NODE_LIMIT = 8
+UPSTREAM_LIMIT = 12
+REVISION_LIMIT = 24
+QUOTE_LIMIT = 320
+CHANGE_LIMIT = 200
 
 
 def _one_line(text) -> str:
@@ -87,8 +93,171 @@ def _material_items(text, summary: str = '', limit: int = 8) -> list:
     return items
 
 
+def _stamp(value):
+    """时间原值转成 JSON 友好的字符串；缺省给 None（面板显示「时点未知」）。
+
+    trace 里的 `at` 可能是 YAML 解析出来的 datetime（作者没加引号），这里统一按
+    ISO 8601 写出，不换算时区、不补精度。
+    """
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        text = value.isoformat()
+    else:
+        text = _one_line(value)
+    return text or None
+
+
+def _change_value(value) -> str:
+    """修订条目里的旧值 / 新值：标量原样，结构转 JSON 文本。"""
+    if value is None:
+        return ""
+    if isinstance(value, (dict, list)):
+        return _short(json.dumps(value, ensure_ascii=False), CHANGE_LIMIT)
+    return _short(value, CHANGE_LIMIT)
+
+
+def _timeline_layers(doc: dict) -> dict:
+    """面板详情用的三段时间线 + 修订记录：现场 / 日志过程 / 上游查证 / 修订。
+
+    只搬 trace 里已有的字段，不推断、不回填。`None` 与缺键都按「未记录」给 `null`
+    （旧单）；只有 `[]` 才是「查过但为空」。`revisions` 恒为列表。
+    每层另给 `*Total`（截断前的条数），面板段头用总数并写明「显示前 N 条」，
+    不把截断藏起来。
+    """
+    incident = None
+    incident_total = 0
+    raw_incident = doc.get("incident_timeline")
+    if raw_incident is not None:
+        incident = []
+        incident_entries = _as_list(raw_incident)
+        incident_total = len(incident_entries)
+        for entry in incident_entries[:INCIDENT_LIMIT]:
+            if not isinstance(entry, dict):
+                continue
+            item = {
+                "id": _one_line(entry.get("id")),
+                "at": _stamp(entry.get("at")),
+                "atNote": _short(entry.get("at_note"), 120),
+                "what": _short(entry.get("what"), TEXT_LIMIT),
+                "source": _one_line(entry.get("source")),
+                "step": _safe_int(entry.get("step")),
+            }
+            evidence = _as_dict(entry.get("evidence"))
+            files = [_one_line(x) for x in _as_list(evidence.get("files")) if _one_line(x)][:10]
+            detail = {"files": files} if files else {}
+            quote = _short(evidence.get("quote"), QUOTE_LIMIT)
+            if quote:
+                detail["quote"] = quote
+            line = evidence.get("line")
+            if isinstance(line, int) and not isinstance(line, bool):
+                detail["line"] = line
+            if detail:
+                item["evidence"] = detail
+            incident.append(item)
+
+    failure = None
+    raw_failure = doc.get("failure_process")
+    if isinstance(raw_failure, dict):
+        raw_window = _as_dict(raw_failure.get("window"))
+        window = None
+        if raw_window:
+            window = {
+                "from": _stamp(raw_window.get("from")) or "",
+                "to": _stamp(raw_window.get("to")) or "",
+            }
+        nodes = []
+        for node in _as_list(raw_failure.get("nodes"))[:FAILURE_NODE_LIMIT]:
+            if not isinstance(node, dict):
+                continue
+            item = {
+                "id": _one_line(node.get("id")),
+                "at": _stamp(node.get("at")),
+                "x": node.get("x") if isinstance(node.get("x"), (int, float)) and not isinstance(node.get("x"), bool) else None,
+                "what": _short(node.get("what"), TEXT_LIMIT),
+                "quote": _short(node.get("quote"), QUOTE_LIMIT),
+                "repeat": _short(node.get("repeat"), 160),
+            }
+            evidence = _as_dict(node.get("evidence"))
+            detail = {}
+            file_path = _one_line(evidence.get("file"))
+            if file_path:
+                detail["file"] = file_path
+            line = evidence.get("line")
+            if isinstance(line, int) and not isinstance(line, bool):
+                detail["line"] = line
+            if detail:
+                item["evidence"] = detail
+            nodes.append(item)
+        failure = {
+            "axis": _one_line(raw_failure.get("axis")) or "time",
+            "window": window,
+            "clockNote": _short(raw_failure.get("clock_note"), QUOTE_LIMIT),
+            "nodes": nodes,
+        }
+
+    upstream = None
+    upstream_total = 0
+    raw_upstream = doc.get("upstream_timeline")
+    if raw_upstream is not None:
+        upstream = []
+        upstream_entries = _as_list(raw_upstream)
+        upstream_total = len(upstream_entries)
+        for entry in upstream_entries[:UPSTREAM_LIMIT]:
+            if not isinstance(entry, dict):
+                continue
+            item = {
+                "id": _one_line(entry.get("id")),
+                "at": _stamp(entry.get("at")),
+                "what": _short(entry.get("what"), TEXT_LIMIT),
+                "source": _one_line(entry.get("source")),
+                "ref": _short(entry.get("ref"), 120),
+            }
+            evidence = _as_dict(entry.get("evidence"))
+            files = [_one_line(x) for x in _as_list(evidence.get("files")) if _one_line(x)][:10]
+            if files:
+                item["evidence"] = {"files": files}
+            upstream.append(item)
+
+    revisions = []
+    revision_entries = _as_list(doc.get("revisions"))
+    revision_total = len(revision_entries)
+    # revisions 是 append-only 且不设上限：截断只留最近 REVISION_LIMIT 条（尾部），
+    # 取头部会把最新一次修订丢掉；总数另给 revisionsTotal，面板据此显示「N 次修订」。
+    for revision in revision_entries[-REVISION_LIMIT:]:
+        if not isinstance(revision, dict):
+            continue
+        changes = []
+        for change in _as_list(revision.get("changes")):
+            if not isinstance(change, dict):
+                continue
+            changes.append({
+                "target": _one_line(change.get("target")),
+                "before": _change_value(change.get("before")),
+                "after": _change_value(change.get("after")),
+            })
+        revisions.append({
+            "at": _stamp(revision.get("at")) or "",
+            "by": _one_line(revision.get("by")),
+            "kind": _one_line(revision.get("kind")),
+            "changes": changes,
+            "reason": _short(revision.get("reason"), TEXT_LIMIT),
+        })
+
+    return {
+        "incidentEnv": _short(doc.get("incident_env"), TEXT_LIMIT),
+        "incident": incident,
+        "incidentTotal": incident_total,
+        "failureProcess": failure,
+        "upstream": upstream,
+        "upstreamTotal": upstream_total,
+        "revisions": revisions,
+        "revisionsTotal": revision_total,
+    }
+
+
 def _timeline(doc: dict) -> dict:
-    """单条 trace 的步骤时间线：只摘录已有事件，不重排、不推断。"""
+    """单条 trace 的步骤时间线与三段时间线 + 修订记录：只摘录已有内容，不重排、不推断。"""
     entries = []
     for entry in _as_list(doc.get("trace")):
         if not isinstance(entry, dict):
@@ -112,12 +281,14 @@ def _timeline(doc: dict) -> dict:
         if entry.get("report_file"):
             item["reportFile"] = str(entry.get("report_file"))
         entries.append(item)
-    return {
+    payload = {
         "sessionId": str(doc.get("session_id") or ""),
         "summary": _short(doc.get("summary"), SUMMARY_LIMIT),
         "updatedAt": _short(doc.get("updated_at"), 40),
         "timeline": entries,
     }
+    payload.update(_timeline_layers(doc))
+    return payload
 
 
 def _as_dict(value) -> dict:
@@ -128,7 +299,71 @@ def _as_list(value) -> list:
     return value if isinstance(value, list) else []
 
 
-def _extra(doc: dict, traces: Path) -> dict:
+def _sample_lookup(root: Path):
+    """按 trace 文件名 / 会话号 / 命中 case 号找候选样本；读不到就返回空表。"""
+    try:
+        sys.path.insert(0, str(root / "scripts"))
+        from evolve.intake import completeness
+        from evolve.samples import SampleStore
+        base = Path(root) / ".s2-replay" / "evolve"
+        store = SampleStore(base=base)
+        samples = store.read_all()
+    except Exception:
+        return None
+    index = {}
+    for sample in samples:
+        prov = _as_dict(sample.provenance)
+        keys = {str(sample.id)}
+        ref = str(prov.get("trace_ref") or "")
+        if ref:
+            keys.add(Path(ref).name)
+        src = str(sample.source or "")
+        if src.startswith("traces/"):
+            keys.add(Path(src).name)
+        if str(sample.id).startswith("S-"):
+            keys.add(str(sample.id)[2:])
+        match = re.search(r"(\d{3,6})$", str(sample.id))
+        if match:
+            keys.add("case:" + match.group(1))
+        for key in keys:
+            index.setdefault(key, sample)
+    return {"store": store, "index": index, "root": Path(root),
+            "completeness": completeness}
+
+
+def _sample_state(doc: dict, lookup) -> dict:
+    if not lookup:
+        return {}
+    candidates = []
+    file_name = Path(str(doc.get("_file") or "")).name
+    if file_name:
+        candidates.append(file_name)
+    session_id = str(doc.get("session_id") or "")
+    if session_id:
+        candidates.extend([session_id, "S-" + session_id])
+    case_id = str(doc.get("active_case") or doc.get("activeCase") or "")
+    match = re.search(r"(\d{3,6})$", case_id)
+    if match:
+        candidates.append("case:" + match.group(1))
+    for key in candidates:
+        sample = lookup["index"].get(key)
+        if sample is None:
+            continue
+        try:
+            result = lookup["completeness"](
+                sample, store=lookup["store"], root=lookup["root"])
+        except Exception:
+            return {}
+        return {
+            "id": sample.id,
+            "state": result.get("state"),
+            "reasons": result.get("reasons") or [],
+            "duplicates": result.get("duplicates") or [],
+        }
+    return {}
+
+
+def _extra(doc: dict, traces: Path, sample_lookup=None) -> dict:
     """一条轨迹里状态条与总览要展示、但状态投影不负责的现成事实。
 
     全部是 trace 里已经写着的内容，这里只做计数与截断，不新增判断。
@@ -202,8 +437,10 @@ def _extra(doc: dict, traces: Path) -> dict:
         candidates.append({
             "kind": str(candidate.get("kind") or ""),
             "summary": _short(candidate.get("summary") or candidate.get("title") or candidate.get("id"), TEXT_LIMIT),
+            "status": str(candidate.get("status") or ""),
+            "refId": str(candidate.get("ref_id") or ""),
         })
-    return {
+    result = {
         "currentStep": _safe_int(doc.get("current_step")),
         "maxSteps": MAX_STEPS,
         "eventCount": len([e for e in trace if isinstance(e, dict)]),
@@ -231,7 +468,11 @@ def _extra(doc: dict, traces: Path) -> dict:
         "sedimentCandidates": len([c for c in _as_list(doc.get("sediment_candidates")) if isinstance(c, dict)]),
         "sedimentCandidateList": candidates,
         "missingMaterials": _material_items(evidence_missing_full, _one_line(doc.get("summary"))),
+        "sample": _sample_state(doc, sample_lookup),
     }
+    # 三段时间线 + 修订明细不随薄行下发（80 单最坏会放大到数 MB）：总览详情选中行时再调
+    # copilot-timeline 取 layers，步骤仍按「加载步骤」懒加载。
+    return result
 
 
 def _is_interesting(row: dict) -> bool:
@@ -271,7 +512,7 @@ def main(argv=None) -> int:
     parser.add_argument("--write-reason-code", default="",
                         help="不可写时的原因码（E_PERM 只读档位；E_POLICY 档位解析不出）")
     parser.add_argument("--write-reason", default="", help="不可写时给界面看的说明")
-    parser.add_argument("--timeline", default="", help="只读单条轨迹的步骤时间线（传文件名，供总览懒加载）")
+    parser.add_argument("--timeline", default="", help="只读单条轨迹的步骤时间线与三段时间线 + 修订记录（传文件名，供总览详情按需取）")
     args = parser.parse_args(argv)
 
     root = Path(args.root)
@@ -281,6 +522,7 @@ def main(argv=None) -> int:
     sys.path.insert(0, str(root / "scripts"))
     try:
         from exec_log_path import resolve_traces  # noqa: E402
+        from _yaml import load_text  # noqa: E402
         import _trace_state as trace_state  # noqa: E402
     except Exception as exc:  # 依赖缺失或脚本损坏：把原因原样交给界面
         return _fail("E_IMPORT", "读不到状态脚本（scripts/_trace_state.py）：" + str(exc))
@@ -308,17 +550,17 @@ def main(argv=None) -> int:
         trace_file = traces / name
         if not trace_file.is_file():
             return _fail("E_NOT_FOUND", "轨迹文件不存在：" + name)
+        # 只读这一单：详情按需取，不能为了一个文件把 traces/ 全解析一遍。
         try:
-            rows = trace_state.load_traces(traces)
-        except Exception as exc:
+            raw = trace_file.read_bytes()
+        except OSError as exc:
             return _fail("E_LOAD", "读轨迹失败：" + str(exc))
-        doc = None
-        for row in rows:
-            if row.get("file") == name:
-                parsed = _as_dict(row.get("doc"))
-                if parsed:
-                    doc = parsed
-                break
+        try:
+            doc = _as_dict(load_text(raw.decode("utf-8")))
+        except UnicodeDecodeError as exc:
+            return _fail("E_LOAD", "读轨迹失败：" + str(exc))
+        except Exception as exc:
+            return _fail("E_PARSE", "轨迹文件解析失败：" + str(exc))
         if not doc:
             return _fail("E_PARSE", "轨迹文件没有可读的事件：" + name)
         return _ok(_timeline(doc))
@@ -347,9 +589,12 @@ def main(argv=None) -> int:
     for row in rows:
         by_id[row.get("sessionId") or row.get("file")] = row
     extras = {}
+    sample_lookup = _sample_lookup(root)
     for session_id, row in by_id.items():
         try:
-            extras[session_id] = _extra(_as_dict(row.get("doc")), traces)
+            doc = _as_dict(row.get("doc"))
+            doc["_file"] = row.get("file") or ""
+            extras[session_id] = _extra(doc, traces, sample_lookup)
         except Exception:
             # 单条轨迹的派生字段失败只降级这一行：整块状态不因一条坏数据空掉。
             extras[session_id] = {}
@@ -428,6 +673,7 @@ def main(argv=None) -> int:
             "transitions": session.get("transitions"),
             "reports": session.get("reports"),
             "reviews": session.get("reviews"),
+            "sample": session.get("sample") or extra.get("sample") or {},
             "extra": {
                 "currentStep": extra.get("currentStep"),
                 "maxSteps": extra.get("maxSteps"),

@@ -84,7 +84,7 @@ detached HEAD 不自动合并——合并会改当前检出的 HEAD，而 worktr
   config   file | default
   enabled  true / false（settings 的 sync.enabled；--show 也照实给）
           只拦自动路径：--check 与带 --force 的手动路径不看它，结果里仍照实上报
-  offline  true / false（deployment.yaml 声明 sync.mode: offline）
+  offline  true / false（sleuth.config.yaml 声明 sync.mode: offline）
   identity_remote     归属仓远端名（默认 origin）
   identity_url        归属仓解析到的 URL；取不到为空串
   identity_explicit   settings 里是否显式写了 identity.remote
@@ -404,42 +404,34 @@ def _cooling_down(state: dict) -> bool:
 # ---------------------------------------------------------------- 部署声明
 
 def deployment_sync_mode(root: Path) -> str:
-    """`deployment.yaml` 的 `sync.mode` → `auto` / `offline`；读不出按 auto。
-
-    没有 PyYAML 时退回按缩进读 `sync:` 段——离线声明必须在最小环境里也生效，
-    否则会朝一个明确声明不可达的远端发 fetch。
-    """
-    path = Path(root) / "deployment.yaml"
+    """只读 `sleuth.config.yaml` 的 `sync.mode`；其它段写坏不影响离线声明。"""
+    path = Path(root) / "sleuth.config.yaml"
     if not path.is_file():
         return "auto"
     try:
-        from _yaml import load_text
-        doc = load_text(path.read_text(encoding="utf-8")) or {}
-        sync = doc.get("sync") if isinstance(doc, dict) else None
-        mode = str((sync or {}).get("mode") or "").strip().lower() if isinstance(sync, dict) else ""
-        return "offline" if mode == "offline" else "auto"
-    except Exception:
-        pass
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
+        text = path.read_text(encoding="utf-8")
     except OSError:
         return "auto"
-    in_sync = False
-    for line in lines:
-        if re.match(r"^sync:\s*(#.*)?$", line):
-            in_sync = True
-            continue
-        if not in_sync:
-            continue
-        if line and not line.startswith((" ", "\t")):
-            break
-        match = re.match(r"\s+mode:\s*[\"']?([A-Za-z-]+)", line)
-        if match:
-            return "offline" if match.group(1).lower() == "offline" else "auto"
-    return "auto"
-
-
-# ---------------------------------------------------------------- git 读操作
+    try:
+        import yaml
+        doc = yaml.safe_load(text) or {}
+        sync = doc.get("sync") if isinstance(doc, dict) else None
+        mode = sync.get("mode") if isinstance(sync, dict) else None
+        return "offline" if str(mode or "").strip().lower() == "offline" else "auto"
+    except Exception:
+        # 最小环境或 YAML 语法坏时只按缩进找 sync.mode，保证 offline 不被吞。
+        in_sync = False
+        for line in text.splitlines():
+            if re.match(r"^sync:\s*(?:#.*)?$", line):
+                in_sync = True
+                continue
+            if in_sync and line.strip() and not line.startswith((" ", "\t", "#")):
+                break
+            if in_sync:
+                match = re.match(r"^\s+mode:\s*[\"']?([^\"'#\s]+)", line)
+                if match:
+                    return "offline" if match.group(1).lower() == "offline" else "auto"
+        return "auto"
 
 def run_git(args, cwd: Path, timeout: float):
     """跑一条 git 命令。stdout/stderr 一律按 UTF-8 解码。"""
@@ -745,7 +737,7 @@ def local_snapshot(root: Path, remote: str, branch: str, *, timeout: float = DEF
 
     `identity` 是 settings 的归属仓（`{"remote", "explicit"}`，缺省按 origin 且未显式）；
     `same_repo` 拿它的 URL 与 `remote` 的 URL 比。`enabled` 由调用方从 settings 的 sync 段
-    带进来，`offline` 就地读 deployment.yaml；两者只读本地文件，`--show` 因此能给出真实
+    带进来，`offline` 就地读 sleuth.config.yaml；两者只读本地文件，`--show` 因此能给出真实
     状态而不联网。关闭或离线时 `ok: false` 并写对应 reason，但仍照常算落后数与改动面
     （面板要显示"落后多少、为什么没同步"）。`ignore_disabled=True` 时不因关闭写 reason
     （`--check` 与带 `--force` 的手动路径用），`enabled` 字段仍照实上报。
@@ -1113,7 +1105,7 @@ def render_show(result: dict) -> str:
         source += f"；{result['config_error']}"
     lines = [f"知识库同步（{source}）"]
     if result.get("offline"):
-        lines.append("  同步状态  离线（deployment.yaml 声明 sync.mode: offline）")
+        lines.append("  同步状态  离线（sleuth.config.yaml 声明 sync.mode: offline）")
     elif not result.get("enabled", True):
         lines.append("  同步状态  已关闭（sync.enabled = false）")
     else:
@@ -1155,7 +1147,7 @@ def render_show(result: dict) -> str:
 
 def render_sync(result: dict) -> str:
     if result.get("offline"):
-        return "deployment.yaml 声明 sync.mode: offline，未联网。"
+        return "sleuth.config.yaml 声明 sync.mode: offline，未联网。"
     if result.get("reason") == "disabled":
         return "sync.enabled 为 false，未联网。"
     if result.get("skipped"):

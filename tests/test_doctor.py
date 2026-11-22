@@ -101,8 +101,8 @@ class KbSyncCheckTest(unittest.TestCase):
         self.assertIn("2026-11-04T10:00:00+08:00", row["detail"])
 
     def test_off_when_deployment_declares_offline(self):
-        (self.repo / "deployment.yaml").write_text(
-            'evolution:\n  mode: "full"\nsync:\n  mode: "offline"\n', encoding="utf-8")
+        (self.repo / "sleuth.config.yaml").write_text(
+            'schema: sleuth-config-v1\nsync:\n  mode: "offline"\n', encoding="utf-8")
         row = self.check()
         self.assertEqual(row["state"], doctor.OK)
         self.assertIn("offline", row["detail"])

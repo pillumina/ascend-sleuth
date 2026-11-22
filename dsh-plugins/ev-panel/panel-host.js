@@ -599,6 +599,21 @@ return {
         () => loadBoard(sessionId))
     })
 
+    const sampleActionDisposer = harness.handle('ev-sample-action', async (args) => {
+      const sessionId = args && args.sessionId ? String(args.sessionId) : null
+      const id = args && args.id ? String(args.id) : ''
+      if (!/^[A-Za-z0-9._:-]+$/.test(id)) return { ok: false, error: '样本 id 不合法' }
+      const action = args && args.action ? String(args.action) : ''
+      const commands = {
+        approve: `sample review --id ${id} --approve --json`,
+        reject: `sample review --id ${id} --reject --json`,
+        promote: `sample promote --id ${id} --to core --json` +
+          (args && args.export === true ? ' --export' : ''),
+      }
+      if (!commands[action]) return { ok: false, error: '未知的样本动作' }
+      return runScript(sessionId, 'scripts/evolve.py', commands[action])
+    })
+
     const healthDisposer = harness.handle('ev-health-load', async (args) => {
       const sessionId = args && args.sessionId ? String(args.sessionId) : null
       return cached('health|' + (await resolveCwd(sessionId) || '?'), !!(args && args.refresh === true),
@@ -781,6 +796,7 @@ return {
 
     return () => {
       if (handleDisposer) handleDisposer()
+      if (sampleActionDisposer) sampleActionDisposer()
       if (healthDisposer) healthDisposer()
       if (detailDisposer) detailDisposer()
       if (kbShowDisposer) kbShowDisposer()

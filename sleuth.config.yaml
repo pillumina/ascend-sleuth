@@ -1,0 +1,174 @@
+# ============================================================================
+# ascend-sleuth 唯一部署配置
+#
+# 只改这一份文件；没有旧格式读取分支。
+# 字段说明见 docs/mechanism/evolution-config.md；流水线预设见
+# config/rsi/pipelines.yaml。
+# ============================================================================
+
+# 配置 schema 版本；当前只支持 sleuth-config-v1。
+schema: sleuth-config-v1
+
+# 部署标识（只用于展示/记录来源）。
+deployment:
+  # 部署名，用于指标/信号记录来源；留空则用主检出目录名。
+  name: ""
+
+evolution:
+  # 部署角色：
+  #   maintainer  = 有真实样本、runner、judge，可跑 RSI 实验
+  #   signal-only = 只记录信号，不产 EV 卡、不跑实验
+  #   off         = 关闭演进记录（仍可使用诊断技能）
+  role: maintainer
+
+  store:
+    # RSI 事件后端：
+    #   local  = JSONL 文件（默认，路径见下一行）
+    #   memory = 仅进程内，适合测试/演练，不落盘
+    backend: local
+    # local 后端的文件路径；相对仓库根目录。
+    path: .s2-replay/evolve/rsi-events.jsonl
+
+  # 实验流水线预设：本文件不内嵌 stage id；默认预设与消融预设放在
+  # config/rsi/pipelines.yaml，可追加自定义文件并在这里声明。
+  pipeline: default
+  pipeline_config:
+    - config/rsi/pipelines.yaml
+
+  # 评估/审批策略；下面每个键都有允许值与默认值。
+  policy:
+    autonomy:
+      # 审批档位（RFC #506 的模式名）：
+      #   observe         只观察、出报告
+      #   propose         提出改动，逐项人审
+      #   batch_review    批量实验，按批人审（默认）
+      #   supervised_auto 低风险自动合并，周审计
+      #   policy_auto     在预设边界内调整
+      #   full_auto       全自动（本期不做）
+      default: batch_review
+      # 按 target_component 精确匹配覆盖默认档；未命中沿用 default。
+      overrides:
+        # 非规范文档（说明、指南）允许低风险自动合并。
+        docs.non_normative: supervised_auto
+        # 规范文档、机制文档必须逐项人审。
+        docs.normative: propose
+        # 反馈集候选未进池时可按 supervised_auto 自动处理。
+        feedback.candidate: supervised_auto
+        # 反馈集进评估池必须按批人审。
+        feedback.pool: batch_review
+
+      auto_merge:
+        # 只有 true 才允许 supervised_auto自动合并；
+        # false 时 supervised_auto 降为 batch_review。
+        enabled: false
+
+    # 目标与硬约束；先定目标，再谈分数。
+    objective:
+      # 主指标：
+      #   case_hit   = 是否命中知识库 case
+      #   root_cause = 根因是否与标准答案一致
+      #   rubric     = 按 rubric 维度评分
+      primary_metric: case_hit
+      # 任一硬约束不通过即拒绝；名称可扩展，内置含义见配置文档。
+      hard_constraints:
+        # 安全建议：高危 root cause 不得给补丁式 fix。
+        - safety
+        # 修复建议：修复方向必须正确。
+        - fix
+        # 回归：已通过的 core 样本不得回退。
+        - regression
+        # 测试：保留测试集不得被改动泄漏。
+        - test
+
+    decision:
+      # 判定方法：
+      #   paired_binary = 同一批样本上的二元配对（默认）
+      method: paired_binary
+      # 显著性阈值，越小越严格；默认 0.10。
+      alpha: 0.10
+
+    # 样本数与切分规则。
+    samples:
+      # core 回归样本目标数；回归阶段至少覆盖这个数量。
+      core_regression: 30
+      # field（主评估）最小样本数；小于这个数只能 insufficient。
+      field_evaluation: 9
+      # 保留测试集目标数。
+      test: 4
+      # 测试集切分：
+      #   hash  = 按内容稳定切分（默认）
+      #   group = 按组切分，避免同源泄漏
+      split: hash
+      # 可选：按 stratum 名覆盖目标数，例如 {"inference": 4}；
+      # 空对象表示不覆盖，使用上面的总目标。
+      strata: {}
+
+    # 成本口径与预算；只选一个主成本维度。
+    cost:
+      # 主成本维度：
+      #   tokens        = 词元数（默认）
+      #   tool_calls    = 工具调用次数
+      #   rounds        = 轮次
+      #   elapsed_time  = 墙钟耗时
+      primary_cost_metric: tokens
+      # 计费口径；影响成本比的分母：
+      #   billed / uncached / out / uncached_out / cache_read /
+      #   calls / rounds / ms / time
+      budget_metric: billed
+      # 允许的最大成本上涨比例；0.10 = 最多贵 10%。
+      maximum_cost_increase_ratio: 0.10
+      # 成本路径要求的最小下降比例；0.10 = 至少便宜 10%。
+      minimum_cost_improvement: 0.10
+      # 主指标允许的非劣容差；0 = 不允许质量下降。
+      max_quality_drop: 0
+      runs:
+        # 一次 pilot 的配对样本上限。
+        max_pairs: 9
+        # 单次实验 token 上限；null 表示不设上限。
+        max_tokens: null
+        # true 时在无望或预算用完时提前停止。
+        early_stop: true
+        # true 时复用已跑过的 baseline trace，避免重复成本。
+        baseline_reuse: true
+        # 回归阶段最小配对数。
+        regression_pairs: 6
+        # 回归阶段跑满时的配对数。
+        regression_full_pairs: 30
+        # benchmark 重复次数。
+        benchmark_runs: 3
+
+    # 实验编排与可复现参数。
+    experiment:
+      # 实验对象类型；当前主要是 skill，可选 knowledge/tooling/harness。
+      target: skill
+      # 候选生成算法；baseline 表示对照/基线。
+      algorithm: baseline
+      # stages 由 evolution.pipeline 的预设提供；这里不再覆盖。
+      # 实验预算覆盖；{} 表示使用上面的 samples/cost 默认。
+      budget: {}
+      # 随机种子；用于可复现实验。
+      seed: 0
+
+    # rubric 版本与通过阈值。
+    rubrics:
+      # case rubric 版本号；改动评分规则时必须升级。
+      case_version: case-v1
+      # reference rubric 版本号；改动评分规则时必须升级。
+      reference_version: ref-v1
+      # rubric 维度通过阈值；0.70 = 总分至少 70%。
+      threshold: 0.70
+      # 双标样本数量；用于 judge 校准。
+      double_label: 10
+
+  profiles:
+    # 具名 profile：只覆盖与默认策略不同的字段。
+    latency:
+      cost:
+        # 延迟优先 profile 只改主成本；其余策略沿用默认。
+        primary_cost_metric: elapsed_time
+
+sync:
+  # 知识库同步：
+  #   auto    = 允许联网 fetch（默认）
+  #   offline = 只读本地，不联网
+  mode: auto

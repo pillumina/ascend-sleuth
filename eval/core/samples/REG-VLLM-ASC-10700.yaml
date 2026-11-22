@@ -1,0 +1,43 @@
+id: REG-VLLM-ASC-10700
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: https://github.com/vllm-project/vllm-ascend/issues/10700
+input:
+  phenomenon: 'GLM5.1（双节点 A2 16 卡）启用 MTP 投机解码（`--speculative-config ''{"num_speculative_tokens":3,"method":"mtp"}''`）且**未设
+    enforce_eager** 时，推理十余次请求后 vLLM 进程崩溃（非启动即失败）；框架侧：`NPU function error: call failed,
+    error code is 507011` / `aclrtLaunchKernelWithHostArgs failed: 507011` / `Kernel
+    launch from cache failed`（走的是算子缓存/图路径）；device 侧：fftsplus aivector error，`errorStr:
+    The DDR address of the MTE instruction is out of range`，`fixp_error0 info: 0x600005f`，`subErrType:4`；**同配置把
+    enforce_eager 置 true（放在 --speculative-config 里）后稳定运行**——只是推理变慢，崩溃消失'
+  environment: A2-910B
+  evidence:
+    case: VLLM-ASC-10700
+    references:
+    - https://github.com/vllm-project/vllm-ascend/issues/10700
+expected:
+  resolution: '未闭环。方向：MTP 投机解码在**图模式**（未设 enforce_eager → ACLGraph 捕获/回放）下，运行若干次请求后
+    device 侧出现 MTE 访存越界（DDR address out of range, fixp_error0=0x600005f, subErrType:4），kernel
+    从缓存启动失败（507011）。加 enforce_eager=true 走 eager 执行即不复现，说明触发面在图捕获/回放路径而非算子本身。
+
+
+    止损：在 --speculative-config 里加 "enforce_eager": true（现场已验证稳定，代价是推理变慢）。定位：在正式版上复测并确认版本差异；仍复现则收集崩溃前最后一次图回放的输入规模与
+    plog，交维护者（上游 issue 仍 OPEN）。'
+  case: VLLM-ASC-10700
+  confidence: maintainer-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: postmortem
+  report_ref: knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10700.yaml
+  captured_at: '2026-11-19T14:13:03+00:00'
+  kb_rev: unknown
+  sanitized: true
+  redactions: []
+  confidence: maintainer-reviewed
+  extraction: auto
+created_at: '2026-11-19T14:13:03+00:00'
+updated_at: '2026-11-19T14:13:03+00:00'
+history: []
+notes: core regression derived from knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-10700.yaml

@@ -214,26 +214,40 @@ content:
 - `last_verified` 填今天——grill 阶段用户认可即视为一次人工确认，但**这不替代 maintainer 审核**；
 - **产出前检查：词条文件里不得有任何 `#` 注释行**（上模板中的注释全部删掉）——`grep -c "#" <file>` 应为 0。
 
-### 6. 报告落点（生成后必须明确告知）
+### 6. 回写来源 trace（从诊断候选产出时）
+
+如果这次输入是某条诊断的 `sediment_candidates`（面板指令里带 `来源：traces/<session>.yaml`），产出词条后把那条候选标成 `produced` 并写 `ref_id`：
+
+`python3 scripts/trace_transition.py <来源 session> --field candidate --candidate-summary "<候选摘要>" --ref-id <ref-id> --by agent --source agent`
+
+`<来源 session>` 是 `traces/<session>.yaml` 去掉目录与 `.yaml` 后缀；脚本自己把 `traces/` 解析到主检出，在 worktree 里跑也写同一份。
+
+- 摘要先按逐字匹配；对不上时按唯一包含匹配定位，仍不唯一就用 `--candidate-index`，再不行停下来问，不猜是哪条；
+- 只标 `kind: reference` 的候选；case 候选的沉淀状态由 to-postmortem / groom 回写，这里不动；
+- 来源 trace 不在本机、候选已被标过、或这轮输入根本不是诊断候选：如实说明「未回写」与原因，不要为了回写去改别的单；
+- 这单的先验候选都标成 produced 后，面板显示「已产出先验词条 N 条」，不再挂在「待复核」；`sediment_batch.py` 也不再把它列进「可沉淀」。
+
+### 7. 报告落点（生成后必须明确告知）
 
 ```
 词条 → references/<type-dir>/<ref-id>.yaml（status: active）
 来源类型：<engineer-input | official-doc | case-derived>
 状态：active（PR review 即审核闸门——本词条随 PR 提交，合入即进入诊断上下文；case-derived + methodology 已按 ≥3 条 case 引用满足深审门槛）
 审核建议：<按来源类型的审核深度提示>
+来源 trace：<session>（候选已标 produced）/ 未回写（原因）
 ```
 
 别让用户去找自己的产出——报出具体路径，说明"随 PR 提交，review 合入即生效"。
 
-### 7. 收尾 evolve-check（伴随演进评估，默认执行）
+### 8. 收尾 evolve-check（伴随演进评估，默认执行）
 
 **先落执行记录**（evolve-check 读它作现场）：
 `python3 scripts/log_skill_exec.py --skill to-reference --products "<ref-id>(active),..." --reason "<一句话：归纳 N case / 新增家族>" --source <来源> --tokens <估算>`
 
 词条产出、出最终报告前，执行一次伴随演进评估（`read skills/evolve-check/SKILL.md`
-遵循）：本轮发现可跨词条归纳的共性（T1）、新错误码家族首次入表需扩覆盖（T5）、
-或提取/归类环节有流程摩擦（T3/T4）时，**agent 自动产 idea 卡并自行验证执行**
-（ev_proposal 产卡 → 验证 → 进攒批）；无信号则报告加一行"evolve-check：无演进
+遵循）：本轮发现可跨词条归纳的共性、新错误码家族首次入表需扩覆盖、
+或提取/归类环节有流程摩擦时，**只记录信号**，交给后续显式
+`/skill:self-evolve` 分诊；收尾不产 EV 卡、不跑 RSI。无信号则报告加一行"evolve-check：无演进
 信号"。这是流程默认收尾，**不需要用户另说"改进系统"**——演进由数据触发，像人
 学习。产出与流程报告一并给出。
 

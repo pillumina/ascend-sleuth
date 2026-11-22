@@ -297,8 +297,10 @@ section('[知识库 · 客户端] 默认态（落后 12）')
   check(text.indexOf('远端版本') >= 0 && text.indexOf('v9f8e7d') >= 0, '远端版本读数')
   check(text.indexOf('落后') >= 0 && text.indexOf('12') >= 0 && text.indexOf('个提交') >= 0, '落后提交数与单位')
   check(text.indexOf('上次核对') >= 0 && /3 分钟前/.test(text), '上次核对按相对时间给', text.slice(0, 240))
-  check(text.indexOf('本次合并会把') >= 0 && text.indexOf('knowledge/') >= 0 && text.indexOf('skills/') >= 0,
-    '落后时提示合并范围与生效时点')
+  check(text.indexOf('本次合并会带进：') >= 0 && text.indexOf('knowledge/ 3') >= 0
+    && text.indexOf('references/ 1') >= 0 && text.indexOf('dsh-plugins/ 2') >= 0,
+    '落后时按改动面列本次带进的目录与条数', text.slice(0, 320))
+  check(text.indexOf('skills/') < 0, '改动面没有 skills 时不列 skills/', text.slice(0, 320))
   check(text.indexOf('面板代码也会更新：重启 DSH 后生效') >= 0,
     '落后时若带面板代码，提示要重启 DSH', text.slice(0, 320))
   check(text.indexOf('同步源') >= 0, '同步源卡片在')

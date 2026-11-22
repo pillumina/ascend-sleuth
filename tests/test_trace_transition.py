@@ -12,6 +12,7 @@ import base64
 import hashlib
 import io
 import json
+import shutil
 import sys
 import contextlib
 import tempfile
@@ -48,12 +49,13 @@ def args(**kw):
                     handed_to=None, duplicate_of=None, note=None, summary=None, severity=None,
                     fix_emitted=None, stop_reason=None, by="user", source="panel",
                     expect_sha256=None, field=None, state=None, case_id=None, inbox_path=None,
+                    candidate_index=None, candidate_summary=None, ref_id=None,
                     dry_run=False, scheme_version=None)
     defaults.update(kw)
     return argparse.Namespace(**defaults)
 
 
-class WriterTest(unittest.TestCase):
+class _TraceCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = Path(self.tmp.name)
@@ -74,6 +76,7 @@ class WriterTest(unittest.TestCase):
     def load(self, sid="s1"):
         return yaml.safe_load((self.traces / (sid + ".yaml")).read_text(encoding="utf-8"))
 
+class WriterTest(_TraceCase):
     def test_close_escalated_writes_ending_event_and_stop_reason(self):
         self.make()
         tt.apply_transition(ROOT, self.traces, "s1", args(to="escalated", handed_to="张工"))
@@ -114,6 +117,25 @@ class WriterTest(unittest.TestCase):
         tt.apply_transition(ROOT, self.traces, "s1", args(to="resolved"))
         # 第二次 resolved 时原状态是 in_progress（重开过），按规则应更新
         self.assertTrue(self.load()["resolved_at"])
+
+    def test_summary_change_on_transition_gets_revision(self):
+        # 状态转移顺带改结论也要留修订：否则面板上「结论改过没」不可见。
+        self.make()
+        tt.apply_transition(ROOT, self.traces, "s1", args(to="resolved", summary="新结论：HCCL 超时"))
+        doc = self.load()
+        self.assertEqual(len(doc["revisions"]), 1)
+        rev = doc["revisions"][0]
+        self.assertEqual(rev["kind"], "fact_corrected")
+        self.assertEqual(rev["changes"][0]["target"], "summary")
+        self.assertEqual(rev["changes"][0]["before"], "训练挂起")
+        self.assertEqual(rev["changes"][0]["after"], "新结论：HCCL 超时")
+        self.assertIn("summary", rev["hashes"])
+
+    def test_same_summary_on_transition_adds_no_revision(self):
+        self.make()
+        tt.apply_transition(ROOT, self.traces, "s1", args(to="resolved", summary="训练挂起"))
+        doc = self.load()
+        self.assertNotIn("revisions", doc)
 
     def test_reopen_keeps_prev_ending_and_drops_top_level(self):
         self.make()
@@ -291,6 +313,31 @@ class WriterTest(unittest.TestCase):
         self.assertNotIn("feedback", doc)
         self.assertEqual(doc["reports"][-1]["source"], "vendor")
 
+    def test_unquoted_report_and_review_at_written_back(self):
+        # 手写 trace 里 at 没加引号 → PyYAML 解析成 datetime：json.dumps 会抛 TypeError，
+        # 写回后的字符串也会和旧 datetime 判不相等。写入口要能把旧记录原样写回去，
+        # 连续回报（reports 增长）也不能被自己的写入后校验回滚。
+        self.make(status="resolved", extra=(
+            'reports:\n'
+            '  - {at: 2026-10-30T09:00:00+08:00, by: user, source: field, result: resolved, note: "旧回报"}\n'
+            'reviews:\n'
+            '  - {at: 2026-10-30T09:10:00+08:00, by: user, verdict: report_revision, note: "旧复核"}\n'))
+        tt.apply_transition(ROOT, self.traces, "s1",
+                            args(field="report", report_source="field", report_result="from_report"))
+        tt.apply_transition(ROOT, self.traces, "s1",
+                            args(field="report", report_source="field", report_result="from_report",
+                                 report_note="第二次回报"))
+        doc = self.load()
+        self.assertEqual(len(doc["reports"]), 3)
+        self.assertEqual(doc["reports"][0]["at"], "2026-10-30T09:00:00+08:00")
+        self.assertEqual(doc["reports"][0]["note"], "旧回报")
+        tt.apply_transition(ROOT, self.traces, "s1",
+                            args(field="review", verdict="report_revision", review_note="补一句"))
+        doc = self.load()
+        self.assertEqual(len(doc["reviews"]), 2)
+        self.assertEqual(doc["reviews"][0]["at"], "2026-10-30T09:10:00+08:00")
+        self.assertEqual(doc["reviews"][0]["note"], "旧复核")
+
     def test_report_enum_rejected(self):
         self.make(status="resolved")
         with self.assertRaises(tt.Fail) as ctx:
@@ -411,6 +458,108 @@ class WriterTest(unittest.TestCase):
         self.assertEqual(doc["sedimented"]["state"], "none")
         self.assertEqual(doc["sedimented"]["case_id"], "")
         self.assertEqual(doc["sedimented"]["inbox_path"], "")
+
+
+CANDS = (
+    "sediment_candidates:\n"
+    "  - kind: reference\n"
+    "    summary: \"先验候选甲\"\n"
+    "    evidence: \"日志与栈尾\"\n"
+    "    suggested_skill: to-reference\n"
+    "    status: proposed\n"
+    "  - kind: case\n"
+    "    summary: \"案例候选乙\"\n"
+    "    status: proposed\n"
+)
+
+
+class CandidateWriteTest(_TraceCase):
+    """`--field candidate`：只把一条 reference 候选改成 produced，别的轴不动。"""
+
+    def setUp(self):
+        super().setUp()
+        self.root = self.dir
+        shutil.copy2(ROOT / "trace-status.yaml", self.root / "trace-status.yaml")
+        refdir = self.root / "references" / "tools"
+        refdir.mkdir(parents=True)
+        (refdir / "test-ref.yaml").write_text(
+            "id: test-ref\ntype: tool\ntitle: T\nsummary: T\nsources: [{type: engineer-input}]\n"
+            "last_verified: 2026-01-01\nstatus: active\n", encoding="utf-8")
+
+    def apply(self, a):
+        return tt.apply_transition(self.root, self.traces, "s1", a)
+
+    def test_marks_one_reference_produced(self):
+        self.make(extra=CANDS)
+        self.apply(
+                            args(field="candidate", candidate_index=0,
+                                 ref_id="test-ref"))
+        doc = self.load()
+        self.assertEqual(doc["sediment_candidates"][0]["status"], "produced")
+        self.assertEqual(doc["sediment_candidates"][0]["ref_id"], "test-ref")
+        self.assertEqual(doc["sediment_candidates"][1]["status"], "proposed")
+        self.assertNotIn("ref_id", doc["sediment_candidates"][1])
+        self.assertEqual(doc["status"], "in_progress")
+        self.assertIn("note_block", doc, "块标量不能被这次写入吃掉")
+
+    def test_summary_selector(self):
+        self.make(extra=CANDS)
+        self.apply(
+                            args(field="candidate", candidate_summary="先验候选甲",
+                                 ref_id="test-ref"))
+        self.assertEqual(self.load()["sediment_candidates"][0]["status"], "produced")
+
+    def test_case_candidate_rejected(self):
+        self.make(extra=CANDS)
+        with self.assertRaises(tt.Fail) as ctx:
+            self.apply(
+                                args(field="candidate", candidate_index=1,
+                                     ref_id="test-ref"))
+        self.assertEqual(ctx.exception.code, "E_SCHEMA")
+
+    def test_bad_ref_id_rejected(self):
+        self.make(extra=CANDS)
+        with self.assertRaises(tt.Fail) as ctx:
+            self.apply(
+                                args(field="candidate", candidate_index=0, ref_id="Bad_ID"))
+        self.assertEqual(ctx.exception.code, "E_SCHEMA")
+
+    def test_unknown_ref_id_rejected(self):
+        self.make(extra=CANDS)
+        with self.assertRaises(tt.Fail) as ctx:
+            self.apply(
+                                args(field="candidate", candidate_index=0,
+                                     ref_id="no-such-ref-id-xyz"))
+        self.assertEqual(ctx.exception.code, "E_SCHEMA")
+
+    def test_already_produced_is_no_change(self):
+        self.make(extra=CANDS)
+        self.apply(
+                            args(field="candidate", candidate_index=0, ref_id="test-ref"))
+        with self.assertRaises(tt.Fail) as ctx:
+            self.apply(
+                                args(field="candidate", candidate_index=0,
+                                     ref_id="test-ref"))
+        self.assertEqual(ctx.exception.code, "E_NO_CHANGE")
+
+    def test_ambiguous_summary_rejected(self):
+        self.make(extra=CANDS.replace('"案例候选乙"', '"先验候选甲"'))
+        with self.assertRaises(tt.Fail) as ctx:
+            self.apply(
+                                args(field="candidate", candidate_summary="先验候选甲",
+                                     ref_id="test-ref"))
+        self.assertEqual(ctx.exception.code, "E_SCHEMA")
+
+    def test_dry_run_does_not_write(self):
+        self.make(extra=CANDS)
+        path = self.traces / "s1.yaml"
+        before = path.read_bytes()
+        result = self.apply(
+                                     args(field="candidate", candidate_index=0,
+                                          ref_id="test-ref", dry_run=True))
+        self.assertTrue(result["dryRun"])
+        self.assertEqual(result["candidate"]["candidateIndex"], 0)
+        self.assertEqual(path.read_bytes(), before)
 
 
 if __name__ == "__main__":

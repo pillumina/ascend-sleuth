@@ -5,7 +5,7 @@
 #   一次 grep 命中即整条；先按 applies_to 收窄，再在命中的行上按组件/工具词挑，每轮 ≤5 条。
 #   整读等于注入全库背景（索引随词条数增长），别整读。
 # applies_to.categories 缺省 = 不限定问题类别（照常加载）；有值则按本轮 category 收窄。
-# 词条数：147
+# 词条数：148
 # 不写生成日期：日期进 git 会让每次重建都改同一行，并发合并时必撞（口径同 build_index.py）。
 entries:
 - {id: a5-950dt-memory-spec, type: platform-fact, title: A5 950DT 片上内存规格（144GB / 4TB/s）, summary: 昇腾950DT 单芯片最高 144GB / 4TB/s 高速片上内存，覆盖大模型全生命周期, applies_to: {platforms: [A5-950DT], categories: [interrupt, performance]}}
@@ -75,6 +75,7 @@ entries:
 - {id: hccl-error-code-emission-by-platform, type: software-fact, title: HCCL EI 错误码在 Ascend950(A5) 与 A2/A3 上的上报路径差异（EI0018、CCU、UB CQE）, summary: 同一份 EI 码表下，A5 与 A2/A3 的差异在「哪条码在哪个位置产生」：EI0018 仅 A5、EI0010 仅 A2/A3、EI0002 在 A5 另有 CCU 与 DPU 来源；含 UB CQE 与 CCU mission 两套非 EI 码表。, applies_to: {platforms: [A5-950], categories: [interrupt]}}
 - {id: hccl-log-key-info-fields, type: software-fact, title: HCCL 关键日志的检索关键字与字段含义（Communicator/LocalRank Key Info、HCCL_ENV、Entry- 算子入参、task exception 三段）, summary: HCCL 日志里的关键字段：哪些字段能定到 rank/链路/算子，以及各字段的取值含义。, applies_to: {platforms: [cross], categories: [interrupt, performance, precision]}}
 - {id: hccn-tool-network-diagnosis, type: tool, title: hccn_tool（网口链路闪断 / device IP / ROCE 与 HCCS 连通性 / TLS 状态与证书）, summary: hccn_tool 网口诊断：链路闪断、device IP、ROCE 与 HCCS 侧查询命令与判据。, applies_to: {platforms: [cross], categories: [interrupt, performance]}}
+- {id: hccn-tool-qos-pfc-tc-dscp, type: tool, title: hccn_tool（PFC / TC / DSCP 队列流控：-pfc -prio_tc -dscp_to_tc -tc_cfg -tc_qos -pfc_stat -tc_stat -cur_tc_buf）, summary: hccn_tool 查改 PFC 优先级位图、优先级与 DSCP 到 TC 的映射、TC 缓冲水线与 TC 调度带宽，并取 PFC 反压时长与 TC 包统计。, applies_to: {platforms: [A2-910B, A3-910C], categories: [interrupt, performance]}}
 - {id: hcomm-a5-code-map, type: software-fact, title: HCOMM 在 Ascend950(A5) 上的代码地图（V2 入口、CCU、UB、引擎选择、目录归属）, summary: A5 集合通信实现分散在三处（hccl_v2 树、base_comm、coll_communicator_mgr）：先按 SoC 名转发 Hccl*V2、再按 DevType 谓词分流；含引擎回退阶梯与目录归属。, applies_to: {platforms: [A5-950], categories: [interrupt, performance]}}
 - {id: hif8-and-mxfp8-low-precision-training, type: software-fact, title: HiF8 / MXFP8 低精度训练（格式特性、Per-Tensor vs Per-Block、Delayed vs Current Scaling、950DT 实测 29.5% 加速与参数组合支持范围）, summary: hif8 与 mxfp8 低精度训练的数值契约：类型语义、量化尺度规则与精度风险点。, applies_to: {platforms: [A5-950], categories: [precision, performance]}}
 - {id: hif8-type-contract, type: software-fact, title: HiFloat8 的类型契约（hifloat8_t 建 tensor / Cast 直转 / 按 1 Byte 搬运）, summary: 算子开发侧不需要感知 HiFloat8 的转换计算逻辑：把输入/输出数据类型设为 `hifloat8_t` 即可，支持创建该类型的 GM 与 UB（`GlobalTensor<hifloat8_t>` / `LocalTensor<hifloat8_t>`）；, applies_to: {platforms: [A5-950], categories: [precision, performance]}}

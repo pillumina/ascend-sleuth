@@ -87,6 +87,45 @@ class CollectTest(unittest.TestCase):
         self.assertFalse(rows[0]["actionable"])
         self.assertIn("已收尾", rows[0]["why"])
 
+    def test_all_reference_candidates_produced_is_not_actionable(self):
+        write_trace(self.d, "2026-10-01-555-e", BASE.format(
+            sid="2026-10-01-555-e", status="resolved", upd="2026-10-01T10:00",
+            active="null", report="report_file: r.md\n", sed="none\n")
+            + "sediment_candidates:\n"
+              "  - {kind: reference, summary: x, status: produced, ref_id: ref-x}\n"
+              "  - {kind: reference, summary: y, status: produced, ref_id: ref-y}\n")
+        rows, _ = sb.collect(self.d)
+        self.assertFalse(rows[0]["actionable"])
+        self.assertEqual(rows[0]["producedRefs"], ["ref-x", "ref-y"])
+        self.assertIn("已产出先验词条 2 条", rows[0]["why"])
+
+    def test_mixed_produced_and_pending_is_still_actionable(self):
+        write_trace(self.d, "2026-10-01-666-f", BASE.format(
+            sid="2026-10-01-666-f", status="resolved", upd="2026-10-01T10:00",
+            active="null", report="report_file: r.md\n", sed="none\n")
+            + "sediment_candidates:\n"
+              "  - {kind: reference, summary: x, status: produced, ref_id: ref-x}\n"
+              "  - {kind: reference, summary: y, status: proposed}\n")
+        rows, _ = sb.collect(self.d)
+        self.assertTrue(rows[0]["actionable"])
+        self.assertEqual(rows[0]["producedRefs"], ["ref-x"])
+
+    def test_group_with_report_only_session_stays_actionable(self):
+        # 同一 issue 的两条 session：777-a 只产出了先验词条，777-b 只有报告。
+        # 777-b 还没沉淀，整组不能因为 777-a 产出了词条就进「已产出」。
+        write_trace(self.d, "2026-10-01-777-a", BASE.format(
+            sid="2026-10-01-777-a", status="resolved", upd="2026-10-01T10:00",
+            active="null", report="report_file: a.md\n", sed="none\n")
+            + "sediment_candidates:\n"
+              "  - {kind: reference, summary: x, status: produced, ref_id: ref-x}\n")
+        write_trace(self.d, "2026-10-01-777-b", BASE.format(
+            sid="2026-10-01-777-b", status="resolved", upd="2026-10-01T11:00",
+            active="null", report="report_file: b.md\n", sed="none\n"))
+        rows, _ = sb.collect(self.d)
+        self.assertEqual(len(rows), 1)
+        self.assertTrue(rows[0]["actionable"], "同组还有只有报告的 session，不能判已沉淀")
+        self.assertEqual(rows[0]["producedRefs"], ["ref-x"])
+
     def test_already_sedimented_is_skipped(self):
         write_trace(self.d, "2026-10-01-333-c", BASE.format(
             sid="2026-10-01-333-c", status="resolved", upd="2026-10-01T10:00",

@@ -1,293 +1,108 @@
 ---
 name: evolve-check
 description: >
-  任何内容流程收尾的伴随演进评估（数据驱动的 self-evolving，非独立目标轮）。
-  用户下内容目标（补 case / reference 沉淀 / 诊断 / 拉取 / replay）后，执行中产生
-  的数据（新沉淀、miss、重复动作、流程摩擦）本身就是 evolving 信号——本协议在
-  流程收尾低成本检查：对照触发条件表 → 有信号才产 idea 卡并自行验证执行
-  （agent 自产卡 + 自验证 + 攒批聚合 PR 人审），无信号一行即止。演进不是"跑一轮
-  自演进"才发生，而是系统做事时自动校准——像人学习。深度全库观测轮（用户说
-  "看看有什么可改进"）见 /skill:self-evolve；本文件是被内容流程收尾引用的轻量协议。
+  内容流程收尾的轻量信号检查。用户完成补 case / reference 沉淀 / 诊断 / 拉取 / replay
+  后，本协议只做一件事：对照触发条件扫一遍现场，把值得后续处理的信号写进
+  proposals/signals/ 台账。不产 EV 卡、不跑 RSI 实验、不跑验证门；行为质量改动需要
+  显式 RSI，深度分诊由用户显式发起的 /skill:self-evolve 承担。
 ---
 
-# Evolve-Check（收尾评估协议）
+# Evolve-Check（收尾信号检查）
 
-> **定位**：self-evolve 的伴随形态。self-evolve = 用户显式发起的深度轮（全库观测/
-> 攒批/聚合）；本协议 = **任何内容流程收尾自动执行的轻量检查**——用户说"沉淀
-> vllm-ascend 的 closed issue"，issue-ingest 跑完收尾即触发本协议，不看用户是否
-> 另说"改进系统"。演进是隐形执行策略的一部分；本文自包含执行参数。
->
-> **本地执行说明**：本 skill 是收尾协议，非独立用户入口。内容流程（issue-ingest /
-> to-reference / to-postmortem / diagnose / knowledge-groom）收尾时，agent
-> `read` 本文件并遵循下方流程；用户说"这次做完有什么可改进的/值得沉淀的"也可直接触发。
+## 定位
 
-## 何时触发（收尾钩子）
+`evolve-check` 是**轻量收尾钩子**，不是自演进执行轮。内容流程完成主体目标后、出最终报告前执行一次；无信号即止。
 
-任何内容流程**完成主体目标后、出最终报告前**执行一次，成本目标近零（无信号即止）：
+它只负责记录，不负责决定。EV 卡、RSI 提案、实验、判定、PR 都不在这里自动发生。
 
-- issue-ingest：沉淀与标记完成后；
-- to-reference / to-postmortem：草稿产出、落盘后；
-- diagnose：**不强制每次收尾跑本协议**（高频 + 已有内建 evolving：未命中起草候选
-  case、源码揭示稳定结构事实顺手走 to-reference、反馈捕获把 `feedback.outcome` 置 `pending`）——
-  其 L2/L3 视角（反复 miss 同族、流程摩擦）由 S2 replay（`s2_replay.py --todo`）
-  与深度轮归因事件信号覆盖，见 /skill:self-evolve §二；
-- knowledge-groom：批审产出后。
+## 第 0 步：读部署角色
 
-触发**不需要用户说"跑自演进"**——它是流程的默认收尾步骤（同 diagnose 写 trace 的
-地位）。如果一轮内容执行本身就是自演进深度轮的一部分（self-evolve 驱动），跳过本
-协议（深度轮已含观测）。
-
-**触发受部署声明约束**：这个部署要不要产卡由仓库根 `deployment.yaml` 的
-`evolution.mode` 决定（第 0 步读），不由本协议自己决定。只做内容沉淀的下游部署设
-`record-only`：信号照记，卡不产——本地卡号会与上游号段重号，合并时无法机械解决。
-
-## 评估步骤（先扫信号，无信号即止）
-
-**第 0 步：读部署声明**（先于一切，一行命令）：
-
-```
-python3 scripts/evolve_mode.py --json      # → {"mode": "full" | "record-only" | "off", "source": "<来源>"}
+```bash
+python3 scripts/evolve_mode.py --json
+# → {"role": "maintainer" | "signal-only" | "off", "source": "..."}
 ```
 
-| mode | 本协议怎么执行 |
+| role | 本协议行为 |
 |---|---|
-| `full` | 照第 1～4 步执行 |
-| `record-only` | 第 1、2 步照做；第 3 步不产卡、不查重、不跑验证门，只把命中的信号写进台账 `proposals/signals/`（见第 3 步的 record-only 分支）；第 4 步照落记录 |
-| `off` | 不做第 1～3 步；收尾说明只写一行（"跳过，按部署声明"），并落一条 skip 记录（不落的话，"没跑"与"跑了无信号"在数据上无法区分） |
+| `maintainer` | 扫信号并写台账；不产 EV 卡、不跑 RSI |
+| `signal-only` | 扫信号并写台账 |
+| `off` | 只写一行跳过记录，不扫信号 |
 
-- 脚本退出码 2 = 声明写坏（取值不在词表、YAML 解析失败、有文件但缺 `evolution.mode`）。
-  把报错原文给用户，**不要自己挑一档继续跑**——静默降级会让"这个部署在演进"与
-  "这个部署关掉了演进"在数据上混为一谈（原则十）。
-- 缺省（仓库根无 `deployment.yaml`）= `full`。`source` 要写进收尾说明，读的人才知道
-  这一轮按哪档跑的、依据在哪（`deployment.yaml` / 环境变量 / 缺省）。
-- 环境变量 `ASCEND_SLEUTH_EVOLUTION` 优先于文件，只用于临时覆盖（演练、CI、一次运行），
-  不是团队声明：要长期改这个部署的行为，改 `deployment.yaml` 并提交。
-- **用户说"这个部署不要产卡 / 只做沉淀"时**，不要让对方手改 YAML：跑
-  `python3 scripts/evolve_mode.py --set record-only`，并说明两件事——写的是仓库根的
-  `deployment.yaml`（提交后对该仓所有 agent 生效，未提交时只在本工作区生效），以及之后
-  机制缺口该怎么交（MR 描述或 issue）。要恢复说 `--set full`。
+配置写坏时脚本退出 2：把错误原文交给用户，不要自行选一档继续。
 
-**第 1 步：读本轮执行现场**（不重扫全库、不读 case 全文——token 预算，原则九）：
+## 第 1 步：读取本轮现场
 
-- **优先读统一执行记录**（走脚本，别内联 python）：脚本自带三件内联版没有的东西——**路径解析**
-  （共享件在主检出还是本检出内）、**共享范围标注**（防把读数读成全系统读数）、**无记录时的退化口径**。
-  内联版还踩过另一类坑：记录里的 `at` 曾被 PyYAML 读成 datetime，`r['at'][:16]` 直接 TypeError
-  （写侧现已统一为带引号 ISO 字符串，该断点已修——但前三条理由不变，且新 worktree 里文件根本不存在）：
-  `python3 scripts/tail_exec_log.py`（默认尾部 3 条；`--n 5` / `--skill evolve-check` / `--json`）
-  ——拿"本轮做了什么"（替代凭 agent 记忆）：
-- 产出：本轮新增 case/reference/卡 id（从记录 products 提取，不重扫全库）；
-- 过程中有没有：miss（diagnose/replay 未命中）、重复手动动作、流程摩擦、执行错、
-  新数据源/新 issue 类型首次出现——这些在 decision_reason 未提及时由 agent 现场补判断；
-- **无执行记录时**：脚本打印一行「无执行记录」并 exit 0——这是**正常退化路径，不是报错**
-  （内容 skill 忘了落记录、或本轮是历史流程/外部动作）。按它给的口径如实标注"无执行记录，
-  基于现场判断"，不假装有数据（诚实退化）。内容 skill 收尾应落记录（见各 skill「收尾」节）；
-  修好记录缺失比在本步硬猜更有价值。
-- **exec-log 是同一克隆共享的**（主检出 `metrics/skill-exec-log.yaml`，所有 worktree 共写共读；
-  `.gitignore` 运行时件）：所以"这里为空"= **这个克隆还没有任何收尾记录**，而不是"本 worktree
-  没跑"。脚本输出自带路径与共享范围标注，**不要**把读数说成全系统读数——**跨克隆/跨机不聚合**，
-  要跨机得让聚合值（`--summary`）写进当期的指标源文件（`metrics/timeline.d/<期号>.yaml`，
-  随后 `scripts/build_timeline.py` 重建聚合）。
+优先读统一执行记录，不重扫全库：
 
-**第 2 步：对照触发条件表**——命中的信号才继续，无命中直接出报告。**本表是「哪些现场值得产卡」的清单，不是信号名枚举**：卡里的 `source_signals[].signal` 是自由文本，允许写更贴切的名字；新增一类现场时**先补本表**再产卡（否则表与行为会脱钩——实测曾有一批卡触发在表外）（加一行
-"evolve-check：无演进信号"），**不为产卡而产卡**（原则四/十）。
-
-| # | 信号（本轮执行现场） | 含义 | 候选动作 |
-|---|---|---|---|
-| T1 | 沉淀 ≥3 条同根因/同族 case，或发现可跨 case 归纳的共性 | 有 methodology/reference 可提炼 | 对**已升格入库**的同族 case 归纳 reference（走 /skill:to-reference --ingest-cases），**不产卡**；涉及的 case 还是 inbox 草稿时只记信号（等 groom R8），**别引用未升格的 id**；归纳时发现要改路由或加载行为才产卡 |
-| T2 | diagnose/replay miss 某 issue 族，或 Tier 3 兜底反复走同路径 | 覆盖缺口 | 补 case（S2 replay 佐证缺口），**不产卡**；缺口指向 triage 分支或检查判据才产卡 |
-| T3 | 同一手动动作重复 ≥2 次（如反复拼同一查询、反复等同一命令输出） | 可固化流程/脚本 | 产 L2 卡：沉淀脚本/skill 步骤或 reference |
-| T4 | 执行错反复出现且无归属组件 / 归因事件聚合浮出失败簇 | 流程缺陷 | 产 L2 卡：修订该组件所在 skill 步骤 / triage 分支 |
-| T5 | 新数据源/新 issue 类型/新错误码首次出现且无配置 | 覆盖扩展 | 扩配置 / 补 reference 家族，**不产卡**；要改家族表的绑定方式或 triage 分支才产卡 |
-| T6 | 容量超 soft_cap 或健康指标恶化（`scripts/metrics_health.py` 的越界清单；判据数值在 `metrics/gates.yaml`） | 结构治理 | 产 L1 卡：拆分评估（ev_proposal） |
-| T7 | 本轮跑通一个可复用链路（拉取→评测→沉淀→验证全通） | 新流程资产 | 产 L2 卡：沉淀为 skill/脚本候选（弱信号，新 skill 立项走双签） |
-| T8 | 本轮出现**体验/质量**信号（用户抱怨问得多/结论看不懂、输出像模板、坏路径甩锅、交互摩擦） | 体验与质量问题 | **不产卡**——记入 session 报告，累积成 `/skill:skill-review` 的输入（体验是判断性规范，不做 CI 硬门） |
-| T9 | **人给的反馈**：人审意见、owner 追问、用户纠正（同一条反馈反复出现 = 判断或表法有系统偏差） | 人的判断与系统的判断不一致 | 产 L2 卡：把该判断改成结构或流程步骤（反馈只出现一次 → 先记信号，不产卡） |
-| T10 | **自审发现的缺口**：设计缺口 / 机制缺口 / 可观测性缺口（如「判据在量错东西」「声明与实现不符」「某个读数没有分母」） | 机制自身的缺陷 | 产 L1/L2 卡：修读数或补机制（这是本协议最主要的产卡来源，别把它当「没有信号」） |
-| T11 | **审计/数据体检**：口径漂移、断言过期、数据反常（如「同名概念两个数」「断言里写死的数字已腐烂」） | 存量在腐化 | 产 L2 卡：修口径或改断言；**审计轮本身不产卡**，带具体缺陷才产 |
-| T12 | **源码取用失败**：同一仓 `fetch_exit` 非零，或 `verify` 未命中，出现 ≥2 次（读数：`trace_metrics.py --source-usage` 的「按仓失败」行） | 源码仓目录覆盖不足或匹配规则不对 | 产 L1 卡：在 `source-catalog.d/<层>.yaml` 补仓或改 `discover`，并加一条真实签名用例；不在诊断里现场改 |
-
-**第 3 步：产卡 + 自行验证（有信号时，agent 自动完成，不等用户）**：
-
-> **记录动作统一走入口脚本**：本步不直接调 `ev_proposal.py --new`（非 `full` 部署会被它拒绝），而是把观察交给：
->
-> ```
-> python3 scripts/evolve_intake.py record --signal T10 --signal-text "自审发现的缺口" \
->   --target <要改的组件：仓库内路径或组件名> --evidence "<一句话现象，不含客户原文>" \
->   --trajectory "<产出 id / trace / replay 结果>" --suggested "<建议动作，可留空>" \
->   --source <上游 skill>
-> ```
->
-> 它按部署声明分流：`full` 落一张预填好的卡骨架（`source_signals` 已填，`measure` 留空待设计），`record-only` 落 `proposals/signals/`（一条信号一个文件，同内容自动累加次数），`off` 不落。载荷先于分流固定，所以任何模式都不会丢信号。
->
-> `record-only` 下到此为止：查重、验证门、judgement 整段跳过；收尾说明给出台账条数，提示拿批的人跑 `python3 scripts/evolve_signals.py export` 生成可粘贴的 issue / MR 描述。**不做实验、不写预测**——已跑过的命令可以写进 `--evidence`，没跑过的不许编。
-
-1. **先读候选水位**（产卡前的机械检查，别靠自觉）：`python3 scripts/ev_proposal.py --waterline`
-   ——输出「待回写/待合入 N（上限 20）」，**超限退 1**；退 1 时本轮**只记信号不产卡**，先消化积压
-   （信号照记在收尾说明里，条件到了再产）。读数含"指针没回写"的成分，超限时先按
-   `python3 scripts/ev_proposal.py --mark-merged --from-prs` 把上一批的指针补齐再看剩余量——
-   把已合入的卡读成未合入，会让动作走成"停产"而真正该做的是回写；
-2. 查重 + **同组件先例咨询**（防重提被拒方案——skill-impact 咨询语义；
-   论证可选层 docs/mechanism/pipeline.md §13.2）：`python3 scripts/ev_proposal.py --list`
-   ——同 trajectory/同 target 已有在池卡 → 合并不新建；
-   同时查本卡要改的组件（skill 步骤 / triage 分支 / script）在历史卡里的结局：
-   `--list` 定位同组件卡 → 读其 decisions——该组件被改过 / 回滚过 / 有 rejected 结论 =
-   该方向已试过 → 不重复方案（改提新方向，或记信号不产卡）。**同组件有 rejected / superseded
-   先例时，卡里必须带 `alternatives`**（选项 + 否决理由 + 证据）：先例视图只提供数据，读不读它、
-   写不写理由要靠这条强制；一次查全走
-   `python3 scripts/ev_proposal.py --impact [组件关键词]`（组件×尝试×结局；**有结局分歧的组件会被标出**
-   ——只有那些组件的先例能告诉你"别重试"，其余是"改完又改"的累积）；
-3. 产骨架：`python3 scripts/ev_proposal.py --new` → 填字段（layer / **target_component** /
-   title / source_signals 带 trajectory / hypothesis / predicted_effect / validation /
-   risk / principle_refs），trajectory 必须指到本轮执行出处（产出文件 id / replay
-   结果 / trace）。**target_component = 本卡要改的那个组件**（仓库内路径或组件名）：它是
-   「同组件改过几次、结局如何」的键，缺了先例咨询就无从查起（先例视图 `ev_proposal.py --impact`
-   读它；CI 对生效日之后的卡强制）；
-   `predicted_effect` 必须带 **`measure`——预测的出处**：一条命令 + 期望
-   （`expect_exit` 或 `expect_stdout` 至少一项），让**任何** reviewer 一条命令就能
-   复核预测是否成立（`scripts/ev_measure.py <卡号> --run`；三态退出码 =
-   符合 / 被证伪 / 无法判定）。真不可度量时如实声明 `reason`，不要编一条命令。
-   预测写不出可复现口径，通常说明它还不是一个可证伪的假设——先改预测。
-   与 `trajectory` 的分工：trajectory 管**问题可回放**，measure 管**预测可复现**；
-4. **自行验证执行**（评估自动化的核心——agent 自己验证，不把验证推给人）：
-   - 按**影响面分级**选门禁（docs/guide/eval.md「门禁分级」可选论证层，下述为执行值）：
-     **检索/路由/候选选择面**改动 → golden 子集前后对照（2-5 条受影响 fixture，
-     非全量；基线缓存复用，只跑改后侧）或 S2 replay（`scripts/replay_golden.py` /
-     `scripts/s2_replay.py`），数据通过才算 eval solid；检索/路由层候选在 **arena
-     selection 池可用时**（`scripts/eval_arena.py --stats` 出分、`--gate` 出判词，论证见
-     docs/mechanism/eval-arena.md 可选层）：无回归 + 门控判词为 **accept**
-     才判 solid（门控判定是数据门槛，不替代 dual 双签）。golden 无回归不在这两条命令里，
-     由 `scripts/replay_golden.py` 单独跑（每条 fixture 一次完整诊断，要模型）。
-     **判词三态，只有 accept 算通过**：`weak_accept` 表示"看起来涨了但证据不够"
-     （池子里翻转的对子太少，或 stats 缺逐条向量）——**不得据此判 validated**：
-     要么补样本/扩池后重跑，要么如实把卡记为证据不足（诚实退化，不虚报门控通过）。
-     判据自带复用折减：同一个池被反复拿来做接受决定时，工具的判定阈值按复用序号收紧
-     （池内容变了＝换了量尺，复用计数自动归零）。所以**别把同一个小池当无限量尺**——
-     连续几次判 weak 就是该重新选样或扩充池的信号，而不是把标准说松；
-     **交互/追问/指引面**改动（不改变候选选择）→ 跑 ixn 对口样本（`scripts/ixn_replay.py`，
-     2-3 条针对性）或小型探针，**不跑检索 golden**；
-     纯文档/注释 → 不跑 replay，scan + 人审；
-   - 不能即时判定的（真实反馈类 content/fix）：完成实现 + S2 佐证，如实标注
-     "已实现待真实确认"（现场有效性进观察窗，事后结算）；
-   - **先跑一遍自己的 `measure`**（`scripts/ev_measure.py <卡号> --run`）：判据跑不通
-     或期望对不上的预测，不算验证——先修判据或如实改预测，别把不可复现的预期留在卡上；
-5. **agent 判断（EV 卡 = agent 决策档案，不含 git 合入态/待办态）**：
-   - eval solid → `validated`（采纳：改动保留，进流程层攒批/PR 供人审）；
-   - eval 不成立 / 实验失败 → `rejected`（不采纳：留结论，改动不保留）；
-   - 发现更好方向 → 新卡 supersede 本卡（`superseded`）；
-   - **产卡即执行（无 candidate 待办态）**——方案成形才产卡，产卡状态 in_experiment
-     开始执行；执行或验证完成而卡仍停 in_experiment = 卡不完整（见第 3.5 步）。
-
-**第 3.5 步：生命周期完整性（卡 = proposal→action→eval→decision 的 agent 决策档案）**：
-
-- **每步 decisions 记 type**：产卡记 `{type: proposal}`、执行记 `{type: action, conclusion: <做了什么/commit/产物>}`、
-  验证记 `{type: eval, conclusion: <验证数据/通过与否>}`、判断记 `{type: decision, conclusion: <采纳/不采纳/换方向/继续下一轮+依据>}`——
-  卡能看出生命周期走到哪、凭什么判断。**decision 是"在该节点做出的判断"，不是"卡的终点"**：一张卡可以有多次
-  （多轮：判断 → 新一轮 → 再判断），终态由 status 承载；
-- **status 随执行推进，不靠自觉**：方案成形 → 产卡（in_experiment，开始 action + eval）；
-  agent 判断采纳 → validated / 不采纳 → rejected / 换方向 → superseded。**执行与验证都完成
-  而卡仍停 in_experiment = 卡不完整**——这条已可机器判定，`verify_proposals.py` 报两类：
-  ①**卡不完整**：in_experiment 且已记 `action` **且** `eval` 但无 `decision`（工作做完了、
-  判断没落；只记了 action、验证还在跑的在途卡不算——那是正常中间态）；②**僵尸卡**：
-  in_experiment 超 14 天（`STALE_DAYS`，与面板同口径）仍无 `decision`。CI 的 `proposal-audit`
-  job 跑它，卡随 PR 合入即被校验。**有中途 decision、只是还有下一轮要跑，仍停在 in_experiment 是正常的**：
-  结束与否看 `status`，不看 decision 的个数；
-- **终态卡必闭合**：validated/rejected/superseded 必须有 agent 判断的 decision 记录；
-  validated 后补 `actual_cost.tokens`（成本审计；无法量化写 `0` + `note` 说明口径）——
-  缺了 CI 报审计缺口，面板也标「缺成本」（两处口径一致）；
-- **卡必须能追到出处**：`source_signals` 非空且每条带 `trajectory`（产出文件 id / replay
-  结果 / trace）——没有出处的卡无法回放归因，CI 直接报错；
-- **预测也必须能追到出处**：`predicted_effect.measure` 带命令 + 期望（或如实声明不可度量）。
-  理由：评审被设计成 30 秒判定（`predicted_effect` vs 验证结果），而只有散文的预测判不了
-  ——reviewer 只剩"开全文"或"直接批"两个动作。缺 measure / 有命令无期望 / 命令仍是占位
-  都会被 CI 报错；存量卡豁免但缺口由 `scripts/ev_measure.py --audit` 如实报出；
-- 仅"观察到的信号"（数据前提未满足 / 无准备执行的具体方案）**不产卡**——信号记 session
-  报告/任务状态，条件到（方案成形/数据齐）才产卡执行（防想法清单污染提案账本）。
-- **改进动作必须先产 EV 卡（前置元流程，防绕过）——范围限定为三类**：①改动**行为面**（triage 分支、
-  skill 流程步骤、闸门绑定、表族追加——凡改变命中或加载行为的）；②**修订已合入的 active 词条**；
-  ③索引与口径类机制改动。三类都走 **产卡（proposal）→ 执行（action）→ 验证（eval）→ 判断（decision）
-  → 才随 PR 合入**；禁止先执行后补卡（产出已生效而决策链缺失，人审无据）。
-- **内容面产出不产卡**：补 case、补或修 reference 词条、扩错误码家族、从 case 归纳 reference——
-  这些都是内容动作，不产卡。产出物自己就是决策记录（case 的 `evidence` 与脱敏自查、reference 类
-  PR 模板的变更类型/词条清单/来源与验证状态/聚类检查/预核意见），而卡要求的可证伪预测它们给不出；
-  配卡只会产出"预测＝CI 能过"的仪式卡，与本协议"预测必须可复现"的要求自相矛盾
-  （原则四/十：不为产卡而产卡）。这些动作对应的信号（同族沉淀满三条、覆盖缺口、新错误码首次出现）
-  照记进收尾报告与执行记录，动作直接执行；**信号连带要求改行为面时，只为行为面那部分产卡**。
-  内容流程产出草稿进 inbox（待审队列）同样不在此列；`to-reference` / `to-postmortem` 收尾照常
-  跑本协议，按触发条件表有真信号才动。
-
-**第 4 步：落收尾记录 + 出说明**（并入流程报告，不单独打扰用户）：
-
-1. **先落本协议的收尾记录**（顺序不能反：记录落了，"这次协义跑过"才是数据）。
-   **为什么必须落**：不落记录时"收尾跑了但无演进信号"与"根本没跑"在数据上完全不可区分，
-   机制是否在运作无法证伪（收尾记录此前几乎为空，面板与 metrics 都不读 exec-log）。
-   面板「执行现场」按它显示运行次数与无信号次数。
-
-   ```
-   python3 scripts/log_skill_exec.py --skill evolve-check \
-     --products "<EV-xxxx(validated),...>" \
-     --reason "<一句话：命中 T# → 动作 / 收尾无演进信号>" \
-     --source <上游 skill：issue-ingest / to-reference / to-postmortem / knowledge-groom> \
-     --tokens <估算>
-   ```
-   无信号时 `--products` 留空、`--reason` 写"收尾无演进信号"（面板据此单列 no-signal 计数）。
-   非 `full` 的两种模式用各自的原因串，**不要复用"无演进信号"**——否则面板会把
-   "这个部署不产卡"读成"这条流程没有可改进点"：
-   - `record-only`：`--reason "收尾检查（record-only）：命中 T# …，按部署声明不产卡"`，
-     `--products` 留空；
-   - `off`：`--reason "收尾检查（off）：按部署声明跳过"`，`--products` 留空。
-   落完自查本地不变量：`python3 scripts/verify_exec_log.py --check`（seq 唯一/字段齐全）。
-   该脚本**不进 CI**——exec-log 是 `.gitignore` 运行时件，CI 上文件不存在，进 CI 只会空转。
-
-2. 出说明（`full` 之外要带上模式与来源，读的人才知道这一轮为什么没有卡）：
-
-```
-evolve-check：产出 EV-xxxx（补 case，S2 replay 佐证缺口）→ agent 判断采纳（validated）
-或：evolve-check：无演进信号（本轮无新增数据/无流程摩擦/无覆盖缺口）
-或：evolve-check：record-only（来源：deployment.yaml），命中 T10；不产卡，建议写进 MR/issue
-或：evolve-check：跳过（来源：deployment.yaml，mode=off）
+```bash
+python3 scripts/tail_exec_log.py
 ```
 
-## 与 self-evolve 的分工
+看本轮新增内容、miss、重复动作、流程摩擦、执行错。无记录时按“无执行记录，基于现场判断”如实标注，不假装有数据。
 
-| | evolve-check（本协议） | self-evolve（深度轮） |
+## 第 2 步：扫描触发条件
+
+命中才继续；不命中直接写“无演进信号”。
+
+| # | 现场信号 | 后续归属 |
 |---|---|---|
-| 触发 | 内容流程收尾自动（用户下内容目标即隐含） | 用户显式"跑一轮自演进/看看有什么可改进" |
-| 范围 | 本轮执行现场（一流程一查） | 全库观测（归因聚合/容量/覆盖/指标） |
-| 信号源 | 本次产出的数据 + 摩擦 | 跨轮聚合（归因事件、S2 校准集、timeline） |
-| 共用 | idea 卡 schema / 验证门 / 攒批聚合 PR | 同左 |
+| 同族归纳 | 同族 case 已沉淀到足够归纳 reference | 内容：走 to-reference |
+| 反复 miss | diagnose / replay 反复 miss 同一族 | 内容：补 case；若指向路由/加载行为，记行为信号 |
+| 重复动作 | 同一手动动作重复 ≥2 次 | 流程：可固化脚本/skill |
+| 执行错 | 执行错反复出现且无归属组件 | 流程：归因到 skill/路由 |
+| 新覆盖 | 新数据源 / 新错误码 / 新 issue 类型首次出现 | 内容：扩 reference 家族 |
+| 容量越界 | 容量或健康指标越界 | 结构：拆分评估 |
+| 可复用链路 | 本轮跑通可复用链路 | 流程：沉淀候选 |
+| 体验质量 | 体验/质量问题（问得多、结论难读、交互摩擦） | 体验：累积到 skill-review |
+| 人的反馈 | 人给的反馈反复出现 | 判断偏差：改结构或流程 |
+| 自审缺口 | 自审发现机制/设计/可观测性缺口 | 机制：候选修正 |
+| 审计腐化 | 审计发现口径漂移、断言过期、数据反常 | 存量腐化：修正 |
+| 源码取用失败 | 同一源码仓取用失败 ≥2 次 | 覆盖：补 source-catalog |
 
-两者产出同一批池（`proposals/ideas/`），攒批聚合 PR 供人审时合并处理，不区分来源。
+触发条件表是扫描清单，不是卡类型；命中后只记录信号，不在本协议里决定实现方案。
 
-## 授权边界
+## 第 3 步：写信号台账
 
-- **EV 决策是 agent 做的**（产卡 + 自验证 + 判采纳/不采纳——本协议第 3/3.5 步）；
-  卡的 authorization 字段（auto/review/dual）标注的是**改动合入的知识层分级**（改动随 PR
-  合入时按此送审），不是 EV 决策需要人逐卡审批；
-- **人审发生在目标态完成/降级完成时提的聚合 PR**：审整个自演进过程是否 solid（含 rejected
-  卡——agent 提了 EV、实验发现不行、不采纳，这是诚实记录，人审应接受），不是逐卡审批；
-- 指标口径红线保留：产卡不得改评分/指标定义（系统不改自己考卷）；
-- 结构级（triage/skill 骨架/新 skill 立项）走 kb/high-risk 双签，本协议只产候选不直改。
+统一走入口脚本，不直接调 `ev_proposal.py --new`：
 
-## 边界（不做）
+```bash
+python3 scripts/evolve_intake.py record \
+  --signal mechanism-gap --signal-text "机制缺口的一句话" \
+  --target "<仓库内路径或组件名>" \
+  --evidence "<本轮可复核的现象>" \
+  --trajectory "<trace / 产出 id / 命令结果>" \
+  --source <上游 skill>
+```
 
-- 不为产卡而产卡：无信号即止；候选水位超限时只记信号不产卡；
-- 不代替用户下内容目标：本协议只回答"这次做完能否更好"，不决定"下次做什么"；
-- 不越过部署声明：`record-only` 下不产卡、不跑验证门，`off` 下不执行检查（第 0 步）；
-  声明写坏时停下来问人，不自己挑一档；
-- 不碰客户现场、不做批量改库（那是 self-evolve 深度轮 + 人审的范围）。
+- 结果写 `proposals/signals/`，同内容自动累加 `occurrences`。
+- 不写预测，不写未跑过的验证。
+- `trajectory` 必须能回放；没有出处不写信号。
+- `off` 下不落盘，只写跳过记录。
 
-## 依赖的能力/工具
+## 第 4 步：收尾报告
 
-| 能力 | 工具/入口 |
-|---|---|
-| 读部署声明（第 0 步） | `scripts/evolve_mode.py`（`--json` 取 mode+source；缺文件 = full，写坏 exit 2） |
-| 写信号台账（第 3 步 record-only） | `scripts/evolve_signals.py add / list / export`（一条信号一个文件，内容哈希命名） |
-| 读本轮执行现场（第 1 步） | `scripts/tail_exec_log.py`（确定性入口；文件缺失/空表 = 正常退化，exit 0） |
-| 落收尾记录（第 4 步） | `scripts/log_skill_exec.py --skill evolve-check` + 自查 `scripts/verify_exec_log.py --check` |
-| 查重/产卡骨架 | `scripts/ev_proposal.py --list / --new` |
-| 卡校验 | `scripts/verify_proposals.py`（CI `proposal-audit` job；含卡不完整/僵尸卡/出处缺失） |
-| 预测复核 | `scripts/ev_measure.py <卡号> --run`（**自己先跑一遍**：判据跑不通的预测不算验证） |
-| 验证门（即时判定） | `scripts/replay_golden.py` / `scripts/s2_replay.py` |
-| 归因事件聚合（T4 信号） | `scripts/component_tally.py` |
-| 收尾可见性（面板） | `scripts/ev_board_data.py` 的 `skill_exec` 段 → ev-panel「执行现场（exec-log）」 |
-| 内容沉淀（T1/T2 落到执行） | /skill:to-reference / /skill:to-postmortem |
+报告只写四行：
+
+```text
+role: maintainer / signal-only / off（来源：...）
+信号：<N> 条（或“无”）
+去向：内容 / 确定性 bug / 行为质量 / 高风险 / 观察
+未做：EV 卡、RSI 实验、验证门（按目标态不自动执行）
+```
+
+## 去向矩阵（给下一棒看，不在本协议执行）
+
+| 信号性质 | 下一棒 | 入口 |
+|---|---|---|
+| 确定性代码 bug | 回归测试 + PR | 直接修，不产 EV 卡、不跑 RSI |
+| 内容缺口 | to-reference / to-postmortem / issue-ingest | 内容 skill |
+| 行为质量 | RSI proposal → experiment → decision → PR | 用户显式发起，见 /skill:self-evolve |
+| 高风险改动 | 轻量 EV 卡作为授权记录 | 人审触发，不替代 RSI/PR |
+| 体验/质量反馈 | skill-review 的输入 | 累积观察 |
+
+## 不做什么
+
+- 不在收尾时产 EV 卡；
+- 不自动跑 RSI 实验、不自动判定；
+- 不把信号当方案，不写预测；
+- 不因“没有产卡”而认为演进失败——本协议的目标就是只记录。

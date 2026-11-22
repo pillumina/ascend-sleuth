@@ -1,0 +1,157 @@
+id: LOCAL-VLLM-PROJECT-VLLM-ASCEND-21558
+status: active
+object_type: diagnosis
+origin: core
+purpose: test
+source: local/vllm-project/vllm-ascend#21558
+input:
+  title: '[Bug]: Mooncake layerwise PUSH can report completion before all prefill
+    PP stages finish'
+  body: '## Describe the bug
+
+
+    With the prefill pipeline parallelism support in #21517, the final prefill stage
+    can report KV transfer completion while an earlier stage is still writing. A failure
+    on an earlier stage can also be hidden by a successful transfer on the final stage.
+    The decode worker can then report `finished_recving` for a partially written prefix,
+    which makes the request eligible to resume decoding. [Decode scheduler](https://github.com/vllm-project/vllm/blob/24420b7a341af37a9bc3186e6fc6062512e0aa58/vllm/v1/core/sched/scheduler.py#L3509-L3523)
+
+
+    ## Reviewed versions and test environment
+
+
+    - PR head `2e8033a7569d6aa8994f43c808478dae47fff7c9` and merge base `6e3299ab492ddbadb4c8e3a00b88c982c9a28131`.
+
+    - Pinned upstream vLLM `24420b7a341af37a9bc3186e6fc6062512e0aa58`.
+
+    - Windows, Python 3.12.14, CPU-only component test. The test executes the pinned
+    Python transfer mapping, sender, completion callback, and decode receiver tracking
+    code with simulated transfer I/O, acknowledgements, and device events.
+
+    - Prefill PP=2, decode PP=1, with TP=PCP=DCP=1 on both sides. Each prefill stage
+    owns one layer and the request transfers one prompt block.
+
+
+    ## Controlled reproduction and observed results
+
+
+    1. Enqueue the final prompt chunk on both prefill stages. Block stage 0 inside
+    its simulated write using a threading event. Let stage 1 finish and poll the decode
+    worker before releasing stage 0.
+
+    2. Repeat with the stage 0 write returning `-1` and the stage 1 write succeeding.
+
+    3. For the PP=1 control, put both layers on one sender and fail its first-layer
+    write.
+
+
+    | Case | Completion signal | Decode worker result | Simulated destination at poll
+    |
+
+    |---|---|---|---|
+
+    | PP=2, stage 0 write blocked | Stage 1 sends `DONE`, `trans_count=1` | Request
+    in `finished_recving`, no invalid blocks | Layer 1 only. Layer 0 arrives after
+    the gate is released. |
+
+    | PP=2, stage 0 write fails | Stage 1 sends `DONE`, `trans_count=1` | Request
+    in `finished_recving`, no invalid blocks | Layer 1 only. The failed request remains
+    in stage 0''s `failed_reqs`. |
+
+    | PP=1, first-layer write fails | `FAILED` | Request absent from `finished_recving`,
+    invalid block 7 | Layer 1 only. |
+
+
+    The PP=1 control produced the same failure report at the merge base and the PR
+    head. The PP=2 cases establish early readiness and lost failure propagation in
+    the connector state machine. End-to-end NPU execution and output accuracy remain
+    to be validated.
+
+
+    ## Root cause
+
+
+    - Each stage enqueues its own KV transfers, and its background thread performs
+    synchronous writes within that queue. Pipeline activation sends do not drain the
+    KV queues. The connector''s `wait_for_save()` is empty. [Enqueue](https://github.com/vllm-project/vllm-ascend/blob/2e8033a7569d6aa8994f43c808478dae47fff7c9/vllm_ascend/distributed/kv_transfer/kv_p2p/mooncake_layerwise_connector.py#L2081-L2096)
+    · [Send loop](https://github.com/vllm-project/vllm-ascend/blob/2e8033a7569d6aa8994f43c808478dae47fff7c9/vllm_ascend/distributed/kv_transfer/kv_p2p/mooncake_layerwise_connector.py#L283-L295)
+    · [Wait hook](https://github.com/vllm-project/vllm-ascend/blob/2e8033a7569d6aa8994f43c808478dae47fff7c9/vllm_ascend/distributed/kv_transfer/kv_p2p/mooncake_layerwise_connector.py#L889-L891)
+
+    - The PR sets `last_layer_idx=-1` on non-final stages. Both the completion callback
+    and per-request failure cleanup are gated by that layer index. A successful final
+    stage has no visibility into earlier stages'' pending writes or failures. [Stage
+    gate](https://github.com/vllm-project/vllm-ascend/blob/2e8033a7569d6aa8994f43c808478dae47fff7c9/vllm_ascend/distributed/kv_transfer/kv_p2p/mooncake_layerwise_connector.py#L1569-L1573)
+    · [Completion and failure handling](https://github.com/vllm-project/vllm-ascend/blob/2e8033a7569d6aa8994f43c808478dae47fff7c9/vllm_ascend/distributed/kv_transfer/kv_p2p/mooncake_layerwise_connector.py#L292-L328)
+
+    - The receiver counts completion messages using a transfer count derived from
+    the TP and context-parallel mapping. It has no PP-stage quorum, so one `DONE`
+    is sufficient in the tested topology. [Transfer count](https://github.com/vllm-project/vllm-ascend/blob/2e8033a7569d6aa8994f43c808478dae47fff7c9/vllm_ascend/distributed/kv_transfer/utils/utils.py#L233-L263)
+    · [Receiver tracking](https://github.com/vllm-project/vllm-ascend/blob/2e8033a7569d6aa8994f43c808478dae47fff7c9/vllm_ascend/distributed/kv_transfer/kv_p2p/mooncake_layerwise_connector.py#L644-L656)
+
+
+    ## Expected behavior
+
+
+    Publish success after all required prefill stages and transfer shards complete.
+    Surface any stage''s failure to decode and clean up its request state. If each
+    stage reports separately, use an identity that distinguishes stages on the same
+    host and TP rank.
+
+
+    A regression test should hold stage 0''s write until after stage 1 finishes and
+    assert that decode remains waiting. A second case should fail stage 0''s write
+    and assert that decode receives a failure and marks the affected blocks invalid.
+
+    '
+expected:
+  resolution: Prefill PP=2 时最后一个 prefill stage 先报 DONE，但更早 stage 的 KV 写入还在进行或已失败；connector
+    的 wait_for_save 为空、阶段间 KV 队列未 drain，decode 会拿到部分写入的 prefix 进入 finished_recving。修复是让
+    connector 等所有 prefill PP stage 的 KV 队列排空并传播失败，只有全部写完才允许 DONE。
+  namespace: inference/vllm-ascend
+  category: interrupt
+  confidence: agent-reviewed
+expected_kind: resolution
+non_diagnostic: false
+proposed:
+  repo: vllm-project/vllm-ascend
+  issue: 21558
+  labels:
+  - bug
+  closed_at: '2026-11-11T07:57:56Z'
+  url: https://github.com/vllm-project/vllm-ascend/issues/21558
+  quality:
+    score: 0.95
+    namespace: inference/vllm-ascend
+    category: interrupt
+    answer: Prefill PP=2 时最后一个 prefill stage 先报 DONE，但更早 stage 的 KV 写入还在进行或已失败；connector
+      的 wait_for_save 为空、阶段间 KV 队列未 drain，decode 会拿到部分写入的 prefix 进入 finished_recving。修复是让
+      connector 等所有 prefill PP stage 的 KV 队列排空并传播失败，只有全部写完才允许 DONE。
+    accepted: true
+provenance:
+  trigger: issue_import
+  sanitized: true
+  redactions: []
+  confidence: issue-verified
+  extraction: auto
+created_at: '2026-11-19T22:57:41+00:00'
+updated_at: '2026-11-19T22:57:47+00:00'
+history:
+- from: candidate
+  to: active
+  reason: fresh closed issue with merged fix
+  actor: lead
+  at: '2026-11-19T22:57:43+00:00'
+- from: active
+  to: active
+  reason: test candidate
+  actor: lead
+  at: '2026-11-19T22:57:43+00:00'
+  from_origin: field
+  to_origin: core
+- from: active
+  to: active
+  reason: sealed test
+  actor: lead
+  at: '2026-11-19T22:57:47+00:00'
+  from_purpose: evaluation
+  to_purpose: test

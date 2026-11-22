@@ -1,0 +1,160 @@
+id: '13934'
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: github/vllm-project/vllm-ascend#13934
+input:
+  title: '[bug]:[v0.26.0rc][glm5.2] Mooncake connector _get_kv_split_metadata IndexError:
+    list index out of range in PD-disaggregated DCP+MTP decode'
+  body: "### Your current environment\n\n| 项目 | 值 |\n| :--- | :--- |\n| PyTorch 版本\
+    \ | 2.10.0+cpu |\n| torch_npu 版本 | 2.10.0.post2 |\n| Python 版本 | 3.11.15 |\n|\
+    \ vllm 版本 | 0.23.1rc1.dev1291+g568afb3a1 (branch: releases/v0.26.0, commit: 568afb3a1,\
+    \ 2026-07-26) |\n| vllm-ascend 版本 | 0.19.1rc2.dev1317+ge8156772d (branch: releases/v0.26.0rc,\
+    \ commit: e8156772d, 2026-08-07) |\n| OS | openEuler 24.03 (LTS)（容器环境） |\n| CANN\
+    \ 版本 | 9.0.1 |\n| 硬件 | Ascend 910 × 16 cards (2 pods × 8 NPU, each NPU 2 chips)\
+    \ |\n\n### \U0001F41B Describe the bug\n\n## Describe the Bug\n\nWhen running\
+    \ GLM-5.2 (w4a8) under **PD-disaggregated** serving with **DCP (Decode Context\
+    \ Parallel, size=8) + MTP speculative decoding (num_speculative_tokens=5)** on\
+    \ vllm-ascend v0.26.0rc, the decode worker crashes with `IndexError: list index\
+    \ out of range` in `mooncake_connector.py:_get_kv_split_metadata` during KV transfer\
+    \ loading.\n\n**This is a different bug from the previously reported issue #13710**\
+    \ (which was a `RuntimeError: shape 256 vs 260` in `block_table.py:272` on v0.23).\
+    \ The v0.23 crash was in the PCP/MTP slot mapping path; this v0.26 crash is in\
+    \ the Mooncake connector's KV split metadata path.\n\n**PD 分离配置**:\n- Prefill\
+    \ (P): 2 × A3 nodes (16 cards each, TP=8, DP=4 via DP_LOCAL=2 × 2 nodes, PP=1),\
+    \ `--enforce-eager`, speculative MTP num_speculative_tokens=1, DCP=8, kv_role=kv_producer\n\
+    - Decode (D): 2 × A3 nodes (16 cards each, TP=8, DP=4 via DP_LOCAL=2 × 2 nodes,\
+    \ DCP=8), cudagraph FULL_DECODE_ONLY, speculative MTP num_speculative_tokens=5,\
+    \ kv_role=kv_consumer\n- P→D KV transfer: MooncakeConnectorV1 direct (kvpool OFF,\
+    \ use_ascend_direct=true)\n- Load balance proxy: vllm-ascend `load_balance_proxy_server_example.py`\
+    \ (not conductor binary)\n\n## To Reproduce\n\n```bash\n# ===== P node vllm serve\
+    \ (prefill, kv_producer) =====\nvllm serve <model_path> \\\n    --port 8100 \\\
+    \n    --trust-remote-code \\\n    --max-num-seqs 8 \\\n    --block-size 128 \\\
+    \n    --max-model-len 1024000 \\\n    --max-num-batched-tokens 16384 \\\n    --gpu-memory-utilization\
+    \ 0.85 \\\n    --data-parallel-size 4 \\\n    --data-parallel-size-local 2 \\\n\
+    \    --tensor-parallel-size 8 \\\n    --pipeline-parallel-size 1 \\\n    --prefill-context-parallel-size\
+    \ 1 \\\n    --decode-context-parallel-size 8 \\\n    --cp-kv-cache-interleave-size\
+    \ 128 \\\n    --enforce-eager \\\n    --quantization ascend \\\n    --enable-expert-parallel\
+    \ \\\n    --enable-prefix-caching \\\n    --enable-auto-tool-choice \\\n    --tool-call-parser\
+    \ glm47 \\\n    --reasoning-parser glm45 \\\n    --seed 1024 \\\n    --speculative-config\
+    \ '{\"num_speculative_tokens\": 1, \"method\": \"deepseek_mtp\", \"enforce_eager\"\
+    : true}' \\\n    --additional-config '{\"enable_flashcomm1\": true, \"enable_dsa_cp\"\
+    : true, \"ascend_compilation_config\": {\"enable_npugraph_ex\": false, \"enable_static_kernel\"\
+    : false}, \"fuse_muls_add\": true, \"multistream_overlap_shared_expert\": true,\
+    \ \"enable_mc2_hierarchy_comm\": false, \"enable_sparse_sfa_c8\": false, \"enable_sparse_li_c8\"\
+    : true, \"enable_cpu_binding\": true, \"recompute_scheduler_enable\": true}' \\\
+    \n    --kv-transfer-config '{\"kv_connector\": \"MooncakeConnectorV1\", \"kv_buffer_device\"\
+    : \"npu\", \"kv_role\": \"kv_producer\", \"kv_port\": \"31112\", \"engine_id\"\
+    : \"prefill-0\", \"kv_rank\": 0, \"kv_connector_extra_config\": {\"use_ascend_direct\"\
+    : true, \"prefill\": {\"dp_size\": 4, \"tp_size\": 8, \"pp_size\": 1, \"pp_layer_partition\"\
+    : \"78\"}, \"decode\": {\"dp_size\": 4, \"tp_size\": 8}}}'\n\n# ===== D node vllm\
+    \ serve (decode, kv_consumer) — THIS IS WHERE THE CRASH HAPPENS =====\nvllm serve\
+    \ <model_path> \\\n    --port 8200 \\\n    --trust-remote-code \\\n    --max-num-seqs\
+    \ 32 \\\n    --max-model-len 1024000 \\\n    --max-num-batched-tokens 192 \\\n\
+    \    --gpu-memory-utilization 0.88 \\\n    --data-parallel-size 4 \\\n    --data-parallel-size-local\
+    \ 2 \\\n    --tensor-parallel-size 8 \\\n    --enable-expert-parallel \\\n   \
+    \ --prefill-context-parallel-size 1 \\\n    --decode-context-parallel-size 8 \\\
+    \n    --cp-kv-cache-interleave-size 128 \\\n    --quantization ascend \\\n   \
+    \ --enable-auto-tool-choice \\\n    --tool-call-parser glm47 \\\n    --reasoning-parser\
+    \ glm45 \\\n    --seed 1024 \\\n    --speculative-config '{\"num_speculative_tokens\"\
+    : 5, \"method\": \"deepseek_mtp\", \"enforce_eager\": true}' \\\n    --compilation-config\
+    \ '{\"cudagraph_mode\": \"FULL_DECODE_ONLY\"}' \\\n    --additional-config '{\"\
+    enable_flashcomm1\": false, \"enable_dsa_cp\": false, \"ascend_compilation_config\"\
+    : {\"enable_npugraph_ex\": false, \"enable_static_kernel\": false}, \"fuse_muls_add\"\
+    : true, \"multistream_overlap_shared_expert\": true, \"enable_mc2_hierarchy_comm\"\
+    : false, \"enable_sparse_sfa_c8\": false, \"enable_sparse_li_c8\": true, \"enable_cpu_binding\"\
+    : true, \"recompute_scheduler_enable\": true}' \\\n    --kv-transfer-config '{\"\
+    kv_connector\": \"MooncakeConnectorV1\", \"kv_role\": \"kv_consumer\", \"kv_port\"\
+    : \"20002\", \"engine_id\": \"decode-0\", \"kv_connector_extra_config\": {\"use_ascend_direct\"\
+    : true, \"prefill\": {\"dp_size\": 4, \"tp_size\": 8, \"pp_size\": 1, \"pp_layer_partition\"\
+    : \"78\"}, \"decode\": {\"dp_size\": 4, \"tp_size\": 8}}}'\n\n# Trigger: benchmark\
+    \ with 20k_40k dataset (prompts ~20-40k tokens) at cc=128, rr=1000, num=1000.\n\
+    # The crash reproduces ~30% through the bench (306/1000).\n```\n\n## Expected\
+    \ Behavior\n\n`_get_kv_split_metadata` should correctly handle `remote_block_ids[group_idx]`\
+    \ slicing without IndexError. The decode worker should run stably under PD-disaggregated\
+    \ + DCP + MTP workloads.\n\n## Full Error Stack\n\n```python\n(Worker_DP1_TP5_DCP5_EP13\
+    \ pid=25423) ERROR [multiproc_executor.py:1007] WorkerProc hit an exception.\n\
+    (Worker_DP1_TP5_DCP5_EP13 pid=25423) ERROR Traceback (most recent call last):\n\
+    \  File \".../vllm/v1/executor/multiproc_executor.py\", line 999, in worker_busy_loop\n\
+    \    output = func(*args, **kwargs)\n  File \".../vllm/v1/worker/worker_base.py\"\
+    , line 351, in execute_model\n    return self.worker.execute_model(scheduler_output)\n\
+    \  File \".../vllm_ascend/worker/worker.py\", line 629, in execute_model\n   \
+    \ output = self.model_runner.execute_model(scheduler_output, intermediate_tensors)\n\
+    \  File \".../torch/utils/_contextlib.py\", line 124, in decorate_context\n  \
+    \  return func(*args, **kwargs)\n  File \".../vllm_ascend/worker/model_runner_v1.py\"\
+    , line 1827, in execute_model\n    return self.kv_connector_no_forward(scheduler_output,\
+    \ self.vllm_config)\n  File \".../vllm/v1/worker/kv_connector_model_runner_mixin.py\"\
+    , line 40, in kv_connector_no_forward\n    with (\n  File \".../contextlib.py\"\
+    , line 137, in __enter__\n    return next(self.gen)\n  File \".../vllm/v1/worker/kv_connector_model_runner_mixin.py\"\
+    , line 95, in _get_kv_connector_output\n    kv_connector.start_load_kv(get_forward_context())\n\
+    \  File \".../vllm_ascend/distributed/kv_transfer/kv_p2p/mooncake_connector.py\"\
+    , line 1529, in start_load_kv\n    self.connector_worker.start_load_kv(self._connector_metadata)\n\
+    \  File \".../vllm_ascend/distributed/kv_transfer/kv_p2p/mooncake_connector.py\"\
+    , line 3413, in start_load_kv\n    ) = self._get_kv_split_metadata(remote_req_id,\
+    \ meta)\n  File \".../vllm_ascend/distributed/kv_transfer/kv_p2p/mooncake_connector.py\"\
+    , line 3013, in _get_kv_split_metadata\n    meta.remote_block_ids[group_idx][remote_first\
+    \ : remote_first + num_blocks_to_pull]\n    ~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^\n\
+    IndexError: list index out of range\n```\n\n**Dumped scheduler state at crash**\
+    \ (from `dump_input.py:79`):\n- `num_running_reqs=0, num_waiting_reqs=0, num_skipped_waiting_reqs=1`\n\
+    - `kv_cache_usage=0.01` (NOT OOM)\n- `connector_prefix_cache_stats: requests=1,\
+    \ queries=26262, hits=26262` (KV transfer hit)\n- Request `chatcmpl-c6faa38a`\
+    \ with `num_external_tokens=26262, num_prompt_blocks=206, remote_block_ids=[[1,2,...,26]]`\
+    \ (26 blocks), `remote_dcp_size=8, remote_ptp_size=8`\n- `remote_multi_nodes_meta_mapping`\
+    \ has 8 entries (24-31), each with `handshake_port: 31136-31143`\n- `num_spec_tokens_to_schedule=5`\n\
+    \n## Additional Context\n\n- PD 分离 / 单节点: PD-disaggregated (prefill-decode separation,\
+    \ kv_role=kv_consumer on D, MooncakeConnectorV1 P→D direct KV transfer, kvpool\
+    \ OFF)\n- 投机推理 / 图模式 / kvpool: MTP speculative (num_speculative_tokens=5) + cudagraph\
+    \ FULL_DECODE_ONLY (enable_npugraph_ex=false) + DCP=8/PCP=1 + kvpool OFF\n- 是否可稳定复现:\
+    \ 是 — 20k_40k dataset at cc=128 reproduces ~30% through bench (306/1000)\n- Related\
+    \ issue: #13710 (v0.23 crash in `block_table.py:272` shape 256 vs 260 — different\
+    \ bug, different code path)\n- Note: The v0.23 crash was in `pcp_utils.py:generate_pcp_mtp_input`\
+    \ → `block_table.py:_compute_pcp_dcp_slot_mapping` (MTP slot mapping). This v0.26\
+    \ crash is in `mooncake_connector.py:_get_kv_split_metadata` (KV transfer metadata).\
+    \ Both involve DCP=8 + MTP, but different code paths.\n"
+expected:
+  resolution: 'A3 16 卡 PD 分离（2P+2D）、GLM-5.2 W4A8、DCP=8 + MTP 投机解码（decode num_speculative_tokens=5）、decode
+    侧 FULL_DECODE_ONLY 场景：压测中 decode 在 Mooncake KV 加载处崩 `IndexError: list index out
+    of range`（`mooncake_connector.py::_get_kv_split_metadata` 的 `remote_block_ids[group_idx]`）；越界修掉后压测约
+    20 分钟起 P→D transfer 大量失败（HCCL E19999 / HcclBatchGet ErrorNo 103900，AICPU launch
+    failed），随后所有请求输出变乱码。根因分两层：v0.26 新增 `AscendSFAIndexerCacheSpec` 后一个逻辑 KV cache
+    group 被按 spec 拆成 SFA/MLA 两个 Mooncake transfer group，CP 路径却用 transfer group 下标索引按逻辑
+    group 组织的 `remote_block_ids`/`local_block_ids`；且同一 transformer 层的 SFA（scale=8）与
+    MLA（scale=1）共用同一物理 metadata slot，MLA 误用 SFA 的 scale 把 block id 放大 8 倍，生成未注册的 Mooncake/HCCL
+    地址。修复 #13965（main，MERGED 2026-09-03）/ #13968（releases/v0.26.0rc，MERGED 2026-08-20）：block
+    table 改按 `kv_cache_group_id` 读取，不同 scale 的 transfer group 保留各自展开后的 block id，normal
+    KV / MTP / SFA 元数据分层隔离；issue 内 2026-08-25 评论验证最新 v0.26rc 已修复。'
+  namespace: inference/vllm-ascend
+  category: interrupt
+  confidence: agent-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: issue_import
+  sanitized: true
+  redactions: []
+  confidence: agent-reviewed
+  extraction: auto
+created_at: '2026-11-18T08:33:21+00:00'
+updated_at: '2026-11-19T14:10:35+00:00'
+history:
+- from: candidate
+  to: active
+  reason: public issue candidate from pilot; answer present
+  actor: lead
+  at: '2026-11-19T06:26:33+00:00'
+- from: active
+  to: active
+  reason: 答案已进知识库，转 regression，避免自证留在 field
+  actor: lead
+  at: '2026-11-19T14:10:28+00:00'
+  from_purpose: evaluation
+  to_purpose: regression
+- from: active
+  to: active
+  reason: promoted to core origin
+  actor: maintainer
+  at: '2026-11-19T14:10:35+00:00'
+  from_origin: field
+  to_origin: core
+notes: imported from pilot C-DIAGNOSE-KNOWLEDGE-USAGE-001

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# verify_exec_log.py —— 校验 metrics/skill-exec-log.yaml 结构（run.md §4）
+# verify_exec_log.py —— 校验 metrics/skill-exec-log.yaml 结构（operations.md）
 #
 # 校验：
 #   1. YAML 合法 + records 列表

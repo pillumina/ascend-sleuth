@@ -43,7 +43,7 @@ handoff/<session_id>.README.txt  给人看的一页说明（接手命令就在�
 | 本机件 | 里面有什么 | 交接时意味着什么 |
 |---|---|---|
 | `metrics/entry-activity.local/<session_id>.yaml` | 这一单的步骤计数、逐次工具调用与 token 账单 | 接手方看不到这一单的过程明细。它的原料（harness 会话日志）同样只在上家那台，在 `$DSH_HOME/sessions/<工作区>/<session_id>/session.jsonl.zstd` 里 |
-| `.settle-state.json` | 结算与汇总的幂等状态：S1 现场回报与 S2 外部验证各结算过哪些事件、汇总时每个会话的累计计数到哪 | 接手方这台不知道上家算过哪些事件，也不继承上家的游标 |
+| `.settle-state.json` | 结算与汇总的幂等状态：现场反馈与 issue 回放外部验证各结算过哪些事件、汇总时每个会话的累计计数到哪 | 接手方这台不知道上家算过哪些事件，也不继承上家的游标 |
 
 进 git 的那部分接手方看得到：记录源 `metrics/entry-activity.d/<周>.yaml` 与聚合后的生成物 `metrics/entry-activity/<部署>.yaml`，只要上家那份已经合入。生成物按 `deployment` 分组，一个部署一份，两份不合并，所以上家那台记下的选中、加载、解决计数不会变成接手方这一份里的数；接手方在自己这台跑结算与汇总时，给接入的这一单另写一套行，落进自己部署的生成物。
 

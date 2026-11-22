@@ -99,6 +99,11 @@
 **这张表同时是 trace 的 user 事件 `evidence` 的骨架**：提取值与缺口（`missing`）都落进去，
 续接的人不必重问一遍已经给过的信息。
 
+**现场事实同时是一条时间线**：材料里的现象、变更（谁改了什么）、规避与恢复，按发生顺序记进 trace 的
+`incident_timeline`——一条一个事实，`at` 照材料精度（只有日期就写日期，没有时点写 `null`）；
+平台 / 框架 / 版本 / 部署形态一行记 `incident_env`。上游事件（issue / PR / 维护者答复）不进这段，
+进 `upstream_timeline`。字段与粒度见 `diagnosis-trace.md` 的「现场侧时间线」一节。
+
 **日志裁剪（硬要求）**：诊断 session 的 context 八成是日志/profiler，不是 KB。一份 128 卡全量 profiler 灌进来直接滑出 smart zone（~120K token 推理最锐利），推理质量暴跌。裁剪规则：
 - 只贴**失败 rank**的日志（`rank_selector` 指定的：coordinator / all_failed / by_topology）
 - 只贴报错**栈尾**（最后 N 行，含第一个 ERROR）
@@ -322,6 +327,7 @@ trace 记 `{action: tier3, keyword: <kw>, files_read: [...]}`——Tier 3 挽救
 - 写 `traces/<session_id>.yaml`（每并发诊断一文件，含完整 trace），status 到收尾态后留在 `traces/`（gitignored）
 - **写人读定位报告 `traces/<session_id>.report.md`**（结构与行文见 `report-template.md`）：trace 管过程可回放，对话输出管现场能行动，报告管"结论可复述 + 证据可核对 + 沉淀可执行"。**一律按深度排查规格写**——读者要据此自行判断对错并从中学机制，不因已知根因而缩水。写完过一遍 `python3 scripts/report_lint.py <报告>`（结构自检，非 CI 门禁）。
 - **报告是活件，不是一次性交付物**：它必须跟着诊断走，否则第一次交付之后就开始说谎。同一份文件改到底（不另起 `report-v2`），每次修订更新元信息的"最后更新"、在第 10 节追加一行修订记录，旧结论被推翻时**降级标注而不是删掉**（读者要看到判断怎么变的）。触发点与各改哪节见 `report-template.md` 第 2 节；本步骤最常见的两处是 **用户回报 fix 结果**（改 1/6/7/8 节）与 **resume 续接**（改 7/3 节）。
+- **改当前值走 content 写入口，并同步报告**：`summary` 与 `incident_env` / `incident_timeline` / `failure_process` / `upstream_timeline` 用 `python3 scripts/trace_transition.py <sid> --field content --content-file <json> --by agent --json` 写；写入口按 id 比对自动落一条 `revisions`（`before` / `after` / `reason` / `hashes`），手改 YAML 会被修订一致性检查报错。报告对应小节与第 10 节同一次改完，两侧不能一边新一边旧。
 - **顶层写 `severity` 与 `fix_emitted`（收尾时各写一次）**：`severity` 取 `benign` / `service-affecting` / `data-loss-risk`（命中单取命中 case 的 `severity`；未命中按根因判——会丢数据的一律 `data-loss-risk`）；`fix_emitted` 写 `true` / `false`，表示本次是否给出了可执行的修复或规避方案（等上游修复、只定位到根因写 `false`）。两个字段是面板列表唯一能表达"这单该不该先停""有没有可执行修复"的地方；不写，列表上这类单与 benign 的单长得一样，读的人只能点开才发现要停训练。
 - **写 `sediment_candidates`**（顶层字段，与报告第 8 节同源）：把"这单能沉淀什么"结构化——报告给人读，trace 给机器与 resume 读；trace 记一条 `{action: report, report_file, sediment_candidates: N}` 事件。
 - **Tier-2 命中**：常规 postmortem 草稿

@@ -27,6 +27,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from _trace_content import validate_content  # noqa: E402
 from _trace_state import check_vocab, is_terminal, load_vocab, load_traces  # noqa: E402
 from exec_log_path import resolve_traces  # noqa: E402
 
@@ -103,6 +104,11 @@ def check_trace(entry: dict, vocab: dict, strict: bool, imported: bool) -> list[
                     errs.append(f"{sid}: duplicate_of 要写成 case:<id> 或 session:<id>（当前 {dup!r}）")
     if status == "resolved" and events and not str(doc.get("resolved_at") or "").strip():
         errs.append(f"{sid}: resolved 且有转移事件，但 resolved_at 为空")
+
+    # 四层时间线 + 修订记录（contract 第 1、2 节）。旧 trace 没有这些字段时这里返回空，
+    # 不报错也不要求回填；字段内口径统一由 `_trace_content` 提供，和写入口共用一份。
+    for msg in validate_content(doc):
+        errs.append(f"{sid}: {msg}")
 
     # 现场回报：只查机械可判项（来源/结果在词表、时间是 ISO）。是否要改报告由人/agent 判断。
     sources = {x["value"] for x in vocab.get("reportSources") or []}

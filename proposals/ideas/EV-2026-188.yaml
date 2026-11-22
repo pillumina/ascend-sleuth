@@ -1,0 +1,130 @@
+# ============================================================
+# EV-2026-188 —— 独立预核按改动面触发：加报告上限、轮次上限与五类缺陷清单
+# 来源：owner 2026-11-16 反馈「预核特别耗费 token，但不知道效果是否好」，指示设计测试验证，
+#       有收益再开 PR。本地 22 份预核报告：367,965 字符，13 份有 2 次以上结论，最长 64,018
+#       字符、10 次结论；重要级最多 4 条/份。
+# 脱敏：只含仓库内路径、命令与聚合数字
+# ============================================================
+
+id: EV-2026-188
+layer: L2
+target_component: docs/guide/git-workflow.md
+title: "独立预核按改动面触发：脚本/机制档 1+1 轮、正文 6000 字符；文档与内容档 3000 字符"
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: '2026-11-16'
+source_signals:
+  - signal: user_feedback
+    evidence: >-
+      owner 2026-11-16：预核包括提 PR 时的对抗性审查特别耗费 token，但不知道具体效果是否好；
+      要求调研较新的 agent 对抗性审查研究，设计测试验证，有收益再开 PR。
+    trajectory:
+      - "本会话（2026-11-16）：token 成本与效果不匹配的反馈"
+  - signal: observation_window
+    evidence: >-
+      本机 proposals/reviews/ 22 份预核报告（已跳过 *pr-body*.md）：合计 367,965 字符，中位 15,703，
+      最大 64,018；13 份有 2 次以上结论；重要级最多 4 条/份，重要级超 5 条的报告 0 份；
+      正文按 6000 字符上限模拟为 126,293 字符，省 65.7%。
+    trajectory:
+      - "python3 scripts/precheck.py audit --dir <主检出的 proposals/reviews> --cap 6000"
+      - "proposals/reviews/（本机，gitignored；PR 不带该目录）"
+hypothesis: >-
+  预核的开销大头是每个 PR 都派会话、报告无上限、第 2 轮起重跑全部门；把触发收窄到判断面，
+  并给报告字符、发现条数与轮次设上限之后，重要级发现仍落在上限内（22 份最多 4 条），
+  报告字符按 6000 上限模拟降 65.7%；机器能判的面改为只跑 --check，不再派会话。
+predicted_effect:
+  metric: 预核的触发档、报告字符上限与结论次数
+  from: >-
+    每个 PR 都派判断性预核；报告无上限：22 份合计 367,965 字符，13 份有 2 次以上结论，
+    最长 64,018 字符、10 次结论；文档档与脚本档用同一强度。
+  to: >-
+    脚本/机制档 6000 字符、5 条（阻断/重要超出时按实际条数）、1 轮对抗 + 1 轮回应；文档与内容档 3000 字符、3 条、1 轮；
+    生成物、数据、资产只跑 --check。22 份报告按 6000 上限模拟为 126,293 字符（省 65.7%），
+    重要级最多 4 条/份，5 条上限能装下全部重要级；建议级会被压缩（22 份里至少 16 份合计超过 5 条）。
+  measure:
+    command: |
+      python3 -m unittest tests.test_precheck >/dev/null 2>&1 \
+        && python3 scripts/precheck.py policy --paths docs/README.md | grep -q 'max_report_chars: 3000' \
+        && python3 scripts/precheck.py policy --paths scripts/precheck.py | grep -q 'max_report_chars: 6000' \
+        && python3 scripts/precheck.py policy --paths scripts/precheck.py | grep -q 'max_findings: 5' \
+        && python3 scripts/precheck.py policy --paths docs/README.md --label kb/high-risk | grep -q 'mode: full' \
+        && echo VERDICT PASS
+    expect_exit: 0
+    expect_stdout: "VERDICT PASS"
+  external: >-
+    预核意见采纳率（报告头回填采纳/驳回/未处理；连续 3 批 PR 低于 30% 时把文档档降级为机器自检）。
+validation:
+  method: scan_review
+  baseline: >-
+    22 份报告 367,965 字符，13 份有 2 次以上结论，最长 64,018 字符、10 次结论；
+    重要级最多 4 条/份；文档档与脚本档同一强度，且第 2 轮起重跑全部门。
+  success_criteria: >-
+    ① 上述 measure 输出 VERDICT PASS；② `python3 -m unittest tests.test_precheck` 14 条通过；
+    ③ `precheck.py audit` 在 22 份报告上省 ≥50%、重要级最多 4 条/份；
+    合计超 5 条的至少 16 份按设计压缩建议级，不当作失败；
+    ④ `build_docs_index.py --check`、`verify_proposals.py --check`、`check_test_portability.py` 通过；
+    ⑤ 观察窗：连续 3 批 PR 的预核意见采纳率，低于 30% 时降级文档档。
+  rollback: >-
+    逐文件 revert：删掉 `scripts/precheck.py` 与 `tests/test_precheck.py`、还原
+    `docs/guide/git-workflow.md` 的「独立预核」一节与 `docs/spec/writing-norms.md` 的一行指针。
+    无数据面影响，无生成物。
+gate: >-
+  连续 3 批 PR 没有一条被采纳的预核意见，或采纳率低于 30%，把文档档降级为机器自检；
+  脚本/机制档保留（反例能跑出结果）。
+risk: low
+principle_refs: [1, 6, 8, 9, 10]
+alternatives:
+  - option: 只给报告加长度上限，不改触发与轮次
+    why_rejected: >-
+      省的是报告输出，不改每次派会话读 diff、跑门与复核的输入；也没有分开文档档与脚本档的强度。
+  - option: 删掉预核，只留 CI 与人审
+    why_rejected: >-
+      脚本/机制档的反例抓到过阻断级（PR #282 的分支顺序、route_check 正则静默跳过）；
+      删掉会把这类检查一起删，而 CI 只查结构，不查判定逻辑。
+actual_cost:
+  tokens: 20000
+  source: estimate
+  note: >-
+    本轮实现与验证：policy/audit 脚本、23 条单测、文档一节重写、22 份报告审计与一次盲评回放。
+    未单独计量，按会话规模估。
+decisions:
+  - who: agent
+    when: '2026-11-16'
+    type: proposal
+    conclusion: >-
+      三件事：① 触发按改动面分档（脚本/机制、内容、文档、机器自检），由 precheck.py 判定；
+      ② 报告字符、发现条数、轮次设上限，第 2 轮起只审增量；③ 报告头回填结局，季度跑 audit 看采纳率。
+      不做：把预核做成 CI 门、引入第二评审 agent、改 writing-norms 的三项判定本身。
+  - who: agent
+    when: '2026-11-16'
+    type: action
+    conclusion: >-
+      新增 scripts/precheck.py（policy/audit 两个子命令）与 tests/test_precheck.py；
+      重写 docs/guide/git-workflow.md 的「独立预核」一节（触发表、每档检查、报告与轮次、缺陷清单、
+      效果怎么看的 gate）；docs/spec/writing-norms.md 的指针从「评审把手」改到「独立预核」一节。
+  - who: agent
+    when: '2026-11-16'
+    type: eval
+    conclusion: >-
+      measure 实跑 VERDICT PASS；23 条单测通过；22 份报告审计：367,965 字符、6000 上限模拟
+      126,293（省 65.7%）、13 份有 2 次以上结论、重要级最多 4 条/份、发现合计最多 24 条/份
+      （22 份里至少 16 份合计超过 5 条，压缩的是建议级）。盲评回放一次（4bd93d2，旧报告
+      24,451 字符/3 次结论）：1 轮报 4 条、3,255 字符，命中旧报告两条重要级里的文案相反一条
+      （并判为阻断级），另一条「重新确认批准的入口丢失」未在 1 轮报出；同屏另报 2 条旧报告没有的
+      判定不一致。设计允许 1+1 轮，第 2 轮用于回应与补漏，本次只验了第 1 轮。
+  - who: agent
+    when: '2026-11-16'
+    type: eval
+    conclusion: >-
+      Windows 单测首轮 4 条失败：脚本入口经管道时按 cp1252 输出中文（UnicodeEncodeError）。
+      入口改调 _stdio.pin_utf8_stdio()，补 1 条把 PYTHONIOENCODING 设为 cp1252 的回归测试；
+      四个 Windows 分片全过，23 条单测在 Windows 与 Linux 都通过。
+  - who: agent
+    when: '2026-11-16'
+    type: decision
+    conclusion: >-
+      判 validated，进观察窗：看连续 3 批 PR 的预核意见采纳率与报告字符。上限 6000 是软上限，
+      事实密度高的脚本改动可在报告里注明超出原因；不把上限做成 CI 门（判断性工作）。

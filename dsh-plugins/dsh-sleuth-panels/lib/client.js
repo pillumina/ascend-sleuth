@@ -1,8 +1,8 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
-//   dsh-plugins/ascend-panel/panel-client.js  (sha256:9fabca236447)
-//   dsh-plugins/ev-panel/panel-client.js  (sha256:2faf50d5daad)
-//   dsh-plugins/sleuth-console/console-client.js  (sha256:36dab229fc03)
+//   dsh-plugins/ascend-panel/panel-client.js  (sha256:ddd85e79a637)
+//   dsh-plugins/ev-panel/panel-client.js  (sha256:c0ce0e209f67)
+//   dsh-plugins/sleuth-console/console-client.js  (sha256:2405b5ea8495)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
 // 面板源码是动态插件方言（靠沙箱提供的 host 通信）；这里原文嵌入页面产物，并补一层适配：
@@ -70,7 +70,7 @@ window.__ModuleLoader__.load({
       id: 'ascend-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:9fabca236447) 原文开始 ----
+// ---- dsh-plugins/ascend-panel/panel-client.js (sha256:ddd85e79a637) 原文开始 ----
 return {
   apply(ctx) {
     const slots = ctx.get('slots')
@@ -474,7 +474,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     // 构建时注入的面板包版本（`scripts/build_panel_bundle.js` 把占位符换成 package.json 的 version）。
     // 为什么要有：面板是「装进 profile 的常驻插件 + 浏览器按 rev 缓存」两层，改完看不到新版时
     // 无法区分"装的还是旧包"与"浏览器缓存了旧 bundle"。有这个串，一眼就能判。
-    const PANEL_VERSION = '0.10.3'
+    const PANEL_VERSION = '0.11.0'
 
     function shortUrl(u) {
       const s = String(u).replace(/^https?:\/\//i, '')
@@ -1008,6 +1008,14 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
     function needReviewOf(s) {
       if (sedStateOf(s) !== 'none' || !s || s.activeCaseInKb) return false
       if (hasCaseCandidateOf(s)) return false
+      // 先验候选全部由 to-reference 产出后，这单不再是「待复核」：材料已经落成词条。
+      // 只有先验候选、且都 produced 时才算完；还有 triage 候选（别的 kind）时仍要读一眼。
+      const refs = Number(s.referenceCandidates || 0)
+      const produced = Number(s.producedReferenceCandidates || 0)
+      if (refs > 0 && produced >= refs) {
+        const others = Math.max(0, Number(s.sedimentCandidates || 0) - refs)
+        if (others === 0) return false
+      }
       return !!(s.reportFile || s.sedimentCandidates)
     }
     // 未收尾：诊断还挂着，且既没有可沉淀结论、也没有待复核材料、也不是空壳、草稿也还没交。
@@ -1653,10 +1661,15 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       // key 用候选在 cands 里的**原下标**，避免过滤后错位。
       const candRow = (c, ci, withAction) => {
         const key = 'cand:' + ci
+        const done = String(c.status || '') === 'produced'
         return React.createElement('div', { key: key, style: { display: 'flex', alignItems: 'center', gap: 6, marginLeft: 60, marginTop: 5, minWidth: 0 } },
           React.createElement('span', { style: tinyBadge(c.kind === 'reference' ? 'var(--d-purple)' : 'var(--d-green)') }, c.kind || '?'),
           React.createElement('span', { title: c.summary || '', style: { flex: 1, minWidth: 0, color: T.text, fontSize: 'var(--t-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, c.summary || '(无摘要)'),
-          withAction ? React.createElement('button', {
+          done ? React.createElement('span', {
+            title: '已由 to-reference 产出，词条 id 在 trace 的 ref_id 里',
+            style: tinyBadge('var(--d-purple)'),
+          }, '已产出' + (c.refId ? ' · ' + c.refId : '')) : null,
+          (!done && withAction) ? React.createElement('button', {
             type: 'button',
             onClick: () => { setSedCmd(sedCmd === key ? null : key); setCopied(null) },
             style: btnGhost,
@@ -1674,7 +1687,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
         }
         const m = /^cand:(\d+)$/.exec(String(sedCmd || ''))
         const c = m ? cands[Number(m[1])] : null
-        if (!c) return null
+        if (!c || String(c.status || '') === 'produced') return null
         return '用 /skill:to-reference 沉淀一条 reference：' + (c.summary || '(候选摘要见 trace)')
           + '（来源：traces/' + s.file + '，本单定位过程见该 trace）'
       })()
@@ -2954,6 +2967,11 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
                 + '在「待复核」筛选里，读一眼报告——定了就补一条 case 候选，没定就继续查或标收尾/转上游',
               style: tinyBadge('var(--d-amber)'),
             }, '待复核') : null,
+            (Number(s.producedReferenceCandidates) || 0) > 0 ? React.createElement('span', {
+              title: '本单已有 ' + Number(s.producedReferenceCandidates) + ' 条先验候选由 to-reference 产出'
+                + '（trace.sediment_candidates 的 status: produced）；全部产出后不再算「待复核」，明细见展开后的沉淀区',
+              style: tinyBadge('var(--d-purple)'),
+            }, '已产出先验词条 ' + Number(s.producedReferenceCandidates) + ' 条') : null,
             // 严重级：只有非 benign 才出徽标——benign 是常态，人人挂一个等于没有信号。
             // data-loss-risk 的语义是"先停"，不是"打补丁"，所以文案直接写动作。
             (s.severity === 'data-loss-risk')
@@ -5140,7 +5158,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       id: 'ev-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ev-panel/panel-client.js (sha256:2faf50d5daad) 原文开始 ----
+// ---- dsh-plugins/ev-panel/panel-client.js (sha256:c0ce0e209f67) 原文开始 ----
 // ev-panel client —— 自演进看板（conversation.view 第三个 tab「自演进」）
 // 数据经 host.call('ev-board-load') 从 scripts/ev_board_data.py 汇总；
 // 单卡全文经 host.call('ev-idea-detail') 点开时才拉（列表页只带摘要）。
@@ -5178,7 +5196,7 @@ return {
     }
     const METHOD_LABELS = {
       golden_replay: 'golden 回放', metrics_compare: '指标对照',
-      issue_replay: 'S2 issue 回放', scan_review: '扫描 + 人审',
+      issue_replay: 'issue 回放', scan_review: '扫描 + 人审',
     }
     const DEC_TYPE = {
       proposal: { label: '提案', color: 'var(--c-purple)', acc: 'var(--acc-purple)' },
@@ -5685,6 +5703,20 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
             d.validation && d.validation.rollback ? React.createElement('div', { className: 'ev-kv' },
               React.createElement('span', { className: 'k' }, '回滚：'), d.validation.rollback) : null,
           ) : null,
+          // —— 结论回读：按卡号绑定的 Conclusion
+          (d && d.conclusions && d.conclusions.length) ? React.createElement('div', { className: 'ev-box' },
+            React.createElement(SectionLabel, null, '结论回读'),
+            d.conclusions.map((c, i) => React.createElement('div', { key: i, className: 'ev-kv' },
+              React.createElement(Pill, {
+                color: c.decision === 'accept' ? 'var(--c-green)' : c.decision === 'reject' ? 'var(--c-red)' : 'var(--c-amber)',
+              }, c.decision || '—'),
+              ' ', c.b + '/' + c.c + '/' + c.n + ' · ',
+              c.model || 'unknown',
+              c.cost && c.cost.baseline !== undefined
+                ? ' · 成本 ' + fmtTokens(c.cost.baseline) + '→' + fmtTokens(c.cost.candidate)
+                : '',
+            )),
+          ) : null,
           // —— 触发信号：回答"为什么会有这张卡"
           (d && d.source_signals && d.source_signals.length) ? React.createElement('div', null,
             React.createElement(SectionLabel, { color: 'var(--br)' }, '触发信号'),
@@ -5781,6 +5813,77 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
               ) : null,
             ),
       )
+    }
+
+
+    const SAMPLE_STATE_LABEL = {
+      ready: '可提交', needs_answer: '待补根因与修复', needs_sanitize: '待脱敏',
+      needs_source: '缺来源', non_diagnostic: '无可判别现象', duplicate: '已存在同来源',
+      absorbed: '已进知识库', stale: '来源失效', unknown: '未知',
+    }
+
+    let sampleQueueError = ''
+    let sampleQueueBusy = false
+
+    function SampleQueue({ samples, sessionId, onReload }) {
+      const data = samples || {}
+      const items = data.items || []
+      const counts = items.reduce((acc, item) => {
+        acc[item.status] = (acc[item.status] || 0) + 1
+        return acc
+      }, {})
+      function act(item, action) {
+        if (sampleQueueBusy) return
+        sampleQueueBusy = true
+        host.call('ev-sample-action', {
+          sessionId, id: item.id, action,
+          export: action === 'promote' && (item.purpose === 'test' || item.purpose === 'regression'),
+        }).then(r => {
+          if (r && r.ok) {
+            sampleQueueError = ''
+          } else {
+            sampleQueueError = (r && r.error) || '样本操作失败'
+          }
+          sampleQueueBusy = false
+          if (onReload) onReload()
+        }).catch(e => {
+          sampleQueueError = String((e && e.message) || e)
+          sampleQueueBusy = false
+          if (onReload) onReload()
+        })
+      }
+      return React.createElement(Section, { title: '评测样本' },
+        React.createElement('div', { className: 'ev-kv', style: { paddingBottom: 6 } },
+          '候选 ', React.createElement('b', null, counts.candidate || 0),
+          ' · 已入池 ', React.createElement('b', null, counts.active || 0),
+          ' · 共 ', React.createElement('b', null, items.length), ' 条'),
+        data.present === false ? React.createElement('div', { className: 'ev-empty' }, data.note || '样本库不可用') : null,
+        sampleQueueError ? React.createElement('div', { className: 'ev-err', style: { padding: '4px 0' } }, sampleQueueError) : null,
+        items.slice(0, 12).map((item) => React.createElement('div', {
+          key: item.id, className: 'ev-kv',
+          style: { padding: '4px 0', borderBottom: '1px dashed var(--bd)' },
+          title: item.source + (item.duplicates && item.duplicates.length ? ' · 重复：' + item.duplicates.join(', ') : ''),
+        },
+          React.createElement('b', null, item.id), ' · ',
+          SAMPLE_STATE_LABEL[item.state] || item.state,
+          ' · ', item.status + '/' + item.purpose,
+          ' · ', String(item.source || '').slice(-48),
+          item.status === 'candidate' ? React.createElement('span', { style: { marginLeft: 8 } },
+            React.createElement('button', {
+              type: 'button', className: 'ev-btn', style: { padding: '1px 6px' },
+              disabled: sampleQueueBusy,
+              onClick: () => act(item, 'approve'),
+            }, '通过复核'),
+            React.createElement('button', {
+              type: 'button', className: 'ev-btn', style: { padding: '1px 6px', marginLeft: 4 },
+              disabled: sampleQueueBusy,
+              onClick: () => act(item, 'reject'),
+            }, '退回修改')) : null,
+          item.status === 'active' && item.origin === 'field' ? React.createElement('button', {
+            type: 'button', className: 'ev-btn', style: { marginLeft: 8, padding: '1px 6px' },
+            disabled: sampleQueueBusy,
+            onClick: () => act(item, 'promote'),
+          }, '升 core') : null)))
     }
 
     // ============ ③ 自演进度量 ============
@@ -5996,7 +6099,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       if (!hasTally && !hasS2) {
         return React.createElement(Section, { title: '流程演进信号' },
           React.createElement('div', { className: 'ev-empty' },
-            '尚无归因事件（需 S1 反馈归因或 S2 replay 路由未命中累积后产生）。'),
+            '尚无归因事件（需现场反馈归因或 issue 回放路由未命中累积后产生）。'),
         )
       }
       return React.createElement(Section, { title: '流程演进信号' },
@@ -6008,7 +6111,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
             React.createElement('span', { className: 'k', style: { marginLeft: 'auto' } }, (c.traces || c.source_traces || []).length + ' 来源'),
           ))) : null,
         hasS2 ? React.createElement('div', null,
-          React.createElement(SectionLabel, null, 'S2 replay 路由归因'),
+          React.createElement(SectionLabel, null, 'issue 回放路由归因'),
           s2Attrib.map((a, i) => React.createElement('div', { key: i, className: 'ev-kv', style: { padding: '3px 0' } },
             '#' + a.issue + ' → ' + a.component + '：' + (a.note || '')))) : null,
       )
@@ -6342,6 +6445,8 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
         React.createElement('div', { className: 'ev-rise' },
           React.createElement(CapacitySummary, { capacity: data.capacity })),
         React.createElement('div', { className: 'ev-rise' },
+          React.createElement(SampleQueue, { samples: data.samples, sessionId: sessionId, onReload: () => load(true) })),
+        React.createElement('div', { className: 'ev-rise' },
           React.createElement(TallySection, { tally: data.tally, s2Attrib: data.s2_attrib })),
       )
     }
@@ -6368,7 +6473,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       id: 'sleuth-console',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/sleuth-console/console-client.js (sha256:36dab229fc03) 原文开始 ----
+// ---- dsh-plugins/sleuth-console/console-client.js (sha256:2405b5ea8495) 原文开始 ----
 // sleuth-console/console-client.js —— 常驻包里的整页「Ascend Sleuth」（client-only）
 //
 // 为什么单有这一页：指标与自演进读的是**全库**（`metrics/`、`proposals/`、`knowledge/`），
@@ -7005,12 +7110,30 @@ return {
         banner = { kind: 'muted', text: '读不到落后的提交数（git rev-list 没有给出数字）。',
           hint: '稍后再点「立即同步」重试。' }
       } else if (typeof data.behind === 'number' && data.behind > 0) {
-        // 改动面的计数来自 kb_sync 的 --show：本次合并会带进来的目录。面板代码在 dsh-plugins/ 下，
-        // 它更新时旧面板要重启才换，所以在合并前就把这一步说清楚。
-        const panelIncoming = !!(data.surface && Number(data.surface.panel) > 0)
+        // 改动面的计数来自 kb_sync 的 --show：只列这次真会带进来的目录，不写死一份目录名。
+        // 面板代码在 dsh-plugins/ 下，它更新时旧面板要重启才换，所以在合并前就把这一步说清楚。
+        const KB_SURFACE_DIRS = [
+          ['knowledge', 'knowledge/'], ['routing', 'triage-tree.d/'], ['reference', 'references/'],
+          ['methodology', 'skills/'], ['panel', 'dsh-plugins/'], ['other', '其他文件'],
+        ]
+        const surface = data.surface && typeof data.surface === 'object' ? data.surface : null
+        const incoming = surface
+          ? KB_SURFACE_DIRS
+            .filter((item) => Number(surface[item[0]]) > 0)
+            .map((item) => item[1] + ' ' + Number(surface[item[0]]))
+          : []
+        const knowledgeish = surface
+          ? ['knowledge', 'routing', 'reference', 'methodology']
+            .some((key) => Number(surface[key]) > 0)
+          : true
+        const panelIncoming = !!(surface && Number(surface.panel) > 0)
         banner = {
           kind: 'warn',
-          text: '落后 ' + data.behind + ' 个提交。本次合并会把 knowledge/、references/ 与 skills/ 一起更新；知识立即生效，流程文件下次会话生效。'
+          text: '落后 ' + data.behind + ' 个提交。'
+            + (incoming.length
+              ? '本次合并会带进：' + incoming.join('、') + '。'
+              : '本次合并会把 knowledge/、references/ 与 skills/ 一起更新。')
+            + (knowledgeish ? '知识立即生效，流程文件下次会话生效。' : '')
             + (panelIncoming ? '面板代码也会更新：重启 DSH 后生效；从插件页装的要先重装。' : ''),
         }
       } else {

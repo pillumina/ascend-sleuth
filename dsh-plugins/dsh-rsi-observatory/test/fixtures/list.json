@@ -1,0 +1,109 @@
+{
+  "schema": "rsi-observatory-v1",
+  "generatedAt": "2026-11-20T13:05:54+00:00",
+  "source": {
+    "base": "/tmp/rsiobs-fix/.s2-replay/evolve",
+    "backend": "local",
+    "path": "/tmp/rsiobs-fix/.s2-replay/evolve/rsi-events.jsonl",
+    "storeSchema": "rsi-store-v1",
+    "kinds": [
+      "experiment",
+      "proposal",
+      "decision",
+      "rollout",
+      "archive"
+    ]
+  },
+  "counts": {
+    "events": 2,
+    "experiments": 2,
+    "proposals": 2
+  },
+  "experiments": [
+    {
+      "eventId": "E-944cdd53d841",
+      "at": "2026-11-20T13:05:45+00:00",
+      "experimentId": "EX-P-2026-062",
+      "proposalId": "P-2026-062",
+      "title": "同源缓存 + 失败重试",
+      "target": "tooling",
+      "component": "tooling.source_fetch",
+      "decision": "accept",
+      "baselineScore": 0.3333,
+      "candidateScore": 0.4444,
+      "paired": {
+        "b": 4,
+        "c": 0,
+        "n": 6
+      },
+      "rolledBack": false,
+      "gaps": []
+    },
+    {
+      "eventId": "E-2eb96d937c42",
+      "at": "2026-11-20T13:05:45+00:00",
+      "experimentId": "EX-P-2026-060",
+      "proposalId": "P-2026-060",
+      "title": "阶段二只载筛出的候选全文",
+      "target": "skill",
+      "component": "diagnose.knowledge_usage",
+      "decision": "insufficient",
+      "baselineScore": 0.3333,
+      "candidateScore": 0.4444,
+      "paired": {
+        "b": 1,
+        "c": 0,
+        "n": 9
+      },
+      "rolledBack": true,
+      "gaps": [
+        "rolled_back"
+      ]
+    }
+  ],
+  "proposals": [
+    {
+      "proposalId": "P-2026-062",
+      "title": "同源缓存 + 失败重试",
+      "target": "tooling",
+      "component": "tooling.source_fetch",
+      "eventId": "E-944cdd53d841",
+      "at": "2026-11-20T13:05:45+00:00",
+      "status": "accept",
+      "decision": "accept",
+      "artifactKind": "code",
+      "files": [
+        "scripts/src_fetch.py"
+      ],
+      "expected": "同源只抓一次",
+      "risk": "低：只改加载范围",
+      "rollback": "恢复原阶段二说明",
+      "rolledBack": false,
+      "experimentIds": [
+        "EX-P-2026-062"
+      ]
+    },
+    {
+      "proposalId": "P-2026-060",
+      "title": "阶段二只载筛出的候选全文",
+      "target": "skill",
+      "component": "diagnose.knowledge_usage",
+      "eventId": "E-2eb96d937c42",
+      "at": "2026-11-20T13:05:45+00:00",
+      "status": "reject",
+      "decision": "insufficient",
+      "artifactKind": "code",
+      "files": [
+        "skills/diagnose/SKILL.md"
+      ],
+      "expected": "知识读取量下降约 20%",
+      "risk": "低：只改加载范围",
+      "rollback": "恢复原阶段二说明",
+      "rolledBack": true,
+      "experimentIds": [
+        "EX-P-2026-060"
+      ]
+    }
+  ],
+  "warnings": []
+}

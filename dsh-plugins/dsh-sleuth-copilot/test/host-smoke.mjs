@@ -40,9 +40,57 @@ const TRACE_FIXTURE = [
   'harness_session: "origin-session"',
   'excluded_cases: []',
   'report_file: "alt-smoke.md"',
+  'incident_env: "A3-910C · vllm-ascend 0.23.0 · CANN 9.0.0"',
+  'incident_timeline:',
+  '  - id: inc-1',
+  '    at: "2026-09-08T15:20:00+08:00"',
+  '    what: "服务起来后首个并发长 prompt 请求崩溃，WorkerProc 退出"',
+  '    source: log',
+  '    step: 1',
+  '    evidence:',
+  '      files: ["traces/evidence/2026-09-08-copilot-smoke/crash.log"]',
+  '      quote: "ERROR 09-08 15:20:00 WorkerProc hit an exception."',
+  '      line: 17',
+  '  - id: inc-2',
+  '    at: "2026-09-08T15:26:00+08:00"',
+  '    what: "关掉 TopK dispatch 后压测 2 小时未复现"',
+  '    source: field_test',
+  '    step: 5',
+  'failure_process:',
+  '  axis: time',
+  '  window:',
+  '    from: "2026-09-08T15:20:00+08:00"',
+  '    to: "2026-09-08T15:29:00+08:00"',
+  '  clock_note: "日志时间比墙钟晚 8 h（日志 07:20:00 = 墙钟 15:20:00）"',
+  '  nodes:',
+  '    - id: fp-1',
+  '      at: "2026-09-08T15:20:00+08:00"',
+  '      what: "首次崩溃，WorkerProc 退出"',
+  '      quote: "ERROR 09-08 15:20:00 WorkerProc hit an exception."',
+  '      repeat: "每 ~1 s 一次，持续到 15:29:00"',
+  '      evidence:',
+  '        file: "traces/evidence/2026-09-08-copilot-smoke/evidence.txt"',
+  '        line: 17',
+  'upstream_timeline:',
+  '  - id: up-1',
+  '    at: "2026-08-12"',
+  '    what: "PR #13831 合入，修 dspark_proposer.py"',
+  '    source: commit',
+  '    ref: "#13831"',
+  'revisions:',
+  '  - at: "2026-09-08T15:26:00+08:00"',
+  '    by: agent',
+  '    kind: fact_corrected',
+  '    changes:',
+  '      - {target: inc-2, before: "首次崩溃后服务自动恢复", after: "服务未恢复，WorkerProc 退出"}',
+  '    reason: "新证据：日志显示 WorkerProc 退出后没有重启"',
   'sediment_candidates:',
   '  - kind: case',
   '    summary: "夹具候选：vendor TopKV2 kernel 崩溃"',
+  '  - kind: reference',
+  '    summary: "夹具候选：已产出的先验词条"',
+  '    status: produced',
+  '    ref_id: test-ref',
   'trace:',
   '  - role: user',
   '    step: 1',
@@ -83,10 +131,41 @@ const TRACE2_FIXTURE = [
   '  outcome: pending',
   'active_case: ""',
   'harness_session: "legacy-session"',
+  // 旧单没有四层数据：`incident_timeline: null` 与缺键一样按「未记录」，`revisions: null` 给 []。
+  'incident_timeline: null',
+  'revisions: null',
   'trace:',
   '  - role: user',
   '    step: 1',
   '    content: "老单用户事件"',
+  '',
+].join('\n')
+
+// 修订上限夹具：revisions 是 append-only、不设上限。读侧只留最近 24 条（尾部），
+// revisionsTotal 仍报总数；这单只用来验证截断方向，不参与写通道。
+const TRACE3_ID = '2026-09-01-copilot-many-revisions'
+const TRACE3_FILE = TRACE3_ID + '.yaml'
+const MANY_REVISIONS = 30
+const TRACE3_FIXTURE = [
+  'session_id: "' + TRACE3_ID + '"',
+  'status: in_progress',
+  'summary: "修订上限夹具：30 条修订。"',
+  'created_at: "2026-09-01T10:00:00+08:00"',
+  'updated_at: "2026-09-01T10:00:00+08:00"',
+  'harness_session: "many-rev-session"',
+  'revisions:',
+  ...Array.from({ length: MANY_REVISIONS }, (_, i) => [
+    '  - at: "2026-09-01T10:00:00+08:00"',
+    '    by: agent',
+    '    kind: fact_corrected',
+    '    changes:',
+    '      - {target: summary, before: "旧 ' + (i + 1) + '", after: "新 ' + (i + 1) + '"}',
+    '    reason: "第 ' + (i + 1) + ' 次修订"',
+  ]).flat(),
+  'trace:',
+  '  - role: user',
+  '    step: 1',
+  '    content: "夹具"',
   '',
 ].join('\n')
 
@@ -236,6 +315,7 @@ function makeKbShell() {
   const calls = []
   const specs = []
   let payload = kbPayload({})
+  let showPayload = kbPayload({})
   let forcedPayload = null
   let rawResult = null
   return {
@@ -243,6 +323,10 @@ function makeKbShell() {
     specs,
     setPayload(next) {
       payload = next
+    },
+    // 本机 HEAD 变了之后的重算只跑 `--show`：单独一份夹具，模拟「本地已跟上、落后归零」。
+    setShowPayload(next) {
+      showPayload = next
     },
     setForcePayload(next) {
       forcedPayload = next
@@ -259,7 +343,9 @@ function makeKbShell() {
       specs.push(spec)
       if (!command.includes('kb_sync.py')) return { result: () => runCommand(spec) }
       if (rawResult !== null) return { result: () => Promise.resolve(rawResult) }
-      const body = forcedPayload !== null && /(^|\s)--force(\s|$)/.test(command) ? forcedPayload : payload
+      const body = forcedPayload !== null && /(^|\s)--force(\s|$)/.test(command)
+        ? forcedPayload
+        : (/--show/.test(command) ? showPayload : payload)
       return {
         result: () => Promise.resolve({
           exitCode: 0, timedOut: false, aborted: false,
@@ -528,6 +614,8 @@ expect('读：带内容指纹', row && /^[0-9a-f]{64}$/.test(row.contentSha256))
 expect('读：带上游查询能力位', stateValue && stateValue.upstream && typeof stateValue.upstream.ready === 'boolean', JSON.stringify(stateValue && stateValue.upstream))
 expect('读：证据文件清单', row && Array.isArray(row.extra.evidenceList) && row.extra.evidenceList.length === 1 && row.extra.evidenceList[0].includes('crash.log'), JSON.stringify(row && row.extra))
 expect('读：沉淀候选清单', row && Array.isArray(row.extra.sedimentCandidateList) && row.extra.sedimentCandidateList[0].summary.includes('TopKV2'), JSON.stringify(row && row.extra))
+expect('读：候选带产出状态', row && Array.isArray(row.extra.sedimentCandidateList)
+  && row.extra.sedimentCandidateList.some(c => c.status === 'produced' && c.refId === 'test-ref'), JSON.stringify(row && row.extra.sedimentCandidateList))
 expect('读：缺失材料清单（含无空格写法与末项）', row && Array.isArray(row.extra.missingMaterials)
   && row.extra.missingMaterials.includes('驱动版本')
   && row.extra.missingMaterials.includes('npu-smi 输出')
@@ -537,6 +625,14 @@ expect('读：summary 已给的硬件 / 量化档不列为缺口', row
   && !row.extra.missingMaterials.some((item) => item.startsWith('量化档')), JSON.stringify(row && row.extra.missingMaterials))
 expect('读：普通硬件缺口不被过滤', row && row.extra.missingMaterials.includes('硬件侧 plog 与 die 温度'), JSON.stringify(row && row.extra.missingMaterials))
 expect('读：按顶层 report_file 识别报告', row && row.extra.hasReport === true && row.reportFile === 'traces/alt-smoke.md')
+// 四层明细不再随 copilot-state 的薄行下发（80 单最坏会放大到数 MB）：
+// 详情选中行时走 copilot-timeline 取 layers；薄行只留状态字段。
+expect('读：薄行不带四层明细（体积回到状态字段）', row && row.extra
+  && !Object.prototype.hasOwnProperty.call(row.extra, 'incidentEnv')
+  && !Object.prototype.hasOwnProperty.call(row.extra, 'incident')
+  && !Object.prototype.hasOwnProperty.call(row.extra, 'failureProcess')
+  && !Object.prototype.hasOwnProperty.call(row.extra, 'upstream')
+  && !Object.prototype.hasOwnProperty.call(row.extra, 'revisions'), JSON.stringify(row && Object.keys(row.extra || {})))
 const originalSha = row.contentSha256
 
 // 进度端点：还没有 check-all 在跑时 present=false、不报 done（面板不能据此永久停轮询）。
@@ -587,11 +683,64 @@ const timelineRead = await request(rw, {
 const timelineValue = timelineRead.envelope && timelineRead.envelope.result && timelineRead.envelope.result.value
 expect('时间线：读到步骤', timelineValue && timelineValue.ok === true && Array.isArray(timelineValue.timeline) && timelineValue.timeline.length >= 2, JSON.stringify(timelineValue))
 expect('时间线：角色与动作', timelineValue && timelineValue.timeline[0].role === 'user' && timelineValue.timeline[1].action === 'triage', JSON.stringify(timelineValue && timelineValue.timeline))
+expect('时间线：现场环境与现场条目', timelineValue && timelineValue.incidentEnv.includes('vllm-ascend')
+  && Array.isArray(timelineValue.incident) && timelineValue.incident.length === 2
+  && timelineValue.incident[0].at === '2026-09-08T15:20:00+08:00'
+  && timelineValue.incident[0].what.includes('首个并发长 prompt')
+  && timelineValue.incident[0].source === 'log'
+  && timelineValue.incident[0].step === 1
+  && Array.isArray(timelineValue.incident[0].evidence.files)
+  && timelineValue.incident[1].source === 'field_test'
+  && timelineValue.incidentTotal === 2, JSON.stringify(timelineValue && timelineValue.incident))
+expect('时间线：故障过程窗口、时钟偏差与节点', timelineValue && timelineValue.failureProcess
+  && timelineValue.failureProcess.window.to === '2026-09-08T15:29:00+08:00'
+  && timelineValue.failureProcess.nodes.length === 1
+  && timelineValue.failureProcess.nodes[0].quote.includes('WorkerProc hit an exception')
+  && timelineValue.failureProcess.nodes[0].repeat.includes('每 ~1 s 一次')
+  && timelineValue.failureProcess.nodes[0].evidence.line === 17, JSON.stringify(timelineValue && timelineValue.failureProcess))
+expect('时间线：上游条目与来源', timelineValue && Array.isArray(timelineValue.upstream)
+  && timelineValue.upstream[0].ref === '#13831'
+  && timelineValue.upstream[0].source === 'commit'
+  && timelineValue.upstreamTotal === 1, JSON.stringify(timelineValue && timelineValue.upstream))
+expect('时间线：修订 changes 与原因', timelineValue && Array.isArray(timelineValue.revisions)
+  && timelineValue.revisions[0].kind === 'fact_corrected'
+  && timelineValue.revisions[0].changes[0].before.includes('自动恢复')
+  && timelineValue.revisions[0].changes[0].after.includes('未恢复')
+  && timelineValue.revisions[0].reason.includes('新证据')
+  && timelineValue.revisionsTotal === 1, JSON.stringify(timelineValue && timelineValue.revisions))
 const timelineBad = await request(rw, {
   type: 'client-request', rpcId: 'timeline-2', method: 'copilot-timeline',
   payload: { cwd: SANDBOX, tracesDir: TRACES, traceFile: '../x.yaml' },
 }, '/sleuth-copilot/copilot-timeline')
 expect('时间线：非法文件名被拒', timelineBad.envelope.result.value.ok === false && timelineBad.envelope.result.value.code === 'E_SCHEMA')
+// 详情按需取时只解析目标文件：目标坏了按 E_PARSE / E_LOAD 单给，兄弟文件坏了不参与解析。
+writeFileSync(join(TRACES, 'broken-target.yaml'), 'session_id: [unclosed\n', 'utf8')
+const brokenTarget = await request(rw, {
+  type: 'client-request', rpcId: 'timeline-broken', method: 'copilot-timeline',
+  payload: { cwd: SANDBOX, tracesDir: TRACES, traceFile: 'broken-target.yaml' },
+}, '/sleuth-copilot/copilot-timeline')
+const brokenTargetValue = brokenTarget.envelope.result.value
+expect('时间线：目标文件解析失败给 E_PARSE', brokenTargetValue && brokenTargetValue.ok === false
+  && brokenTargetValue.code === 'E_PARSE', JSON.stringify(brokenTargetValue))
+rmSync(join(TRACES, 'broken-target.yaml'))
+writeFileSync(join(TRACES, 'bad-utf8.yaml'), Buffer.from([0xff, 0xfe, 0x00, 0x62]))
+const badUtf8 = await request(rw, {
+  type: 'client-request', rpcId: 'timeline-bad-utf8', method: 'copilot-timeline',
+  payload: { cwd: SANDBOX, tracesDir: TRACES, traceFile: 'bad-utf8.yaml' },
+}, '/sleuth-copilot/copilot-timeline')
+const badUtf8Value = badUtf8.envelope.result.value
+expect('时间线：目标文件读不出给 E_LOAD', badUtf8Value && badUtf8Value.ok === false
+  && badUtf8Value.code === 'E_LOAD', JSON.stringify(badUtf8Value))
+rmSync(join(TRACES, 'bad-utf8.yaml'))
+writeFileSync(join(TRACES, 'broken-sibling.yaml'), 'session_id: [unclosed\n', 'utf8')
+const healthyTimeline = await request(rw, {
+  type: 'client-request', rpcId: 'timeline-sibling', method: 'copilot-timeline',
+  payload: { cwd: SANDBOX, tracesDir: TRACES, traceFile: TRACE_FILE },
+}, '/sleuth-copilot/copilot-timeline')
+const healthyTimelineValue = healthyTimeline.envelope.result.value
+expect('时间线：只读目标文件，坏兄弟文件不影响', healthyTimelineValue && healthyTimelineValue.ok === true
+  && Array.isArray(healthyTimelineValue.timeline), JSON.stringify(healthyTimelineValue && healthyTimelineValue.code))
+rmSync(join(TRACES, 'broken-sibling.yaml'))
 if (hasGit) {
   const sedimentRead = await request(rw, {
     type: 'client-request', rpcId: 'sediment-1', method: 'copilot-sediment',
@@ -964,6 +1113,50 @@ expect('读：非数字 current_step 降级为 0', legacyRow && legacyRow.extra
 expect('读：fixEmitted 透传到薄行与 extra', legacyRow
   && Object.prototype.hasOwnProperty.call(legacyRow, 'fixEmitted') && legacyRow.fixEmitted === null
   && legacyRow.extra.fixEmitted === null, JSON.stringify(legacyRow && legacyRow.fixEmitted))
+// 旧单（没有四层字段）：null = 字段不存在，[] = 字段存在但为空；不回填、不报错。
+expect('读：旧单薄行不带四层字段', legacyRow && legacyRow.extra
+  && !Object.prototype.hasOwnProperty.call(legacyRow.extra, 'incident')
+  && !Object.prototype.hasOwnProperty.call(legacyRow.extra, 'upstream'), JSON.stringify(legacyRow && Object.keys(legacyRow.extra || {})))
+const legacyTimelineRead = await request(rw, {
+  type: 'client-request', rpcId: 'timeline-legacy', method: 'copilot-timeline',
+  payload: { cwd: SANDBOX, tracesDir: TRACES, traceFile: TRACE2_FILE },
+}, '/sleuth-copilot/copilot-timeline')
+const legacyTimelineValue = legacyTimelineRead.envelope && legacyTimelineRead.envelope.result
+  && legacyTimelineRead.envelope.result.value
+// `incident_timeline: null`（显式 null）与缺键（upstream_timeline）都按未记录给 null；
+// `revisions: null` 给空列表——null 不是「查过但为空」。
+expect('时间线：旧单 null / 缺键都按未记录', legacyTimelineValue && legacyTimelineValue.ok === true
+  && legacyTimelineValue.incidentEnv === ''
+  && legacyTimelineValue.incident === null && legacyTimelineValue.incidentTotal === 0
+  && legacyTimelineValue.failureProcess === null
+  && legacyTimelineValue.upstream === null && legacyTimelineValue.upstreamTotal === 0
+  && Array.isArray(legacyTimelineValue.revisions) && legacyTimelineValue.revisions.length === 0
+  && legacyTimelineValue.revisionsTotal === 0,
+JSON.stringify(legacyTimelineValue && {
+  incidentEnv: legacyTimelineValue.incidentEnv, incident: legacyTimelineValue.incident,
+  incidentTotal: legacyTimelineValue.incidentTotal,
+  failureProcess: legacyTimelineValue.failureProcess, upstream: legacyTimelineValue.upstream,
+  upstreamTotal: legacyTimelineValue.upstreamTotal, revisions: legacyTimelineValue.revisions,
+}))
+// 修订超上限：append-only 无上限，读侧只留最近 24 条（尾部），总数不截断。
+writeFileSync(join(TRACES, TRACE3_FILE), TRACE3_FIXTURE, 'utf8')
+const manyRevRead = await request(rw, {
+  type: 'client-request', rpcId: 'timeline-many-revisions', method: 'copilot-timeline',
+  payload: { cwd: SANDBOX, tracesDir: TRACES, traceFile: TRACE3_FILE },
+}, '/sleuth-copilot/copilot-timeline')
+const manyRevValue = manyRevRead.envelope && manyRevRead.envelope.result
+  && manyRevRead.envelope.result.value
+expect('时间线：修订超上限只留最近 24 条、总数不截断', manyRevValue && manyRevValue.ok === true
+  && Array.isArray(manyRevValue.revisions) && manyRevValue.revisions.length === 24
+  && manyRevValue.revisionsTotal === 30
+  && manyRevValue.revisions[0].reason === '第 7 次修订'
+  && manyRevValue.revisions[23].reason === '第 30 次修订',
+JSON.stringify(manyRevValue && {
+  length: manyRevValue.revisions && manyRevValue.revisions.length,
+  total: manyRevValue.revisionsTotal,
+  first: manyRevValue.revisions && manyRevValue.revisions[0] && manyRevValue.revisions[0].reason,
+  last: manyRevValue.revisions && manyRevValue.revisions[23] && manyRevValue.revisions[23].reason,
+}))
 const legacyTraceSha = createHash('sha256').update(readFileSync(join(TRACES, TRACE2_FILE))).digest('hex')
 const backfill = await transition(rw, {
     sessionId: 'smoke-session', cwd: SANDBOX, traceSessionId: TRACE2_ID, traceFile: TRACE2_FILE,
@@ -1563,12 +1756,13 @@ function newKbHarness(payload, timers) {
   // ③ 换 rev 再出现。
   const newRev = newKbHarness(kbPayload({
     remote_rev: 'abc1234', behind: 2,
-    surface: { knowledge: 0, routing: 0, reference: 0, methodology: 0, panel: 0, other: 2 },
+    surface: { knowledge: 1, routing: 0, reference: 0, methodology: 0, panel: 0, other: 0 },
   }), false)
   const newRevValue = (await kbRpc(newRev.harness, 'copilot-kb-recheck', {}, 'kb-recheck-new')).envelope.result.value
   expect('知识库：换 rev 再出现',
     newRevValue && newRevValue.notice && newRevValue.notice.rev === 'abc1234'
-    && newRevValue.notice.behind === 2 && newRevValue.notice.panel === 0 && newRevValue.notice.knowledge === 0,
+    && newRevValue.notice.behind === 2 && newRevValue.notice.panel === 0 && newRevValue.notice.knowledge === 1
+    && newRevValue.notice.kind === 'knowledge',
     JSON.stringify(newRevValue && newRevValue.notice))
 
   // ④ behind 0：不提示，状态文件记 0。
@@ -1971,6 +2165,69 @@ function newKbHarness(payload, timers) {
     noScriptValue && noScriptValue.notice === null && noScriptValue.reason === 'unavailable'
     && noScript.shell.calls.every((command) => !command.includes('kb_sync.py')),
     JSON.stringify(noScriptValue))
+
+  // ⑫ 本机 HEAD 变了（终端 pull / 面板「立即同步」/ 别的会话同步过）：旧快照失效，
+  // 用 `--show`（只读本地、不联网）重算；落后归零就撤提示，不起 fetch。
+  const headFile = join(KB_REPO, '.git', 'HEAD')
+  const headRef = join(KB_REPO, '.git', 'refs', 'heads', 'main')
+  mkdirSync(dirname(headRef), { recursive: true })
+  writeFileSync(headFile, 'ref: refs/heads/main\n', 'utf8')
+  writeFileSync(headRef, 'aaaa1111\n', 'utf8')
+  const movedShell = makeKbShell()
+  movedShell.setPayload(kbPayload({ remote_rev: 'cafe001', behind: 3 }))
+  const movedTimers = makeFakeTimers()
+  const moved = makeHarness({ shell: movedShell, timer: movedTimers })
+  kbHarnesses.push(moved)
+  mod.apply(moved.ctx)
+  await movedTimers.fireTimer()
+  const movedState = (await kbRpc(moved, 'copilot-state', {
+    sessionId: 'kb-moved', cwd: SANDBOX,
+  }, 'kb-state-moved-1')).envelope.result.value
+  expect('知识库：HEAD 没变时不做本地重算',
+    movedState && movedState.kbNotice && movedState.kbNotice.behind === 3
+    && kbSyncCalls(movedShell) === 1,
+    JSON.stringify({ notice: movedState && movedState.kbNotice, calls: movedShell.calls }))
+  writeFileSync(headRef, 'bbbb2222\n', 'utf8')
+  movedShell.setShowPayload(kbPayload({
+    behind: 0, local_rev: 'bbbb2222', remote_rev: 'bbbb2222',
+    surface: { knowledge: 0, routing: 0, reference: 0, methodology: 0, panel: 0, other: 0 },
+  }))
+  const movedCleared = (await kbRpc(moved, 'copilot-state', {
+    sessionId: 'kb-moved', cwd: SANDBOX,
+  }, 'kb-state-moved-2')).envelope.result.value
+  const movedCommands = movedShell.calls.filter((command) => command.includes('kb_sync.py'))
+  expect('知识库：本机 HEAD 变了用 --show 重算、不 fetch',
+    movedCommands.length === 2 && /(^|\s)--show(\s|$)/.test(movedCommands[1])
+    && !/--check|--sync|--merge/.test(movedCommands[1]),
+    JSON.stringify(movedCommands))
+  expect('知识库：重算后落后归零即撤提示',
+    movedCleared && movedCleared.kbNotice === null,
+    JSON.stringify(movedCleared && movedCleared.kbNotice))
+  expect('知识库：重算结果落回状态文件',
+    readKbState() && readKbState().behind === 0 && readKbState().rev === 'bbbb2222',
+    JSON.stringify(readKbState()))
+  // 清掉 HEAD 夹具：后面的用例照旧按「读不到 HEAD」跳过本地重算。
+  rmSync(join(KB_REPO, '.git', 'refs'), { recursive: true, force: true })
+  rmSync(headFile, { force: true })
+
+  // ⑬ 文案按改动面分：只有面板代码说「面板代码落后」；只有 docs/scripts 等 other 面不提示。
+  const panelOnly = newKbHarness(kbPayload({
+    remote_rev: 'feed456', behind: 1,
+    surface: { knowledge: 0, routing: 0, reference: 0, methodology: 0, panel: 2, other: 0 },
+  }), false)
+  const panelOnlyValue = (await kbRpc(panelOnly.harness, 'copilot-kb-recheck', {}, 'kb-recheck-panel-only')).envelope.result.value
+  expect('知识库：只有面板代码时 kind=panel、不按知识库说',
+    panelOnlyValue && panelOnlyValue.notice && panelOnlyValue.notice.kind === 'panel'
+    && panelOnlyValue.notice.behind === 1 && panelOnlyValue.notice.knowledge === 0
+    && panelOnlyValue.notice.panel === 0,
+    JSON.stringify(panelOnlyValue && panelOnlyValue.notice))
+  const docsOnly = newKbHarness(kbPayload({
+    remote_rev: 'feed789', behind: 2,
+    surface: { knowledge: 0, routing: 0, reference: 0, methodology: 0, panel: 0, other: 3 },
+  }), false)
+  const docsOnlyValue = (await kbRpc(docsOnly.harness, 'copilot-kb-recheck', {}, 'kb-recheck-docs-only')).envelope.result.value
+  expect('知识库：只有 docs 等 other 面时不提示',
+    docsOnlyValue && docsOnlyValue.notice === null, JSON.stringify(docsOnlyValue && docsOnlyValue.notice))
 }
 
 // ── 信封与 HTTP 边界 ────────────────────────────────────────────────────────

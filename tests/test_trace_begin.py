@@ -54,9 +54,12 @@ class HeaderTest(unittest.TestCase):
         text = trace_begin.build_header(
             slug="2026-10-30-demo", harness_session="session-abc",
             created_at="2026-10-30T10:00:00+08:00", kb_rev="deadbee",
+            model="deepseek-flash", tokens_start=1234,
         )
         self.assertIn('session_id: "2026-10-30-demo"', text)
         self.assertIn('harness_session: "session-abc"', text)
+        self.assertIn('model: "deepseek-flash"', text)
+        self.assertIn("tokens_start: 1234", text)
         self.assertIn('kb_rev: "deadbee"', text)
         self.assertIn('created_at: "2026-10-30T10:00:00+08:00"', text)
         self.assertIn("trace: []", text)
@@ -80,6 +83,7 @@ class HeaderTest(unittest.TestCase):
         )
         self.assertIn('harness_session: ""', text)
         self.assertIn("缺！", text)
+        self.assertIn("取不到模型名就留空", text)
 
 
 class CliTest(unittest.TestCase):
@@ -99,6 +103,16 @@ class CliTest(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stderr)
             self.assertIn('harness_session: "session-abc"', r.stdout)
             self.assertFalse((Path(td) / "traces").exists())
+
+    def test_generic_agent_can_supply_model_and_tokens(self):
+        with tempfile.TemporaryDirectory() as td:
+            r = self.run_cli("--slug", "2026-10-30-demo", "--print-only", "--repo", td,
+                             "--harness-session", "claude-abc", "--model", "claude-sonnet-4",
+                             "--tokens-start", "123", "--no-sync")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertIn('harness_session: "claude-abc"', r.stdout)
+            self.assertIn('model: "claude-sonnet-4"', r.stdout)
+            self.assertIn("tokens_start: 123", r.stdout)
 
     def test_refuses_to_overwrite_an_existing_trace(self):
         with tempfile.TemporaryDirectory() as td:

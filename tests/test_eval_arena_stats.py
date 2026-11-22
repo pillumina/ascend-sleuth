@@ -481,7 +481,7 @@ issues:
 class NonDiagnosticRowTest(unittest.TestCase):
     """非诊断样本（输入里没有可判别信号）不进命中率分母与配对。
 
-    文档 docs/mechanism/eval-arena.md §3 早就写了这条口径，但全仓没有读取方——与 held_out
+    文档 docs/mechanism/evaluation.md 早就写了这条口径，但全仓没有读取方——与 held_out
     同一类"说了没做"。这里钉住四件事：显式标注→单列并剔出一切指标与指纹行集合；没标注的行
     照旧参与（只认标注，不从正文猜）；手写 stats 带着这一行时配对也滤掉；--build-pool 把
     校准集行上的标注原样带进池行。

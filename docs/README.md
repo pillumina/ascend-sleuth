@@ -45,21 +45,22 @@
 - [design-theory.md](../docs/spec/design-theory.md) — 四公理 → 公式 → 原则的完整推导链（原则的生成处）
 - [writing-norms.md](../docs/spec/writing-norms.md) — 人读/审阅文本的行文规范（词句层：口径以本文件为准）：共用条目、必须保留的原值、各面的共用与定制判定、哪些能硬化；篇章结构口径见 skills/doc-standards/
 - [test-portability.md](../docs/spec/test-portability.md) — 测试在 Windows/Linux/macOS 上同一结论的判定口径（编码、路径、字节夹具、平台 API、外网用例），以及哪几条已进 CI、哪几条只能人审
+- [terminology.md](../docs/spec/terminology.md) — 内部行话、易混词与禁用词：禁用词改写、五个英文词的一译一义、六个多义词按语境改；业界通用词不进表
 
 **演进机制（改机制本身才读；日常不必读）**
 *你要改演进/评测/编排机制本身时——日常只读 docs/mechanism/rsi-mechanism.md 一篇，论证层在 docs/mechanism/*
 
 - [evolution.md](../docs/evolution.md) — 旧链接入口（保留以免旧链接失效）：内容已并入 mechanism/rsi-mechanism.md，本文只是一页指路，不要在此续写
-- [rsi-mechanism.md](../docs/mechanism/rsi-mechanism.md) — 机制技术说明（这一层的入口）：三环主线、什么时候触发、验证怎么闭环、哪一步需要人、每周做什么
-- [pipeline.md](../docs/mechanism/pipeline.md) — 三层闭环（知识 / 流程 / 编排）与 proposal 状态机、卡 schema
-- [execution.md](../docs/mechanism/execution.md) — proposal 信息契约、评审判据、follow-up 验证、指标分层
-- [orchestration.md](../docs/mechanism/orchestration.md) — 自演进会话协议、目标函数与停止条件、token 预算
-- [run.md](../docs/mechanism/run.md) — 长期运行、issue 三重角色、统一执行记录、可视化
-- [eval-arena.md](../docs/mechanism/eval-arena.md) — 元层 eval 台（train/val 门控）与影响账本
-- [ixn-replay.md](../docs/mechanism/ixn-replay.md) — 交互面评测（追问 / 信息充分性 / 过早结论）
-- [diagnosis-observability.md](../docs/mechanism/diagnosis-observability.md) — 诊断观测的目标态：一次诊断记什么字段、十次诊断怎么汇总成一份上仓读数、与知识库的解耦边界、并发与冲突处理、反馈联动、指标清单与面板；取舍在 ADR-0011
+- [evolution-config.md](../docs/mechanism/evolution-config.md) — 自演进配置的唯一入口：sleuth.config.yaml 的角色、policy、profile、store、sync、pipeline 组合与信号/RSI/EV 边界
+- [rsi-acceptance.md](../docs/mechanism/rsi-acceptance.md) — RSI 真实数据验收记录：样本、候选、A/B gate、full flow、store 缺口与插件验证结论
+- [rsi-mechanism.md](../docs/mechanism/rsi-mechanism.md) — 机制技术入口：目标、三条环路、一轮演进、角色、人工介入等级、八篇文档地图
+- [evaluation.md](../docs/mechanism/evaluation.md) — 评估对象与评估集、rubric、配对判定、成本、版本，以及评估台（arena）的池与结论
+- [records.md](../docs/mechanism/records.md) — 记录与数据契约：改进项卡 schema、样本、执行、结论、接口、存储归属、版本坐标
+- [operations.md](../docs/mechanism/operations.md) — 运行节奏：触发入口、运行模式与授权、停止条件、每周流程、采样、内容维护、长期任务
+- [ixn-replay.md](../docs/mechanism/ixn-replay.md) — 交互面评测（延后项）：追问、信息充分性、过早结论的样本、评分与门槛
+- [diagnosis-observability.md](../docs/mechanism/diagnosis-observability.md) — 一次诊断记什么字段、怎么汇总上仓、与知识库的解耦、反馈联动、指标清单与面板；取舍在 ADR-0011
 - [status.md](../docs/mechanism/status.md) — 机制状态总表、未建与空转、代码与文件入口对照、相邻文档分工（全库唯一一份）
-- [agent-groom.md](../docs/mechanism/agent-groom.md) — Agent Groom 的同步快照、有界子 agent 语义比对、本地评估状态、合入前过期复核与边界
+- [agent-groom.md](../docs/mechanism/agent-groom.md) — Agent Groom 的知识快照、有界语义比对、证据绑定、合入前复核与收尾撤销
 
 **操作指南（用到那个环节时才读）**
 *你要搭新部署、装环境（Windows skills 使能）、跑评测、看指标、走 git 门控、或做导入时*

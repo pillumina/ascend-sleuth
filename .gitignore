@@ -79,7 +79,7 @@ research/
 # ============================================================
 # proposals/ 运行时状态（自演进会话/任务进度、token 账本、实验记录）——
 # 类比 traces/ 与 inbox 草稿：本地留存不进 git；稳态资产（ideas/ 卡、
-# 策略记忆）入 git，随 PR 进出（git-workflow 纪律，见 evolution-run.md §8）
+# 策略记忆）入 git，随 PR 进出（git-workflow 纪律，见 docs/mechanism/operations.md）
 # ============================================================
 proposals/sessions/*
 proposals/tasks/*
@@ -105,7 +105,7 @@ eval-reports/
 # skill 执行记录（逐次 append 流水）。**同一克隆共享**：路径由 scripts/exec_log_path.py 解析到
 # 主检出（所有 worktree 共写共读同一份；跨克隆/跨机不聚合），故 worktree 清理不丢数据、面板可读。
 # 读法一律走 scripts/tail_exec_log.py（写侧持 flock，勿直接改写）；跨机口径走其 --summary
-# 聚合值进 metrics/timeline.yaml（流水本身不进 git）。详见 docs/mechanism/run.md §4。
+# 聚合值进 metrics/timeline.yaml（流水本身不进 git）。详见 docs/mechanism/operations.md。
 metrics/skill-exec-log.yaml
 metrics/skill-exec-log.yaml.lock
 # EV 卡预测的实测记录（reviewer 跑 scripts/ev_measure.py --run 时 append 一笔）。

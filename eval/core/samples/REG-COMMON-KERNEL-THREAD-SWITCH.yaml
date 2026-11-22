@@ -1,0 +1,38 @@
+id: REG-COMMON-KERNEL-THREAD-SWITCH
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: msprof docs/zh/best_practices/kernel_thread_switching.md（MindStudio 26.2.0.B060_001）
+input:
+  phenomenon: 运行延迟波动大、任务吞吐不稳定、实时响应超时、CPU 有效算力利用率偏低、系统 sys 开销偏高；排除代码报错、算子异常、内存泄漏、硬件满载后：全局线程上下文切换次数异常暴涨、内核态
+    CPU 占比过高、任务就绪队列堆积
+  environment: ''
+  evidence:
+    case: COMMON-KERNEL-THREAD-SWITCH
+    references:
+    - msprof docs/zh/best_practices/kernel_thread_switching.md（MindStudio 26.2.0.B060_001）
+expected:
+  resolution: 'Linux 默认时间片轮转抢占机制在高并发短时任务下开销被放大；业务创建大量轻量短时线程 （频繁退出重建或唤醒-执行-休眠循环），且未做线程
+    CPU 亲和性绑定， 线程频繁跨核调度，加剧上下文切换开销。
+
+
+
+    改业务线程模型（批量任务处理，减少线程创建/销毁）；设置线程 CPU 亲和性与调度策略， 避免频繁跨核调度。'
+  case: COMMON-KERNEL-THREAD-SWITCH
+  confidence: maintainer-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: postmortem
+  report_ref: knowledge/common/performance/COMMON-KERNEL-THREAD-SWITCH.yaml
+  captured_at: '2026-11-19T14:13:03+00:00'
+  kb_rev: unknown
+  sanitized: true
+  redactions: []
+  confidence: maintainer-reviewed
+  extraction: auto
+created_at: '2026-11-19T14:13:03+00:00'
+updated_at: '2026-11-19T14:13:03+00:00'
+history: []
+notes: core regression derived from knowledge/common/performance/COMMON-KERNEL-THREAD-SWITCH.yaml

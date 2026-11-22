@@ -15,9 +15,9 @@ name: kb-checks
 on:
   push:
     branches: [main]
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "source-catalog.d/**", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", "deployment.yaml", ".github/workflows/**", ".github/actions/**"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "source-catalog.d/**", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", "sleuth.config.yaml", "config/**", ".github/workflows/**", ".github/actions/**"]
   pull_request:
-    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "source-catalog.d/**", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", "deployment.yaml", ".github/workflows/**", ".github/actions/**"]
+    paths: ["knowledge/**", "references/**", "skills/**", "metrics/**", "proposals/**", "eval/**", "tests/**", "docs/**", "README.md", ".gitattributes", "triage-tree.yaml", "source-catalog.d/**", "triage-tree.d/**", "dsh-plugins/**", "scripts/**", "trace-status.yaml", "sleuth.config.yaml", "config/**", ".github/workflows/**", ".github/actions/**"]
 
 jobs:
   # ── 细网：这次改了哪一面 ──────────────────────────────────────────────────────
@@ -58,8 +58,11 @@ jobs:
   #     要更保守：把 knowledge 也加进它（代价是内容 PR 继续付满）。
   #   · unit-tests 的**测试面**按改动选：`changes` job 把改动文件列表传给
   #     `scripts/select_unit_tests.py`，它从 tests 的 import 与脚本名引用、scripts 间的 import
-  #     反向闭包算出要跑的模块。改 `.github/**`、改 tests 的共享助手/夹具、基线不可比、脚本
-  #     解析失败时回退全量。强度：选中的测试红即挡 merge；「选得全不全」是约定——测试用
+  #     反向闭包算出要跑的模块。子包按点分模块名解析（`import evolve.runner`、包内
+  #     `from .decision import`），改包 `__init__.py` 时包内模块一并算受影响。按路径动态
+  #     加载、或被面板脚本当资源读的目录，由脚本里的 `DIR_CONSUMERS` 登记消费脚本。
+  #     改 `.github/**`、改 tests 的共享助手/夹具、基线不可比、脚本解析失败、出现未登记的
+  #     动态目录时回退全量。强度：选中的测试红即挡 merge；「选得全不全」是约定——测试用
   #     动态表达式拼脚本路径时静态扫描会漏（残余与修法写在脚本头注）。
   #   · unit-tests-windows 与 unit-tests 跑同一份测试选择，强度相同（选中即挡 merge）。它同样先
   #     重建生成物（源改了没重建会让 test_build_triage_tree 这类「当前树与生成物一致」断言假红），
@@ -149,7 +152,7 @@ jobs:
           emit proposals  '^proposals/'
           emit eval       '^eval/'
           emit skills     '^skills/'
-          emit code       '^scripts/|^tests/|^source-catalog\.d/'
+          emit code       '^scripts/|^tests/|^source-catalog\.d/|^config/|^sleuth\.config\.yaml$'
           emit panels     '^dsh-plugins/|^trace-status\.yaml$'
 
           # unit-tests 用这份列表按改动选测试（映射算法与回退条件在 scripts/select_unit_tests.py）。
@@ -484,10 +487,10 @@ jobs:
   # Windows 单测：同一份测试选择在 windows-latest 上再跑一遍。Linux 全绿而新增用例依赖 POSIX
   # 路径、换行或 locale 时，只有这里会红。差异与强度写在头注「强度让步」。
   #
-  # 分 4 片并行：同一批模块轮转切分，单片只跑自己那一片。全量回退时串行要 16 分钟（实测
-  # 1246 条：Windows 951 秒 vs Linux 290 秒），切 4 片后单 job 约 4–6 分钟，PR 的等待从
-  # 「最慢的那条 16 分钟」降到「最慢的那片 5 分钟左右」。代价是 runner 分钟数与 job 数变多
-  # （公开仓标准 runner 免费），以及切完可能有的片为空——空片照常上报成功。
+  # 分 4 片并行：同一批模块轮转切分，单片只跑自己那一片。全量回退时串行要十几分钟
+  # （Windows 比 Linux 慢数倍），切片把 PR 的等待从「整条串行」降到「最慢的那片」。代价是
+  # runner 分钟数与 job 数变多（公开仓标准 runner 免费），以及切完可能有的片为空——空片照常
+  # 上报成功。
   unit-tests-windows:
     name: unit-tests-windows (${{ matrix.shard }})
     needs: changes

@@ -1,0 +1,37 @@
+id: REG-COMMON-NONZERO-ACCESS-HEAVY
+status: active
+object_type: diagnosis
+origin: core
+purpose: regression
+source: msprof docs/zh/best_practices/code_high_latency_function.md（MindStudio 26.2.0.B060_001）
+input:
+  phenomenon: Insight 打开 msprof.json / trace_view.json 可观察到某些算子执行时间较长；op_statistic.csv
+    中对应算子占比很大（示例：NonZero），确认其性能不符合预期
+  environment: ''
+  evidence:
+    case: COMMON-NONZERO-ACCESS-HEAVY
+    references:
+    - msprof docs/zh/best_practices/code_high_latency_function.md（MindStudio 26.2.0.B060_001）
+expected:
+  resolution: '索引类算子（如 nonzero）是典型访存密集型操作，对昇腾达芬奇架构不友好， 访存开销主导执行时间，成为整网瓶颈。
+
+
+
+    避免大量访存：替换为不依赖大范围访存的等价实现（如掩码/阈值替代逐元素索引）。'
+  case: COMMON-NONZERO-ACCESS-HEAVY
+  confidence: maintainer-reviewed
+expected_kind: resolution
+non_diagnostic: false
+provenance:
+  trigger: postmortem
+  report_ref: knowledge/common/performance/COMMON-NONZERO-ACCESS-HEAVY.yaml
+  captured_at: '2026-11-19T14:13:03+00:00'
+  kb_rev: unknown
+  sanitized: true
+  redactions: []
+  confidence: maintainer-reviewed
+  extraction: auto
+created_at: '2026-11-19T14:13:03+00:00'
+updated_at: '2026-11-19T14:13:03+00:00'
+history: []
+notes: core regression derived from knowledge/common/performance/COMMON-NONZERO-ACCESS-HEAVY.yaml
