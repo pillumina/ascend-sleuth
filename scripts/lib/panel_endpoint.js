@@ -226,6 +226,48 @@ async function rpcCall(channel, endpoint, payload, base, cookie) {
   return { status: response.status, rpcId: message.rpcId, envelope: parsed, text }
 }
 
+// ── 不带 token 的 host 半判定 ───────────────────────────────────────────────
+//
+// 面板包的 host 半把自己注册成一条 prefix 路由；handler 第一件事是判方法，不是 POST 就回 405
+// 并设 `Allow: POST`，判完方法才判鉴权（回 401/403）。所以没有 token 也能判这条路由在不在：
+//   · `GET <base><channel>/__probe__` → 405 且 Allow 含 POST：路由在，host 半已加载；
+//   · `GET <base>/__dsh_probe_unknown__` → 404：对照，证明 404 才是「没这个路径」。
+// 未注册 prefix 的 POST 也会得到 405，但那是静态层的通用 405，`Allow` 是 `GET, HEAD`；handler
+// 写的 `Allow: POST` 只在路由注册后出现，两条一起看不会把「静态层挡方法」当成「路由在」。
+//
+// 这一层证明的是「host 半加载了、路由在、鉴权门在」。端点能不能取到数据、加载的是不是这一版，
+// 都不在这一层——那要么带 token 打 RPC，要么起临时实例。
+
+async function statusOf(base, path, method, body) {
+  const url = base + path
+  const options = method === 'POST'
+    ? { method, headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }
+    : { method }
+  const response = await fetch(url, options)
+  // 读掉响应体：不读会在 Windows 上留下未收干的连接，进程退出时偶发 libuv 断言。
+  await response.arrayBuffer()
+  const allow = response.headers.get('allow')
+  return { status: response.status, allow: allow === null ? '' : allow }
+}
+
+async function probeHostHalf(base, channel) {
+  const root = base.replace(/\/$/, '')
+  const control = await statusOf(root, '/__dsh_probe_unknown__', 'GET')
+  const route = await statusOf(root, channel + '/__probe__', 'GET')
+  // 方法闸放行后才是鉴权闸：回 401（或 403）说明 handler 真的跑到了鉴权这一步。
+  const auth = route.status === 405
+    ? await statusOf(root, channel + '/__probe__', 'POST', { type: 'client-request', rpcId: 'host-probe', method: '__probe__', payload: {} })
+    : null
+  return {
+    control,
+    route,
+    auth,
+    // 只有对照正常、路由回 405 且 Allow 是 POST，才算路由注册过。
+    registered: control.status === 404 && route.status === 405 && route.allow.toLowerCase() === 'post',
+    absent: control.status === 404 && route.status === 404,
+  }
+}
+
 module.exports = {
   sessionBase,
   sameInstance,
@@ -238,4 +280,5 @@ module.exports = {
   noTargetLines,
   sessionCookie,
   rpcCall,
+  probeHostHalf,
 }
