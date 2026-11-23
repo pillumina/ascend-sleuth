@@ -328,7 +328,7 @@ async function main() {
   // ---- 判决面（2026-09 新增）：首屏必须是判决，不是卡墙 ----
   // 断言的期望值从真实 health JSON 推导，不硬编码判据名/数字——判据会随阈值校准增删。
   const nFails = (health.findings || []).filter(f => f.level === 'fail').length
-  const VERDICT_LABEL = { clean: '本期无阻塞项', violations: '有判据被违反', broken: '体检器失效' }[health.check_verdict]
+  const VERDICT_LABEL = { clean: '本期无阻塞项', violations: '有判据被违反', broken: '体检器失效', incomplete: '数据缺口，结论不可用' }[health.check_verdict]
   expect('判决条：结论用语（' + health.check_verdict + '）', ev.text.includes(VERDICT_LABEL), ev.text.slice(0, 160))
   expect('判决条：报出要处理项数 ' + nFails, new RegExp(nFails + '\\s*项要处理').test(ev.text))
   const covTxt = (health.coverage.gates_evaluated || 0) + '/' + (health.coverage.gates_total || 0)

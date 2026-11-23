@@ -13,7 +13,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from evolve.flow import FlowError, _experiment_record, run_proposal  # noqa: E402
+from evolve.flow import FlowError, _experiment_record, _sample_context, run_proposal  # noqa: E402
 from evolve.policy import load_policy  # noqa: E402
 
 
@@ -57,6 +57,14 @@ def _draft():
     }
 
 
+class SampleContextTest(unittest.TestCase):
+    def test_title_comes_from_task_input_not_sample_file(self):
+        ctx = _sample_context({"samples": [
+            {"id": "8186", "short_id": "8186", "input": {"title": "TITLE-A"}},
+        ]})
+        self.assertEqual(ctx, [{"id": "8186", "title": "TITLE-A"}])
+
+
 class FlowTest(unittest.TestCase):
     def test_proposal_to_decision_and_archive(self):
         with tempfile.TemporaryDirectory() as td:
@@ -76,7 +84,7 @@ class FlowTest(unittest.TestCase):
             judge.write_text(json.dumps({
                 "baseline": {str(1000+i): 0 for i in range(4)},
                 "candidate": {str(1000+i): 1 for i in range(4)},
-                "meta": {"agent": "test"},
+                "meta": {"agent": "test", "calibration": {"passed": True}},
             }), encoding="utf-8")
 
             def runner(tasks):
@@ -131,7 +139,7 @@ class FlowTest(unittest.TestCase):
             judge.write_text(json.dumps({
                 "baseline": {str(2000+i): 0 for i in range(4)},
                 "candidate": {str(2000+i): 1 for i in range(4)},
-                "meta": {"agent": "test"},
+                "meta": {"agent": "test", "calibration": {"passed": True}},
             }), encoding="utf-8")
             policy_path = Path(td) / "policy.yaml"
             policy_path.write_text("samples:\n  field_eval: 4\n", encoding="utf-8")
@@ -170,7 +178,7 @@ class FlowTest(unittest.TestCase):
             judge.write_text(json.dumps({
                 "baseline": {str(3000+i): 1 for i in range(4)},
                 "candidate": {str(3000+i): 0 for i in range(4)},
-                "meta": {"agent": "test"},
+                "meta": {"agent": "test", "calibration": {"passed": True}},
             }), encoding="utf-8")
 
             def runner(tasks):
@@ -206,7 +214,7 @@ class FlowTest(unittest.TestCase):
             }), encoding="utf-8")
             judge = Path(td) / "judge.json"
             judge.write_text(json.dumps({"baseline": {"4000": 0}, "candidate": {"4000": 1},
-                                         "meta": {"agent": "test"}}), encoding="utf-8")
+                                         "meta": {"agent": "test", "calibration": {"passed": True}}}), encoding="utf-8")
 
             def runner(tasks):
                 for arm in ("baseline", "candidate"):
@@ -258,7 +266,7 @@ class FlowTest(unittest.TestCase):
             judge.write_text(json.dumps({
                 "baseline": {str(5000+i): 0 for i in range(4)},
                 "candidate": {str(5000+i): 1 for i in range(4)},
-                "meta": {"agent": "test"},
+                "meta": {"agent": "test", "calibration": {"passed": True}},
             }), encoding="utf-8")
 
             def runner(tasks):
@@ -292,7 +300,7 @@ class FlowTest(unittest.TestCase):
             judge.write_text(json.dumps({
                 "baseline": {str(6000+i): 0 for i in range(4)},
                 "candidate": {str(6000+i): 1 for i in range(4)},
-                "meta": {"agent": "test"},
+                "meta": {"agent": "test", "calibration": {"passed": True}},
             }), encoding="utf-8")
             def usage(read, tokens):
                 return [{
@@ -377,7 +385,7 @@ class FlowTest(unittest.TestCase):
                 judge.write_text(json.dumps({
                     "baseline": {str(8000+index*10+i): 0 for i in range(4)},
                     "candidate": {str(8000+index*10+i): 1 for i in range(4)},
-                    "meta": {"agent": "test"},
+                    "meta": {"agent": "test", "calibration": {"passed": True}},
                 }), encoding="utf-8")
 
                 def runner(tasks):
@@ -409,7 +417,7 @@ class FlowTest(unittest.TestCase):
             }), encoding="utf-8")
             judge = Path(td) / "judge.json"
             judge.write_text(json.dumps({"baseline": {"9000": 0}, "candidate": {"9000": 1},
-                                         "meta": {"agent": "test"}}), encoding="utf-8")
+                                         "meta": {"agent": "test", "calibration": {"passed": True}}}), encoding="utf-8")
             with self.assertRaises(Exception):
                 run_proposal(root, proposal, [str(sample)], Path(td) / "pilot",
                              _policy(), judge, archive, runner=lambda tasks: None)
@@ -432,7 +440,7 @@ class FlowTest(unittest.TestCase):
             judge.write_text(json.dumps({
                 "baseline": {str(9500+i): 0 for i in range(4)},
                 "candidate": {str(9500+i): 1 for i in range(4)},
-                "meta": {"agent": "test"},
+                "meta": {"agent": "test", "calibration": {"passed": True}},
             }), encoding="utf-8")
 
             def runner(tasks):

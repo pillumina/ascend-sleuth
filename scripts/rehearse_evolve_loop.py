@@ -27,6 +27,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from datetime import date, timedelta
 from pathlib import Path
 
 import yaml
@@ -91,7 +92,7 @@ def ci_local_argv(cmd: str):
     return None
 
 
-def run(args, cwd, env=None):
+def run(args, cwd, env=None, timeout=180):
     e = dict(os.environ)
     e["PYTHONIOENCODING"] = "utf-8"
     # PYTHONUTF8=1：让子进程的 Python 走 UTF-8 模式（`open()` 默认 UTF-8、标准流 UTF-8）。
@@ -102,7 +103,11 @@ def run(args, cwd, env=None):
     e["PYTHONUTF8"] = "1"
     if env:
         e.update(env)
-    r = subprocess.run(args, cwd=str(cwd), capture_output=True, text=True, env=e, encoding="utf-8", errors="replace")
+    try:
+        r = subprocess.run(args, cwd=str(cwd), capture_output=True, text=True, env=e,
+                           encoding="utf-8", errors="replace", timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        return 124, f"超时（180s）：{exc}"
     return r.returncode, (r.stdout or "") + (r.stderr or "")
 
 
@@ -172,6 +177,8 @@ def ex_signal_path(root: Path):
     new_cards = sorted((root / "proposals" / "ideas").glob("EV-*.yaml"))
     card_path = new_cards[-1]
     card = yaml.safe_load(card_path.read_text(encoding="utf-8"))
+    # 这张卡测的是生命周期规则，不是 measure 证据；用 cutover 前的日期，避免两条规则缠在一起。
+    card["created_at"] = "2026-11-20"
     cid = card["id"]
 
     # 只记 proposal（在途态）：新规则不该误报
@@ -573,6 +580,8 @@ def ex_src_code_versions(root: Path):
     # 工作区 + linked worktree（沙箱自己无 .git，测不到"缓存锚到主检出"这点）
     ws.mkdir(parents=True)
     shutil.copytree(root / "scripts", ws / "scripts")
+    if (root / "source-catalog.d").is_dir():
+        shutil.copytree(root / "source-catalog.d", ws / "source-catalog.d")
     shutil.copy(root / ".gitignore", ws / ".gitignore")
     g(ws, "init", "-q", ".")
     g(ws, "config", "user.email", "r@x")
@@ -739,8 +748,14 @@ def ex_metrics_loop(root: Path):
         note = ""
     check(f"检测器报出容量越线（与现算一致：{note or '现算未读到'}）",
           bool(note) and f"interrupt = {note}" in texts, texts[:200])
-    check("检测器报出反馈下限被触发", "捕获反馈 0 条" in texts or "feedback" in texts.lower(), texts[:200])
-    check("检测器把 misdiagnosis_rate 标为不可解读", "misdiagnosis_rate：不可解读" in texts, texts[:200])
+    import re as _re
+    feedback = _re.search(r"捕获反馈 (\d+) 条", texts)
+    feedback_zero = bool(feedback and int(feedback.group(1)) == 0)
+    check("反馈下限的结论与数据一致（0 条才报下限）",
+          ("捕获反馈 0 条" in texts) == feedback_zero, texts[:240])
+    mis_readable = ((h.get("readability") or {}).get("misdiagnosis_rate") or {}).get("readable")
+    check("misdiagnosis_rate 的可解读标签与数据一致",
+          ("misdiagnosis_rate：不可解读" in texts) == (mis_readable is False), texts[:240])
     check("真实数据上 --check 非零（有 ✗ 未处理）", py(root, "scripts/metrics_health.py", "--check")[0] != 0)
 
     # ③ 两份合成数据：健康的不许哭狼；崩坏的必须全中
@@ -823,6 +838,7 @@ def ex_measure_path(root: Path):
     import json as _json
 
     ideas = root / "proposals" / "ideas"
+    RECENT = (date.today() - timedelta(days=1)).isoformat()
     CMD = f"{q(sys.executable)} -c \"print('MEASURE-OK')\""
 
     def base(cid, created):
@@ -846,7 +862,7 @@ def ex_measure_path(root: Path):
         return py(root, "scripts/verify_proposals.py", "--check")
 
     # ① 正例：强制范围内 + 可复现口径 → 结构过、判据真的成立
-    ok = base("EV-2099-101", "2030-01-01")
+    ok = base("EV-2099-101", RECENT)
     ok["predicted_effect"] = {"metric": "m", "from": "a", "to": "b",
                               "measure": {"command": CMD, "expect_stdout": "MEASURE-OK"}}
     p_ok = write(ok)
@@ -858,7 +874,7 @@ def ex_measure_path(root: Path):
           out[-300:])
 
     # ② 有预测但没给复现口径（规则本体）
-    d2 = base("EV-2099-102", "2030-01-01")
+    d2 = base("EV-2099-102", RECENT)
     d2["predicted_effect"] = {"metric": "m", "from": "a", "to": "b"}
     p2 = write(d2)
     rc, out = verify()
@@ -869,13 +885,13 @@ def ex_measure_path(root: Path):
     p2.unlink()
 
     # ②b 更早的断点：整个 predicted_effect 缺失 → 报的是另一条（别只覆盖一种）
-    p2b = write(base("EV-2099-109", "2030-01-01"))
+    p2b = write(base("EV-2099-109", RECENT))
     rc, out = verify()
     check("强制卡缺整个 predicted_effect 被拦", rc != 0 and "缺 predicted_effect" in out, out[-320:])
     p2b.unlink()
 
     # ③ 有 command 无期望 → 不可判定，必须报（没有期望就无法判定符合与否）
-    d3 = base("EV-2099-103", "2030-01-01")
+    d3 = base("EV-2099-103", RECENT)
     d3["predicted_effect"] = {"metric": "m", "from": "a", "to": "b",
                               "measure": {"command": CMD}}
     p3 = write(d3)
@@ -884,7 +900,7 @@ def ex_measure_path(root: Path):
     p3.unlink()
 
     # ④ 占位命令（产卡骨架的默认形态）→ 必须响亮失败，不得带假绿过审
-    d4 = base("EV-2099-104", "2030-01-01")
+    d4 = base("EV-2099-104", RECENT)
     d4["predicted_effect"] = {"metric": "m", "from": "a", "to": "b",
                               "measure": {"command": "待填：复现命令", "expect_exit": 0}}
     p4 = write(d4)
@@ -893,7 +909,7 @@ def ex_measure_path(root: Path):
     p4.unlink()
 
     # ⑤ 判据侧该红必红：结构合法、但期望在真实世界里不成立 → --run 必须 FAIL
-    d5 = base("EV-2099-105", "2030-01-01")
+    d5 = base("EV-2099-105", RECENT)
     d5["predicted_effect"] = {"metric": "m", "from": "a", "to": "b",
                               "measure": {"command": CMD, "expect_stdout": "NEVER-APPEARS"}}
     p5 = write(d5)
@@ -906,6 +922,8 @@ def ex_measure_path(root: Path):
     # ⑥ 不哭狼 · 存量卡：cutover 之前创建、无口径 → 不因 measure 报错，但如实标为存量豁免。
     #    （须带一条 decision，避开既有的"僵尸卡"规则——本断言单测的是 measure 豁免，不是烂卡）
     d6 = base("EV-2099-106", "2026-01-01")
+    d6["status"] = "validated"
+    d6["actual_cost"] = {"tokens": 0, "source": "estimate", "note": "演练"}
     d6["decisions"] = [{"who": "agent", "when": "2026-01-01", "type": "decision",
                         "conclusion": "存量演练卡（已闭合）"}]
     p6 = write(d6)
@@ -917,7 +935,7 @@ def ex_measure_path(root: Path):
     p6.unlink()
 
     # ⑦ 不哭狼 · 如实声明不可度量：合法退化路径，不计为缺口、不冒充通过
-    d7 = base("EV-2099-107", "2030-01-01")
+    d7 = base("EV-2099-107", RECENT)
     d7["predicted_effect"] = {"metric": "m", "from": "a", "to": "b",
                               "measure": {"reason": "该预测依赖外部团队排期，本仓无可复现判据"}}
     p7 = write(d7)
@@ -933,7 +951,7 @@ def ex_measure_path(root: Path):
     check("找不到卡时 exit 2（不静默成功）", rc == 2 and "找不到卡" in out, out[-200:])
 
     # ⑨ --audit 分四类计数，且缺口存在时非零退出
-    p9 = write(base("EV-2099-108", "2030-01-01"))          # 缺口：强制卡无 measure
+    p9 = write(base("EV-2099-108", RECENT))          # 缺口：强制卡无 measure
     rc, out = py(root, "scripts/ev_measure.py", "--audit", "--json")
     try:
         data = _json.loads(out[out.index("{"):]) if "{" in out else {}
@@ -1021,7 +1039,8 @@ def ex_holdout(root: Path):
     manifest_backup = manifest.read_bytes()
     manifest.unlink()
     rc, out = py(root, "scripts/holdout.py", "--check")
-    check("对照集未建立时 --check exit 0（优雅退化，不是崩溃）", rc == 0 and "未找到" in out, out[-200:])
+    check("对照集未建立但有夹具时 --check 非零（完整性缺口不静默放行）",
+          rc == 1 and "封存清单" in out, out[-240:])
     manifest.write_bytes(manifest_backup)
 
     # ⑦ 覆盖面缺口如实报出（软信号：有 case 却无夹具的格子 = 无回归保护）
@@ -1042,6 +1061,38 @@ def ex_holdout(root: Path):
 
 
 # ---------------------------------------------------------------- ⑪ CI parity
+def _tracked_code_files() -> str:
+    """演练场的 unit-tests 选择需要一份改动清单；没有 .git 时用主检出的 tracked 清单。"""
+    try:
+        r = subprocess.run(["git", "-C", str(REPO), "ls-files", "scripts", "tests"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+        if r.returncode == 0:
+            return r.stdout
+    except OSError:
+        pass
+    return ""
+
+
+def _local_skip_reason(cmd: str, job: dict, root: Path) -> str:
+    if "windows" in str(job.get("runs-on") or "").lower():
+        return "工作流跑在 windows-latest；本机不是该运行器"
+    line = cmd.strip()
+    if "${{" in line:
+        return "命令含 GitHub Actions 表达式（本机无该上下文）"
+    if "unittest discover tests" in line and sys.version_info < (3, 10):
+        return ("本机 Python %d.%d 低于测试支持线 3.10；全量单测由 CI 的 3.11 跑"
+                % sys.version_info[:2])
+    if "git " in line and not (root / ".git").exists():
+        return "演练场没有 .git（make_copy 不带历史）；git 命令没有可比基线"
+    if line.startswith(("pip install ", "python -m pip install ", "python3 -m pip install ")):
+        try:
+            import yaml  # noqa: F401
+            return "PyYAML 已安装，无需联网安装"
+        except ImportError:
+            return ""
+    return ""
+
+
 def ex_ci_parity(root: Path):
     print("\n[E6] CI parity · kb-checks 的每条命令在本地逐条复跑")
     wf_path = root / ".github" / "workflows" / "kb-checks.yml"
@@ -1082,11 +1133,20 @@ def ex_ci_parity(root: Path):
             print(f"  — 跳过（该步的工作流条件是 {str(cond).strip()}——演练场没有 .git 远端、"
                   f"也不模拟 push 事件）：[{jname}] {cmd.splitlines()[0][:60]}")
             continue
+        reason = _local_skip_reason(cmd, jobs[jname], root)
+        if reason:
+            skipped += 1
+            print(f"  — 跳过（{reason}）：[{jname}] {cmd.splitlines()[0][:60]}")
+            continue
+        env = None
+        if "CODE_FILES" in cmd or "ALL" in cmd:
+            env = {"ALL": "true", "CODE_FILES": _tracked_code_files()}
         argv = ci_local_argv(cmd)
+        timeout = 600 if "unittest discover tests" in cmd else 180
         if argv is not None:
-            rc, out = run(argv, cwd=root)        # 单行命令：本机原生执行（见 ci_local_argv）
+            rc, out = run(argv, cwd=root, env=env, timeout=timeout)   # 单行命令：本机原生执行（见 ci_local_argv）
         elif posix_shell:
-            rc, out = run([posix_shell, "-c", cmd], cwd=root)
+            rc, out = run([posix_shell, "-c", cmd], cwd=root, env=env, timeout=timeout)
         else:
             # 不假装通过：跳过必须**可见**（同仓库"跑了无信号 与 没跑 可分"的要求）
             print(f"  — 跳过（本平台无 POSIX shell，且该步是复合片段）："
@@ -1138,6 +1198,8 @@ def ex_period_naming(root: Path):
     for label, text, want in cases:
         d = root / "tmp-period-naming"
         (d / "metrics").mkdir(parents=True, exist_ok=True)
+        # verify_metrics 从 --root 读 gates；临时根必须带同一份，否则失败原因是缺文件而非期号规则。
+        shutil.copyfile(root / "metrics" / "gates.yaml", d / "metrics" / "gates.yaml")
         (d / "metrics" / "timeline.yaml").write_text(text, encoding="utf-8")
         rc, out = run([sys.executable, "scripts/verify_metrics.py", "--check", "--root", str(d)], cwd=root)
         check(label, rc == want, "exit=%d 期望=%d :: %s" % (rc, want, out.strip()[:160]))

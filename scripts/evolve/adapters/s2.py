@@ -18,6 +18,8 @@ from ..samples import StoreError
 from . import AdapterError
 
 DIAGNOSIS_OBJECT_TYPE = "diagnosis"
+# S2 导入先落 field 候选：状态机不允许 candidate 直接以 core 入场；维护者复核后
+# 再 promote 到 core。吸收行在 promote 时按答案是否进库转 regression。
 S2_ORIGIN = "field"
 S2_PURPOSE = "evaluation"
 

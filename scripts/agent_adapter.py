@@ -37,8 +37,8 @@ def _sample(output: Path, sample_id: str) -> Dict[str, Any]:
     tasks = json.loads((output / "tasks.json").read_text(encoding="utf-8"))
     for sample in tasks.get("samples") or []:
         if str(sample.get("id")) == sample_id:
-            path = Path(sample["path"])
-            return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+            # tasks 里只有输入与来源，不读样本文件：样本文件含 expected，runner 不应顺着路径拿答案。
+            return dict(sample)
     raise AdapterError(f"sample not found in tasks: {sample_id}")
 
 

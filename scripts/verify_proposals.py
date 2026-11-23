@@ -62,6 +62,9 @@ from _yaml import load_file   # 解析后端单一事实源（快路径见 _yaml
 # 可复现测量口径。本日之前创建的卡豁免——它们已经是做完的决策，补写命令无法恢复当时的判断。
 # 缺口可见性由 scripts/ev_measure.py --audit 提供。存量迁移完成后删除本常量与豁免分支。
 MEASURE_CUTOVER = datetime.date(2026, 9, 11)
+# 预测“跑过没有”的强制生效日：从这天起，新卡标 validated 必须带一次 PASS 的卡内证据。
+# 存量卡不追溯（补一次运行记录不恢复当时的判断，只造事后叙述）。
+MEASURE_EVIDENCE_CUTOVER = datetime.date(2026, 11, 21)
 
 # 目标组件键的生效日：卡契约里 `target_component` 一直是必填（execution.md），
 # 但全库 0 张卡填过它，于是"同组件先例咨询"没有任何可查的键（聚合只能退化到"改动落点"）。
@@ -210,6 +213,42 @@ def check_predicted_effect(doc, rel, errors, enforce: bool):
                       "（或省略 command 并给 reason 声明不可度量）")
 
 
+def check_measure_evidence(doc, rel, errors):
+    """validated 必须有一次真的跑过的 measure，而不是只有一条能跑的命令。
+
+    证据写在卡的 ``measure_evidence``（``ev_measure.py --run --record`` 追加）。只对
+    生效日之后的卡强制；存量卡由 ``ev_measure.py --audit`` 如实报缺口，不追溯。
+    """
+    if doc.get("status") != "validated":
+        return
+    created = as_date(doc.get("created_at"))
+    if created is None or created < MEASURE_EVIDENCE_CUTOVER:
+        return
+    pe = doc.get("predicted_effect")
+    measure = pe.get("measure") if isinstance(pe, dict) else None
+    if not isinstance(measure, dict):
+        return
+    command = measure.get("command")
+    if not (isinstance(command, str) and command.strip()):
+        errors.append(
+            f"{rel}: validated 卡声明了不可度量——没跑的预测不能标已验证；"
+            "改回 in_experiment 并记待办，或补一条可复现判据后跑一次")
+        return
+    wanted = command.strip()
+    evidence = doc.get("measure_evidence")
+    ok = isinstance(evidence, list) and any(
+        isinstance(entry, dict)
+        and str(entry.get("verdict") or "") == "PASS"
+        and str(entry.get("command") or "").strip() == wanted
+        for entry in evidence
+    )
+    if not ok:
+        errors.append(
+            f"{rel}: validated 卡没有 measure PASS 证据——先跑 "
+            f"python3 scripts/ev_measure.py {doc.get('id')} --run --record，"
+            "等记录写进卡后再标 validated")
+
+
 def check_idea(path: Path, ids: dict, errors: list):
     rel = str(path)
     doc = load_yaml(path)
@@ -297,6 +336,7 @@ def check_idea(path: Path, ids: dict, errors: list):
 
     # predicted_effect 的出处（第 16 条）：预测必须可复现，否则不可证伪
     check_predicted_effect(doc, rel, errors, enforce=measure_enforced(doc))
+    check_measure_evidence(doc, rel, errors)
 
     # 生命周期完整性（pipeline §7「生命周期完整性规则」——终态卡必须闭合）
     status = doc.get("status")
@@ -314,6 +354,12 @@ def check_idea(path: Path, ids: dict, errors: list):
             if tokens is None:
                 errors.append(f"{rel}: validated 卡 actual_cost.tokens 未写回——成本审计缺口"
                               "（口径与面板 ev_board_data.audit_gaps 一致：无法量化时写 0 + note 说明口径）")
+
+    # 状态滞后：已经有 decision（agent 判断）却仍停在 in_experiment。面板的
+    # ev_board_data.audit_gaps 早就在报 status_lag，CI 侧此前不报；两边判断对齐。
+    if status == "in_experiment" and "decision" in decided_types:
+        errors.append(f"{rel}: 状态滞后——已有 type: decision 但仍 in_experiment"
+                      "（判断已作出，状态必须推进到 validated / rejected / superseded）")
 
     # 在实验卡不完整 / 僵尸卡（evolve-check §3.5「卡不完整」的机器可判定形态）
     if status == "in_experiment":

@@ -11,8 +11,9 @@
 # 三态退出码（与 metrics_health.py / ev_measure.py 同形）：
 #   0 = 判据全部被评估过且无越界（本期确实没有阻塞项）
 #   1 = 有判据被违反（按报告的 action 处置）
-#   2 = 有判据**没被评估**（结构性：声明了没实现 / 数据源坏了）→ **结论不可用**
+#   2 = 结构坏了，或只有数据缺口（判据没被评估）→ **结论不可用**
 # 2 与 0 分开的理由照抄 metrics_health 的两个实测教训：判据没触发 ≠ 判据被检查过。
+# 数据缺口与违反分开：有违反时退 1，不因同时缺数据退 2 把违反盖掉；`--usable` 只问结论可不可用。
 # 本脚本**不进 CI**：安静的一周（无新卡、无新收尾）是正常状态，硬门会假红；服务周批与季度自评。
 #
 # 用法：
@@ -302,6 +303,7 @@ def _rule_any_gt_0(value) -> bool:
 def evaluate(root: Path):
     findings = []
     broken = []
+    unknown = []
     errors = []
 
     gates_path = root / GATES_REL
@@ -378,7 +380,7 @@ def evaluate(root: Path):
             continue
         val = dims.get(dim_name)
         if val is None:
-            broken.append(f"判据 {gid}（{dim_name}）的数据源缺失，本期未被评估")
+            unknown.append(f"判据 {gid}（{dim_name}）的数据源缺失，本期无法评估")
             continue
         row["evaluated"] = True
         sample = g.get("min_sample")
@@ -428,7 +430,7 @@ def evaluate(root: Path):
             broken.append(f"可解读性规则 {metric} 的 rule={rule!r} 没有实现")
             continue
         if src not in dims:
-            broken.append(f"可解读性规则 {metric} 的来源 {src} 缺席（无法判断读数能不能信）")
+            unknown.append(f"可解读性规则 {metric} 的来源 {src} 缺席（无法判断读数能不能信）")
             readability[metric] = {"readable": None, "why": f"来源 {src} 缺席",
                                    "label": r.get("label") or metric, "label_readable": "不可判定"}
             continue
@@ -448,8 +450,20 @@ def evaluate(root: Path):
         }
 
     fails = [f for f in findings if f["level"] == "fail"]
-    exit_code = 2 if (broken or errors) else (1 if fails else 0)
-    verdict = "broken" if (broken or errors) else ("violations" if fails else "clean")
+    # 三类结论分开：结构坏了（2）、有可动作的违反（1）、只有数据缺口（2，结论不可用）。
+    # 数据缺口不再盖住违反：之前 broken 与 fails 同时存在时只退 2，读者看不到那几条真违反。
+    if errors:
+        exit_code = 2
+        verdict = "broken"
+    elif fails:
+        exit_code = 1
+        verdict = "violations"
+    elif unknown:
+        exit_code = 2
+        verdict = "incomplete"
+    else:
+        exit_code = 0
+        verdict = "clean"
 
     coverage = {
         "gates_total": len(gate_rows),
@@ -465,7 +479,7 @@ def evaluate(root: Path):
     for f in fails:
         if f["id"] == "measure_never_run":
             commands.append({"label": "复核一张卡的预测", "why": f["title"],
-                             "command": "python3 scripts/ev_measure.py <卡号> --run"})
+                             "command": "python3 scripts/ev_measure.py <卡号> --run --record"})
         elif f["id"] == "backlog_over":
             commands.append({"label": "盘点预测可复现性", "why": f["title"],
                              "command": "python3 scripts/ev_measure.py --audit"})
@@ -483,6 +497,7 @@ def evaluate(root: Path):
         "coverage": coverage,
         "candidate_commands": commands,
         "broken": broken,
+        "unknown": unknown,
         "errors": errors,
         "exit_code": exit_code,
         "check_verdict": verdict,
@@ -542,13 +557,17 @@ def render(p: dict) -> str:
                f"可解读性规则 {cov['readability_evaluated']}/{cov['readability_total']} 条已评估")
     for b in p["broken"]:
         out.append(f"  ✗ {b}")
+    for u in p.get("unknown") or []:
+        out.append(f"  ? {u}")
     for e in p["errors"]:
         out.append(f"  ✗ {e}")
     out.append("")
     for c in p["candidate_commands"]:
         out.append(f"  可跑：{c['command']}   （{c['why']}）")
     out.append(f"结论：{p['check_verdict']}（{p['fail_count']} 项要处理）")
-    out.append("  退出码：0 判据全部评过且无越界 · 1 有判据被违反 · 2 有判据未被评估（结论不可用）")
+    out.append("  退出码：0 判据全部评过且无越界 · 1 有判据被违反 · 2 结构坏了或只有数据缺口（结论不可用）")
+    if p.get("unknown"):
+        out.append("  数据缺口不等于违反：记 unknown，补数据源后再判；下游可用 --usable 只问结论是否可用。")
     return "\n".join(out)
 
 
@@ -571,7 +590,8 @@ def main() -> int:
     # measure、周批的前置检查）常只需要"这份结论能不能用"：有违反是数据的事实，不是判据层
     # 失效。把两种问法都做成显式开关，比让调用方去 parse 退出码更不容易出错。
     if args.usable:
-        return 2 if payload["check_verdict"] == "broken" else 0
+        # 只有数据缺口的 incomplete 也是“结论不可用”，不能按可用放行。
+        return 2 if payload["check_verdict"] in ("broken", "incomplete") else 0
     return payload["exit_code"] if args.check else 0
 
 

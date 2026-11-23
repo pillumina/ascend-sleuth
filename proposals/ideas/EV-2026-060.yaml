@@ -6,7 +6,7 @@
 id: EV-2026-060
 layer: L2
 title: 人读文案缺单一权威：同一套行文规范已散成三份拷贝 → 收敛到一处 + 各面只写差异
-status: in_experiment
+status: validated
 authorization: auto
 dimension: process
 supersedes: []
@@ -72,7 +72,7 @@ gate:
     复发 ≥2 次"——目前只有"无字面 Markdown 星号"一条满足，其余留人审。
 risk: low
 principle_refs: [2, 6, 9, 10, 11]
-actual_cost: null
+actual_cost: {tokens: 0, source: estimate, note: "文档整理，模型成本未单独计量；0 表示未计量，不是零成本"}
 decisions:
   - who: agent
     when: 2026-09-13
@@ -167,3 +167,9 @@ decisions:
       行文规范见本规范文档），覆盖 Codex 与 WorkBuddy、并让 Trae 的导入开关有东西可导；Cursor 暂不处理（用户指定）。
       不在 `AGENTS.md` 里复制正文，避免多出需要同步的副本。规范文档 §3 的写点表随之增加"跨 harness 入口"一行。
       仍然成立的事实：跨 harness 真正通用的是各面的写点钩子（skills 与模板层面），指令文件只是便利项。
+  - who: pillumina
+    when: 2026-11-22
+    type: decision
+    conclusion: >-
+      采纳并闭合：docs/writing-norms.md 已落地并登记进 docs/_manifest.yaml，docs-index 通过；
+      原三处已改为指路。此前停在 in_experiment 是状态未推进，不是判断未作出。

@@ -2,6 +2,8 @@
 
 这篇记录一次真实数据验收：用了哪些数据、跑了哪些阶段、哪些通过、哪些还没通过。它不替代机制文档，只把证据和缺口放在一处。
 
+当前实现不再把 `--exploratory` 的 `insufficient` 提升成 `accept`；本文第 3 节记录的 `P-0007 accept (exploratory=true)` 是旧实现的结果，按当前代码复跑应为 `insufficient`。历史读数不能当作当前判据。
+
 ## 1 数据与环境
 
 - 环境：DSH Desktop 会话内；不使用 `DEEPSEEK_API_KEY`。

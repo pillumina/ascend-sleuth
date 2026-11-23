@@ -867,6 +867,11 @@ def cmd_experiment_flow(args: argparse.Namespace) -> int:
     except (FlowError, ProposalError, OSError, ValueError, PolicyError, PilotError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    if args.dry_run:
+        payload = {"proposal": proposal.id, "archive": str(archive_path)}
+        payload.update(result)
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return 0
     print(json.dumps({
         "proposal": proposal.id,
         "decision": result["decision"],
@@ -1336,7 +1341,8 @@ def cmd_stage_report(args: argparse.Namespace) -> int:
     try:
         policy = _policy_for(args)
         result = stage_report(Path(args.output), args.stage, Path(args.judge), policy,
-                              card=args.card, update_stage=args.update_stage)
+                              card=args.card, update_stage=args.update_stage,
+                              record=args.record)
     except (StageError, OSError, ValueError, PolicyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -2047,6 +2053,8 @@ def build_parser() -> argparse.ArgumentParser:
     s_report.add_argument("--update-stage", action="store_true",
                           help="test 报告通过后把 test-stage.yaml 标 complete")
     s_report.add_argument("--policy", default=None)
+    s_report.add_argument("--record", action="store_true",
+                          help="regression 报告后写一条 insufficient 结论，供 readback 回读")
     s_report.set_defaults(func=cmd_stage_report)
 
     benchmark = sub.add_parser("benchmark", help="确定性 benchmark；工具/检索类改动不走诊断")

@@ -4,7 +4,7 @@ description: >
   内容流程收尾的轻量信号检查。用户完成补 case / reference 沉淀 / 诊断 / 拉取 / replay
   后，本协议只做一件事：对照触发条件扫一遍现场，把值得后续处理的信号写进
   proposals/signals/ 台账。不产 EV 卡、不跑 RSI 实验、不跑验证门；行为质量改动需要
-  显式 RSI，深度分诊由用户显式发起的 /skill:self-evolve 承担。
+  显式 RSI，深度归类与候选由用户显式发起的 /skill:self-evolve 承担。
 ---
 
 # Evolve-Check（收尾信号检查）

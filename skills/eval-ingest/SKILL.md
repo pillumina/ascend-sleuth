@@ -18,6 +18,19 @@ description: >
 
 不触发：用户要沉淀 case → `/skill:issue-ingest`；用户要跑一轮改进 → `/skill:self-evolve`。
 
+## 最小提示词
+
+用户只需要说场景，类型、来源、用途由 skill 补默认值；缺什么再问什么，不要求用户先背命令。
+
+| 用户说 | 默认解释 |
+|---|---|
+| “把这条诊断加入评测集” | 当前/指定 trace，`object_type=diagnosis`、`origin=field`、`purpose=evaluation`；source 取 trace 路径 |
+| “把这个 case 加入评测集” | case YAML，`--from postmortem`；source 取 case id / 来源 trace |
+| “补 20 条 field 样本，repo=...，labels=...” | issue 导入，先 dry-run；只问缺的 repo/labels/limit |
+| “把这条候选补答案并复核” | 对指定 candidate 做 `set-answer`、`check`、`review` |
+
+只问三类缺失信息：来源路径（或 repo/labels）、根因与修复、是否已脱敏。三项已有就不重复问；不要求用户写 `--from`、`--dry-run` 这类命令，agent 自己按本 skill 组装。
+
 ## 交互顺序
 
 ```mermaid
@@ -37,12 +50,13 @@ flowchart TD
 
 ## 已闭环 case 回流
 
-两类来源，走同一个入口，不新开 skill：
+两类来源，走同一个入口，不新开 skill。这个入口不依赖 DSH：skill 只调用仓库里的 Python 命令，Claude Code、Codex 等 harness 能读 skill、能跑 Python 就能用。
 
 | 来源 | 判断 | 入口 |
 |---|---|---|
 | 走过 sleuth | 有 `traces/<session>.yaml` 与报告 | `sample new --from trace --trace <path>` |
 | 没走 sleuth | 有日志/定位文档，先有 case YAML | 先 `/skill:to-postmortem` 产 case，再 `sample new --from postmortem --case <path>` |
+| 已有 case（inbox 或 knowledge） | 已闭环、有 root cause / fix | `sample new --from postmortem --case <path>`；先 dry-run |
 
 先跑 dry-run 看完整性与查重，不直接写队列：
 
@@ -56,6 +70,17 @@ python3 scripts/evolve.py sample new --from postmortem \
 确认后去掉 `--dry-run` 即写入本地队列。来源文件用主检出的路径（例如 `/Users/<you>/projects/ascend-sleuth/traces/<session>.yaml`），不要写相对当前 worktree 的路径。
 
 状态有八种：`ready`（可提交）、`needs_answer`（缺根因与修复）、`needs_sanitize`（未脱敏）、`needs_source`（缺来源）、`non_diagnostic`（没有可判别现象）、`duplicate`（本地或评测集已有同来源）、`absorbed`（已进知识库）、`stale`（trace 已不在）。
+
+### 批量回流
+
+用户一次给多条 trace 时，逐条处理，不合并成一个样本：
+
+1. 对每条 trace 跑 `sample new --from trace --dry-run --json`，汇总状态、重复与缺失字段。
+2. 只对 `ready` 或补完 `needs_answer` / `needs_sanitize` 的候选去掉 `--dry-run` 建样本；`duplicate`、`non_diagnostic`、`stale` 留原状并报原因。
+3. 逐条 `set-answer`、`check`、`review`，不因为批量就跳过复核；`review` 仍逐条通过或拒绝。
+4. 报告总数、通过数、拒绝数与原因；没有通过的候选不算入 field。
+
+批量只省重复输入，不省复核；`review` 不会因为“批量”自动 approve。
 
 补答案只问两个问题：**根因和修复，与现场一致吗？这条能共享吗？**
 

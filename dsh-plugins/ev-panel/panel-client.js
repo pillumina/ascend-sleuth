@@ -1025,6 +1025,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
       clean: { label: '本期无阻塞项', color: 'var(--c-green)', acc: 'var(--acc-green)', cls: 'ok' },
       violations: { label: '有判据被违反', color: 'var(--c-amber)', acc: 'var(--acc-amber)', cls: 'warn' },
       broken: { label: '体检器失效', color: 'var(--c-purple)', acc: 'var(--acc-purple)', cls: 'broken' },
+      incomplete: { label: '数据缺口，结论不可用', color: 'var(--c-amber)', acc: 'var(--acc-amber)', cls: 'warn' },
     }
 
     // 预测实测记录：`ev_measure.py --run` 的执行次数与结果分布。这一层原先没有观测面

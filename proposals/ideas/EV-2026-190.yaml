@@ -1,0 +1,73 @@
+id: EV-2026-190
+layer: L2
+target_component: docs/mechanism/rsi-mechanism.md
+title: 自演进设计与实现对齐：实测门、假接受与缺数据语义
+status: validated
+authorization: review
+dimension: process
+supersedes: []
+superseded_by: null
+created_at: 2026-11-22
+source_signals:
+- signal: mechanism_gap
+  evidence: EV 卡积压：126 张可复现判据未执行；体检器把缺数据与违反混成一个 broken
+  trajectory:
+  - docs/mechanism/evaluation.md
+  - python3 scripts/evolution_health.py --check
+  - python3 scripts/ev_measure.py --audit
+alternatives:
+- option: 只改设计文档，追认当前实现
+  why_rejected: 会保留 exploratory 把 1 条样本提升成 accept、缺数据盖住 4 条真违反、validated 不要求实测三处；对齐记录第 3 节逐条给了反例
+  evidence: docs/mechanism/evaluation.md 第 3、6 节
+hypothesis: 把 validated 绑定一次 PASS 实测、把缺数据记 unknown、禁止 exploratory 与未校准 judge 假接受后，零数据下回归冒烟仍可跑，且不会把证据不足读成通过
+predicted_effect:
+  metric: 闭环演练通过数
+  from: main 75f6e39：体检器 5 项待处理、exploratory 可提升 accept、回归冒烟未接
+  to: 188/188（--no-panel）；190/190（含面板）
+  external: 对齐记录、体检器读数与卡内实测证据在 PR 中可复核；不依赖本地 traces
+  measure:
+    command: python3 scripts/rehearse_evolve_loop.py --no-panel
+    expect_exit: 0
+    expect_stdout: 闭环演练：全部通过
+validation:
+  method: scan_review
+  baseline: main 75f6e39：体检器 5 项待处理、exploratory 可提升 accept、回归冒烟未接
+  success_criteria: 演练全部通过；tests/self_evolution 全过；新 validated 卡必须带 measure_evidence
+  rollback: git revert 本 PR；卡与设计文档随 PR 一起回退
+gate:
+  condition: 演练出现回归或体检器把数据缺口读成违反时重开
+risk: low
+principle_refs:
+- 1
+- 2
+- 5
+- 7
+- 8
+- 10
+- 11
+actual_cost:
+  tokens: 0
+  source: estimate
+  note: 机制对齐，模型成本未单独记账；0 表示未计量，不是零成本
+measure_evidence:
+- at: '2026-11-22T00:10:47'
+  command: python3 scripts/rehearse_evolve_loop.py --no-panel
+  verdict: PASS
+  exit_code: 0
+decisions:
+- who: agent
+  when: '2026-11-22'
+  type: proposal
+  conclusion: 按新 main 的 signal-first/单配置模型，保留并补齐机制层缺口：validated 绑定一次 PASS 实测；缺数据记 unknown；exploratory 与未校准 judge 不得 accept；runner 不拿答案；版本坐标用内容哈希。
+- who: agent
+  when: '2026-11-22'
+  type: action
+  conclusion: 改 verify_proposals、ev_measure、evolution_health、decision、pilot、stage、eval_arena、cli，并更新设计、机制文档与测试。
+- who: agent
+  when: '2026-11-22'
+  type: eval
+  conclusion: 完整演练 190/190（含面板）通过；tests/self_evolution 581 条通过；verify_proposals、holdout、metrics、docs-index 均通过。
+- who: agent
+  when: '2026-11-22'
+  type: decision
+  conclusion: 采纳。零数据下回归冒烟可跑，质量判定只能 insufficient；新 validated 卡必须有 PASS 的 measure_evidence。

@@ -1,13 +1,19 @@
 ---
 name: self-evolve
 description: >
-  用户显式发起的全库自演进深度轮：聚合 trace、replay、指标、信号台账，分诊出
-  内容缺口、确定性 bug、流程/行为质量候选与高风险授权需求。深度轮只做观测与分诊，
-  不自动跑 RSI 实验、不自动产 EV 卡；行为质量改动由用户选中候选后显式进入
+  用户显式发起的全库自演进归类与候选轮：聚合 trace、replay、指标、信号台账，
+  把信号归入内容缺口、确定性 bug、行为质量与高风险授权，排出候选顺序。
+  它不跑 RSI 实验、不产 EV 卡、不写结论；行为质量改动由用户选中候选后显式进入
   RSI proposal → experiment → decision → PR。
 ---
 
-# Self-Evolve（深度分诊轮）
+# Self-Evolve（归类与候选轮）
+
+## 这是什么
+
+`self-evolve` 是一个读记录、归类、排优先级的轮次。它不跑 experiment，不写 conclusion，不产 EV 卡，也不改知识；输出是一份候选清单，供用户选择。
+
+“分诊”在这里只指三件事：把信号归入类别、排优先级、给出下一步入口。它不是诊断，也不是评估。
 
 ## 何时触发
 
@@ -80,10 +86,12 @@ python3 scripts/evolve_signals.py mark <id> --status triaged|dropped|promoted \
 
 ```text
 本轮观测：N 条信号
-分诊：确定性 bug A / 内容缺口 B / 行为候选 C / 高风险 D / 观察 E
+归类：确定性 bug A / 内容缺口 B / 行为候选 C / 高风险 D / 观察 E
 建议先做：...
 未执行：RSI 实验、EV 卡、PR（等用户选定）
 ```
+
+用户看到的是“有哪些可做的事、建议先做哪条”，不是“哪条已经通过”。
 
 由用户选择是否进入：
 
@@ -124,6 +132,7 @@ EV 卡只用于授权与历史，不是行为改动的默认前置：
 - 需要人明确授权，或需要留授权/回滚记录；
 - 不替代 RSI 实验，也不替代 PR；
 - 历史 EV 卡只读，不再作为新行为改动的全量门。
+- 卡标 `validated` 前必须跑 `python3 scripts/ev_measure.py <卡号> --run --record`，PASS 写进 `measure_evidence`；只写 `measure.reason` 的卡不能标 `validated`。
 
 ## 边界
 

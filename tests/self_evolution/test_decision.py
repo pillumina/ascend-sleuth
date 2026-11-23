@@ -68,6 +68,11 @@ class BinaryDecisionTest(unittest.TestCase):
         result = decide_binary(4, 0, 9, constraints_ok=False)
         self.assertEqual(result.decision, Decision.REJECT)
 
+    def test_unknown_constraint_is_insufficient_not_reject(self):
+        result = decide_binary(4, 0, 9, constraints_ok=None)
+        self.assertEqual(result.decision, Decision.INSUFFICIENT)
+        self.assertIn("约束指标数据不足", result.reason)
+
     def test_input_validation(self):
         for kwargs in (
             dict(b=-1, c=0, n=9),

@@ -151,9 +151,22 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
             "candidate(s) missing answer: " + ", ".join(sorted(missing_answer))
         )
     if core_test > target_test:
-        warnings.append(
-            f"test set has {core_test} sample(s), policy target is {target_test}"
-        )
+        # test 池可以有迁移带来的超额；真正跑的是 test-stage.yaml 的 selected。只对“实际计划”
+        # 报警，避免把 6 条存量误读成策略要求 6 条。
+        planned = core_test
+        stage_path = root_path / "eval" / "core" / "test-stage.yaml"
+        if stage_path.is_file():
+            try:
+                stage_doc = yaml.safe_load(stage_path.read_text(encoding="utf-8")) or {}
+                selected = stage_doc.get("selected")
+                if isinstance(selected, list) and selected:
+                    planned = len(selected)
+            except (OSError, yaml.YAMLError):
+                planned = core_test
+        if planned > target_test:
+            warnings.append(
+                f"test stage plans {planned} sample(s), policy target is {target_test}"
+            )
     freshness = metrics.get("freshness") or {}
     timeline = metrics.get("timeline") or {}
     if not trace_state or not trace_state.get("available"):

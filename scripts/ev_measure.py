@@ -201,7 +201,9 @@ def append_run(root: Path, card_id: str, command: str, verdict: str, exit_code: 
                 "card": card_id,
                 "verdict": verdict,
                 "exit_code": exit_code,
-                "command": one_line(command, 160),
+                # 存完整命令：verify_proposals 要用它和卡里的 measure.command 做同命令比对，
+        # 截断会让长命令永远对不上。
+        "command": command.strip(),
                 "version": git_head(root),
             }
             records.append(entry)
@@ -220,6 +222,49 @@ def append_run(root: Path, card_id: str, command: str, verdict: str, exit_code: 
         return note
     except Exception as e:
         return f"（实测记录写入失败，不影响本次判定：{e}）"
+
+
+def append_card_evidence(root: Path, card_id: str, command: str,
+                        verdict: str, exit_code: int) -> str:
+    """把一次实测写进卡本身（tracked），让评审在 PR 里能看到“跑过没有”。
+
+    与 ``metrics/ev-measure-log.yaml`` 的分工：日志是同一克隆的运行时账本（gitignored），
+    卡上的 ``measure_evidence`` 是随 PR 走的证据。写侧只在 ``--record`` 时调用；已有该字段
+    的卡走 YAML 重写（会丢注释），第一次追加走文本追加（保留原格式）。
+    """
+    path = root / "proposals" / "ideas" / f"{card_id}.yaml"
+    if not path.exists():
+        return f"（卡文件不存在，未写卡内证据：{path}）"
+    entry = {
+        "at": datetime.now().isoformat(timespec="seconds"),
+        # 存完整命令：verify_proposals 要与卡里的 measure.command 做同命令比对；
+        # 截断或折叠空白会让长命令、多行命令永远对不上。
+        "command": command.strip(),
+        "verdict": verdict,
+        "exit_code": int(exit_code),
+    }
+    text = path.read_text(encoding="utf-8")
+    try:
+        doc = yaml.safe_load(text) or {}
+    except yaml.YAMLError as exc:
+        return f"（卡 YAML 解析失败，未写卡内证据：{exc}）"
+    if not isinstance(doc, dict):
+        return "（卡顶层不是 mapping，未写卡内证据）"
+    if "measure_evidence" in doc:
+        evidence = doc.get("measure_evidence")
+        if not isinstance(evidence, list):
+            return "（measure_evidence 不是列表，未写卡内证据）"
+        evidence.append(entry)
+        path.write_text(yaml.safe_dump(doc, allow_unicode=True, sort_keys=False,
+                                       default_flow_style=False, width=10 ** 6),
+                        encoding="utf-8")
+    else:
+        fragment = yaml.safe_dump({"measure_evidence": [entry]}, allow_unicode=True,
+                                  sort_keys=False, default_flow_style=False, width=10 ** 6)
+        if text and not text.endswith("\n"):
+            text += "\n"
+        path.write_text(text + fragment, encoding="utf-8")
+    return f"卡内证据：{path}"
 
 
 def one_line(value, limit=160) -> str:
@@ -335,6 +380,9 @@ def cmd_card(root: Path, args, card_id: str) -> int:
     note = append_run(root, card_id, measure["command"].strip(), verdict, code,
                       explicit_log=args.log, local=args.local)
     print(f"实测记录: {note}")
+    if args.record:
+        print("卡内证据: " + append_card_evidence(
+            root, card_id, measure["command"].strip(), verdict, code))
     if verdict == "PASS":
         print("=> PASS 符合预测（效果层）。命令是否真在测那件事 = 约定强度，靠人审抽查")
         return 0
@@ -356,7 +404,8 @@ def cmd_audit(root: Path, as_json: bool) -> int:
         else:
             buckets[kind].append(cid)
 
-    enforced = len(buckets["runnable"]) + len(buckets["declared"]) + len(buckets["missing"])
+    enforced = (len(buckets["runnable"]) + len(buckets["stale_dep"])
+                + len(buckets["declared"]) + len(buckets["missing"]))
     total = enforced + len(buckets["legacy"])
     if as_json:
         print(json.dumps({
@@ -377,7 +426,8 @@ def cmd_audit(root: Path, as_json: bool) -> int:
               f"补写不恢复当时的判断，只造事后叙述（原则十）")
         if buckets["missing"]:
             print("  缺口明细: " + "、".join(buckets["missing"]))
-        print("\n  reviewer 用法: python3 scripts/ev_measure.py <card-id> --run")
+        print("\n  reviewer 用法: python3 scripts/ev_measure.py <card-id> --run --record "
+              "（PASS 写进卡，供 validated 校验）")
     return 1 if buckets["missing"] else 0
 
 
@@ -392,10 +442,14 @@ def main() -> int:
                     help="显式指定实测记录路径（默认：同一克隆共享的主检出 metrics/ev-measure-log.yaml）")
     ap.add_argument("--local", action="store_true",
                     help="实测记录写在当前检出内（用于隔离测试/演练，不参与共享）")
+    ap.add_argument("--record", action="store_true",
+                    help="把这次实测追加进卡（tracked measure_evidence），供评审与 CI 校验")
     ap.add_argument("--root", type=Path, default=Path("."))
     args = ap.parse_args()
 
     root = args.root.resolve()
+    if args.record and not args.run:
+        ap.error("--record 需要同时给 --run；只查卡或 --audit 不写卡内证据")
     if args.audit:
         return cmd_audit(root, args.json)
     if not args.card_id:
