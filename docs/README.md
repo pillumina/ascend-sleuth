@@ -69,6 +69,7 @@
 - [eval.md](../docs/guide/eval.md) — 改 skill 前后跑什么（门禁分级）、对照集封存与已冻结的判据
 - [metrics.md](../docs/guide/metrics.md) — 指标口径与周批流程（数字以 metrics/timeline.yaml 为准）
 - [git-workflow.md](../docs/guide/git-workflow.md) — 审核、门控、合入与多人协作的落地（含评审把手）
+- [scripts.md](../docs/guide/scripts.md) — 脚本层：入口与库的区分、共享模块、命令/路径约定、环境变量与加脚本检查单
 - [knowledge-acquisition.md](../docs/guide/knowledge-acquisition.md) — 知识获取的三种起步形态、稀疏拉取白名单，以及部署形态与目录归属的入口
 - [issue-ingest-pipeline.md](../docs/guide/issue-ingest-pipeline.md) — issue → case 的半自动导入管道
 - [reference-ingest-pipeline.md](../docs/guide/reference-ingest-pipeline.md) — 文档仓 → reference 的导入管道（状态文件、成本结构、已知坑）

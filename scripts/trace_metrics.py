@@ -174,40 +174,17 @@ def ns_map_from_index(root: Path) -> dict:
     return m
 
 
-def main():
-    import argparse
-    ap = argparse.ArgumentParser(description="从 traces/*.yaml 计算 metrics")
-    ap.add_argument("--emit-yaml", action="store_true",
-                    help="额外输出 YAML 快照骨架（人复核后 append 进 metrics/timeline.yaml）")
-    ap.add_argument("--emit-yaml-only", action="store_true",
-                    help="只输出 YAML（块末的 periods 片段，不带人读 markdown）——供 "
-                         "scripts/metrics_snapshot.py 组合快照时取诊断侧那一块")
-    ap.add_argument("--root", default=None,
-                    help="仓库根（默认：脚本上两级）。**traces/ 是各检出各一份的运行时件**——"
-                         "在 worktree 里跑本脚本读不到主检出的 trace，需显式传主检出根；"
-                         "metrics_snapshot.py 会自动解析并标注读的是哪一份")
-    ap.add_argument("--traces-dir", default=None,
-                    help="显式指定 traces/ 目录（默认由 resolve_traces(root) 解析到主检出）。"
-                         "用于单元测试的合成 trace 与「读另一份检出」的场景；不传即保持共享侧语义")
-    ap.add_argument("--kb-baseline", action="store_true",
-                    help="附加知识基线切片（RFC #432）：按 trace 顶层 kb_behind（落后 / 最新 / "
-                         "unknown）分组给解决率，并给 kb_merge: ff-only 的触发率。默认输出不变；"
-                         "切片只进人读输出与 --json，不进 --emit-yaml 快照（live 字段白名单见 "
-                         "verify_metrics.py 的 LIVE_FIELDS）")
-    ap.add_argument("--source-usage", action="store_true",
-                    help="附加源码取用切片：source_analysis 的仓、版本、fetch_exit、verify 汇总。"
-                         "只进人读输出与 --json，不进 --emit-yaml 快照")
-    ap.add_argument("--json", action="store_true",
-                    help="只输出 JSON（机器读）。与 --kb-baseline / --source-usage 同用时含对应字段")
-    args = ap.parse_args()
+def _load_inputs(root: Path, traces_dir: Optional[Path] = None):
+    """读侧：case 索引映射 + traces 状态列表。参数显式传入，不读全局。"""
+    return ns_map_from_index(root), load_states(root, traces_dir)
 
-    root = Path(args.root).resolve() if args.root else Path(__file__).resolve().parents[1]
-    by_case = ns_map_from_index(root)
-    states = load_states(root, Path(args.traces_dir) if args.traces_dir else None)
-    if not states:
-        print("未找到任何 traces/*.yaml。先跑 /skill:diagnose 产生 trace。")
-        return
 
+def _compute_metrics(states: list, by_case: dict):
+    """算侧：trace 状态 → (指标 mapping, 渲染明细)。
+
+    纯计算，不打印、不读盘。`by_case` 只用于命中 case 的归属与置信度分布。
+    明细里的每个值都是 `m` 之外的原始计数（违规列表、各切片的分母等），渲染侧只读它。
+    """
     n = len(states)
     routed_ok = routed_total = 0
     tier2_hit = 0
@@ -552,28 +529,126 @@ def main():
         "external_record_violations": (capability_bad + external_outcome_bad)[:5] or None,
         "external_record_violations_total": len(capability_bad) + len(external_outcome_bad),
     }
-    # 知识基线切片（RFC #432）：只在显式 --kb-baseline 时进读数，默认输出格式不变。
-    # 它不进 `--emit-yaml` 快照——`verify_metrics.py` 的 LIVE_FIELDS 是白名单，新字段
-    # 塞进去会被下一期校验拦下；要进 timeline 需另开一张卡同时改白名单与 schema 文档。
-    kb_baseline = {
+
+    detail = {
+        "n": n,
+        "tier2_hit": tier2_hit,
+        "routed_ok": routed_ok,
+        "routed_total": routed_total,
+        "misdiagnosed": misdiagnosed,
+        "cat_total": cat_total,
+        "cat_hit": cat_hit,
+        "attr": attr,
+        "scores": scores,
+        "n_low": n_low,
+        "fb": fb,
+        "complete": complete,
+        "vocab_total": vocab_total,
+        "vocab_bad": vocab_bad,
+        "stop_reason_unrecorded": stop_reason_unrecorded,
+        "parallel_group_events": parallel_group_events,
+        "considered_candidates_events": considered_candidates_events,
+        "record_bad": record_bad,
+        "miss_lex": miss_lex,
+        "miss_sem": miss_sem,
+        "miss_unrec": miss_unrec,
+        "miss_notriage": miss_notriage,
+        "ref_hits": ref_hits,
+        "ref_resolved": ref_resolved,
+        "ref_platforms": ref_platforms,
+        "ref_purposes": ref_purposes,
+        "purpose_bad": purpose_bad,
+        "ref_outcomes": ref_outcomes,
+        "outcome_bad": outcome_bad,
+        "source_events": source_events,
+        "source_repos": source_repos,
+        "source_refs": source_refs,
+        "source_fetch_exits": source_fetch_exits,
+        "source_verify": source_verify,
+        "source_unrecorded": source_unrecorded,
+        "source_fail_by_repo": source_fail_by_repo,
+        "source_bad": source_bad,
+        "kb_groups": kb_groups,
+        "kb_merge_ff": kb_merge_ff,
+        "kb_merge_total": kb_merge_total,
+    }
+    return m, detail
+
+
+def _compute_kb_baseline(kb_groups: dict, kb_merge_ff: int, kb_merge_total: int) -> dict:
+    """算侧：知识基线切片（RFC #432）→ `--kb-baseline` 的 JSON 字段。"""
+    return {
         "resolution": {g: dict(kb_groups[g]) for g in ("behind", "current", "unknown")},
         "merge": {"ff_only": kb_merge_ff, "total": kb_merge_total},
     }
-    if args.kb_baseline:
-        m["kb_baseline"] = kb_baseline
-    if args.source_usage:
-        m["source_usage"] = {
-            "events": source_events,
-            "repos": dict(sorted(source_repos.items())) or None,
-            "refs": dict(sorted(source_refs.items())) or None,
-            "fetch_exits": {str(code): count for code, count in sorted(source_fetch_exits.items())} or None,
-            "verify": dict(sorted(source_verify.items())) or None,
-            "unrecorded": {k: v for k, v in source_unrecorded.items() if v} or None,
-            "fail_by_repo": ({repo: dict(sorted(slot.items(), key=lambda x: x[0]))
-                              for repo, slot in sorted(source_fail_by_repo.items())} or None),
-            "violations": source_bad[:5] or None,
-            "violations_total": len(source_bad),
-        }
+
+
+def _compute_source_usage(detail: dict) -> dict:
+    """算侧：源码取用切片 → `--source-usage` 的 JSON 字段。"""
+    source_events = detail["source_events"]
+    source_repos = detail["source_repos"]
+    source_refs = detail["source_refs"]
+    source_fetch_exits = detail["source_fetch_exits"]
+    source_verify = detail["source_verify"]
+    source_unrecorded = detail["source_unrecorded"]
+    source_fail_by_repo = detail["source_fail_by_repo"]
+    source_bad = detail["source_bad"]
+    return {
+        "events": source_events,
+        "repos": dict(sorted(source_repos.items())) or None,
+        "refs": dict(sorted(source_refs.items())) or None,
+        "fetch_exits": {str(code): count for code, count in sorted(source_fetch_exits.items())} or None,
+        "verify": dict(sorted(source_verify.items())) or None,
+        "unrecorded": {k: v for k, v in source_unrecorded.items() if v} or None,
+        "fail_by_repo": ({repo: dict(sorted(slot.items(), key=lambda x: x[0]))
+                          for repo, slot in sorted(source_fail_by_repo.items())} or None),
+        "violations": source_bad[:5] or None,
+        "violations_total": len(source_bad),
+    }
+
+
+def _render_markdown(m: dict, detail: dict, kb_baseline: dict, *,
+                     show_kb_baseline: bool = False, show_source_usage: bool = False) -> str:
+    """渲染侧：人读 markdown 概览（指标表 + 周批说明）。"""
+    n = detail["n"]
+    tier2_hit = detail["tier2_hit"]
+    routed_ok = detail["routed_ok"]
+    routed_total = detail["routed_total"]
+    misdiagnosed = detail["misdiagnosed"]
+    cat_total = detail["cat_total"]
+    cat_hit = detail["cat_hit"]
+    attr = detail["attr"]
+    scores = detail["scores"]
+    n_low = detail["n_low"]
+    fb = detail["fb"]
+    complete = detail["complete"]
+    tier3_used = m["tier3"]["used"]
+    tier3_saved = m["tier3"]["saved"]
+    vocab_total = detail["vocab_total"]
+    vocab_bad = detail["vocab_bad"]
+    stop_reason_unrecorded = detail["stop_reason_unrecorded"]
+    parallel_group_events = detail["parallel_group_events"]
+    considered_candidates_events = detail["considered_candidates_events"]
+    record_bad = detail["record_bad"]
+    miss_lex = detail["miss_lex"]
+    miss_sem = detail["miss_sem"]
+    miss_unrec = detail["miss_unrec"]
+    miss_notriage = detail["miss_notriage"]
+    ref_hits = detail["ref_hits"]
+    ref_resolved = detail["ref_resolved"]
+    ref_platforms = detail["ref_platforms"]
+    ref_purposes = detail["ref_purposes"]
+    purpose_bad = detail["purpose_bad"]
+    ref_outcomes = detail["ref_outcomes"]
+    outcome_bad = detail["outcome_bad"]
+    source_events = detail["source_events"]
+    source_repos = detail["source_repos"]
+    source_refs = detail["source_refs"]
+    source_fetch_exits = detail["source_fetch_exits"]
+    source_verify = detail["source_verify"]
+    source_unrecorded = detail["source_unrecorded"]
+    source_fail_by_repo = detail["source_fail_by_repo"]
+    source_bad = detail["source_bad"]
 
     rows = [
         "| 指标 | 值 |",
@@ -615,7 +690,7 @@ def main():
             if record_bad else "")
          + " |"),
     ]
-    if args.kb_baseline:
+    if show_kb_baseline:
         # 两行读数：三组解决率（落后 / 最新 / unknown）与自动合并触发率。
         # 比例都带分母；组内没有样本时写「无样本」，不拿 0 冒充。
         def _fmt_rate(rec):
@@ -668,7 +743,7 @@ def main():
             )
     else:
         rows.append("| reference 引用 | 0——先验知识层刚建立（ADR-0008），trace 尚未积累 reference_lookup 事件 |")
-    if args.source_usage:
+    if show_source_usage:
         if source_events:
             repo_summary = "、".join(f"{repo} {count}" for repo, count in
                                      sorted(source_repos.items(), key=lambda x: -x[1])[:5])
@@ -696,10 +771,10 @@ def main():
                 if source_unrecorded.get(field):
                     rows.append(f"|   未记录{label} | {source_unrecorded[field]} 条（旧 trace 或事件未写字段） |")
             if source_fail_by_repo:
-                detail = "、".join(
+                detail_part = "、".join(
                     f"{repo}（fetch_exit 非零 {slot['fetch_nonzero']} 次、verify 未命中 {slot['verify_miss']} 次）"
                     for repo, slot in sorted(source_fail_by_repo.items()))
-                rows.append(f"|   按仓失败（T12 判据） | {detail} |")
+                rows.append(f"|   按仓失败（T12 判据） | {detail_part} |")
             if source_bad:
                 rows.append(f"|   **字段违规** | {len(source_bad)} 处："
                             f"{'、'.join(source_bad[:5])}"
@@ -708,36 +783,100 @@ def main():
             rows.append("| 源码取用（source_analysis） | 0 条——本批 trace 没有源码分析事件 |")
     # `--emit-yaml-only` 是机器读路径（供 metrics_snapshot.py 组合快照）：不出人读 markdown，
     # 否则调用方要在一堆 markdown 里找 YAML 块（实测会直接解析失败）。
+    return ("\n".join(rows)
+            + "\n\n<!-- metrics 在周批时机汇总（**任何人跑周批时都可做**，不是某个角色的专属动作）：人复核后把这一期写进 metrics/timeline.d/<期号>.yaml，再跑 python3 scripts/build_timeline.py 重建生成物 metrics/timeline.yaml（每期一个源文件，团队共享）。工程师不需要提交 metrics——他们只做诊断（本地 trace）+ 回报 fix 结果（case confidence 走 PR）。小样本比例波动大，解读先看分母。机器可读快照：python3 scripts/trace_metrics.py --emit-yaml -->")
+
+
+def _render_json(m: dict) -> str:
+    """渲染侧：机器读 JSON（None 字段剔除，键按 m 的插入顺序）。"""
+    return json.dumps({k: v for k, v in m.items() if v is not None},
+                      ensure_ascii=False, indent=2)
+
+
+def _build_snapshot(m: dict) -> dict:
+    """渲染侧：`--emit-yaml` 的期快照骨架（可选切片不进 live 白名单）。"""
+    import datetime
+    return {
+        "period": "YYYY-WNN",  # TODO: 填本期（如 2026-W36）；W 周期 ISO 8601
+        "kind": "live",        # live | replay | example（只有 live 参与趋势对比）
+        "title": "本期诊断指标（trace_metrics.py 自动生成，人复核）",
+        "recorded_at": datetime.date.today().isoformat(),
+        "source": "trace_metrics.py 从 traces/*.yaml 自动生成",
+        # kb_baseline 与 source_usage 是可选切片：不进快照（live 字段白名单见
+        # verify_metrics.py），否则显式跑 --kb-baseline/--source-usage --emit-yaml
+        # 会产出被下一期校验拦下的字段。
+        "metrics": {k: v for k, v in m.items()
+                    if v is not None and k not in ("kb_baseline", "source_usage")},
+    }
+
+
+def _render_yaml(snapshot: dict, *, metrics_only: bool = False) -> str:
+    """渲染侧：YAML 快照文本。`metrics_only` 只吐 metrics mapping（机器读路径）。"""
+    if metrics_only:
+        # 机器读路径：只吐 metrics mapping（组合快照的调用方要的就是这一块）
+        return yaml.safe_dump({"metrics": snapshot["metrics"]}, allow_unicode=True,
+                              sort_keys=False, default_flow_style=False)
+    return ("\n--- metrics yaml 快照（复核后 append 进 metrics/timeline.yaml）---\n"
+            + yaml.safe_dump({"periods": [snapshot]}, allow_unicode=True,
+                             sort_keys=False, default_flow_style=False))
+
+
+def main():
+    import argparse
+    ap = argparse.ArgumentParser(description="从 traces/*.yaml 计算 metrics")
+    ap.add_argument("--emit-yaml", action="store_true",
+                    help="额外输出 YAML 快照骨架（人复核后 append 进 metrics/timeline.yaml）")
+    ap.add_argument("--emit-yaml-only", action="store_true",
+                    help="只输出 YAML（块末的 periods 片段，不带人读 markdown）——供 "
+                         "scripts/metrics_snapshot.py 组合快照时取诊断侧那一块")
+    ap.add_argument("--root", default=None,
+                    help="仓库根（默认：脚本上两级）。**traces/ 是各检出各一份的运行时件**——"
+                         "在 worktree 里跑本脚本读不到主检出的 trace，需显式传主检出根；"
+                         "metrics_snapshot.py 会自动解析并标注读的是哪一份")
+    ap.add_argument("--traces-dir", default=None,
+                    help="显式指定 traces/ 目录（默认由 resolve_traces(root) 解析到主检出）。"
+                         "用于单元测试的合成 trace 与「读另一份检出」的场景；不传即保持共享侧语义")
+    ap.add_argument("--kb-baseline", action="store_true",
+                    help="附加知识基线切片（RFC #432）：按 trace 顶层 kb_behind（落后 / 最新 / "
+                         "unknown）分组给解决率，并给 kb_merge: ff-only 的触发率。默认输出不变；"
+                         "切片只进人读输出与 --json，不进 --emit-yaml 快照（live 字段白名单见 "
+                         "verify_metrics.py 的 LIVE_FIELDS）")
+    ap.add_argument("--source-usage", action="store_true",
+                    help="附加源码取用切片：source_analysis 的仓、版本、fetch_exit、verify 汇总。"
+                         "只进人读输出与 --json，不进 --emit-yaml 快照")
+    ap.add_argument("--json", action="store_true",
+                    help="只输出 JSON（机器读）。与 --kb-baseline / --source-usage 同用时含对应字段")
+    args = ap.parse_args()
+
+    root = Path(args.root).resolve() if args.root else Path(__file__).resolve().parents[1]
+    by_case, states = _load_inputs(root, Path(args.traces_dir) if args.traces_dir else None)
+    if not states:
+        print("未找到任何 traces/*.yaml。先跑 /skill:diagnose 产生 trace。")
+        return
+
+    m, detail = _compute_metrics(states, by_case)
+    # 知识基线切片（RFC #432）：只在显式 --kb-baseline 时进读数，默认输出格式不变。
+    # 它不进 `--emit-yaml` 快照——`verify_metrics.py` 的 LIVE_FIELDS 是白名单，新字段
+    # 塞进去会被下一期校验拦下；要进 timeline 需另开一张卡同时改白名单与 schema 文档。
+    kb_baseline = _compute_kb_baseline(detail["kb_groups"], detail["kb_merge_ff"],
+                                       detail["kb_merge_total"])
+    if args.kb_baseline:
+        m["kb_baseline"] = kb_baseline
+    if args.source_usage:
+        m["source_usage"] = _compute_source_usage(detail)
+
+    # `--emit-yaml-only` 是机器读路径（供 metrics_snapshot.py 组合快照）：不出人读 markdown，
+    # 否则调用方要在一堆 markdown 里找 YAML 块（实测会直接解析失败）。
     if args.json:
-        print(json.dumps({k: v for k, v in m.items() if v is not None},
-                         ensure_ascii=False, indent=2))
+        print(_render_json(m))
         return
     if not args.emit_yaml_only:
-        print("\n".join(rows))
-        print("\n<!-- metrics 在周批时机汇总（**任何人跑周批时都可做**，不是某个角色的专属动作）：人复核后把这一期写进 metrics/timeline.d/<期号>.yaml，再跑 python3 scripts/build_timeline.py 重建生成物 metrics/timeline.yaml（每期一个源文件，团队共享）。工程师不需要提交 metrics——他们只做诊断（本地 trace）+ 回报 fix 结果（case confidence 走 PR）。小样本比例波动大，解读先看分母。机器可读快照：python3 scripts/trace_metrics.py --emit-yaml -->")
+        print(_render_markdown(m, detail, kb_baseline,
+                               show_kb_baseline=args.kb_baseline,
+                               show_source_usage=args.source_usage))
 
     if args.emit_yaml or args.emit_yaml_only:
-        import datetime
-        snapshot = {
-            "period": "YYYY-WNN",  # TODO: 填本期（如 2026-W36）；W 周期 ISO 8601
-            "kind": "live",        # live | replay | example（只有 live 参与趋势对比）
-            "title": "本期诊断指标（trace_metrics.py 自动生成，人复核）",
-            "recorded_at": datetime.date.today().isoformat(),
-            "source": "trace_metrics.py 从 traces/*.yaml 自动生成",
-            # kb_baseline 与 source_usage 是可选切片：不进快照（live 字段白名单见
-            # verify_metrics.py），否则显式跑 --kb-baseline/--source-usage --emit-yaml
-            # 会产出被下一期校验拦下的字段。
-            "metrics": {k: v for k, v in m.items()
-                        if v is not None and k not in ("kb_baseline", "source_usage")},
-        }
-        if args.emit_yaml_only:
-            # 机器读路径：只吐 metrics mapping（组合快照的调用方要的就是这一块）
-            yaml.safe_dump({"metrics": snapshot["metrics"]}, sys.stdout,
-                           allow_unicode=True, sort_keys=False, default_flow_style=False)
-        else:
-            print("\n--- metrics yaml 快照（复核后 append 进 metrics/timeline.yaml）---")
-            yaml.safe_dump({"periods": [snapshot]}, sys.stdout, allow_unicode=True,
-                           sort_keys=False, default_flow_style=False)
+        sys.stdout.write(_render_yaml(_build_snapshot(m), metrics_only=args.emit_yaml_only))
 
 
 if __name__ == "__main__":

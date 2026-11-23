@@ -1486,3 +1486,10 @@ class CheckAllJsonLinesTest(RepoCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ModuleAliasTest(unittest.TestCase):
+    def test_library_module_shares_the_public_namespace(self):
+        import _pr_status as lib
+        import pr_status
+        self.assertIs(pr_status, lib)

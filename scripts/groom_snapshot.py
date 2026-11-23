@@ -37,7 +37,6 @@
 
 import argparse
 import io
-import json
 import os
 import shutil
 import subprocess
@@ -45,8 +44,8 @@ import sys
 import tarfile
 from pathlib import Path
 
-import kb_sync
-from exec_log_path import main_checkout
+import _kb_sync
+import _settings
 from groom_common import (
     SCHEMA_SNAPSHOT, atomic_write_text, dump_json, find_drafts, load_json, now_iso,
     repo_root, run_git, shared_inbox, short_sha,
@@ -56,7 +55,6 @@ from _cli import main_entry
 INDEX_CHECK = ["scripts/build_index.py", "--check"]
 INDEX_BUILD = ["scripts/build_index.py"]
 
-SETTINGS_REL = Path(".local/settings.json")
 SETTINGS_SCHEMA_PREFIX = "ascend-sleuth-settings/"
 
 
@@ -97,28 +95,28 @@ def load_sync_settings(root: Path):
     配置缺失（没有文件、或文件里没有 `sync`）返回 (None, None, True, None)：调用方退回
     `--list-remotes` 那套问用户的行为。文件在但读不出或结构不对返回 error，调用方会说明一句后
     按未配置处理——拼错的配置若被当成"没配置"而不出声，同步源会静默换成另一个远端。
+
+    解析统一走 `_settings.load_settings`；`with_meta` 只用来判断文件里写没写 `sync` 段，
+    以及把错误折回本脚本原来的文案（同一份报错原文由 `_settings` 给出）。
     """
-    base = main_checkout(root) or root
-    path = base / SETTINGS_REL
-    if not path.is_file():
-        return None, None, True, None
-    try:
-        doc = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, ValueError) as e:
-        return None, None, True, f"{path} 读不出：{e}"
-    if not isinstance(doc, dict):
+    _settings_doc, config, _problem, meta = _settings.load_settings(Path(root), with_meta=True)
+    path = meta["path"]
+    kind = meta["error_kind"]
+    if kind == "read":
+        return None, None, True, f"{path} 读不出：{meta['error_detail']}"
+    if kind == "shape":
         return None, None, True, f"{path} 顶层不是对象"
-    schema = str(doc.get("schema") or "")
-    if schema and not schema.startswith(SETTINGS_SCHEMA_PREFIX):
-        return None, None, True, f"{path} 的 schema {schema!r} 不认（本脚本认 {SETTINGS_SCHEMA_PREFIX}*）"
-    sync = doc.get("sync")
-    if sync is None:
+    if kind == "schema":
+        return None, None, True, (f"{path} 的 schema {meta['error_detail']!r} 不认"
+                                  f"（本脚本认 {SETTINGS_SCHEMA_PREFIX}*）")
+    if config == "default" or not meta["sync_present"]:
         return None, None, True, None
-    if not isinstance(sync, dict):
+    if not meta["sync_is_mapping"]:
         return None, None, True, f"{path} 的 sync 段不是对象"
+    sync = meta["raw_sync"] or {}
     remote = str(sync.get("remote") or "").strip() or None
     branch = str(sync.get("branch") or "").strip() or None
-    enabled = kb_sync.normalize_sync(sync)["enabled"]
+    enabled = _settings.normalize_sync(sync)["enabled"]
     return remote, branch, enabled, None
 
 
@@ -132,7 +130,7 @@ def _fetch_policy(root: Path, offline: bool):
     """
     if offline:
         return False, "offline 模式：未尝试 fetch"
-    if kb_sync.deployment_sync_mode(root) == "offline":
+    if _kb_sync.deployment_sync_mode(root) == "offline":
         return False, "sleuth.config.yaml 声明 sync.mode: offline，未尝试 fetch；使用本机已有引用"
     return True, None
 
@@ -144,14 +142,14 @@ def persist_sync_source(root: Path, remote: str, branch: str):
     记住同步源只是省下一次选择，不是快照的前置条件。
     """
     try:
-        sha = kb_sync.settings_sha256(Path(root))
-        settings, _source, _problem = kb_sync.load_settings(Path(root))
+        sha = _settings.settings_sha256(Path(root))
+        settings, _source, _problem = _settings.load_settings(Path(root))
         sync = dict(settings.get("sync") or {})
         sync["remote"] = remote
         if branch:
             sync["branch"] = branch
         settings["sync"] = sync
-        kb_sync.save_settings(Path(root), settings, expect_sha=sha)
+        _settings.save_settings(Path(root), settings, expect_sha=sha)
         return True, ""
     except Exception as exc:  # noqa: BLE001 - 写配置失败只是少一次记忆，不能拦住快照
         return False, f"{type(exc).__name__}: {exc}"

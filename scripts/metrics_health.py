@@ -23,6 +23,7 @@
 import argparse
 import json
 import tempfile
+from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 
@@ -207,14 +208,41 @@ def cat_label(cat: str) -> str:
     return CATEGORY_LABEL.get(cat, cat)
 
 
-def main():
-    ap = argparse.ArgumentParser(description="metrics 闭环体检")
-    ap.add_argument("--check", action="store_true", help="有 ✗ 时退出码非零")
-    ap.add_argument("--json", action="store_true")
-    ap.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
-    args = ap.parse_args()
-    root = args.root.resolve()
+@dataclass
+class _Inputs:
+    """读侧结果：判据、新鲜度阈值、可解读性规则、期列表、读取错误。"""
+    gates: list
+    fresh: dict
+    readability: list
+    periods: list
+    load_errors: list
 
+
+@dataclass
+class _Capacity:
+    """容量面的计算结果：量出来的行、命中的判据、量不出的格子与现算错误。"""
+    cells: list
+    fallbacks: list
+    hits: dict
+    unmeasurable: list
+    fb_unmeasurable: list
+    structural_unavailable: bool
+    live_ok: bool
+    prev_cells: dict
+    notes: list
+
+
+@dataclass
+class _Audit:
+    """判据覆盖面与退出码：哪些判据被评估过、哪些没评过（不可判定）。"""
+    broken: list
+    gate_audit: list
+    readability_audit: list
+    exit_code: int
+
+
+def _load_inputs(root: Path) -> _Inputs:
+    """读侧：gates.yaml / timeline.yaml 与配置读取错误。"""
     load_errors = []       # 配置文件读不动的如实记录（进 broken，退出码 2）
     gates_doc = load_yaml(root / "metrics" / "gates.yaml", load_errors)
     gates = gates_doc.get("gates") or []
@@ -226,26 +254,24 @@ def main():
     periods = timeline.get("periods") or []
     if not gates and (root / "metrics" / "gates.yaml").exists() and not load_errors:
         load_errors.append("gates.yaml 里没有任何闸门条目（文件存在但 gates 为空）——判据全部缺席")
+    return _Inputs(gates, fresh, readability, periods, load_errors)
 
-    findings = []          # (level, 面, 文案, 动作)
-    readability_state = {}  # metric 名 → {readable, why}；--json 契约给面板打标记用
 
-    # findings 是 5 元组：(level 面 文案 动作 人话版)。
-    # **为什么多一列**（2026-09 七轮，用户反馈）：面板原先直接把 `cell_soft_cap`、
-    # `feedback_capture_floor`、`misdiagnosis_rate` 这些**代码里的名字**端给读者，
-    # 句子也是对着实现说的（"(framework × category) 格子条数超 soft_cap"）。判据的**身份**
-    # 住在这一侧，所以"人话版"也必须由这一侧提供——面板只渲染，不做启发式翻译。
-    # 技术文案保留：它进 CLI 报告与展开后的证据行，维护者仍拿得到判据名。
-    findings = []          # (level, 面, 技术文案, 动作, 人话版)
-    readability_state = {}  # metric 名 → {readable, why, label}；--json 契约给面板打标记用
+def _select_latest(periods):
+    """取最新一期：诊断侧 live 快照与结构侧（容量/条数）快照各一条。"""
+    return (latest_by(periods, lambda p: p.get("kind") == "live"),
+            latest_by(periods, lambda p: "case_total" in (p.get("metrics") or {})))
 
-    # —— ① 数据底座 ——
-    for level, what, text in check_no_data(periods):
-        findings.append((level, "数据底座", f"{what}：{text}", None, None))
 
-    # —— ② 新鲜度 ——
-    last_live = latest_by(periods, lambda p: p.get("kind") == "live")
-    last_struct = latest_by(periods, lambda p: "case_total" in (p.get("metrics") or {}))
+def _render_no_data_findings(periods):
+    """渲染侧：数据底座（live / 结构快照在不在）。"""
+    return [(level, "数据底座", f"{what}：{text}", None, None)
+            for level, what, text in check_no_data(periods)]
+
+
+def _render_freshness_findings(last_live, last_struct, fresh):
+    """渲染侧：数据新鲜度（最后一份快照多久以前）。"""
+    findings = []
     for label, doc, limit_key, plain_label in (
             ("诊断侧 live 快照", last_live, "live_snapshot_max_age_days", "诊断数据"),
             ("结构侧（容量/条数）", last_struct, "structural_max_age_days", "知识库统计")):
@@ -265,21 +291,16 @@ def main():
                              f"现在看到的还是 {doc.get('period')} 的状态"))
         else:
             findings.append(("ok", "数据新鲜度", f"{label}：最后 {doc.get('period')}（{age} 天前，阈值 {limit} 天）", None, None))
+    return findings
 
-    # —— ③ 越界（判据来自 gates.yaml；容量用**当前现实**，不是快照里的旧值）——
-    # collect_structural 返回 (out, notes) 元组：原先漏了解包，structural 拿到的是整个
-    # 元组 → `structural.get` 抛 AttributeError 被 except 吞掉（s_notes 恒为空），
-    # capacity_by_ns 恒为空 dict → **容量越界永远检不出**；`current` 块也跟着恒为 None。
-    # 现在走防御包装：结构侧任何异常都降级成"这一块拿不到 + 如实标注"，不崩整轮体检
-    # （实测：面板环境下 collect_structural 曾整体抛错，连容量判据一起带走）。
-    structural, s_notes = collect_structural_safe(root)
-    # 结构侧整体拿不到（knowledge/ 不在、读侧视图缺失…）→ 容量线**量不出**，不许报"均未触发"。
-    # 旧缺陷（预核 2026-09-29 复现）：把 knowledge/ 移走后仍输出「✓ 所有格子均未触发」、
-    # coverage 3/3、broken=[] —— 与"确实没越界"同形。
-    structural_unavailable = not (structural.get("capacity_by_ns") or {})
-    # 阶段一实读成本**现算**（与条数同源：都从 case 文件算，不读快照里的旧值）。
-    # 为什么不用快照里的 tok：判据要判的是"现在这格多贵"，快照可能是上期的。
-    live_ok = False
+
+def _compute_cells(root: Path, structural: dict):
+    """算侧（含现算）：容量格子的阶段一实读成本 → (cells, fallbacks, live_ok, 错误说明)。
+
+    成本一律现算（与条数同源：都从 case 文件算），不读快照里的旧值——判据要判的是
+    "现在这格多贵"，快照可能是上期的。现算抛错时返回空行与错误说明，由调用方记成
+    "容量线未评估"，不当成没越界。
+    """
     try:
         cells = [(ns, cat, c["count"], c.get("tok")) for ns, cs in (structural.get("capacity_by_ns") or {}).items()
                  for cat, c in cs.items()]
@@ -293,27 +314,27 @@ def main():
             live_costs = {(c["namespace"], c["category"]): c["tok"] for c in live["cells"]}
             cells = [(ns, cat, n, live_costs.get((ns, cat))) for ns, cat, n, _t in cells]
         fallbacks = [(f["namespace"], None, f["rows"], f["tok"]) for f in live["fallbacks"]]
-        live_ok = True
+        return cells, fallbacks, True, None
     except Exception as e:
-        s_notes.append(f"读入成本现算失败（{type(e).__name__}: {str(e)[:120]}）——容量线本轮未被评估")
-        cells, fallbacks = [], []
+        return [], [], False, f"读入成本现算失败（{type(e).__name__}: {str(e)[:120]}）——容量线本轮未被评估"
+
+
+def _compute_prev_cells(last_struct):
+    """算侧：上一份结构快照里的格子条数（用于报告漂移）。"""
     prev_cells = {}
     if last_struct:
         for ns, cs in ((last_struct.get("metrics") or {}).get("capacity_by_ns") or {}).items():
             for cat, c in (cs or {}).items():
                 if isinstance(c, dict):
                     prev_cells[(ns, cat)] = c.get("count")
+    return prev_cells
 
-    # 容量：**一个格子只报一条**。
-    # 为什么（2026-09 七轮，实测）：格子 85/30 会同时越过 soft_cap(>30) 与 hard_cap(>=60)，
-    # 于是面板上出现两行 85/30、人话版也几乎一样——读者以为是两件事。判据确实是两条，
-    # 但对人来说"这一格超了两条线"是一件事：合成一条，并在展开的判据行里如实写清越过了哪两条。
-    # 量不出的格子单独记：读侧视图缺失时成本是 None，**不能**当成"没越界"（那正是假绿的样子）
-    unmeasurable = ([(ns, cat) for ns, cat, _n, tok in cells if tok is None]
-                    if not structural_unavailable else [("（整个结构侧）", "拿不到")])
-    fb_unmeasurable = [ns for ns, _cat, _n, tok in fallbacks if tok is None]
-    # 两类读入视图各按自己的 dimension 判：类视图（命中路径）与兜底视图（category 未判出才读）。
-    # 判据条目本身在 gates.yaml 一处（原则二），这里只做"哪个视图 × 哪条线"的比较。
+
+def _compute_capacity_hits(gates, cells, fallbacks) -> dict:
+    """算侧：两类读入视图各按自己的 dimension 判线 → 命中表。
+
+    判据条目本身在 gates.yaml 一处（原则二），这里只做"哪个视图 × 哪条线"的比较。
+    """
     capacity_hits = {}   # (kind, ns, cat) → {n, tok, gates:[{id, meaning, action}], hard:bool}
     for dim, kind, rows in (("capacity_cell_read_tok", "cell", cells),
                             ("capacity_fallback_read_tok", "fallback", fallbacks)):
@@ -330,18 +351,49 @@ def main():
                 hit["gates"].append({"id": g.get("id"), "meaning": g.get("meaning"), "action": g.get("action")})
                 if "hard" in str(g.get("id")):
                     hit["hard"] = True
+    return capacity_hits
 
-    def line_tok(kind: str, which: str):
-        """这条线的数值：按视图类别取对应的 gates.yaml 条目（缺省回到 index_read_cost 的常数）。"""
-        gid = f"{kind}_read_{which}_tok"
-        fallback = SOFT_TOK_FALLBACK if which == "soft" else HARD_TOK_FALLBACK
-        return next((g.get("value") for g in gates if g.get("id") == gid), fallback)
+
+def _line_tok(gates, kind: str, which: str):
+    """这条线的数值：按视图类别取对应的 gates.yaml 条目（缺省回到 index_read_cost 的常数）。"""
+    gid = f"{kind}_read_{which}_tok"
+    fallback = SOFT_TOK_FALLBACK if which == "soft" else HARD_TOK_FALLBACK
+    return next((g.get("value") for g in gates if g.get("id") == gid), fallback)
+
+
+def _compute_capacity(root: Path, gates, structural: dict, last_struct, notes: list) -> _Capacity:
+    """算侧：结构侧读数 + 现算成本 + 判据比较 → 容量面的全部结果。"""
+    # 结构侧整体拿不到（knowledge/ 不在、读侧视图缺失…）→ 容量线**量不出**，不许报"均未触发"。
+    # 旧缺陷（预核 2026-09-29 复现）：把 knowledge/ 移走后仍输出「✓ 所有格子均未触发」、
+    # coverage 3/3、broken=[] —— 与"确实没越界"同形。
+    structural_unavailable = not (structural.get("capacity_by_ns") or {})
+    cells, fallbacks, live_ok, cost_note = _compute_cells(root, structural)
+    if cost_note:
+        notes.append(cost_note)
+    prev_cells = _compute_prev_cells(last_struct)
+    # 量不出的格子单独记：读侧视图缺失时成本是 None，**不能**当成"没越界"（那正是假绿的样子）
+    unmeasurable = ([(ns, cat) for ns, cat, _n, tok in cells if tok is None]
+                    if not structural_unavailable else [("（整个结构侧）", "拿不到")])
+    fb_unmeasurable = [ns for ns, _cat, _n, tok in fallbacks if tok is None]
+    hits = _compute_capacity_hits(gates, cells, fallbacks)
+    return _Capacity(cells, fallbacks, hits, unmeasurable, fb_unmeasurable,
+                     structural_unavailable, live_ok, prev_cells, notes)
+
+
+def _render_capacity_findings(gates, capacity: _Capacity):
+    """渲染侧：容量越界 / 量不出的读数（一个格子只报一条）。"""
+    findings = []
+    capacity_hits = capacity.hits
+    # 容量：**一个格子只报一条**。
+    # 为什么（2026-09 七轮，实测）：格子 85/30 会同时越过 soft_cap(>30) 与 hard_cap(>=60)，
+    # 于是面板上出现两行 85/30、人话版也几乎一样——读者以为是两件事。判据确实是两条，
+    # 但对人来说"这一格超了两条线"是一件事：合成一条，并在展开的判据行里如实写清越过了哪两条。
     for key in sorted(capacity_hits, key=lambda k: -(capacity_hits[k]["tok"] or 0)):
         hit = capacity_hits[key]
         ns, cat, n, tok = hit["ns"], hit["cat"], hit["n"], hit["tok"]
-        soft_tok = line_tok(hit["kind"], "soft")
-        hard_tok = line_tok(hit["kind"], "hard")
-        prev = prev_cells.get((ns, cat))
+        soft_tok = _line_tok(gates, hit["kind"], "soft")
+        hard_tok = _line_tok(gates, hit["kind"], "hard")
+        prev = capacity.prev_cells.get((ns, cat))
         drift = f"（上次快照 {prev} 条）" if prev is not None and prev != n else ""
         where = f"{ns} · {cat}" if hit["kind"] == "cell" else f"{ns} · 兜底视图（category 未判出）"
         # 动作取最强的那条（硬线优先，否则按 gates.yaml 顺序）
@@ -362,26 +414,31 @@ def main():
                          f"{'、'.join(str(x['id']) for x in hit['gates'])}"
                          f"（{'；'.join(str(x['meaning']) for x in hit['gates'])}）",
                          action, plain))
-    if unmeasurable or fb_unmeasurable:
+    if capacity.unmeasurable or capacity.fb_unmeasurable:
         findings.append(("warn", "容量",
                          "容量线未评估：" + ("结构侧整块拿不到（knowledge/ 或读侧视图缺失）"
-                                          if structural_unavailable
-                                          else "读侧视图缺失：" + "、".join(f"{ns} · {cat}" for ns, cat in unmeasurable)
-                                          + ("；" if unmeasurable and fb_unmeasurable else "")
-                                          + "、".join(f"{ns} 兜底视图" for ns in fb_unmeasurable)),
+                                          if capacity.structural_unavailable
+                                          else "读侧视图缺失：" + "、".join(f"{ns} · {cat}" for ns, cat in capacity.unmeasurable)
+                                          + ("；" if capacity.unmeasurable and capacity.fb_unmeasurable else "")
+                                          + "、".join(f"{ns} 兜底视图" for ns in capacity.fb_unmeasurable)),
                          "python3 scripts/build_index.py",
                          "读入成本量不出来（结构侧/读侧视图缺失）——先重建索引再看容量"))
-    if not live_ok:
+    if not capacity.live_ok:
         # 现算抛错时 cells/fallbacks 都是空的，容量面的每条比较都不成立——若不单独报，
         # 下面那条「均未触发」就会亮出来（独立预核实测的形状：同一屏里既有 ✓ 又有「本轮未被评估」）。
         findings.append(("warn", "容量", "容量线未评估：读入成本现算失败（结构侧拿到了，现算抛错）",
                          "python3 scripts/index_read_cost.py",
                          "读入成本没算出来——先看这条命令报什么错，别把这一面读成没有越界"))
-    elif not capacity_hits and not unmeasurable and not fb_unmeasurable:
+    elif not capacity.hits and not capacity.unmeasurable and not capacity.fb_unmeasurable:
         ids = "、".join(str(g.get("id")) for g in gates
                        if g.get("dimension") in ("capacity_cell_read_tok", "capacity_fallback_read_tok"))
         findings.append(("ok", "容量", f"两类读入视图均未触发 ({ids})", None, None))
+    return findings
 
+
+def _render_gate_findings(gates, last_live, root: Path):
+    """渲染侧：逐条闸门的判定结果（记录层 / 反馈捕获 / 未实现的 dimension）。"""
+    findings = []
     for g in gates:
         gid, dim, op, val = g.get("id"), g.get("dimension"), g.get("op"), g.get("value")
         if dim in ("capacity_cell_read_tok", "capacity_fallback_read_tok"):
@@ -435,8 +492,14 @@ def main():
                     findings.append(("ok", "反馈", f"捕获反馈 {total} 条", None, None))
         else:
             findings.append(("warn", "越界", f"gates.yaml 里的 dimension '{dim}' 没有对应评估实现", None, None))
+    return findings
+
+
+def _render_readability_findings(readability, live_m: dict):
+    """渲染侧：可解读性（分母为 0 的指标必须标成"不可解读"）→ (findings, 面板契约)。"""
+    findings = []
+    readability_state = {}
     # —— ④ 可解读性（分母为 0 的指标必须被标成"不可解读"，不能安静地写成 0）——
-    live_m = ((last_live or {}).get("metrics") or {})
     for rule in readability:
         metric, kind, why = rule.get("metric"), rule.get("rule"), rule.get("why")
         v = live_m.get(metric)
@@ -472,26 +535,38 @@ def main():
                          f"{label}现在不可解读——{plain_why}" if bad else None))
         # 面板契约：把 metric 名一并带出（面板据此在指标行上打"不可解读"标记）。
         readability_state[metric] = {"readable": not bad, "why": note if bad else None, "label": label}
+    return findings, readability_state
 
-    # —— ⑤ 内容流程侧（exec-log 聚合：本轮刚接进快照的来源）——
-    # 同样防御包装：exec-log 是 .gitignore 运行时件，任何路径/权限问题都不该崩掉整轮体检
+
+def _compute_content_flow(root: Path):
+    """算侧：内容流程侧（exec-log 聚合）→ (flow, meta, 失败说明)。
+
+    防御包装：exec-log 是 .gitignore 运行时件，任何路径/权限问题都不该崩掉整轮体检。
+    """
     try:
         flow, meta = MS.collect_content_flow(root)
+        return flow, meta, None
     except Exception as e:
         msg = " ".join(str(e).split())
         flow = {"content_flow_runs": 0, "evolve_check_runs": 0, "evolve_check_no_signal": 0}
         meta = {"where": "（取不到）"}
-        s_notes.append(f"内容流程侧采集失败（{type(e).__name__}: {msg[:160]}）——收尾记录数按 0 显示，不代表真的没跑")
-    findings.append(("ok" if flow["content_flow_runs"] else "warn", "现场记录",
-                     f"收尾记录 {flow['content_flow_runs']} 条（evolve-check {flow['evolve_check_runs']} 次，"
-                     f"其中无信号 {flow['evolve_check_no_signal']} 次；来源 {meta['where']}）",
-                     None if flow["content_flow_runs"] else "内容流程收尾应落记录（各 skill 收尾节）",
-                     None if flow["content_flow_runs"] else
-                     "这次没有记录到任何内容流程的收尾动作——可能真的没跑，也可能跑了没留痕（现在两者分不开）"))
+        return flow, meta, (
+            f"内容流程侧采集失败（{type(e).__name__}: {msg[:160]}）——收尾记录数按 0 显示，不代表真的没跑")
 
-    # —— 下一步（候选动作）：判据说"该做什么"，这里给出"粘到对话就能做"的那一下 ——
-    # 命令是候选不是自动执行：诊断系统只输出建议，动作由人/agent 触发（与 diagnose 同取向）。
-    candidate_commands = [
+
+def _render_flow_finding(flow: dict, meta: dict):
+    """渲染侧：内容流程侧的收尾记录读数。"""
+    return ("ok" if flow["content_flow_runs"] else "warn", "现场记录",
+            f"收尾记录 {flow['content_flow_runs']} 条（evolve-check {flow['evolve_check_runs']} 次，"
+            f"其中无信号 {flow['evolve_check_no_signal']} 次；来源 {meta['where']}）",
+            None if flow["content_flow_runs"] else "内容流程收尾应落记录（各 skill 收尾节）",
+            None if flow["content_flow_runs"] else
+            "这次没有记录到任何内容流程的收尾动作——可能真的没跑，也可能跑了没留痕（现在两者分不开）")
+
+
+def _candidate_commands():
+    """渲染侧：下一步候选动作（命令是候选不是自动执行）。"""
+    return [
         {"label": "补反馈", "command": "回报 fix 结果：逐个确认 traces/ 中已定位 case 的 session（含 feedback.outcome: pending 的）"
                                       "fix 应用后是否解决，按 resolved / not_resolved / partial 写 feedback 事件",
          "why": "反馈捕获为 0 时，误诊率/归因比没有分母"},
@@ -504,25 +579,28 @@ def main():
          "why": "索引头注与磁盘不一致时，检索与面板读到的都是旧数"},
     ]
 
-    # —— 判断：判据被评估了几条、数据源在不在（决定 `--check` 的退出码）——
-    #
-    # 为什么需要这一层（2026-09-11）：`--check` 原本只用"有没有 ✗"映射退出码 0/1，
-    # 于是**"体检器坏了"与"本期确实没有违规"不可区分**。实测发生过：一处漏解包让容量
-    # 判据恒不触发，`--check` 照样 exit 0 —— 检测腿断了自己不会喊（EV-2026-055）。
-    # 现在分三态：0 = 判据全部评过且无越界；1 = 有判据被违反；2 = 有判据没被评过（结构性）。
-    # 语义与 `ev_measure.py` 的三态刻意同形（0 符合 / 1 被证伪 / 2 无法判定）。
+
+def _compute_audit(inputs: _Inputs, capacity: _Capacity, live_m: dict, fails: list) -> _Audit:
+    """算侧：判据被评估了几条、数据源在不在 → 覆盖面、broken 列表与退出码。
+
+    为什么需要这一层（2026-09-11）：`--check` 原本只用"有没有 ✗"映射退出码 0/1，
+    于是**"体检器坏了"与"本期确实没有违规"不可区分**。实测发生过：一处漏解包让容量
+    判据恒不触发，`--check` 照样 exit 0 —— 检测腿断了自己不会喊（EV-2026-055）。
+    现在分三态：0 = 判据全部评过且无越界；1 = 有判据被违反；2 = 有判据没被评过（结构性）。
+    语义与 `ev_measure.py` 的三态刻意同形（0 符合 / 1 被证伪 / 2 无法判定）。
+    """
     gate_audit = []
-    broken = list(load_errors)
-    if unmeasurable or fb_unmeasurable:
-        what = ("结构侧拿不到" if structural_unavailable
-                else "读侧视图缺失（" + "、".join(f"{ns}×{cat}" for ns, cat in unmeasurable)
-                     + ("；" if unmeasurable and fb_unmeasurable else "")
-                     + "、".join(f"{ns} 兜底视图" for ns in fb_unmeasurable) + "）")
+    broken = list(inputs.load_errors)
+    if capacity.unmeasurable or capacity.fb_unmeasurable:
+        what = ("结构侧拿不到" if capacity.structural_unavailable
+                else "读侧视图缺失（" + "、".join(f"{ns}×{cat}" for ns, cat in capacity.unmeasurable)
+                     + ("；" if capacity.unmeasurable and capacity.fb_unmeasurable else "")
+                     + "、".join(f"{ns} 兜底视图" for ns in capacity.fb_unmeasurable) + "）")
         broken.append(f"容量线未评估：{what}——先跑 `python3 scripts/build_index.py`")
-    for g in gates:
+    for g in inputs.gates:
         dim = g.get("dimension")
-        missing_data = ((dim == "capacity_cell_read_tok" and unmeasurable)
-                        or (dim == "capacity_fallback_read_tok" and fb_unmeasurable))
+        missing_data = ((dim == "capacity_cell_read_tok" and capacity.unmeasurable)
+                        or (dim == "capacity_fallback_read_tok" and capacity.fb_unmeasurable))
         implemented = dim in IMPLEMENTED_GATE_DIMENSIONS
         ok_impl = implemented and not missing_data
         gate_audit.append({"id": g.get("id"), "dimension": dim, "implemented": ok_impl})
@@ -533,7 +611,7 @@ def main():
         elif missing_data:
             broken.append(f"闸门 {g.get('id')}：数据缺失（读侧视图量不出），本轮**未被评估**——不等于通过")
     readability_audit = []
-    for rule in readability:
+    for rule in inputs.readability:
         metric, kind = rule.get("metric"), rule.get("rule")
         ok_impl = kind in IMPLEMENTED_READABILITY_RULES
         present = metric in live_m
@@ -543,19 +621,28 @@ def main():
             broken.append(f"可解读性规则 {metric}（rule={kind}）没有实现——这条判据不会被检查")
         elif not present:
             broken.append(f"可解读性规则 {metric}：最新 live 快照没有该字段，规则**未被评估**（不等于通过）")
-    if s_notes:
+    if capacity.notes:
         # s_notes 已包含"索引不存在/头注格式变了"两类结构侧缺陷；容量格子的缺席也由它解释，
         # 不在这里再报一次（同一件事说三遍会把"体检器自身缺陷"淹掉）
-        broken.extend(s_notes)
+        broken.extend(capacity.notes)
 
-    fails = [f for f in findings if f[0] == "fail"]
     exit_code = 0
     if broken:
         exit_code = 2
     elif fails:
         exit_code = 1
+    return _Audit(broken, gate_audit, readability_audit, exit_code)
 
-    payload = {
+
+def _build_payload(inputs: _Inputs, findings, fails, last_live, last_struct,
+                   structural: dict, capacity: _Capacity, flow: dict,
+                   readability_state: dict, audit: _Audit) -> dict:
+    """渲染侧：机器读 JSON 的完整 payload（面板/脚本共用）。"""
+    gates = inputs.gates
+    fresh = inputs.fresh
+    cells = capacity.cells
+    fallbacks = capacity.fallbacks
+    return {
         "findings": [{"level": l, "face": f, "text": t, "action": a, "plain": p}
                      for l, f, t, a, p in findings],
         "fail_count": len(fails),
@@ -566,8 +653,9 @@ def main():
             "structural_age_days": age_days((last_struct or {}).get("recorded_at")),
             "live_limit_days": fresh.get("live_snapshot_max_age_days"),
             "structural_limit_days": fresh.get("structural_max_age_days"),
-            "live_periods": len([p for p in periods if p.get("kind") == "live"]),
-            "structural_periods": len([p for p in periods if "case_total" in (p.get("metrics") or {})]),
+            "live_periods": len([p for p in inputs.periods if p.get("kind") == "live"]),
+            "structural_periods": len([p for p in inputs.periods
+                                       if "case_total" in (p.get("metrics") or {})]),
         },
         # 面板据此跳过重算判据：门槛数值只在 gates.yaml 一处（原则二）
         "gates": [{"id": g.get("id"), "dimension": g.get("dimension"), "op": g.get("op"),
@@ -576,69 +664,136 @@ def main():
         "readability": readability_state,
         "capacity_cells": [
             {"namespace": ns, "category": cat, "count": n, "tok": tok,
-             "soft_tok": line_tok("cell", "soft"), "hard_tok": line_tok("cell", "hard"),
-             "soft": tok is not None and tok > line_tok("cell", "soft"),
-             "hard": tok is not None and tok >= line_tok("cell", "hard")}
+             "soft_tok": _line_tok(gates, "cell", "soft"), "hard_tok": _line_tok(gates, "cell", "hard"),
+             "soft": tok is not None and tok > _line_tok(gates, "cell", "soft"),
+             "hard": tok is not None and tok >= _line_tok(gates, "cell", "hard")}
             for ns, cat, n, tok in sorted(cells, key=lambda x: (-(x[3] or 0), x[0], x[1]))
         ],
         "capacity_fallbacks": [
             {"namespace": ns, "count": n, "tok": tok,
-             "soft_tok": line_tok("fallback", "soft"), "hard_tok": line_tok("fallback", "hard"),
-             "soft": tok is not None and tok > line_tok("fallback", "soft"),
-             "hard": tok is not None and tok >= line_tok("fallback", "hard")}
+             "soft_tok": _line_tok(gates, "fallback", "soft"),
+             "hard_tok": _line_tok(gates, "fallback", "hard"),
+             "soft": tok is not None and tok > _line_tok(gates, "fallback", "soft"),
+             "hard": tok is not None and tok >= _line_tok(gates, "fallback", "hard")}
             for ns, _cat, n, tok in sorted(fallbacks, key=lambda x: (-(x[3] or 0), x[0]))
         ],
-        "candidate_commands": candidate_commands,
+        "candidate_commands": _candidate_commands(),
         "current": {"case_total": structural.get("case_total"),
                     "reference_total": structural.get("reference_total"),
                     "content_flow": flow},
         # 三态与覆盖面：面板首屏据此区分"本期没事"与"体检器没在工作"
-        "exit_code": exit_code,
-        "check_verdict": "broken" if exit_code == 2 else ("violations" if exit_code == 1 else "clean"),
-        "broken": broken,
+        "exit_code": audit.exit_code,
+        "check_verdict": "broken" if audit.exit_code == 2 else ("violations" if audit.exit_code == 1 else "clean"),
+        "broken": audit.broken,
         "coverage": {
             "gates_total": len(gates),
-            "gates_evaluated": len([a for a in gate_audit if a["implemented"]]),
-            "gates": gate_audit,
-            "readability_total": len(readability),
-            "readability_evaluated": len([a for a in readability_audit if a["implemented"] and a["present_in_snapshot"]]),
-            "readability": readability_audit,
-            "structural_sources_ok": not s_notes,
+            "gates_evaluated": len([a for a in audit.gate_audit if a["implemented"]]),
+            "gates": audit.gate_audit,
+            "readability_total": len(inputs.readability),
+            "readability_evaluated": len([a for a in audit.readability_audit
+                                          if a["implemented"] and a["present_in_snapshot"]]),
+            "readability": audit.readability_audit,
+            "structural_sources_ok": not capacity.notes,
         },
     }
 
-    if args.json:
-        print(json.dumps(payload, ensure_ascii=False, default=str))
-        return exit_code if args.check else 0
 
+def _render_json(payload: dict) -> str:
+    """渲染侧：一行 JSON（面板/脚本读）。"""
+    return json.dumps(payload, ensure_ascii=False, default=str)
+
+
+def _render_text(payload: dict, findings, broken) -> str:
+    """渲染侧：人读体检报告。"""
+    lines = ["metrics 闭环体检（判据：metrics/gates.yaml）"]
     icon = {"ok": "✓", "warn": "!", "fail": "✗"}
-    print("metrics 闭环体检（判据：metrics/gates.yaml）")
     face = None
     for level, f, text, action, plain in findings:
         if f != face:
-            print(f"\n[{f}]")
+            lines.append(f"\n[{f}]")
             face = f
         # CLI 面向维护者：技术文案在前（带判据名，便于回查 gates.yaml），人话版在后（便于理解）
-        print(f"  {icon[level]} {text}")
+        lines.append(f"  {icon[level]} {text}")
         if plain and plain != text and level != "ok":
-            print(f"      说人话：{plain}")
+            lines.append(f"      说人话：{plain}")
         if action and level != "ok":
-            print(f"      → {action}")
+            lines.append(f"      → {action}")
     cov = payload["coverage"]
-    print(f"\n[判据覆盖面] 闸门 {cov['gates_evaluated']}/{cov['gates_total']} 条已评估"
-          f" · 数字可信度规则 {cov['readability_evaluated']}/{cov['readability_total']} 条已评估")
+    lines.append(f"\n[判据覆盖面] 闸门 {cov['gates_evaluated']}/{cov['gates_total']} 条已评估"
+                 f" · 数字可信度规则 {cov['readability_evaluated']}/{cov['readability_total']} 条已评估")
     if broken:
-        print("\n[体检器自身] 下列判据**未被评估**——这不是'通过'，是检测腿断了：")
+        lines.append("\n[体检器自身] 下列判据**未被评估**——这不是'通过'，是检测腿断了：")
         for b in broken:
-            print("  ✗ " + b)
+            lines.append("  ✗ " + b)
     verdict = {"clean": "本期未发现阻塞项（判据全部评过）",
-               "violations": "闭环未闭合（%d 项 ✗）" % len(fails),
-               "broken": "体检器不完整：有判据未被评估，结论不可用（%d 项 ✗ 仅供参考）" % len(fails)}[payload["check_verdict"]]
-    print(f"\n结论：{verdict}")
-    if fails:
-        print("  ✗ = 有判据被违反但没人处理；行动列即下一步（判据数值在 metrics/gates.yaml）")
-    print("  退出码：0 判据全部评过且无越界 · 1 有判据被违反 · 2 有判据未被评估（不可判定）")
-    return exit_code if args.check else 0
+               "violations": "闭环未闭合（%d 项 ✗）" % payload["fail_count"],
+               "broken": "体检器不完整：有判据未被评估，结论不可用（%d 项 ✗ 仅供参考）" % payload["fail_count"]}[payload["check_verdict"]]
+    lines.append(f"\n结论：{verdict}")
+    if payload["fail_count"]:
+        lines.append("  ✗ = 有判据被违反但没人处理；行动列即下一步（判据数值在 metrics/gates.yaml）")
+    lines.append("  退出码：0 判据全部评过且无越界 · 1 有判据被违反 · 2 有判据未被评估（不可判定）")
+    return "\n".join(lines)
+
+
+def main():
+    ap = argparse.ArgumentParser(description="metrics 闭环体检")
+    ap.add_argument("--check", action="store_true", help="有 ✗ 时退出码非零")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    args = ap.parse_args()
+    root = args.root.resolve()
+
+    inputs = _load_inputs(root)
+    # findings 是 5 元组：(level 面 文案 动作 人话版)。
+    # **为什么多一列**（2026-09 七轮，用户反馈）：面板原先直接把 `cell_soft_cap`、
+    # `feedback_capture_floor`、`misdiagnosis_rate` 这些**代码里的名字**端给读者，
+    # 句子也是对着实现说的（"(framework × category) 格子条数超 soft_cap"）。判据的**身份**
+    # 住在这一侧，所以"人话版"也必须由这一侧提供——面板只渲染，不做启发式翻译。
+    # 技术文案保留：它进 CLI 报告与展开后的证据行，维护者仍拿得到判据名。
+    findings = []          # (level, 面, 技术文案, 动作, 人话版)
+
+    # —— ① 数据底座 ——
+    findings.extend(_render_no_data_findings(inputs.periods))
+
+    # —— ② 新鲜度 ——
+    last_live, last_struct = _select_latest(inputs.periods)
+    findings.extend(_render_freshness_findings(last_live, last_struct, inputs.fresh))
+
+    # —— ③ 越界（判据来自 gates.yaml；容量用**当前现实**，不是快照里的旧值）——
+    # collect_structural 返回 (out, notes) 元组：原先漏了解包，structural 拿到的是整个
+    # 元组 → `structural.get` 抛 AttributeError 被 except 吞掉（s_notes 恒为空），
+    # capacity_by_ns 恒为空 dict → **容量越界永远检不出**；`current` 块也跟着恒为 None。
+    # 现在走防御包装：结构侧任何异常都降级成"这一块拿不到 + 如实标注"，不崩整轮体检
+    # （实测：面板环境下 collect_structural 曾整体抛错，连容量判据一起带走）。
+    structural, s_notes = collect_structural_safe(root)
+    capacity = _compute_capacity(root, inputs.gates, structural, last_struct, s_notes)
+    findings.extend(_render_capacity_findings(inputs.gates, capacity))
+
+    findings.extend(_render_gate_findings(inputs.gates, last_live, root))
+
+    # —— ④ 可解读性 ——
+    live_m = ((last_live or {}).get("metrics") or {})
+    readability_findings, readability_state = _render_readability_findings(inputs.readability, live_m)
+    findings.extend(readability_findings)
+
+    # —— ⑤ 内容流程侧（exec-log 聚合：本轮刚接进快照的来源）——
+    flow, flow_meta, flow_note = _compute_content_flow(root)
+    if flow_note:
+        s_notes.append(flow_note)
+    findings.append(_render_flow_finding(flow, flow_meta))
+
+    # —— 判断：判据被评估了几条、数据源在不在（决定 `--check` 的退出码）——
+    fails = [f for f in findings if f[0] == "fail"]
+    audit = _compute_audit(inputs, capacity, live_m, fails)
+    payload = _build_payload(inputs, findings, fails, last_live, last_struct, structural,
+                             capacity, flow, readability_state, audit)
+
+    if args.json:
+        print(_render_json(payload))
+        return audit.exit_code if args.check else 0
+
+    print(_render_text(payload, findings, audit.broken))
+    return audit.exit_code if args.check else 0
 
 
 if __name__ == "__main__":

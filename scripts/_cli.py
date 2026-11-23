@@ -14,6 +14,7 @@ KeyboardInterrupt 的收尾"只在一处。
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 
@@ -22,6 +23,23 @@ from _stdio import pin_utf8_stdio
 EXIT_OK = 0
 EXIT_FINDINGS = 1
 EXIT_USAGE = 2
+
+
+def add_common_args(parser: argparse.ArgumentParser, *, root: bool = True,
+                    json_output: bool = False) -> argparse.ArgumentParser:
+    """给子命令补公共参数：``--root`` 与 ``--json`` 的语义只在这里定义。"""
+    if root:
+        parser.add_argument("--root", default=".", help="仓库根（默认当前目录）")
+    if json_output:
+        parser.add_argument("--json", action="store_true", help="机器可读输出")
+    return parser
+
+
+def base_parser(description: str, *, root: bool = True, json_output: bool = False,
+                epilog: str = None) -> argparse.ArgumentParser:
+    """新脚本的解析器入口：统一 ``--root``/``--json`` 与帮助尾注。"""
+    return add_common_args(argparse.ArgumentParser(description=description, epilog=epilog),
+                           root=root, json_output=json_output)
 
 
 def emit(payload) -> None:

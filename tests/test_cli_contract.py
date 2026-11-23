@@ -111,3 +111,19 @@ class EntryConsistencyTest(unittest.TestCase):
                     offenders.append(
                         f"{path.name}:{guard.lineno}: __main__ block must be exactly one statement")
         self.assertEqual(offenders, [])
+
+
+class BaseParserTest(unittest.TestCase):
+    def test_common_flags_have_one_definition(self):
+        parser = _cli.base_parser("demo", json_output=True)
+        args = parser.parse_args([])
+        self.assertEqual(args.root, ".")
+        self.assertFalse(args.json)
+        args = parser.parse_args(["--root", "/tmp", "--json"])
+        self.assertEqual(args.root, "/tmp")
+        self.assertTrue(args.json)
+
+    def test_json_flag_is_opt_in(self):
+        parser = _cli.base_parser("demo")
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["--json"])

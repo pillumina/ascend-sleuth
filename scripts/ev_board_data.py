@@ -22,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _yaml import load_file   # noqa: E402  （解析后端单一事实源，快路径见 _yaml.py）
-from ev_proposal import has_merge_pointer   # noqa: E402  （积压分子的唯一实现，别在这里另写一份）
+from _ev_cards import has_merge_pointer   # noqa: E402  （积压分子的唯一实现，别在这里另写一份）
 from _cli import main_entry
 
 
