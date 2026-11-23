@@ -59,6 +59,7 @@ from pathlib import Path
 
 import yaml
 
+from _cli import main_entry
 from _stdio import write_text_lf
 from exec_log_path import resolve_checkout_dir
 from settle_s2_feedback import case_cites_issue, case_issue_sources, iso_week_now
@@ -765,6 +766,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    sys.exit(main())
+    sys.exit(main_entry(main))

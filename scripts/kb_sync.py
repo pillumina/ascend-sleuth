@@ -98,13 +98,13 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import re
 import subprocess
 import sys
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
+
+from _fs import atomic_write_text
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
@@ -309,21 +309,8 @@ def settings_sha256(root: Path):
 
 def _write_json(path: Path, data: dict) -> str:
     """同目录临时文件 + fsync + os.replace；返回落盘文本。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(data, ensure_ascii=False, indent=2) + "\n"
-    fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(text)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp, path)
-    finally:
-        if os.path.exists(tmp):
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
+    atomic_write_text(path, text)
     return text
 
 

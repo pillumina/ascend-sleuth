@@ -37,6 +37,14 @@ class PolicyLoadTest(unittest.TestCase):
         loaded = load_config_policy(SC.load_config(ROOT))
         self.assertEqual(loaded, DEFAULTS)
 
+    def test_default_pipeline_has_one_source(self):
+        from evolve.rsi import DEFAULT_STAGES as RSI_DEFAULT_STAGES
+        from evolve.stages import DEFAULT_STAGES as STAGE_DEFAULT_STAGES
+        self.assertEqual(DEFAULTS["experiment"]["stages"], STAGE_DEFAULT_STAGES)
+        self.assertEqual(RSI_DEFAULT_STAGES, STAGE_DEFAULT_STAGES)
+        self.assertEqual(SC.pipeline_for(SC.load_config(ROOT))["stages"],
+                         STAGE_DEFAULT_STAGES)
+
     def test_missing_file_fails(self):
         with self.assertRaises(PolicyError):
             load_policy(self.root / "missing.yaml")

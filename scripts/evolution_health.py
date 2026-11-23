@@ -30,6 +30,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from _gates import duplicate_ids                 # noqa: E402
+from _measure_evidence import card_passes         # noqa: E402
 from _yaml import load_file                      # noqa: E402  （解析后端单一事实源）
 import ev_board_data as EBD                      # noqa: E402
 from ev_measure import (classify as classify_measure, load_cards,  # noqa: E402
@@ -193,8 +194,15 @@ def collect_dimensions(root: Path):
     runs = EBD.collect_measure_runs(root)
 
     # 预测口径：可复现 / 自称不可度量 / 强制卡缺 measure / 存量豁免
+    cards = load_cards(root)
+    # 「已测过」有两个来源：本机运行日志（同一克隆共享、gitignored）与卡内证据
+    # （tracked、随 PR 走）。两者取并集——只读日志会把 fresh clone 里带 PASS 证据的卡
+    # 报成「从未执行」（实测：临时仓一张 PASS 卡 + 无日志 → runnable_never_measured=1）。
+    measured = set(runs.get("cards") or [])
+    evidence_ids = {cid for cid, doc, _p in cards if card_passes(doc)}
+    measured |= evidence_ids
     runnable, declared, missing_enforced, legacy, stale = [], [], [], [], []
-    for cid, doc, _p in load_cards(root):
+    for cid, doc, _p in cards:
         kind, _m = classify_measure(doc)
         if kind == "runnable":
             # 判据点到已蒸发的仓库文件（traces 里的报告、/tmp 状态件…）→ 单独一档：
@@ -209,13 +217,13 @@ def collect_dimensions(root: Path):
             missing_enforced.append(cid)
         else:
             legacy.append(cid)
-    measured = [c for c in (runs.get("cards") or [])]
 
     dims = {
         "negative_terminal": stats["negative_terminal"],
         "terminal_cards": stats["terminal_count"],
         "backlog_count": stats["backlog_count"],
         "runnable_never_measured": len([c for c in runnable if c not in measured]),
+        "measure_evidence_cards": len(evidence_ids),
         "external_verification_stall": _external_stall(ideas)["stall"],
         "external_newest": _external_stall(ideas)["newest"] or "从未",
         "external_ground_truth_ratio": stats["external_ratio"],

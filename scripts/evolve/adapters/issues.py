@@ -12,11 +12,11 @@
 """
 
 import json
-import os
 import re
-import tempfile
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
+
+from _fs import atomic_write_text
 
 from . import AdapterError, load_legacy
 from ..samples import SampleStore, StoreError
@@ -218,21 +218,7 @@ def _load_state(path: Path) -> Dict[str, Any]:
 
 
 def _save_state(path: Path, state: Dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(prefix=".tmp-", suffix=".json", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
-            json.dump(state, handle, ensure_ascii=False, indent=2)
-            handle.write("\n")
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(tmp_name, path)
-    except BaseException:
-        try:
-            os.unlink(tmp_name)
-        except OSError:
-            pass
-        raise
+    atomic_write_text(path, json.dumps(state, ensure_ascii=False, indent=2) + "\n")
 
 
 def ingest_issues(

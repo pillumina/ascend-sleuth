@@ -19,9 +19,10 @@
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
+
+from _fs import atomic_write_text
 
 # 标题硬排除规则（框架无关的低价值形态）
 SKIP_TITLE_PATTERNS = [
@@ -71,9 +72,7 @@ def save_state(path: Path, state: dict) -> None:
     为什么：这份台账是 issue 去重的唯一依据。直接 json.dump 到目标文件时，进程在写一半
     中断会留下半截 JSON，下一轮 load_state 直接失败，而且没有第二份记录可恢复。
     """
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    os.replace(tmp, path)
+    atomic_write_text(path, json.dumps(state, ensure_ascii=False, indent=2) + "\n")
 
 
 def main():

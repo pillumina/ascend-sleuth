@@ -42,6 +42,7 @@ import re
 import sys
 from pathlib import Path
 
+from _entry import category_dir_of, iter_case_docs, iter_case_files, namespace_of
 from _lexical import tokens_of
 from _stdio import write_text_lf
 import score_entries
@@ -149,26 +150,9 @@ def collect(root: Path, scores=None):
     if scores is None:
         import score_entries
         scores = score_entries.compute(root)["cases"]
-    kdir = root / "knowledge"
-    for path in sorted(kdir.rglob("*.yaml")):
-        rel = path.relative_to(kdir)
-        if rel.parts[0] in ("_archive", "_index") or path.name == "_index.yaml":
-            continue
-        # 路径一律用 POSIX 分隔符（Windows 上 str(Path(...)) 会给反斜杠，
-        # 生成物与 Linux 不一致 → --check 永久红、分片名也会被当成子目录）
-        ns = "/".join(rel.parts[:-1])
-        # ADR-0004：目录按 (framework × category) 分层，但 ns 停在工作负载层
-        # （triage 路由到框架，category 是正交轴的格子维度，从 case 字段取）
-        # inference 与 training 对称折叠（2026-08-31 修复：此前只折叠 inference，
-        # training 保留三级导致面板渲染出重复 category 标签）
-        parts = rel.parts
-        if len(parts) >= 3 and parts[0] in ("inference", "training") and parts[2] != "platforms":
-            ns = "/".join(parts[:2])
-        # common/ 无框架层：common/<category>/<case>.yaml → ns 停在 common（2026-09-09，
-        # 首批跨框架共性 case 落 common/ 时引入；此前 common/ 为空，未触发该分支）
-        elif len(parts) >= 2 and parts[0] == "common":
-            ns = "common"
-        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    for path, rel, doc in iter_case_docs(root):
+        # 命名空间折叠规则只在 _entry 一处；这里只消费结果。
+        ns = namespace_of(rel)
         for case in doc.get("cases", []):
             category = case.get("category", "")
             # 三分类强制（废弃 other）：非法 category 直接红——路由层依赖 category 分发，
@@ -477,27 +461,25 @@ def library_id_problems(root: Path):
     """
     problems = []
     seen = {}
-    kdir = root / "knowledge"
-    for f in sorted(kdir.rglob("*.yaml")) if kdir.is_dir() else []:
-        if f.name == "_index.yaml" or "_index" in f.parts:
-            continue
+    for path, rel in iter_case_files(root, include_archive=True):
+        display = Path("knowledge") / rel
         try:
-            doc = yaml.safe_load(f.read_text(encoding="utf-8")) or {}
+            doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         except yaml.YAMLError as e:
-            problems.append(f"{f.relative_to(root)}: 解析失败（{e}）")
+            problems.append(f"{display}: 解析失败（{e}）")
             continue
         for c in (doc.get("cases") or []):
             cid = c.get("id")
             if not cid:
-                problems.append(f"{f.relative_to(root)}: case 缺 id")
+                problems.append(f"{display}: case 缺 id")
                 continue
-            if cid != f.stem:
-                problems.append(f"{f.relative_to(root)}: 文件名 {f.stem!r} 与 case id {cid!r} 不一致"
+            if cid != path.stem:
+                problems.append(f"{display}: 文件名 {path.stem!r} 与 case id {cid!r} 不一致"
                                 "（记录按 id 建键，按文件名推不出这条的路径）")
             if cid in seen:
-                problems.append(f"案例 id 重复：{cid!r} 同时出现在 {seen[cid]} 与 {f.relative_to(root)}")
+                problems.append(f"案例 id 重复：{cid!r} 同时出现在 {seen[cid]} 与 {display}")
             else:
-                seen[cid] = f.relative_to(root)
+                seen[cid] = display
     rdir = root / "references"
     rseen = {}
     for f in sorted(rdir.rglob("*.yaml")) if rdir.is_dir() else []:
@@ -558,23 +540,6 @@ SCORE_SOURCE_NOTE = {
 }
 
 
-def _category_dir_of(rel: Path):
-    """case 文件所在目录里**表达性质**的那一层（没有 → None）。
-
-    两层形态（与 collect() 的 ns 口径同源）：
-      common/<性质>/a.yaml                → parts[1]
-      <负载类型>/<框架>/<性质>/a.yaml      → parts[2]（`platforms/` 是另一层语义，不算）
-    目录名不是三个性质之一（如 `knowledge/inference/sglang/` 直接放文件）→ None：
-    那种形态下目录不表达性质，没有可对的东西，不报。
-    """
-    parts = rel.parts
-    if len(parts) >= 3 and parts[0] == "common" and parts[1] in CATEGORIES:
-        return parts[1]
-    if len(parts) >= 4 and parts[0] in ("inference", "training") and parts[2] in CATEGORIES:
-        return parts[2]
-    return None
-
-
 def dir_category_problems(root: Path):
     """目录说一个性质、case 字段说另一个性质 → 报。
 
@@ -590,13 +555,9 @@ def dir_category_problems(root: Path):
     为了下一个改这道门的人知道边界在哪，而不是以为漏了。
     """
     problems = []
-    kdir = root / "knowledge"
-    for path in sorted(kdir.rglob("*.yaml")):
-        rel = path.relative_to(kdir)
-        if rel.parts[0] in ("_archive", "_index") or path.name == "_index.yaml":
-            continue
-        want = _category_dir_of(rel)
-        if want is None:
+    for path, rel in iter_case_files(root):
+        want = category_dir_of(rel, CATEGORIES)
+        if not want:
             continue
         try:
             doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}

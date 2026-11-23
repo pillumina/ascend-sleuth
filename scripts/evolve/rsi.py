@@ -6,12 +6,14 @@ self-evolve 的 subagent 执行，不在 Python 里伪调用。
 
 import hashlib
 import json
-import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from _fs import atomic_write_text
+
 from .regions import recommend
 from .replay_source import scan_failures
+from .stages import DEFAULT_STAGES, get_stage
 
 
 def _trace_signals(state_path: Optional[Path]) -> Dict[str, Any]:
@@ -85,18 +87,7 @@ def _replay_signals(report_path: Optional[Path],
     }
 
 
-DEFAULT_STAGES = {
-    "attribute": "attribute.trace_rule",
-    "select_region": "select.region_hardcount",
-    "select_candidate": "select.best",
-    "propose": "propose.agent",
-    "judge": "judge.subagent",
-    "gate": "gate.paired",
-}
-
-
 def _stages(config: Optional[Dict[str, str]]) -> Dict[str, str]:
-    from .stages import get_stage
     resolved = dict(DEFAULT_STAGES)
     for point, stage_id in (config or {}).items():
         spec = get_stage(str(stage_id))
@@ -217,15 +208,5 @@ def apply_selection(plan: Dict[str, Any], payload: Any) -> Dict[str, Any]:
 
 def save_plan(plan: Dict[str, Any], path: Path) -> Path:
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=path.name, dir=str(path.parent))
-    try:
-        with open(fd, "w", encoding="utf-8") as handle:
-            json.dump(plan, handle, ensure_ascii=False, indent=2, sort_keys=True)
-        Path(tmp).replace(path)
-    finally:
-        try:
-            Path(tmp).unlink()
-        except OSError:
-            pass
+    atomic_write_text(path, json.dumps(plan, ensure_ascii=False, indent=2, sort_keys=True))
     return path

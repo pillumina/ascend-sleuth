@@ -15,7 +15,7 @@ import yaml
 
 from .algorithms.registry import ALGORITHMS
 from .targets.registry import TARGETS, get_target
-from .stages import get_stage
+from .stages import DEFAULT_STAGES, get_stage
 from .decision import DECISION_METHODS
 from .metrics import DEFAULT_METRICS
 
@@ -76,14 +76,7 @@ DEFAULTS: Dict[str, Any] = {
     "experiment": {
         "target": "skill",
         "algorithm": "baseline",
-        "stages": {
-            "attribute": "attribute.trace_rule",
-            "select_region": "select.region_hardcount",
-            "select_candidate": "select.best",
-            "propose": "propose.agent",
-            "judge": "judge.subagent",
-            "gate": "gate.paired",
-        },
+        "stages": dict(DEFAULT_STAGES),
         "budget": {},
         "seed": 0,
     },

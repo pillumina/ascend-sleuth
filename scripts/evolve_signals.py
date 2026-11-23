@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-"""evolve_signals.py —— 演进信号台账：record-only 部署的收尾产物 + 导出成 issue/MR 文本
+"""evolve_signals.py —— 演进信号台账：收尾观察的仓库内记录 + 导出成 issue/MR 文本
 
 ## 为什么需要
 
-`record-only` 部署不产 EV 卡（卡号按检出递增，两个仓各产各的必然重号）。但"不产卡"不等于
+`signal-only` 部署不产 EV 卡；`maintainer` 也先把观察落成信号，再由分诊决定是否提升为
+RSI。卡号按检出递增，两个仓各产各的必然重号。但"不产卡"不等于
 "不记信号"：信号只留在会话里会随对话消散，只落在 exec-log 里又进不了版本库（那是
 `.gitignore` 的运行时件，按克隆各一份，跨人不聚合）。两头都不构成交接。
 
 本脚本把信号写成**仓库里的文件**：`proposals/signals/<部署>-<哈希>.yaml`，一条信号一个文件，
-可 review、可 diff、可随 PR 提交。上游维护者拿这批文件产卡；`export` 把它们渲染成一段
-可粘贴的 issue / MR 描述。
+可 review、可 diff、可随 PR 提交。上游维护者拿这批文件分诊；需要时再产卡；`export` 把它们
+渲染成一段可粘贴的 issue / MR 描述。
 
 ## 为什么用内容哈希而不是序号
 
@@ -184,7 +185,7 @@ def render_md(items, title: str = "") -> str:
         return ""
     head = title or f"演进信号批次：{items[0][1].get('deployment', '')}，{len(items)} 条"
     lines = [f"# {head}", "",
-             "来源：`proposals/signals/`（record-only 部署的收尾记录，一条信号一个文件）。",
+             "来源：`proposals/signals/`（收尾观察的仓库内记录，一条信号一个文件）。",
              "产卡与验证由上游维护者执行；本批只提供信号、证据与出处。", ""]
     for i, (_, doc) in enumerate(items, 1):
         lines.append(f"## {i}. [{doc.get('signal') or '—'}] {doc.get('signal_text') or ''}".rstrip())

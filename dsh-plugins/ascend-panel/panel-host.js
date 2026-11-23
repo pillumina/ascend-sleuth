@@ -1089,10 +1089,9 @@ return {
       if (!m) return false
       return scalarStr(m[k]) !== null
     }
-    // 列表值的两种写法都要吃：块序列（解析器给数组）与行内 flow 序列。行内映射
-    // （`covered: {…, weeks: [2026-W42]}`）里的 `[...]` 经 parseInlineMap 出来是**带方括号的
-    // 字符串**（它不做流式展开），所以这里再展开一次——不展开会得到 `['[2026-W42]']`，
-    // 期号与检出号会带着方括号上屏。
+    // 列表值的两种写法都要吃：块序列（解析器给数组）与行内 flow 序列。行内映射里的
+    // `[...]` 现在由 parseInlineMap 递归展开（与 canvas 同一实现），下面的字符串分支
+    // 保留给旧数据/异常形态——不展开会得到 `['[2026-W42]']`，期号会带着方括号上屏。
     function asList(v) {
       if (Array.isArray(v)) return v.map(x => String(x)).filter(Boolean)
       const s = scalarStr(v)
@@ -1104,12 +1103,15 @@ return {
     }
     // 读侧视图（`knowledge/_index/*.list`）一行的解析。生成器把值里的 `|` 折成 `¦`，所以按
     // ` | ` 切一定切得开；每段再按第一处 `: ` 切成字段——与 `scripts/build_index.py` 的
-    // `parse_read_line` 同一条规则。面板读它拿的是**条目标题与分数**（都是生成物里的值）。
+    // `parse_read_line` 同一条规则。只收这两处共认的字段，未知段与 Python 侧一样丢掉。
+    const LIST_FIELDS = new Set([
+      'id', 'category', 'title', 'symptoms', 'sig', 'tok', 'compat', 'tags', 'score', 'file',
+    ])
     function parseListRow(line) {
       const out = {}
       for (const part of String(line || '').split(' | ')) {
         const m = /^([a-z_]+):\s?([\s\S]*)$/.exec(part)
-        if (m) out[m[1]] = m[2]
+        if (m && LIST_FIELDS.has(m[1])) out[m[1]] = m[2]
       }
       return out.id ? out : null
     }
@@ -1489,8 +1491,7 @@ return {
       // 如实说"还有 N 块未渲染"）。
       const INLINE_MAX = 3000
       const asList = (v) => {
-        // 内联写法里 `files: [a, b]` 到这一步还是"带方括号的字符串"（parseInlineMap 不做流式展开），
-        // 先过一遍 yamlScalar 才能得到数组；块写法给的是真数组。
+        // 块写法给真数组；旧内联写法可能还是"带方括号的字符串"，先过 yamlScalar。
         const val = typeof v === 'string' ? yamlScalar(v) : v
         return Array.isArray(val) ? val.map(x => String(x)).filter(Boolean) : [String(val)]
       }
@@ -1517,7 +1518,7 @@ return {
           out.inline = s0.slice(0, INLINE_MAX)
           out.inlineChars = s0.length
         } else {
-          out[key] = (key === 'missing') ? String(inner[key]) : asList(yamlScalar(String(inner[key])))
+          out[key] = (key === 'missing') ? String(inner[key]) : asList(inner[key])
         }
       }
       return Object.keys(out).length ? out : null
@@ -1682,6 +1683,14 @@ return {
 
     // ---- timeline YAML 解析 ----
     function parseFlowValue(v) {
+      // parseInlineMap 现在会递归展开嵌套流集合：对象/数组直接按结构走，不能先 String()
+      // （否则嵌套映射会变成 "[object Object]"）。
+      if (v && typeof v === 'object') {
+        if (Array.isArray(v)) return v.map((x) => parseFlowValue(x))
+        const out = {}
+        for (const k of Object.keys(v)) out[k] = parseFlowValue(v[k])
+        return out
+      }
       v = String(v || '').trim()
       if (v === '') return ''
       if (v.startsWith('{')) {
@@ -2257,13 +2266,30 @@ return {
       }
       return out.replace(/\s+$/, '')
     }
+    function yamlUnescapeDouble(inner) {
+      let out = ''
+      for (let i = 0; i < inner.length; i++) {
+        const ch = inner[i]
+        if (ch !== '\\') { out += ch; continue }
+        const next = inner[i + 1]
+        if (next === undefined) { out += ch; continue }
+        i++
+        if (next === 'n') out += '\n'
+        else if (next === 't') out += '\t'
+        else if (next === 'r') out += '\r'
+        else if (next === '"') out += '"'
+        else if (next === '\\') out += '\\'
+        else if (next === '/') out += '/'
+        else out += '\\' + next   // 未知转义不猜：原样保留
+      }
+      return out
+    }
+
     function yamlUnquote(s) {
       const t = String(s == null ? '' : s).trim()
       if (t.length >= 2 && (t[0] === '"' || t[0] === "'") && t[t.length - 1] === t[0]) {
         const inner = t.slice(1, -1)
-        return t[0] === '"'
-          ? inner.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\')
-          : inner.replace(/''/g, "'")
+        return t[0] === '"' ? yamlUnescapeDouble(inner) : inner.replace(/''/g, "'")
       }
       return t
     }
@@ -2543,21 +2569,39 @@ return {
         let val = ''
         let depth = 0
         if (s[i] === '"' || s[i] === "'") {
-          const q = s[i++]
-          while (i < s.length && s[i] !== q) { val += s[i]; i++ }
+          // 引号内的逗号/花括号不算结构；`\"` 不结束字符串。收完再按 YAML 转义解。
+          const quote = s[i]
+          let inner = ''
           i++
-        } else {
           while (i < s.length) {
             const ch = s[i]
-            if (ch === '[' || ch === '{') depth++
-            else if (ch === ']' || ch === '}') depth = Math.max(0, depth - 1)
-            if (ch === ',' && depth === 0) break
-            val += ch
+            if (quote === '"' && ch === '\\') {
+              inner += ch + (s[i + 1] === undefined ? '' : s[i + 1])
+              i += 2
+              continue
+            }
+            if (ch === quote) { i++; break }
+            inner += ch
             i++
           }
-          val = val.trim()
+          obj[key] = yamlUnquote(quote + inner + quote)
+          if (s[i] === ',') i++
+          continue
         }
-        obj[key] = val
+        while (i < s.length) {
+          const ch = s[i]
+          if (ch === '[' || ch === '{') depth++
+          else if (ch === ']' || ch === '}') depth = Math.max(0, depth - 1)
+          if (ch === ',' && depth === 0) break
+          val += ch
+          i++
+        }
+        // 嵌套的流集合要递归解析：`- {role: user, evidence: {inline: "…", files: […]}}`
+        // 里 evidence 与 files 都是结构，不能留成字符串。
+        const trimmed = val.trim()
+        if (trimmed.startsWith('{')) obj[key] = parseInlineMap(trimmed)
+        else if (trimmed.startsWith('[')) obj[key] = yamlScalar(trimmed)
+        else obj[key] = yamlUnquote(trimmed)
         if (s[i] === ',') i++
       }
       return obj

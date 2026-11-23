@@ -12,9 +12,9 @@
 import argparse
 import json
 import sys
-import tempfile
 from pathlib import Path
 
+from _fs import atomic_write_text
 from evolve.agent_gepa import GepaError, GepaSession
 
 
@@ -27,17 +27,8 @@ def _load(path: Path) -> GepaSession:
 
 
 def _save(session: GepaSession, path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=path.name, dir=str(path.parent))
-    try:
-        with open(fd, "w", encoding="utf-8") as handle:
-            json.dump(session.to_dict(), handle, ensure_ascii=False, indent=2, sort_keys=True)
-        Path(tmp).replace(path)
-    finally:
-        try:
-            Path(tmp).unlink()
-        except OSError:
-            pass
+    atomic_write_text(path, json.dumps(
+        session.to_dict(), ensure_ascii=False, indent=2, sort_keys=True))
 
 
 def cmd_init(args) -> int:

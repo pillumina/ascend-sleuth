@@ -262,7 +262,7 @@ S2 校准集的 selection 与 test 分离是规模条件：池子撑不起两半
 ### 5.1 已落地
 
 - 三个入口：`skills/evolve-check/SKILL.md`（只记信号）、`skills/self-evolve/SKILL.md`（归类与候选）、`skills/knowledge-groom/SKILL.md`（每周批审）；重型 RSI 只由显式选择候选后进入。
-- 部署级演进模式：`sleuth.config.yaml` 的 `evolution.role` 与 `scripts/evolve_mode.py`。
+- 部署级演进角色：`sleuth.config.yaml` 的 `evolution.role` 与 `scripts/evolve_mode.py`。
 - 积压水位、合入点回写与单一分子实现：`scripts/ev_proposal.py --waterline`、`--mark-merged --from-prs`。
 - 内容流程执行记录与聚合进 timeline。
 - 季度自评的载体目录：`proposals/reviews/`（目录与放行规则已定，内容仍空）。
@@ -293,7 +293,7 @@ S2 校准集的 selection 与 test 分离是规模条件：池子撑不起两半
 | 收尾伴随评估 | `skills/evolve-check/SKILL.md` |
 | 深度观测轮 | `skills/self-evolve/SKILL.md` |
 | 每周批审 | `skills/knowledge-groom/SKILL.md` |
-| 演进模式 | `scripts/evolve_mode.py`、`sleuth.config.yaml` 的 `evolution.role` |
+| 演进角色 | `scripts/evolve_mode.py`、`sleuth.config.yaml` 的 `evolution.role` |
 | 积压水位与合入点 | `scripts/ev_proposal.py --waterline`、`--mark-merged --from-prs` |
 | 周读数 | `scripts/metrics_snapshot.py --kind live`、`scripts/build_timeline.py` |
 | 体检 | `scripts/evolution_health.py`、`proposals/gates.yaml` |

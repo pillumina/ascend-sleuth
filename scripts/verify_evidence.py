@@ -40,6 +40,7 @@ except ImportError:
     sys.exit("需要 PyYAML：pip install pyyaml")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _cli import main_entry
 from _yaml import load_file   # noqa: E402  （解析后端单一事实源）
 
 VERDICTS_FAIL = {"MISMATCH", "NOFILE", "NOLINE", "READ-ERROR"}
@@ -207,4 +208,4 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main_entry(main))

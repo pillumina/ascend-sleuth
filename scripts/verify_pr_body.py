@@ -17,6 +17,7 @@
 # 非零退出 = 模板结构缺失（流程没走对）。只警告不拦截 Agent 意见区块。
 
 import re
+from _cli import main_entry
 import sys
 
 # 模板 → 必含的"## "区块锚点（流程完整性的最小集；Agent 意见区块不在此列）
@@ -74,6 +75,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    main()
+    sys.exit(main_entry(main))

@@ -77,6 +77,17 @@ STAGES: Dict[str, StageSpec] = {
     ),
 }
 
+# 默认组合：config/rsi/pipelines.yaml 的 default、policy.DEFAULTS 与 rsi.build_plan
+# 的库默认值都从这里取。三处各写一份时，改默认流程会漏掉其中一处而不报错。
+DEFAULT_STAGES: Dict[str, str] = {
+    "attribute": "attribute.trace_rule",
+    "select_region": "select.region_hardcount",
+    "select_candidate": "select.best",
+    "propose": "propose.agent",
+    "judge": "judge.subagent",
+    "gate": "gate.paired",
+}
+
 
 def get_stage(name: str) -> StageSpec:
     try:
