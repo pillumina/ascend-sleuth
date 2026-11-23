@@ -27,7 +27,7 @@
 #   - **它不是 CI 门**：`traces/` 与 `postmortems/inbox/` 是 .gitignore 的运行时件，PR 与 CI
 #     的检出里没有它们，marker 也不带 session id。这道检查只能在本地跑，不塞进
 #     `groom_recheck.py` 假硬化。
-#   - **PR 没合入不收尾**：读共享 inbox 的 PR 台账，同 key 的 PR 不是 merged（含 open /
+#   - **PR 没合入不收尾**：读共享 inbox 的 PR 记录，同 key 的 PR 不是 merged（含 open /
 #     unknown / closed）时拒绝，避免把「待合入」提前写成「已升格」。确认要提前收尾时用
 #     `--allow-open-pr`。
 #
@@ -304,7 +304,7 @@ def blocked_reason(state: str) -> str:
 
 
 def unmerged_prs(root: Path, keys) -> tuple:
-    """台账里没有合入的 PR。返回 (key→state, 错误)。
+    """记录里没有合入的 PR。返回 (key→state, 错误)。
 
     closed 在平台语义里也是「没有合入」；缺 state 与未知值按 unknown 处理。
     只有 merged 才放行。收尾会删掉本地评估证据，合入前收尾等于把「待合入」
@@ -313,7 +313,7 @@ def unmerged_prs(root: Path, keys) -> tuple:
     try:
         ledger = pr_status.load_ledger(root)
     except Exception as exc:
-        return {}, f"PR 台账读不出：{exc}"
+        return {}, f"PR 记录读不出：{exc}"
     out = {}
     prs = ledger.get("prs") if isinstance(ledger.get("prs"), dict) else {}
     for key in keys:
@@ -321,7 +321,7 @@ def unmerged_prs(root: Path, keys) -> tuple:
             continue
         entry = prs.get(key)
         if not isinstance(entry, dict):
-            out[key] = "unknown"      # 台账里有条目但不是对象：按未确认拦下
+            out[key] = "unknown"      # 记录里有条目但不是对象：按未确认拦下
             continue
         state = str(entry.get("state") or "").strip().lower()
         if state != "merged":
@@ -493,7 +493,7 @@ def main(argv=None) -> int:
     ap.add_argument("--traces", default=None, help="traces 目录（默认主检出那一份）")
     ap.add_argument("--apply", action="store_true", help="真正执行；不给只打印计划")
     ap.add_argument("--allow-open-pr", action="store_true",
-                    help="PR 台账里不是 merged（含 open/unknown/closed）时也允许收尾（默认拦下）")
+                    help="PR 记录里不是 merged（含 open/unknown/closed）时也允许收尾（默认拦下）")
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args(argv)
     if not args.draft_key and not args.all:

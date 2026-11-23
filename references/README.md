@@ -86,7 +86,7 @@ status: active | pending-review | deprecated | draft   # 新产出即 active（P
 - **skill 侧绑定**：skill 支撑文件里引用的 ref-id（`skills/diagnose/references/collect-gates.yaml` 的采集闸门表）必须存在且 `status: active`——散文里硬编码 ref-id 会静默腐化（曾把不存在的 `profiling-performance-fault-patterns` 当已有落点写进 SKILL），绑定落成数据后由 CI 兜住。
 - **工具词条的覆盖环**（反方向的那一半）：每条声明了 category 的 active `tool` 词条**必须被某个闸门绑定**——tool 不进候选路由、背景层也不按工具名收窄到具体命令，**闸门是它进诊断上下文的唯一入口**，未绑定等于永不加载且无任何信号。实测 38 条 tool 里 24 条未绑定（含取调用栈、看日志配置、多机网络诊断）。
 - **互链不悬挂**：`related_references` 必须指向存在的词条 id（实测 6 处悬挂 + 5 处指向已归档的 deprecated 词条——链接不报错，只是点不动）。
-- **错误码缺口的两个视图一致**：族文件里的 `content.code_gaps`（节选）必须都在 `_code-gaps.yaml`（生成台账）里。
+- **错误码缺口的两个视图一致**：族文件里的 `content.code_gaps`（节选）必须都在 `_code-gaps.yaml`（生成的记录文件）里。
 
 **超长 `summary` 的处理动作（本仓约定）**：把原摘要正文整体迁进 `content.details`（块标量，逐字保留），
 `summary` 换成一句 ≤160 字符的路由句——**迁移不是删除**，读全文时看到的内容与迁移前逐字相同。

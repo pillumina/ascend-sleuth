@@ -26,11 +26,11 @@
 # 边界：
 #   - 只处理还在 inbox 的草稿。已出队（`.done/`）的用「恢复草稿」流程；已升格的草稿
 #     不在这里删，那会牵动知识库与 PR。
-#   - PR 台账里这份草稿的记录还没关闭（open / merged / unknown）就拒绝：PR 是外部事实，
+#   - PR 记录里这份草稿的条目还没关闭（open / merged / unknown）就拒绝：PR 是外部事实，
 #     删本地草稿不会关掉它，先在平台上处理。记录是 closed 时允许撤销，并在撤销完成后
-#     清掉这条台账记录（undo-log 与 `.undone/` 里的 `.undo.json` 留 PR 的编号与地址）；
+#     清掉这条 PR 记录（undo-log 与 `.undone/` 里的 `.undo.json` 留 PR 的编号与地址）；
 #     PR 本身在平台上不动。清记录走 `pr_status.py --forget`（只删 closed，写前比对
-#     台账文件字节，防并发覆盖）。
+#     记录文件字节，防并发覆盖）。
 #   - 来源 trace 已经是 `knowledge` / `archived` 时拒绝：升格已经发生，撤回要牵动知识库与
 #     PR，走知识库变更流程；这里只处理提交阶段（`submitted`）的草稿。`--keep-trace` 只跳过
 #     回写，这条拒绝仍生效。
@@ -233,7 +233,7 @@ def _load_ledger(root: Path) -> dict:
     try:
         return pr_status.load_ledger(root)
     except Exception as exc:
-        raise Refused("E_LEDGER", f"PR 台账读不了，先确认它没坏再撤销：{exc}") from exc
+        raise Refused("E_LEDGER", f"PR 记录读不了，先确认它没坏再撤销：{exc}") from exc
 
 
 def build_plan(root: Path, inbox: Path, traces: Path, key: str,
@@ -250,14 +250,14 @@ def build_plan(root: Path, inbox: Path, traces: Path, key: str,
         entry = prs.get(key)
         if not isinstance(entry, dict):
             raise Refused("E_BAD_RECORD",
-                          "这份草稿在 PR 台账里的记录不是对象（台账可能被手改坏了）。"
-                          "先修好台账或重写这份记录，再撤销。")
+                          "这份草稿在 PR 记录里的条目不是对象（记录可能被手改坏了）。"
+                          "先修好记录或重写这个条目，再撤销。")
         state = str(entry.get("state") or "unknown").strip().lower()
         if state != "closed":
             url = str(entry.get("url") or "")
             detail = f"state={state}{'，' + url if url else ''}"
             raise Refused("E_PR_EXISTS",
-                          f"这份草稿在 PR 台账里的记录还没关闭（{detail}）。"
+                          f"这份草稿在 PR 记录里的条目还没关闭（{detail}）。"
                           "PR 是外部事实，先在平台上处理它；状态没确认时先跑 "
                           "pr_status.py --check 确认。只有已关闭（closed）的 PR 记录允许撤销。")
         pr = {"platform": str(entry.get("platform") or ""),
@@ -325,7 +325,7 @@ def build_plan(root: Path, inbox: Path, traces: Path, key: str,
 
 
 def _pr_ident(pr: dict) -> str:
-    """PR 的一行身份：编号 + 地址；台账里两样都可能缺（旧记录、手改过）。"""
+    """PR 的一行身份：编号 + 地址；记录里两样都可能缺（旧记录、手改过）。"""
     parts = []
     number = pr.get("number")
     if number not in (None, ""):
@@ -333,7 +333,7 @@ def _pr_ident(pr: dict) -> str:
     url = str(pr.get("url") or "")
     if url:
         parts.append(url)
-    return " ".join(parts) or "（台账里没有编号与地址）"
+    return " ".join(parts) or "（编号与地址都缺）"
 
 
 def _trace_note(trace_result: dict) -> str:
@@ -378,8 +378,8 @@ def describe_plan(root: Path, plan: dict, stamp: str, apply: bool,
     pr = plan.get("pr")
     if pr:
         checked = pr.get("checked_at") or "未记录"
-        lines.append(f"- PR 台账：{_pr_ident(pr)} 已关闭（上次确认 {checked}），"
-                     "撤销完成后清掉这条记录；PR 本身在平台上不动")
+        lines.append(f"- PR 记录：{_pr_ident(pr)} 已关闭（上次确认 {checked}），"
+                     "撤销完成后清掉这个条目；PR 本身在平台上不动")
     trace = plan["trace"]
     if trace["session"]:
         if trace["action"] == "write":
@@ -410,7 +410,7 @@ def _apply_plan(root: Path, inbox: Path, traces: Path, plan: dict,
     try:
         # 目录级锁包住整段：计划与执行之间可能另一个 groom 写了新评估，或另一个
         # 撤销/收尾把草稿移走。拿到锁后先重验草稿还在，再按 trace → 草稿 → 评估状态文件
-        # → PR 台账的顺序写；每完成一步就记进 done，失败报告据此说清现状。
+        # → PR 记录的顺序写；每完成一步就记进 done，失败报告据此说清现状。
         with log_lock(assessment_guard(inbox)) as held:
             if not held:
                 raise Refused("E_LOCK", "评估状态文件的目录锁不可用（本平台没有锁原语），本次没有写入")
@@ -464,36 +464,36 @@ def _apply_plan(root: Path, inbox: Path, traces: Path, plan: dict,
                 try:
                     pr_status.forget_pr(root, plan["key"])
                     pr_cleared = True
-                    done.append("PR 台账记录已清除")
+                    done.append("PR 记录已清除")
                 except pr_status.PrRecordError as exc:
                     if getattr(exc, "code", "") == "E_NOT_FOUND":
                         # 计划与执行之间另一个进程把记录清掉了：目标状态已经达成，
                         # 不当失败，也不再给一个必然失败的修复命令。
                         pr_cleared = True
-                        done.append("PR 台账记录已不存在（视为已清除）")
+                        done.append("PR 记录已不存在（视为已清除）")
                     elif getattr(exc, "code", "") == "E_PR_ACTIVE":
                         raise Refused(
                             "E_PR_LEDGER",
-                            "清 PR 台账记录失败：" + str(exc).rstrip("。") + "。"
+                            "清 PR 记录失败：" + str(exc).rstrip("。") + "。"
                             + f"{_trace_note(trace_result)}、草稿已移到 {_rel(root, moved_to)}；"
                             + "记录状态已经变了，撤销不再清它。先在平台上处理 PR；确认已关闭后把"
-                            + "台账状态改回 closed（python3 scripts/pr_status.py --root . --mark "
+                            + "记录状态改回 closed（python3 scripts/pr_status.py --root . --mark "
                             + "--draft " + shlex.quote(plan["key"]) + " --state closed），再跑 "
                             + "python3 scripts/pr_status.py --root . --forget --draft "
                             + shlex.quote(plan["key"]) + " 收工。", done)
                     else:
                         raise Refused(
                             "E_PR_LEDGER",
-                            "清 PR 台账记录失败：" + str(exc).rstrip("。") + "。"
+                            "清 PR 记录失败：" + str(exc).rstrip("。") + "。"
                             + f"{_trace_note(trace_result)}、草稿已移到 {_rel(root, moved_to)}；"
-                            + "先修台账，再跑 python3 scripts/pr_status.py --root . --forget --draft "
+                            + "先修记录，再跑 python3 scripts/pr_status.py --root . --forget --draft "
                             + shlex.quote(plan["key"]) + " 收工。", done)
                 except pr_status.LedgerError as exc:
                     raise Refused(
                         "E_PR_LEDGER",
-                        "清 PR 台账记录失败：" + str(exc).rstrip("。") + "。"
+                        "清 PR 记录失败：" + str(exc).rstrip("。") + "。"
                         + f"{_trace_note(trace_result)}、草稿已移到 {_rel(root, moved_to)}；"
-                        + "台账可能被别的进程改过或写不进去。先跑 "
+                        + "记录可能被别的进程改过或写不进去。先跑 "
                         + "python3 scripts/pr_status.py --root . --forget --draft "
                         + shlex.quote(plan["key"])
                         + "：成功即收工；返回 E_NOT_FOUND 说明记录已经被清掉，同样不用再收工。",
@@ -553,7 +553,7 @@ def print_apply_result(result: dict) -> None:
              else "（沉淀状态未回写）"))
     print("- 评估状态文件：" + ("已删除" if result["assessmentDeleted"] else "没有"))
     if result.get("pr") and result.get("prCleared"):
-        print("- PR 台账：已清掉已关闭的 PR 记录（" + _pr_ident(result["pr"]) + "）")
+        print("- PR 记录：已清掉已关闭的 PR 记录（" + _pr_ident(result["pr"]) + "）")
     print(f"- undo-log：{result['undoLog']}")
     for warning in result["warnings"]:
         print("- 注意：" + warning)

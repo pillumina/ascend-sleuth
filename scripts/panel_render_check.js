@@ -1465,7 +1465,7 @@ print(json.dumps({
   expect('容量越界格数与判据一致（面板 ' + hot.length + ' == 独立计算 ' + expectSoft.length + '）', hot.length === expectSoft.length)
   expect('硬线那格被判成硬越界（按读入 token）', hot.every(c => (c.tok != null && c.tok >= hardVal) === !!c.hard), JSON.stringify(hot.slice(0, 2)))
   expect('评估线阈值来自 gates.yaml（' + softVal + ' tok）', softVal === 8000)
-  expect('容量台账逐格带读入 token', cells.every(c => typeof c.tok === 'number'))
+  expect('容量视图逐格带读入 token', cells.every(c => typeof c.tok === 'number'))
 
   // —— `--check` 的三态：0 判据全评过且无越界 / 1 有判据被违反 / 2 有判据未被评估 ——
   // 为什么必须测 2：修前 `--check` 只用"有没有 ✗"映射 0/1，于是**"体检器坏了"与"本期确实
@@ -1541,7 +1541,7 @@ print(json.dumps(n))
   expect('索引里列出的条目数可数（' + declared + '）', Number.isFinite(declared) && declared > 0)
   expect('磁盘 case 文件数可扫描（' + diskCount + '）', diskCount > 0)
 
-  // —— 渲染：判决条 / 不可解读 / 容量台账 ——
+  // —— 渲染：判决条 / 不可解读 / 容量视图 ——
   const healthCases = {
     total: declared, lowConfidence: 12, byCategory: { interrupt: 30, performance: 10, precision: 12 },
     declaredTotal: declared, diskTotal: diskCount,
@@ -1601,7 +1601,7 @@ print(json.dumps(n))
       vt.includes(h.namespace + ' · ' + h.category) && vt.includes(h.tok + ' tok'),
       (vt.match(/\d+ tok/g) || []).slice(0, 8).join(','))
   }
-  expect('容量台账标出「逐格」口径', vt.includes('逐格'))
+  expect('容量视图标出「逐格」口径', vt.includes('逐格'))
   // 不可解读：gates.yaml 的 readability 里判成不可解读的指标，行上必须带标记（不能安静显示成 0）
   const unreadMetrics = Object.keys(verdict.readability || {}).filter(k => verdict.readability[k] && verdict.readability[k].readable === false)
   if (unreadMetrics.length) {

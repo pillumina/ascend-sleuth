@@ -23,7 +23,7 @@ gates:
   # 容量线按**阶段一实读 token** 判，不按条数（2026-09-29 统一，见 docs/adr/0004 的读侧一节）：
   #   被约束的量是"查问题时第一眼要读进来多少字"（B_ctx）；条数只是它的代理，且代理关系随内容变
   #   （实测每条 177 token，而旧政策按 70 估 → 估小了 3.6 倍，才让 93 条看起来"贴着线"）。
-  #   数字现算：`python3 scripts/index_read_cost.py`。条数仍在容量台账里显示，但**不触发动作**。
+  #   数字现算：`python3 scripts/index_read_cost.py`。条数仍在容量视图里显示，但**不触发动作**。
   - id: cell_read_soft_tok
     dimension: capacity_cell_read_tok
     op: ">"

@@ -3,13 +3,13 @@
 
 为什么单独一个脚本、而不是在 Host 半里解析 YAML：
   「这份草稿评过没有、过期没有、人决定了没有、PR 合入没有」这些判据只在 `scripts/` 里
-  各写一份（groom_status 的新鲜度、groom_common 的草稿发现、pr_status 的台账）。界面若
+  各写一份（groom_status 的新鲜度、groom_common 的草稿发现、pr_status 的记录）。界面若
   自己判一次，就会出现第二份口径——skill 改了、界面没改，两边说法不一致。所以本脚本
   只做三件事：**取**（复用那些函数）、**并**（inbox 草稿、`.done/` 出队草稿、close-log、
-  trace 与 PR 台账合并成一份队列）、**投影**（状态、下一步、五类 prompt）。不新增判据。
+  trace 与 PR 记录合并成一份队列）、**投影**（状态、下一步、五类 prompt）。不新增判据。
 
   队列的对象是「沉淀事项」，不是 inbox 草稿：草稿进了 `.done/` 但 PR 还没合入时，
-  仍然有一行，状态由 PR 台账决定。
+  仍然有一行，状态由 PR 记录决定。
 
 只读边界：不写任何文件；不 fetch；git 只用只读命令（rev-parse / symbolic-ref 等）。
 所有失败（读不出 git、inbox 解析失败）都以 `{"ok": false, "code": ..., "message": ...}`
@@ -168,10 +168,10 @@ def _q(value) -> str:
 # ---------------------------------------------------------------- 目标 commit / 轨迹 / 知识库
 
 def _target_commit(gm, root: Path, ledger: dict, target=None) -> str:
-    """目标知识版本：settings target 优先，其次旧台账 target，再 origin/main，最后 HEAD。
+    """目标知识版本：settings target 优先，其次旧记录 target，再 origin/main，最后 HEAD。
 
-    `target` 是 `.local/settings.json` 的目标（`prs.list_targets` 已把旧台账 target 迁过来）；
-    它只在本地能解析时才算数——配置指向一个还没 fetch 的远端时，退回旧台账/origin/main
+    `target` 是 `.local/settings.json` 的目标（`prs.list_targets` 已把旧记录 target 迁过来）；
+    它只在本地能解析时才算数——配置指向一个还没 fetch 的远端时，退回旧记录/origin/main
     比让整份队列取不到目标好。逐份评估记录自己的目标 ref 由 `status_rows` 另行判断，
     这里的返回值只是没有可用 ref 时的兜底。
     """
@@ -344,7 +344,7 @@ def _pr_view(entry):
         return None
     url = str(entry.get("url") or "").strip()
     if not re.match(r"^https?://", url, re.IGNORECASE):
-        # 台账可能被手改或来自旧数据；URL 只放行 http/https，别让它进 href。
+        # 记录可能被手改或来自旧数据；URL 只放行 http/https，别让它进 href。
         url = ""
     return {"number": entry.get("number"), "url": url,
             "repo": str(entry.get("repo") or ""),
@@ -409,7 +409,7 @@ def _pr_state(entry: dict) -> str:
 def _classify(row: dict, pr_entry, done: bool) -> str:
     """状态优先级（契约 §2）：orphan → 评估/决定分支 → PR 覆盖 → done。
 
-    PR 是外部事项，有台账记录就按它定阶段：merged → pr_merged、closed → pr_closed、
+    PR 是外部事项，有记录就按它定阶段：merged → pr_merged、closed → pr_closed、
     其余（open / unknown）→ pr_open。评估过期（stale）不改 PR 阶段，只留在行的
     stale / staleReasons 里做行内提示——PR 已经开着时重跑 groom 改不了那个 PR，
     队列先把事项跟到合入或关闭，合入前复核（`groom_recheck.py`）自己会判过期。
@@ -492,7 +492,7 @@ def _writeback(mismatch: str, session: str, case_id: str, draft_key: str = "") -
 
 
 def _pr_label(pr) -> str:
-    """台账里 PR 的一行身份：编号 + 地址；两项都可能缺（旧记录、手改过）。"""
+    """记录里 PR 的一行身份：编号 + 地址；两项都可能缺（旧记录、手改过）。"""
     if not isinstance(pr, dict):
         return ""
     parts = []
@@ -513,17 +513,17 @@ def _undo_prompt(key: str, decision: str, pr=None) -> str:
         f"python3 scripts/sediment_undo.py --draft-key {_q(key)} --apply",
     ]
     if pr:
-        ident = _pr_label(pr) or "台账里没有编号与地址"
+        ident = _pr_label(pr) or "记录里没有编号与地址"
         checked = str(pr.get("checked_at") or "") or "未记录"
-        lines.append(f"台账里这份草稿的 PR 已关闭（{ident}，上次确认 {checked}）："
-                     "撤销会把这条 PR 记录一并清掉，PR 本身在平台上不动。"
-                     "台账可能过期，先在平台上确认它仍关闭再撤销；"
+        lines.append(f"记录里这份草稿的 PR 已关闭（{ident}，上次确认 {checked}）："
+                     "撤销会把记录里这个条目一并清掉，PR 本身在平台上不动。"
+                     "记录可能过期，先在平台上确认它仍关闭再撤销；"
                      "已合入的 PR 不走撤销（落点已进 knowledge/）。")
     if decision:
         lines.append(f"注意：这份草稿已有人决定（{decision}）。撤销会清掉评估状态文件与该草稿的决定记录，"
                      "评估 id 与决定摘要会写进 undo-log。")
     if pr:
-        lines.append("撤销还原沉淀状态（sedimented 回 none）与本地台账记录，不改诊断状态；"
+        lines.append("撤销还原沉淀状态（sedimented 回 none）与本地 PR 记录，不改诊断状态；"
                      "要回到进行中，在诊断面板用「重新打开」。")
     else:
         lines.append("撤销只还原沉淀状态（sedimented 回 none），不改诊断状态；"
@@ -533,7 +533,7 @@ def _undo_prompt(key: str, decision: str, pr=None) -> str:
     lines.append("- 删掉它的评估状态文件")
     lines.append("- 来源 trace 的 sedimented 改回 none（trace 缺失或外部来源时跳过）")
     if pr:
-        lines.append("- 清掉台账里这条已关闭的 PR 记录（PR 编号与地址写进 undo-log）")
+        lines.append("- 清掉记录里这条已关闭的 PR 记录（PR 编号与地址写进 undo-log）")
     lines.append("不动 knowledge/。")
     return "\n".join(lines)
 
@@ -609,8 +609,8 @@ def _prompt_pr(root: Path, inbox: Path, target_info: dict, adapters: list, rows:
         "",
         "边界：先落盘并过升格检查；groom_recheck.py 不通过就停；PR 开完就停，不自行合入，也不要跑 close / cleanup；"
         + _label_text(target_info) + "。",
-        "开完 PR 后用 `python3 scripts/pr_status.py --set` 写台账，不要手编 JSON；",
-        f"台账：{_ledger_rel(root, inbox)}。",
+        "开完 PR 后用 `python3 scripts/pr_status.py --set` 写记录，不要手编 JSON；",
+        f"记录文件：{_ledger_rel(root, inbox)}。",
     ]
     return "\n".join(lines)
 
@@ -621,7 +621,7 @@ def _prompt_check(root: Path, inbox: Path, adapters: list, rows: list) -> str:
     lines = ["查以下 PR 的合入状态（PR 落在哪个平台由 URL 判断）：", ""]
     for row in rows:
         pr = row["pr"] or {}
-        url = pr.get("url") or "（台账缺 URL）"
+        url = pr.get("url") or "（记录缺 URL）"
         adapter = _adapter_for_url(adapters, url)
         if adapter is None:
             platform = "本机没有对应工具"
@@ -629,11 +629,11 @@ def _prompt_check(root: Path, inbox: Path, adapters: list, rows: list) -> str:
             platform = f"{adapter.get('name')}（适配器 {adapter.get('id')}）"
         lines.append(f"- {row['key']}：{url}（{platform}）")
     lines += ["",
-              "查到后用脚本写台账，不要手编 JSON：",
+              "查到后用脚本写记录，不要手编 JSON：",
               "  python3 scripts/pr_status.py --root . --check --draft <key>",
               "本机没有对应工具时手动确认：",
               "  python3 scripts/pr_status.py --root . --mark --draft <key> --state open|merged|closed|unknown",
-              f"台账：{_ledger_rel(root, inbox)}；查不到就写 unknown，不推断。"]
+              f"记录文件：{_ledger_rel(root, inbox)}；查不到就写 unknown，不推断。"]
     return "\n".join(lines)
 
 
@@ -643,7 +643,7 @@ def _prompt_close(rows: list) -> str:
     lines = [f"以下 {len(rows)} 份 PR 已合入，做收尾：", ""]
     for row in rows:
         pr = row["pr"] or {}
-        lines.append(f"- {row['key']}：{pr.get('url') or '（台账缺 URL）'}")
+        lines.append(f"- {row['key']}：{pr.get('url') or '（记录缺 URL）'}")
     to_close = [row for row in rows if not row.get("closedDraft")]
     lines += ["", "先取每份 PR 的合并提交，再取它的第一个父提交：",
               "  MERGE=$(gh pr view <n> --json mergeCommit --jq .mergeCommit.oid)  # GitHub",
@@ -803,7 +803,7 @@ def _pr_detail(root: Path, target_info: dict, adapters: list, rows: list) -> str
                  + _q(base_ref) + " --head <head>")
     lines.append("按目标平台创建 PR：")
     lines.append("  " + _create_hint(root, target_info, adapters))
-    lines.append("开完 PR 后写台账（每份一条，不要手编 JSON）：")
+    lines.append("开完 PR 后写记录（每份一条，不要手编 JSON）：")
     lines.append("  python3 scripts/pr_status.py --root . --set --draft <key> --platform <platform> "
                  "--repo <owner/repo> --number <n> --url <url> --remote <remote>")
     return "\n".join(lines)
@@ -974,8 +974,8 @@ def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
     pr = _pr_view(pr_entry)
     # 撤销只在「草稿还在 inbox、PR 没提过或已关闭、trace 也没说升格」时给：已出队的草稿走
     # 恢复流程；PR 还开着或已合入的要先处理 PR，已升格的要动知识库与 PR——都不该由一次本地
-    # 撤销带走。PR 记录是 closed 时允许撤销，脚本会一并清掉这条台账记录。
-    # 来源 session 有歧义、PR 台账读坏、或台账里这份记录不是对象时也不给：脚本在这几种情况下
+    # 撤销带走。PR 记录是 closed 时允许撤销，脚本会一并清掉这条 PR 记录。
+    # 来源 session 有歧义、PR 记录读坏、或记录里这个条目不是对象时也不给：脚本在这几种情况下
     # 会拒绝，按钮先承诺「能撤」没有意义。
     pr_closed = pr_entry is not None and _pr_state(pr_entry) == "closed"
     undo_pr_ok = (pr_entry is None or pr_closed) and not pr_broken
@@ -1034,7 +1034,7 @@ def _draft_record(root: Path, gm, row: dict, draft, inbox: Path,
 
 def _closed_record(root: Path, gm, key: str, close_entry: dict, draft, inbox: Path,
                    ledger: dict, trace_rows: list, kb_ids: set) -> dict:
-    """已出队草稿的队列行：标题从 `.done/` 读，决定从 close-log 读，PR 从台账读。
+    """已出队草稿的队列行：标题从 `.done/` 读，决定从 close-log 读，PR 从记录读。
 
     评估状态文件可能已经被 cleanup 删掉，所以 `assessed` 以 close-log 的 closed 记录为准。
     """
@@ -1186,7 +1186,7 @@ def collect(root, only: str = "", prompt_keys=None) -> dict:
     try:
         ledger = prs.load_ledger(root)
     except Exception as exc:
-        # 坏台账不让队列空掉：PR 列显示不了，队列其余部分照出。
+        # 记录损坏不让队列空掉：PR 列显示不了，队列其余部分照出。
         # 已出队的条目用「未确认」占一行，避免在途事项整条消失。
         ledger = prs.empty_ledger()
         ledger_error = str(exc)
@@ -1230,7 +1230,7 @@ def collect(root, only: str = "", prompt_keys=None) -> dict:
             key, key if key in ledger_prs else ledger_by_sanitized.get(key, key))
         closed = close_index.get(raw)
         if row.get("orphan"):
-            # 正常出队（close-log 有 closed 记录）不算孤儿；台账里有 PR 时也交给
+            # 正常出队（close-log 有 closed 记录）不算孤儿；记录里有 PR 时也交给
             # 下面的 PR 行，避免同一个 key 出现孤儿 + PR 两行。
             if closed and closed.get("status") == "closed":
                 continue
@@ -1242,7 +1242,7 @@ def collect(root, only: str = "", prompt_keys=None) -> dict:
                         # assessment 还需要按 PR body 清理一次，先留一行给它。
                         orphan_terminal.add(raw)
                     continue
-                # 台账里是一个坏值（不是对象）：保留孤儿行，至少让人看见评估残留。
+                # 记录里是一个坏值（不是对象）：保留孤儿行，至少让人看见评估残留。
         records.append(_draft_record(root, gm, row, drafts.get(key),
                                      inbox, ledger, trace_rows, kb_ids,
                                      session_of=deps["gcd"].source_session_of,
@@ -1260,7 +1260,7 @@ def collect(root, only: str = "", prompt_keys=None) -> dict:
         records.append(_closed_record(root, gm, key, close_entry, done_drafts.get(key),
                                       inbox, ledger, trace_rows, kb_ids))
         seen.add(key)
-    # 台账里有 PR、本地既没有草稿也没有 close-log 的（换机器、手工出队、评估残留）：
+    # 记录里有 PR、本地既没有草稿也没有 close-log 的（换机器、手工出队、评估残留）：
     # 只收未终态的 PR。merged / closed 没有本地记录，也没有可执行的本地动作，
     # 不进队列（平台是唯一事实来源），避免留一行永远消不掉。
     for key, pr_entry in ledger_prs.items():

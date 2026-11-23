@@ -12,7 +12,7 @@
 #        是**不用 `--force` 也不报错**——gitignore 的未跟踪件不计入 dirty，随 worktree **静默**
 #        一并被删。这条丢失路径比原先以为的更安静，这正是"跨 session 复用的运行时件必须锚到主检出"
 #        的硬理由。
-#   即：一个 per-worktree 的运行时文件，被拿来当"全流程观测台账"用，语义不成立。
+#   即：一个 per-worktree 的运行时文件，被拿来当"全流程观测记录"用，语义不成立。
 #
 # 现在的语义（同一克隆内共享）：
 #   路径 = **主检出**（`git rev-parse --git-common-dir` 的父目录）下的 metrics/skill-exec-log.yaml。
@@ -174,7 +174,7 @@ CHECKOUT_DIRS = {
     "proposals-experiments": Path("proposals") / "experiments",
     "ref-docs": Path("ref-docs"),                          # 上游文档正文缓存（scripts/gc_docs.py 的抓取面）
     # 结算游标（settle_trace_feedback / settle_s2_feedback 的幂等状态）——纯本地运行时件，
-    # 与摄取台账（ingest-state.json 的 sources.<repo>）分家：台账要跨机同步故 tracked 走 PR，
+    # 与摄取记录（ingest-state.json 的 sources.<repo>）分家：记录要跨机同步故 tracked 走 PR，
     # 游标只在本地判「这个 session 结算过没有」，进 git 只会让每次结算都变成一次 PR。
     "settle-state": Path(".settle-state.json"),
     # 一次诊断的本机记录（含逐次工具调用明细与 token 账单）：gitignored，锚主检出——

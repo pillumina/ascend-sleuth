@@ -1,6 +1,6 @@
 """sediment_state 的口径回归测试。
 
-护的是「状态合并」这一层：草稿进队列之后，评估、人决定、PR 台账、trace 沉淀状态在四个
+护的是「状态合并」这一层：草稿进队列之后，评估、人决定、PR 记录、trace 沉淀状态在四个
 地方各写各的，读侧必须按固定优先级合并成一份队列。错了不会报错，只会让面板停在错的阶段。
 
 做法：真实临时 git 仓库 + 真实共享 inbox（`groom_common.shared_inbox` 解析到该仓库），
@@ -354,7 +354,7 @@ class StateTest(SedimentCase):
         self.assertEqual(row["undo"]["prompt"], "")
 
     def test_undo_available_when_pr_closed(self):
-        # 关闭的 PR 不再拦撤销；提示里写明台账记录会被清掉、PR 本身不动。
+        # 关闭的 PR 不再拦撤销；提示里写明记录会被清掉、PR 本身不动。
         write_draft(self.repo)
         write_ledger(self.repo, target=GITHUB_TARGET, prs={"2026-10-20-draft-a": pr_entry(
             state="closed", number=431,
@@ -379,7 +379,7 @@ class StateTest(SedimentCase):
         self.assertEqual(row["undo"]["prompt"], "")
 
     def test_undo_hidden_when_pr_record_not_object(self):
-        # 台账里这份记录不是对象：脚本退 E_BAD_RECORD，面板不能先给入口。
+        # 记录里这个条目不是对象：脚本退 E_BAD_RECORD，面板不能先给入口。
         write_draft(self.repo)
         write_ledger(self.repo, target=GITHUB_TARGET,
                      prs={"2026-10-20-draft-a": None})
@@ -685,7 +685,7 @@ class AggregateTest(SedimentCase):
         """知识库前进后，已提交 PR 的行仍留在「待合入」，过期只做行内提示。
 
         对应反馈：已提交的 PR 在拉取新代码后全部变成「需重跑」，待合入计数归零；
-        撤销数仍对——它按 PR 台账算，与评估新鲜度无关。
+        撤销数仍对——它按 PR 记录算，与评估新鲜度无关。
         """
         assessed = fresh_commit(self.repo)
         prs = {}
@@ -784,7 +784,7 @@ if __name__ == "__main__":
     unittest.main()
 
 
-# ---------------------------------------------------------------- 已出队草稿与台账兜底
+# ---------------------------------------------------------------- 已出队草稿与记录兜底
 
 def write_done_draft(repo: Path, key: str = "2026-10-20-draft-a", cid: str = "DRAFT-A",
                      title: str = "已出队的草稿", directory: bool = False) -> Path:
@@ -840,7 +840,7 @@ class ClosedDraftQueueTest(SedimentCase):
         self.assertEqual(payload["history"], [])
 
     def test_cleanup_deleted_sidecar_still_renders_row(self):
-        # 本次现场：评估状态文件被 cleanup 删掉，只剩 close-log 与台账
+        # 本次现场：评估状态文件被 cleanup 删掉，只剩 close-log 与记录
         write_ledger(self.repo, target=GITHUB_TARGET,
                      prs={"2026-10-20-draft-a": pr_entry(state="open")})
         write_done_draft(self.repo)
@@ -1045,7 +1045,7 @@ class ClosedDraftQueueTest(SedimentCase):
         self.assertIsNotNone(row["pr"])
 
     def test_pr_states_survive_stale(self):
-        # 台账里的 PR 状态决定阶段：open/unknown → 待合入，merged → 收尾，closed → 恢复草稿。
+        # 记录里的 PR 状态决定阶段：open/unknown → 待合入，merged → 收尾，closed → 恢复草稿。
         # 评估过期只做行内提示，不改阶段。
         for pr_state, expected in (("open", "pr_open"), ("unknown", "pr_open"),
                                    ("merged", "pr_merged"), ("closed", "pr_closed")):

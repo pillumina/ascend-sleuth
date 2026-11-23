@@ -1,7 +1,7 @@
 ---
 name: self-evolve
 description: >
-  用户显式发起的全库自演进归类与候选轮：聚合 trace、replay、指标、信号台账，
+  用户显式发起的全库自演进归类与候选轮：聚合 trace、replay、指标、信号记录，
   把信号归入内容缺口、确定性 bug、行为质量与高风险授权，排出候选顺序。
   它不跑 RSI 实验、不产 EV 卡、不写结论；行为质量改动由用户选中候选后显式进入
   RSI proposal → experiment → decision → PR。
@@ -35,14 +35,14 @@ python3 scripts/evolve_mode.py --json
 
 | 信号源 | 命令 | 看什么 |
 |---|---|---|
-| 信号台账 | `python3 scripts/evolve_signals.py list` | 跨轮重复出现、未分诊的信号 |
+| 信号记录 | `python3 scripts/evolve_signals.py list` | 跨轮重复出现、未分诊的信号 |
 | 执行记录 | `python3 scripts/tail_exec_log.py --n 20` | 反复动作、miss、流程摩擦 |
 | 归因聚合 | `python3 scripts/component_tally.py` | 失败簇集中在哪个组件 |
 | replay 缺口 | `python3 scripts/s2_replay.py --todo` | 未覆盖的样本族 |
 | 容量/健康 | `python3 scripts/metrics_health.py --json` | 结构治理项 |
 | 指标趋势 | `metrics/timeline.yaml` | 命中率、回滚、成本漂移 |
 
-需要独立视角时，可以让 subagent 只读信号台账与本仓候选队列做一次分诊，避免同上下文盲区。
+需要独立视角时，可以让 subagent 只读信号记录与本仓候选队列做一次分诊，避免同上下文盲区。
 
 ## 第 2 步：分诊
 
@@ -54,9 +54,9 @@ python3 scripts/evolve_mode.py --json
 | 内容缺口 | 缺 case / reference / 词条 | 内容 skill 的输入 |
 | 行为质量 | 无确定 oracle，需要样本对照 | RSI 候选（仅候选，不执行） |
 | 高风险授权 | 规范文档、评估协议、权限、自动合并边界 | 轻量 EV 卡，作为授权记录 |
-| 观察 | 只有现象，没有可执行方案 | 留台账，不升级 |
+| 观察 | 只有现象，没有可执行方案 | 留记录，不升级 |
 
-分诊结论写回台账：
+分诊结论写回记录：
 
 ```bash
 python3 scripts/evolve_signals.py mark <id> --status triaged|dropped|promoted \

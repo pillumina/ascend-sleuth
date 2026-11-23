@@ -215,7 +215,7 @@ python3 scripts/groom_recheck.py --pr-body-file <pr-body.md> \
 
 `groom_recheck.py` 是确定性检查，不需要问用户；直接跑，失败时按原因重跑 groom、重做批准或补 marker。
 
-**PR 开完后的本地台账写点**：每份草稿开完 PR 后用 `python3 scripts/pr_status.py --root . --set --draft <key> --platform <platform> --repo <owner/repo> --number <n> --url <url> --remote <remote>` 写进共享 inbox 的 `.groom/pr-state.json`；不要手编 JSON。查合入状态用 `--check`，没有适配器时用 `--mark` 手动确认。PR 被关闭、这次沉淀要撤回时，撤销脚本会清掉这条记录；单独清理用 `python3 scripts/pr_status.py --root . --forget --draft <key>`（只允许 `closed`）。
+**PR 开完后的本地记录写入位置**：每份草稿开完 PR 后用 `python3 scripts/pr_status.py --root . --set --draft <key> --platform <platform> --repo <owner/repo> --number <n> --url <url> --remote <remote>` 写进共享 inbox 的 `.groom/pr-state.json`；不要手编 JSON。查合入状态用 `--check`，没有适配器时用 `--mark` 手动确认。PR 被关闭、这次沉淀要撤回时，撤销脚本会清掉这条记录；单独清理用 `python3 scripts/pr_status.py --root . --forget --draft <key>`（只允许 `closed`）。
 
 - `assessed_commit` 必须真实存在且是 base 的祖先；评估后相关 `knowledge/` 变了 → **过期**，重跑 groom。
 - marker 还必须带 `schema: groom-pr/v2`、`assessment_id`、`assessed_content_sha256` 以及人的
@@ -247,7 +247,7 @@ python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --post-merge \
 
 它做的事：按 PR body 里的 marker 取 `draft`，**先核对 marker 与本地评估是不是同一次评估**（`assessment_id`、内容哈希、人决定三项都要对上，旧 PR 正文删不掉重评后的新记录）；对得上的 sidecar 在 `log_lock` 内**直接删除**（不留回收区；锁文件是互斥原语、不随 sidecar 删）；快照只在「没有任何 sidecar 再引用这个 commit」时才删，读不出评估就视为引用未知、不删快照。非终态决定（`pending` / `defer` / `reject`）与 `approval_stale: true` 一律保留。每次清理追加一行单行 JSON 到 `.groom/cleanup-log.jsonl`（含评估 id、内容哈希与实际结果）。
 
-- **前置**：marker 必须已经在 PR body 里，PR 已经合入。sidecar 被删后 marker 是唯一凭证；还没合入就跑 close / cleanup，PR 被拒时人的决定与评估证据都回不来。`groom_close_draft.py` 会读 PR 台账，PR 没合入（state 不是 merged，含 open / unknown / closed）时拒绝执行；确实要提前收尾时加 `--allow-open-pr`。
+- **前置**：marker 必须已经在 PR body 里，PR 已经合入。sidecar 被删后 marker 是唯一凭证；还没合入就跑 close / cleanup，PR 被拒时人的决定与评估证据都回不来。`groom_close_draft.py` 会读 PR 记录，PR 没合入（state 不是 merged，含 open / unknown / closed）时拒绝执行；确实要提前收尾时加 `--allow-open-pr`。
 - **body 里只放终态 marker**：`defer` / `reject` 的 marker 会让 `groom_recheck` 整轮判红（`decision-does-not-authorize`），本轮什么都删不掉。
 - **为什么按 key 删而不是删整个 `.groom/`**：inbox 与 `.groom/` 是主检出共享的，同一克隆里可能有别的 session 正在处理别的草稿；整目录删会把它们未完成的评估一起清掉。
 - **顺序**：建快照 → 候选 → 比对 → 记录 → 决定 → marker → **复核** → 开 PR → 合入 → 收尾（`groom_close_draft.py` 回写 trace 并把草稿移出队列） → 清理（`groom_cleanup.py --post-merge`）。`groom_record` 与 `groom_recheck --post-merge` 还要用快照目录，收尾要读 sidecar，所以清理不能提前。
@@ -289,7 +289,7 @@ python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --post-merge \
        - `verification: investigation` 且未闭环 → **拦下**，提示三条出路（等闭环 / 补强外部证据 / 走双签例外，草稿产出时 to-postmortem 的报告里已写闸门预判）。
    - **转正后回写来源 trace 的沉淀状态并让草稿出队（有 PR 时等合入）**：转正落位、复核通过、PR 开完后就停，草稿留在 inbox；查证为 merged 后再跑
      `python3 scripts/groom_close_draft.py --draft-key <key> --apply`（批处理收尾用 `--all --apply`）。
-     没有 PR 的部署（本地沉淀）在落盘复核后直接跑。脚本会读 PR 台账：PR 没合入（state 不是 merged）时拒绝收尾，
+     没有 PR 的部署（本地沉淀）在落盘复核后直接跑。脚本会读 PR 记录：PR 没合入（state 不是 merged）时拒绝收尾，
      避免把「待合入」提前写成「已升格」。
      它读 sidecar 的终态决定，按落点证据回写 trace 的 `sedimented.state`——`new_pattern`/`variant` 升格
      Tier 2 → `{state: knowledge, caseId: <case-id>}`；`covered`（含 agent 判 `duplicate` 的精确重复）

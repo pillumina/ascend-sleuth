@@ -179,5 +179,5 @@ python3 scripts/doctor.py --json | grep evolution
 
 - 旧记录没有 `source_signal` / `sample_context`；面板显示已有字段，不补造。
 - 角色是部署声明，不是单次运行开关；临时覆盖用环境变量，不写进配置。
-- `signal-only` 下信号只进本部署台账，由上游分诊；不自动跑实验。
+- `signal-only` 下信号只进本部署记录，由上游分诊；不自动跑实验。
 - EV 卡历史数据仍由 `verify_proposals.py` 校验，不再作为新行为改动的全量前置门。

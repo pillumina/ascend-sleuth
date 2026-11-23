@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-# component_tally.py —— 流程组件失败归因的按需聚合报告（无常驻台账表）
+# component_tally.py —— 流程组件失败归因的按需聚合报告（无常驻记录表）
 #
 # 设计变更（2026-09 selfevolve-loop 重构）：原设计维护常驻表
-# metrics/component-tally.yaml（"组件失败台账"，docs/mechanism/records.md）——
+# metrics/component-tally.yaml（"组件失败记录"，docs/mechanism/records.md）——
 # 该形态是过度设计：①归因事件 0 条时表空转（S1 断供 + S2 无路由 miss，文件从未生成）；
 # ②无 hit 侧数据源，score 恒 0，"低分浮出"无从谈起；③把 diagnose 输出与 expected 不符
 # 一律硬归因 triage 分支，归因不精确还假装精确。

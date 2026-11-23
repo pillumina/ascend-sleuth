@@ -152,7 +152,7 @@ idea 卡（`proposals/ideas/`）是机制账本，归上游。两条原因：
 
 fork 负载类型的机制缺口写进 MR 描述或 issue，由维护者拿到上游产卡。内容产出（补 case、补词条、扩错误码家族、从 case 归纳 reference）不产卡；EV 卡只用于高风险授权，见 `skills/evolve-check/SKILL.md` 与 `skills/self-evolve/SKILL.md`。fork 长期无法访问上游、又确实需要本地决策档案时，用与上游不重叠的号段或前缀，并让该目录归 fork 独占——复用 `proposals/ideas/` 的号段会让重号问题原样保留。
 
-**这条规则由声明承载，不靠记性**：fork 在自己的 `sleuth.config.yaml` 里写 `evolution.role: signal-only`，evolve-check 收尾与深度轮都先读它（`scripts/evolve_mode.py`）。不设时缺省 `maintainer`（上游行为）；fork 要显式声明 `signal-only`，否则收尾会按维护者路径处理。`signal-only` 下信号照记、执行记录照落，只把"该走 RSI"的结论改成写进信号台账或 MR 描述。
+**这条规则由声明承载，不靠记性**：fork 在自己的 `sleuth.config.yaml` 里写 `evolution.role: signal-only`，evolve-check 收尾与深度轮都先读它（`scripts/evolve_mode.py`）。不设时缺省 `maintainer`（上游行为）；fork 要显式声明 `signal-only`，否则收尾会按维护者路径处理。`signal-only` 下信号照记、执行记录照落，只把"该走 RSI"的结论改成写进信号记录或 MR 描述。
 
 ### Skill 自包含边界（SKILL.md 与 docs/ 的引用关系）
 

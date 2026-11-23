@@ -72,9 +72,9 @@ DOC_EXTS = (".md", ".rst", ".txt")
 #
 # 另加两类"扩展名像文档、实际不是文档源"的噪音（两条都按实测数据定的，不是猜的）：
 #   ① 各仓自带的 agent 知识目录——按既有口径**只作线索、不作权威源**，故不进扫描面
-#      （实测：加排除前全台账 186 条此类条目，harvested 数为 0）；
+#      （实测：加排除前全部记录 186 条此类条目，harvested 数为 0）；
 #   ② 构建/依赖清单（`CMakeLists.txt` / `requirements*.txt`）——按 basename 排除，不按目录
-#      （实测：加排除前全台账 491 条此类条目，harvested 数为 0）。
+#      （实测：加排除前全部记录 491 条此类条目，harvested 数为 0）。
 AGENT_KB_DIRS = (".claude/", ".agents/", ".codex/", ".opencode/")
 NON_DOC_BASENAMES = re.compile(r"^(CMakeLists\.txt|requirements(-[\w.]+)?\.txt)$", re.I)
 DEFAULT_EXCLUDE = (
@@ -397,9 +397,9 @@ def cmd_mark(a) -> int:
 def cmd_triage(a) -> int:
     """仓级判定：这个仓整体纳不纳入先验层（不逐文档标记）。
 
-    为什么需要它：文档级 mark 要求先把仓扫进台账（拉全树 + 逐文档记账），对**整仓不纳入**的仓
+    为什么需要它：文档级 mark 要求先把仓扫进记录文件（拉全树 + 逐文档记账），对**整仓不纳入**的仓
     （源码/模板/治理/行业/agent 知识仓）是纯浪费——扫大仓可能几分钟，而结论早就由仓的类别决定。
-    仓级判定把"这个仓不纳入，理由是什么"变成一条可审计记录，同样是幂等台账的一部分：
+    仓级判定把"这个仓不纳入，理由是什么"变成一条可审计记录，同样是幂等记录文件的一部分：
     下一轮不必再扫、也不必再判。文档级 decision 与仓级 triage 并存，互不覆盖。
     """
     st = load_state()

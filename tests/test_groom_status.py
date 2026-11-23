@@ -158,7 +158,7 @@ class StatusTest(unittest.TestCase):
     def test_freshness_git_calls_are_shared_between_drafts(self):
         """同一评估基准的草稿共用 ref 解析、祖先判定与知识库 diff。
 
-        台账与评估记录常指向同一个目标 ref 和 commit；逐行各起子进程是随条目数增长的开销。
+        记录与评估记录常指向同一个目标 ref 和 commit；逐行各起子进程是随条目数增长的开销。
         这里钉上限：3 份同基准草稿只解析 1 次 ref、判 1 次祖先、取 1 次 diff。
         """
         commit = self.meta_doc["commit"]

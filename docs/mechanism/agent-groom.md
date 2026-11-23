@@ -158,7 +158,7 @@ history: [...]
 
 ### 3.7 收尾、撤销与合入后
 
-终态决定之后还有两件事必须落地，由 `groom_close_draft.py` 一次做完；它是本地收尾动作，不进 CI。有 PR 的草稿，这两件事放在 PR 合入之后：合入前跑收尾会把「待合入」提前写成「已升格」，PR 被拒时人的决定与评估证据也已经被清理。脚本读 PR 台账，同 key 的 PR 不是 merged 时拒绝执行；确实要提前收尾时用 `--allow-open-pr`。没有 PR 的部署仍在评估写盘后直接收尾。
+终态决定之后还有两件事必须落地，由 `groom_close_draft.py` 一次做完；它是本地收尾动作，不进 CI。有 PR 的草稿，这两件事放在 PR 合入之后：合入前跑收尾会把「待合入」提前写成「已升格」，PR 被拒时人的决定与评估证据也已经被清理。脚本读 PR 记录，同 key 的 PR 不是 merged 时拒绝执行；确实要提前收尾时用 `--allow-open-pr`。没有 PR 的部署仍在评估写盘后直接收尾。
 
 这两件事以前只写在 skill 的一句中文指令里：把来源记录的 `sedimented` 从 `submitted` 改成 `knowledge` 或 `archived`，把已处理的草稿移出 inbox。漏做都不报错——面板的沉淀漏斗停在「已提交待升格」，草稿下一轮又按「没有评估文件先补跑比对」被评一遍。脚本先取写盘证据（case 或 postmortem 文件是否已就位）、再写状态：
 
@@ -172,7 +172,7 @@ history: [...]
 
 为什么不做成 PR 检查：`traces/` 与 `postmortems/inbox/` 是不进 git 的运行时件，PR 与 CI 的检出里没有它们，标记也不带会话号。塞进 `groom_recheck.py` 只能读到空目录，检查会退化成永远通过。这道检查只能落在本地，靠收尾顺序保证：先 `groom_recheck`，开 PR，合入后跑本步，最后 `groom_cleanup --post-merge`。`--post-merge` 跳过过期判定，合入后无法再对旧基线重跑 groom。
 
-撤销一次不成立的沉淀用 `scripts/sediment_undo.py --draft-key <key> [--apply]`，默认只打印计划。它做四件事：把还在 inbox、PR 记录不存在或已关闭的草稿移进 `postmortems/inbox/.undone/`；删掉它的评估状态文件；把来源记录的 `sedimented` 改回 `none`（记录缺失或外部来源时跳过）；清掉台账里那条已关闭的 PR 记录。诊断状态不动：撤销还原 case 的沉淀状态，已收尾的单仍是收尾状态。它和 `reject`、`defer` 不是一回事：那两个是「认真看过但不采纳」，草稿与评估状态留在队列里；撤销是这份草稿本身被撤回，重新沉淀会从头开始。
+撤销一次不成立的沉淀用 `scripts/sediment_undo.py --draft-key <key> [--apply]`，默认只打印计划。它做四件事：把还在 inbox、PR 记录不存在或已关闭的草稿移进 `postmortems/inbox/.undone/`；删掉它的评估状态文件；把来源记录的 `sedimented` 改回 `none`（记录缺失或外部来源时跳过）；清掉记录里那条已关闭的 PR 条目。诊断状态不动：撤销还原 case 的沉淀状态，已收尾的单仍是收尾状态。它和 `reject`、`defer` 不是一回事：那两个是「认真看过但不采纳」，草稿与评估状态留在队列里；撤销是这份草稿本身被撤回，重新沉淀会从头开始。
 
 合入后由主干 job 重建索引（`build_index.py` 的覆盖检查必须通过）；没有该 job 的部署按既有纪律在 main 上重建。`groom_recheck.py --post-merge` 可以在本地跑同一道覆盖检查。收尾与清理也在这一步：先 `groom_close_draft.py` 出队并回写记录，再对每份 PR 用合入提交与它的第一个父提交跑 `groom_cleanup.py --post-merge`。
 

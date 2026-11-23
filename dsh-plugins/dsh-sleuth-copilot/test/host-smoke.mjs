@@ -591,7 +591,7 @@ if (mod.name !== 'dsh-sleuth-copilot') throw new Error('unexpected plugin name')
 process.stdout.write('诊断状态条 · Host 冒烟\n')
 
 // ── 可写会话 ────────────────────────────────────────────────────────────────
-// shell 记下每次子进程命令：用来确认 pr-target 的 list 一次就带回台账指纹。
+// shell 记下每次子进程命令：用来确认 pr-target 的 list 一次就带回记录指纹。
 const rwShell = makeShell()
 const rw = makeHarness({ shell: rwShell })
 // 逐条进度的假句柄单独装一份 harness；没 git 时那段跳过，这里留 null 给收尾清理。
@@ -759,11 +759,11 @@ if (hasGit) {
   const targetValue = targetRead.envelope && targetRead.envelope.result && targetRead.envelope.result.value
   expect('目标：端点返回 ok', targetValue && targetValue.ok === true, JSON.stringify(targetValue))
   expect('目标：remotes 是数组', targetValue && Array.isArray(targetValue.remotes), JSON.stringify(targetValue && targetValue.remotes))
-  expect('目标：台账不存在时 list 指纹为 null', targetValue
+  expect('目标：记录不存在时 list 指纹为 null', targetValue
     && Object.prototype.hasOwnProperty.call(targetValue, 'sha256') && targetValue.sha256 === null,
   JSON.stringify(targetValue && targetValue.sha256))
 
-  // PR 台账写动作：list 一次调用就把台账指纹带回来（pr_status.py 的 list-targets 直接给），
+  // PR 记录写动作：list 一次调用就把记录指纹带回来（pr_status.py 的 list-targets 直接给），
   // mark / set-target / check 都带 --expect-sha256；旧令牌由脚本的 CAS 拦下且不写盘。
   const ledgerPath = join(SANDBOX, 'postmortems', 'inbox', '.groom', 'pr-state.json')
   mkdirSync(dirname(ledgerPath), { recursive: true })
@@ -787,7 +787,7 @@ if (hasGit) {
   const listWithLedger = await prTarget(rw, { cwd: SANDBOX, action: 'list' }, 'pr-list-2')
   const listWithLedgerValue = listWithLedger.envelope.result.value
   const listCommands = rwShell.calls.slice(listCallsBefore)
-  expect('目标：list 一次调用就带台账指纹', listWithLedgerValue && listWithLedgerValue.sha256 === ledgerSha
+  expect('目标：list 一次调用就带记录指纹', listWithLedgerValue && listWithLedgerValue.sha256 === ledgerSha
     && listCommands.length === 1 && /--list-targets/.test(listCommands[0]) && !/--status/.test(listCommands[0]),
   JSON.stringify({ sha: listWithLedgerValue && listWithLedgerValue.sha256, calls: listCommands }))
   const markOk = await prTarget(rw, {
@@ -795,7 +795,7 @@ if (hasGit) {
     key: 'demo-draft', state: 'merged', expectSha256: ledgerSha,
   }, 'pr-mark-1')
   const markOkValue = markOk.envelope.result.value
-  expect('目标：mark 写台账 ok', markOkValue && markOkValue.ok === true && markOkValue.pr && markOkValue.pr.state === 'merged', JSON.stringify(markOkValue))
+  expect('目标：mark 写记录 ok', markOkValue && markOkValue.ok === true && markOkValue.pr && markOkValue.pr.state === 'merged', JSON.stringify(markOkValue))
   const markStale = await prTarget(rw, {
     cwd: SANDBOX, sessionId: 'smoke-session', action: 'mark',
     key: 'demo-draft', state: 'open', expectSha256: ledgerSha,
@@ -807,7 +807,7 @@ if (hasGit) {
     remote: 'origin', base: 'main', expectSha256: markOkValue && markOkValue.sha256,
   }, 'pr-target-2')
   const setTargetOkValue = setTargetOk.envelope.result.value
-  expect('目标：set-target 写台账 ok', setTargetOkValue && setTargetOkValue.ok === true, JSON.stringify(setTargetOkValue))
+  expect('目标：set-target 写记录 ok', setTargetOkValue && setTargetOkValue.ok === true, JSON.stringify(setTargetOkValue))
   const setTargetStale = await prTarget(rw, {
     cwd: SANDBOX, sessionId: 'smoke-session', action: 'set-target',
     remote: 'origin', base: 'main', expectSha256: markOkValue && markOkValue.sha256,
@@ -1239,14 +1239,14 @@ rmSync(WT, { recursive: true, force: true })
     && writeSpec.sandboxPolicy.sessionId === 'full-access-session',
   JSON.stringify(writeSpec && writeSpec.sandboxPolicy))
 
-  // 台账写入（mark）只改本地台账，不查平台：用它看写子进程拿到的档位。
+  // 记录写入（mark）只改本地记录，不查平台：用它看写子进程拿到的档位。
   const prBefore = fullShell.specs.length
   await prTarget(full, {
     sessionId: 'full-access-session', cwd: SANDBOX, action: 'mark',
     key: 'demo-draft', state: 'merged',
   }, 'pr-mark-full-access')
   const prSpec = fullShell.specs.slice(prBefore).find((spec) => /pr_status\.py/.test(String(spec.command || '')))
-  expect('目标：完全权限会话写台账的沙箱档位不降级', !!prSpec && prSpec.sandboxPolicy
+  expect('目标：完全权限会话写记录的沙箱档位不降级', !!prSpec && prSpec.sandboxPolicy
     && prSpec.sandboxPolicy.mode === 'danger-full-access', JSON.stringify(prSpec && prSpec.sandboxPolicy))
 }
 
@@ -1269,7 +1269,7 @@ expect('子进程超时：E_TIMEOUT', timeoutValue && timeoutValue.ok === false 
 expect('子进程超时：面板取数的原文带 traces/ 线索',
   timeoutValue && /^诊断状态取数超时（20 秒内没有返回；traces\/ 很大时可能偏慢）/.test(timeoutValue.message || ''),
   JSON.stringify(timeoutValue))
-// 其余取数路径也按调用对象给原文，秒数各自对上（时间线/沉淀队列 20/30 秒、PR 台账 30 秒）。
+// 其余取数路径也按调用对象给原文，秒数各自对上（时间线/沉淀队列 20/30 秒、PR 记录 30 秒）。
 const timeoutKinds = [
   ['轨迹时间线', 'copilot-timeline', {
     cwd: SANDBOX, tracesDir: TRACES, traceFile: TRACE_FILE,
@@ -1277,9 +1277,9 @@ const timeoutKinds = [
   ['沉淀队列', 'copilot-sediment', {
     cwd: SANDBOX, sessionId: 'smoke-timeout',
   }, /^沉淀队列取数超时（30 秒内没有返回）。$/],
-  ['PR 台账', 'copilot-pr-target', {
+  ['PR 记录', 'copilot-pr-target', {
     cwd: SANDBOX, action: 'list',
-  }, /^PR 台账读取超时（30 秒内没有返回）。$/],
+  }, /^PR 记录读取超时（30 秒内没有返回）。$/],
 ]
 for (const [label, method, payload, pattern] of timeoutKinds) {
   const resp = await request(timeoutHarness, {

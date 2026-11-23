@@ -146,7 +146,7 @@ class BranchRulesTest(unittest.TestCase):
     def test_evolution_flow_external_ok(self):
         self.write(cid="EV-2026-901", target="skills/self-evolve/SKILL.md",
                    target_line="target_component: skills/self-evolve/SKILL.md",
-                   external='  external: "台账提升率（proposals/signals 的 promoted 占比）"\n')
+                   external='  external: "信号提升率（proposals/signals 的 promoted 占比）"\n')
         self.assertEqual(self.run_check()[0], 0)
 
     def test_non_evolution_target_needs_no_external(self):

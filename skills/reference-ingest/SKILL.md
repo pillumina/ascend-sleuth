@@ -1,7 +1,7 @@
 ---
 name: reference-ingest
 description: >
-  从 GitCode 等可按 API 枚举的**文档仓**批量摄取官方文档，沉淀为 reference 先验词条（面向训练/推理的中断、精度、性能定位）。编排「仓库文档面普查 → 增量扫描（path×blob sha 记账，防重复抓取与重复评估）→ 候选筛选 → 按需抓正文到本地缓存（ref-docs/，git-ignored，sha 校验）→ 抽取 → 走 to-reference 归类产出 → mark 回写判定」；状态文件 reference-ingest-state.json 是唯一台账，`skipped` 也记账（判过不沉淀的文档下一轮不再评估）。以 token 节省为设计约束：脚本只拉目录树、正文按候选抓、码块与日志裁剪后再读。这是「文档语料 → reference」的统一批量注入入口，与 issue-ingest（issue → case）、to-reference（零散来源 → reference）互补。
+  从 GitCode 等可按 API 枚举的**文档仓**批量摄取官方文档，沉淀为 reference 先验词条（面向训练/推理的中断、精度、性能定位）。编排「仓库文档面普查 → 增量扫描（path×blob sha 记账，防重复抓取与重复评估）→ 候选筛选 → 按需抓正文到本地缓存（ref-docs/，git-ignored，sha 校验）→ 抽取 → 走 to-reference 归类产出 → mark 回写判定」；状态只写 reference-ingest-state.json 这一份文件，`skipped` 也记账（判过不沉淀的文档下一轮不再评估）。以 token 节省为设计约束：脚本只拉目录树、正文按候选抓、码块与日志裁剪后再读。这是「文档语料 → reference」的统一批量注入入口，与 issue-ingest（issue → case）、to-reference（零散来源 → reference）互补。
 ---
 
 # Reference Ingest
@@ -26,9 +26,9 @@ description: >
 
 ```
 /skill:reference-ingest cann/hccl                    # 指定仓：扫全仓文档面并给候选
-/skill:reference-ingest --org cann --status          # 看台账：各源决策分布（哪些仓扫过、多少未评）
+/skill:reference-ingest --org cann --status          # 看记录：各源决策分布（哪些仓扫过、多少未评）
 /skill:reference-ingest cann/hccl --prefix docs/zh/user_guide/fault_diagnosis   # 指定子面（推荐：先吃结构化手册）
-/skill:reference-ingest "继续沉淀"                    # 续接：读台账找 pending 与未扫的源，按优先级推进
+/skill:reference-ingest "继续沉淀"                    # 续接：读记录找 pending 与未扫的源，按优先级推进
 ```
 
 | 用户给到什么 | agent 行为 |
@@ -37,7 +37,7 @@ description: >
 | 只说"继续" | 读 `reference-ingest-state.json`：先清 pending，再按价值表取下一个源；报一句进度与下一批选题 |
 | 给"想吸收某主题的知识" | 在已扫源里按路径关键词检索（`status <repo> --decision pending` + 关键词），不重新全量扫 |
 
-## 状态文件是唯一台账（`reference-ingest-state.json`）
+## 状态只写这一个文件（`reference-ingest-state.json`）
 
 结构与字段含义见 `docs/guide/reference-ingest-pipeline.md`。执行侧只需记住三条：
 
@@ -148,11 +148,11 @@ python3 scripts/gc_docs.py mark hccl --decision harvested --refs hccl-comm-init-
 ```bash
 python3 scripts/verify_references.py --check
 python3 scripts/build_ref_summary_index.py && python3 scripts/build_procedure_index.py
-python3 scripts/gc_docs.py status          # 台账核对：本批 harvested/skipped/pending 是否归零
+python3 scripts/gc_docs.py status          # 记录核对：本批 harvested/skipped/pending 是否归零
 ```
 
 PR body 里必须写清的：**吃了哪些源与子面、跳过了哪些、未提取的图（`figures/*.png` 一类）**、`verification` 口径、以及 token 成本量级。批次结束接 `/skill:evolve-check`（流程摩擦与 miss 是演进信号）。
 
 ## 批次节奏
 
-**一批 = 一个主题**（通常 = 某仓的一个子面），走一次 PR：批太小则 PR 噪声大，批太大则人审不动。同一主题跨仓时按主题聚合产出，但**扫描与记账仍按仓**。批与批之间不必等确认（除非选题有歧义）；进度以"台账 + 一句选题"呈报给用户。
+**一批 = 一个主题**（通常 = 某仓的一个子面），走一次 PR：批太小则 PR 噪声大，批太大则人审不动。同一主题跨仓时按主题聚合产出，但**扫描与记账仍按仓**。批与批之间不必等确认（除非选题有歧义）；进度以"记录 + 一句选题"呈报给用户。

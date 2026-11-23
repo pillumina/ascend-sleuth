@@ -139,13 +139,13 @@ def collect_structural(root: Path):
         data = index_counts.counts(root)
         out["case_total"] = data["total"]
         caps = index_counts.capacity_by_ns(data)
-        # 容量台账两个量一起记：条数（增长观察）+ 阶段一实读 token（**被治理的成本量**）。
+        # 容量视图两个量一起记：条数（增长观察）+ 阶段一实读 token（**被治理的成本量**）。
         # 为什么现在才记 token：2026-09-29 之前容量只按条数管，而条数与真实成本差 3.6 倍
         # （见 docs/adr/0004 的读侧一节）；趋势要能看出"哪一格在变贵"。
         try:
             toks = {(c["namespace"], c["category"]): c["tok"] for c in index_read_cost.cell_costs(root)["cells"]}
         except Exception as e:
-            notes.append(f"读入成本现算失败（{type(e).__name__}: {str(e)[:120]}）——容量台账只记条数")
+            notes.append(f"读入成本现算失败（{type(e).__name__}: {str(e)[:120]}）——容量视图只记条数")
             toks = {}
         for ns_name, cs in caps.items():
             for cat, rec in cs.items():

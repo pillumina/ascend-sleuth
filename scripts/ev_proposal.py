@@ -80,7 +80,7 @@ def make_new(root: Path, force: bool = False) -> Path:
         if role != "maintainer":
             raise DeploymentGate(
                 f"本部署 role={source}：不在收尾自动产卡。"
-                f"记录观察请用 python3 scripts/evolve_intake.py record（信号台账）；"
+                f"记录观察请用 python3 scripts/evolve_intake.py record（信号记录）；"
                 f"演练或确需本地建档再加 --force。")
     cid = next_id(root)
     tpl = root / TEMPLATE

@@ -2,10 +2,10 @@
 
 钉住四件事——它们是「任何部署都不丢信号」的全部依据：
 
-1. 分流只由部署角色决定：maintainer / signal-only → 信号台账，off → 不落；
+1. 分流只由部署角色决定：maintainer / signal-only → 信号记录，off → 不落；
 2. 载荷先于分流校验：证据太短、target 指不到、缺出处都拒收（记录层的质量下限）；
 3. 非 maintainer 部署直接调 `ev_proposal.py --new` 会被拒（--force 是逃生口）；
-4. 台账有生命周期：new → triaged / dropped，export 默认不导 dropped。
+4. 记录有生命周期：new → triaged / dropped，export 默认不导 dropped。
 """
 
 import os

@@ -56,7 +56,7 @@ def load_case(path: Path):
     return doc, doc["cases"][0], str(path)
 
 # 结算游标：登记的共享运行时件（锚主检出、跨 worktree 共读共写、gitignored）。
-# 为什么不写 ingest-state.json：那份是摄取台账（要跨机同步故 tracked、走 PR）；
+# 为什么不写 ingest-state.json：那份是摄取记录（要跨机同步故 tracked、走 PR）；
 # 游标只是本地幂等状态，进 git 会让每次结算都变成一次 PR（见 EV-2026-096）。
 SETTLE_STATE_REL = Path(".settle-state.json")
 LEGACY_CURSOR_KEYS = ("_trace_feedback", "_s2_feedback")
