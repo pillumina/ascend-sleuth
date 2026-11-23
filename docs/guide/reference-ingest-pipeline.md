@@ -4,13 +4,13 @@
 
 ## 1 做完得到什么
 
-把上游文档仓里的昇腾知识（分级故障诊断手册、错误码参考、FAQ、调优指南）批量吸收成 `references/` 词条，与 [issue-ingest-pipeline.md](issue-ingest-pipeline.md)（issue → case）并列。管道读 `reference-ingest-state.json` 台账，产出 `status: active` 的 reference 词条。
+把上游文档仓里的昇腾知识（分级故障诊断手册、错误码参考、FAQ、调优指南）批量吸收成 `references/` 词条，与 [issue-ingest-pipeline.md](issue-ingest-pipeline.md)（issue → case）并列。管道读 `reference-ingest-state.json` 记录，产出 `status: active` 的 reference 词条。
 
 ## 2 前置条件
 
 - 执行规则在 `skills/reference-ingest/SKILL.md`（何时扫、怎么筛、token 怎么省、批怎么收尾）。
 - 产出规则在 `skills/to-reference/SKILL.md`（归类、schema、grill、深审）。
-- 状态文件 `reference-ingest-state.json` 是唯一台账，`skipped` 也记账。
+- 状态只写 `reference-ingest-state.json` 这一份文件，`skipped` 也记账。
 
 ### 为什么独立于 `ingest-state.json`
 
@@ -38,11 +38,11 @@
 4. 抓取。跑 `fetch`，只抓筛过的候选正文到 `ref-docs/`。
 5. 抽取。剥日志码块后读正文；超大文档按标题跳读。
 6. 产出。走 `to-reference` 归类产出词条。
-7. 记账。在台账 `mark` 判定（`harvested` / `skipped` / `pending`）。
+7. 记账。在记录里写 `mark` 判定（`harvested` / `skipped` / `pending`）。
 
 ### 两级判定：仓级 + 文档级
 
-台账有两个层级的判定，各自回答不同的问题：
+记录有两个层级的判定，各自回答不同的问题：
 
 | 层级 | 字段 | 回答的问题 | 成本 |
 |---|---|---|---|
@@ -100,7 +100,7 @@
 ## 4 怎么确认做对了
 
 - `scan` 打印增量表。
-- 台账里 `sources[...].docs[path]` 的 `decision` 取值是 `pending` / `harvested` / `skipped`。
+- 记录里 `sources[...].docs[path]` 的 `decision` 取值是 `pending` / `harvested` / `skipped`。
 - `head_sha` 是 commit，不是 ref 名。
 
 ## 5 出错了怎么办
@@ -116,8 +116,8 @@
 | `scan` 之后候选表把同一批文件又列一遍 | 上一轮没有 `mark`（扫描游标更新不等于判定落账）——`pending` 会一直在；要么产出，要么 `skipped` + 理由 |
 | 内嵌图（`figures/*.png`）内容丢失 | 文本通道只出文字；已提取的图要在 PR body 里如实声明未提取，评审者按需补 |
 | 整族文档被静默漏掉（如英文独有的一族） | 按语言目录一刀切排除（曾默认排除 `docs/en/`）会把「只在 en 下」的文档全漏——实测 cann/runtime 的错误码参考就是这样；语言目录不是「重复内容」的同义词，真正的双语重复由每源 config.exclude 逐仓判定 |
-| 候选表里混进大量非文档，判定预算花在「判噪音」上 | `.txt` 在文档扩展名里、且各仓自带的 agent 知识目录此前未被排除。实测：加排除前全台账里「agent 知识目录」条目 186 条、构建/依赖清单（`CMakeLists.txt`/`requirements*.txt`）条目 491 条，合计 677 条（按新规则的 basename 口径复算为 678 条）而 harvested 为 0。已加进默认排除规则（`AGENT_KB_DIRS` + basename 规则）：agent 知识目录按「只作线索、不作权威源」的口径不入扫描面，构建/依赖清单按 basename 排除（不看目录层级） |
+| 候选表里混进大量非文档，判定预算花在「判噪音」上 | `.txt` 在文档扩展名里、且各仓自带的 agent 知识目录此前未被排除。实测：加排除前全记录里「agent 知识目录」条目 186 条、构建/依赖清单（`CMakeLists.txt`/`requirements*.txt`）条目 491 条，合计 677 条（按新规则的 basename 口径复算为 678 条）而 harvested 为 0。已加进默认排除规则（`AGENT_KB_DIRS` + basename 规则）：agent 知识目录按「只作线索、不作权威源」的口径不入扫描面，构建/依赖清单按 basename 排除（不看目录层级） |
 
 ## 6 怎么退回去
 
-无。原文没有给出回滚步骤；台账写入用临时文件 + `os.replace` 原子替换，`fetch`/`mark` 是 read-modify-write，同一克隆内必须串行。
+无。原文没有给出回滚步骤；记录写入用临时文件 + `os.replace` 原子替换，`fetch`/`mark` 是 read-modify-write，同一克隆内必须串行。

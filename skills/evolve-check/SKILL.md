@@ -3,7 +3,7 @@ name: evolve-check
 description: >
   内容流程收尾的轻量信号检查。用户完成补 case / reference 沉淀 / 诊断 / 拉取 / replay
   后，本协议只做一件事：对照触发条件扫一遍现场，把值得后续处理的信号写进
-  proposals/signals/ 台账。不产 EV 卡、不跑 RSI 实验、不跑验证门；行为质量改动需要
+  proposals/signals/ 记录。不产 EV 卡、不跑 RSI 实验、不跑验证门；行为质量改动需要
   显式 RSI，深度归类与候选由用户显式发起的 /skill:self-evolve 承担。
 ---
 
@@ -24,8 +24,8 @@ python3 scripts/evolve_mode.py --json
 
 | role | 本协议行为 |
 |---|---|
-| `maintainer` | 扫信号并写台账；不产 EV 卡、不跑 RSI |
-| `signal-only` | 扫信号并写台账 |
+| `maintainer` | 扫信号并写记录；不产 EV 卡、不跑 RSI |
+| `signal-only` | 扫信号并写记录 |
 | `off` | 只写一行跳过记录，不扫信号 |
 
 配置写坏时脚本退出 2：把错误原文交给用户，不要自行选一档继续。
@@ -61,7 +61,7 @@ python3 scripts/tail_exec_log.py
 
 触发条件表是扫描清单，不是卡类型；命中后只记录信号，不在本协议里决定实现方案。
 
-## 第 3 步：写信号台账
+## 第 3 步：写信号记录
 
 统一走入口脚本，不直接调 `ev_proposal.py --new`：
 

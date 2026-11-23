@@ -501,7 +501,7 @@ def load_cursor_state(state_path: Path):
     """读共享游标文件（与 settle_trace_feedback / settle_s2_feedback 同一份、同一处落点）。
 
     这一份自己读而不复用 load_cursors：后者解析失败时把告警打到 stdout，会破坏
-    --json 的输出契约（stdout 只有 JSON）。本键（_upstream_outcomes）没有历史台账要迁，
+    --json 的输出契约（stdout 只有 JSON）。本键（_upstream_outcomes）没有历史记录要迁，
     所以也不需要那一支。
     """
     if not state_path.exists():

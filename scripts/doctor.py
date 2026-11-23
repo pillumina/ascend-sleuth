@@ -414,7 +414,7 @@ def check_pr_platforms(root):
         ledger = json.loads(ledger_proc.stdout.strip() or "{}")
         target = ((ledger.get("ledger") or {}).get("target") or {})
         target_platform = str(target.get("platform") or "")
-    except Exception:  # noqa: BLE001 - 读台账失败不阻断清单检查
+    except Exception:  # noqa: BLE001 - 读记录失败不阻断清单检查
         target_platform = ""
     if target_platform:
         picked = next((p for p in platforms if str(p.get("id")) == target_platform), None)

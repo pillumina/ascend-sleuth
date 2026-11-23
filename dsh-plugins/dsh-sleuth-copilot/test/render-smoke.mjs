@@ -1174,7 +1174,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('工具条：token 覆盖到入口按钮', toolTokenRule.includes('--scp-warn') && toolTokenRule.includes('--scp-fs-cap'),
     toolTokenRule.slice(0, 120))
   expect('工具条：暗色 token 也覆盖入口按钮', styleText.includes('body[data-ds-dark-theme] .scp-tool-btn'))
-  expect('标题按钮可打开台账', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断工作台：')))
+  expect('标题按钮可打开工作台', !!findNode(view, (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断工作台：')))
 }
 
 {
@@ -1947,21 +1947,21 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const t = await mount('recent')
   click(findToolbar(t.view()))
   let view = await t.settle()
-  expect('台账：标题在', view.text.includes('诊断工作台'))
-  expect('台账：列出人读案例标题', view.text.includes('vllm-ascend GLM-5.3 在 A3 跑推理时 MoE routing TopK 触发 vector core exception'))
-  expect('台账：筛选按钮带计数', view.text.includes('全部 1') && view.text.includes('待回报 1'))
+  expect('工作台：标题在', view.text.includes('诊断工作台'))
+  expect('工作台：列出人读案例标题', view.text.includes('vllm-ascend GLM-5.3 在 A3 跑推理时 MoE routing TopK 触发 vector core exception'))
+  expect('工作台：筛选按钮带计数', view.text.includes('全部 1') && view.text.includes('待回报 1'))
   const listNodes = byClass(view, 'scp-pal-list')
-  expect('台账：筛选在左列、不在标题栏', byClass(view, 'scp-filters').length === 1
+  expect('工作台：筛选在左列、不在标题栏', byClass(view, 'scp-filters').length === 1
     && !!listNodes[0] && (listNodes[0].children || []).some((node) => typeof (node.props && node.props.className) === 'string'
       && node.props.className.split(/\s+/).includes('scp-filters')))
-  expect('台账：视图切换带 tab 语义', byClass(view, 'scp-view-tab').every((node) => node.props.role === 'tab'
+  expect('工作台：视图切换带 tab 语义', byClass(view, 'scp-view-tab').every((node) => node.props.role === 'tab'
     && (node.props['aria-selected'] === 'true' || node.props['aria-selected'] === 'false')))
   // 时间按本地时区渲染：本地断言不能钉死小时（CI 跑在 UTC），只钉「日期 + 时分」的完整形状。
-  expect('台账：列表时间完整显示', /09-08 \d{2}:\d{2}/.test(view.text), view.text.slice(0, 500))
+  expect('工作台：列表时间完整显示', /09-08 \d{2}:\d{2}/.test(view.text), view.text.slice(0, 500))
   expect('详情抬头：短摘要不给展开入口', !findButton(view, '展开全文'))
   pressKey('Enter')
   const afterEnter = await t.settle()
-  expect('台账：Enter 打开回报表单', afterEnter.text.includes('将填入输入框'), afterEnter.text.slice(0, 400))
+  expect('工作台：Enter 打开回报表单', afterEnter.text.includes('将填入输入框'), afterEnter.text.slice(0, 400))
 }
 
 {
@@ -2050,7 +2050,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const opened = await t.settle()
   click(findButton(opened, '更多操作'))
   const view = await t.settle()
-  expect('台账写状态：出现沉淀状态组', view.text.includes('沉淀状态'), view.text.slice(-600))
+  expect('工作台写状态：出现沉淀状态组', view.text.includes('沉淀状态'), view.text.slice(-600))
   click(findButton(view, '沉淀状态…'))
   const formView = await t.settle()
   expect('状态表单：出现沉淀状态', formView.text.includes('沉淀状态'), formView.text.slice(-400))
@@ -2058,8 +2058,8 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   stateForm.props.onSubmit({ preventDefault() {} })
   await t.settle()
   const transition = t.lastTransition()
-  expect('台账写状态：kind=sedimented', transition && transition.kind === 'sedimented', JSON.stringify(transition))
-  expect('台账写状态：state=submitted', transition && transition.state === 'submitted')
+  expect('工作台写状态：kind=sedimented', transition && transition.kind === 'sedimented', JSON.stringify(transition))
+  expect('工作台写状态：state=submitted', transition && transition.state === 'submitted')
 }
 
 {
@@ -2170,7 +2170,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const open = findNode(t.view(), (node) => node.type === 'button' && node.props && node.props['aria-label'] && node.props['aria-label'].startsWith('诊断工作台：'))
   click(open)
   const view = await t.settle()
-  expect('标题按钮：打开台账并选中该单', view.text.includes('诊断工作台') && view.text.includes('vllm-ascend GLM-5.3'))
+  expect('标题按钮：打开工作台并选中该单', view.text.includes('诊断工作台') && view.text.includes('vllm-ascend GLM-5.3'))
 }
 
 {
@@ -2216,7 +2216,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
     && view.text.includes('--draft-key draft-b'), view.text.slice(-400))
   expect('批量撤销：指令说明不改诊断状态', view.text.includes('不改诊断状态')
     && !view.text.includes('--keep-status'), view.text.slice(-400))
-  expect('批量撤销：指令说明已关闭 PR 会清台账', view.text.includes('PR 已关闭的行会一并清掉本地台账记录'),
+  expect('批量撤销：指令说明已关闭 PR 会清 PR 记录', view.text.includes('PR 已关闭的行会一并清掉本地 PR 记录'),
     view.text.slice(-400))
   expect('批量撤销：名单带草稿标题', view.text.includes('本批名单')
     && view.text.includes('草稿 A') && view.text.includes('草稿 B'), view.text.slice(-500))
@@ -2291,7 +2291,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
 }
 
 {
-  // 撤销沉淀：PR 已关闭的草稿也给入口（撤销会清掉台账记录，PR 本身在平台上不动）。
+  // 撤销沉淀：PR 已关闭的草稿也给入口（撤销会清掉记录，PR 本身在平台上不动）。
   const closedPrDraft = Object.assign({}, SEDIMENT.drafts[0], {
     key: '2026-10-30-pd-oom', title: 'PD 分离 prefill OOM', state: 'pr_closed',
     stage: 'PR 已关闭', stageTone: 'bad',
@@ -2300,7 +2300,7 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
       platform: 'github', state: 'closed', source: 'platform', checkedAt: '2026-11-07T10:00:00+08:00',
     },
     next: { kind: 'groom', label: '重新评估（继续 groom）', prompt: '继续 groom 的批次指令' },
-    undo: { available: true, prompt: '撤销这次沉淀：2026-10-30-pd-oom。\n台账里这份草稿的 PR 已关闭（#431）；撤销会把这条 PR 记录一并清掉。' },
+    undo: { available: true, prompt: '撤销这次沉淀：2026-10-30-pd-oom。\n记录里这份草稿的 PR 已关闭（#431）；撤销会把记录里这个条目一并清掉。' },
   })
   const closedPrQueue = Object.assign({}, SEDIMENT, {
     drafts: [closedPrDraft],
@@ -2322,14 +2322,14 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   expect('撤销沉淀：详情显示已关闭的 PR', view.text.includes('#431'), view.text.slice(-300))
   click(findButtonContains(view, '撤销沉淀'))
   view = await t.settle()
-  expect('撤销沉淀：指令说明台账记录会被清掉', view.text.includes('台账') && view.text.includes('清'),
+  expect('撤销沉淀：指令说明条目会被清掉', view.text.includes('这个条目一并清掉'),
     view.text.slice(-400))
 }
 
 {
-  // 台账里这份草稿的记录坏了（不是对象）：不给撤销，详情提示先修台账。
+  // 记录里这份草稿的条目坏了（不是对象）：不给撤销，详情提示先修记录。
   const brokenDraft = Object.assign({}, SEDIMENT.drafts[0], {
-    key: '2026-10-31-broken-ledger', title: '台账坏记录的草稿', pr: null, prBroken: true,
+    key: '2026-10-31-broken-ledger', title: 'PR 记录损坏的草稿', pr: null, prBroken: true,
     undo: { available: false, prompt: '' },
   })
   const brokenQueue = Object.assign({}, SEDIMENT, {
@@ -2347,8 +2347,8 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   view = await t.settle()
   click(byClass(view, 'scp-sed-row')[0])
   view = await t.settle()
-  expect('坏台账记录：不给撤销入口', !findButtonContains(view, '撤销沉淀'), view.text.slice(-200))
-  expect('坏台账记录：详情提示先修台账', view.text.includes('记录不是对象'), view.text.slice(-300))
+  expect('坏记录：不给撤销入口', !findButtonContains(view, '撤销沉淀'), view.text.slice(-200))
+  expect('坏记录：详情提示先修记录', view.text.includes('条目不是对象'), view.text.slice(-300))
 }
 
 {
@@ -2932,8 +2932,8 @@ function rowText(view, prNumber) {
 }
 
 {
-  // 单条查合入写台账被系统拒绝：平台结果拿到了、台账没写进去。给指令弹层（复制 / 填入输入框），
-  // 点之前不填、不自动发送；指令要交代原因、已查到的状态、命令与台账路径。
+  // 单条查合入写记录被系统拒绝：平台结果拿到了、记录没写进去。给指令弹层（复制 / 填入输入框），
+  // 点之前不填、不自动发送；指令要交代原因、已查到的状态、命令与记录文件路径。
   const writeFailDraft = Object.assign({}, SEDIMENT.drafts[1], {
     state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
     pr: { number: 423, url: 'https://github.com/pillumina/ascend-sleuth/pull/423', platform: 'github', state: 'open', source: 'platform', checkedAt: '' },
@@ -2945,7 +2945,7 @@ function rowText(view, prNumber) {
     primary: { kind: 'check', label: '查合入状态', prompt: '查合入状态的指令' },
     history: [],
   })
-  const reason = '台账写不进去：D:/repos/ascend-sleuth/postmortems/inbox/.groom/pr-state.json.lock（拒绝访问）'
+  const reason = '记录写不进去：D:/repos/ascend-sleuth/postmortems/inbox/.groom/pr-state.json.lock（拒绝访问）'
   const CAS = 'a'.repeat(64)
   const t = await mount('recent', {
     sediment: Object.assign({}, writeFailQueue, {
@@ -2971,11 +2971,11 @@ function rowText(view, prNumber) {
   await t.settle()
   view = await t.settle()
   expect('查合入写失败：给指令弹层', view.text.includes(reason), view.text.slice(-400))
-  expect('查合入写失败：说明写的是台账', view.text.includes('面板没把结果写进 PR 台账'), view.text.slice(-400))
+  expect('查合入写失败：说明写的是记录', view.text.includes('面板没把结果写进 PR 记录'), view.text.slice(-400))
   expect('查合入写失败：带已查到的状态', view.text.includes('平台已经查到：已合入'), view.text.slice(-400))
   expect('查合入写失败：给可执行命令', view.text.includes('python3 scripts/pr_status.py --root . --check --draft ' + writeFailDraft.key), view.text.slice(-600))
-  expect('查合入写失败：命令带台账 CAS 令牌', view.text.includes('--expect-sha256 ' + CAS), view.text.slice(-600))
-  expect('查合入写失败：给台账路径', view.text.includes('postmortems/inbox/.groom/pr-state.json'), view.text.slice(-600))
+  expect('查合入写失败：命令带记录 CAS 令牌', view.text.includes('--expect-sha256 ' + CAS), view.text.slice(-600))
+  expect('查合入写失败：给记录文件路径', view.text.includes('postmortems/inbox/.groom/pr-state.json'), view.text.slice(-600))
   expect('查合入写失败：不自动填指令', t.drafts.length === 0, String(t.drafts.length))
   click(findButton(view, '填入输入框'))
   const draft = t.lastDraft()
@@ -3043,7 +3043,7 @@ function rowText(view, prNumber) {
       write_failed: true,
       // 真实 done 行形状：查询本身成功，checked[] 里带的是平台状态，只是没落盘。
       checked: [{ draft: batchDraft.key, ok: true, state: 'merged' }],
-      error: { code: 'E_LEDGER', message: '台账写不进去：D:/repo/postmortems/inbox/.groom/pr-state.json.lock（拒绝访问）' },
+      error: { code: 'E_LEDGER', message: '记录写不进去：D:/repo/postmortems/inbox/.groom/pr-state.json.lock（拒绝访问）' },
     },
     prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
   })
@@ -3061,7 +3061,7 @@ function rowText(view, prNumber) {
 }
 
 {
-  // 读坏台账也是 E_LEDGER，但不是写失败：不给写指令，仍按查询失败提示原因。
+  // 记录损坏也是 E_LEDGER，但不是写失败：不给写指令，仍按查询失败提示原因。
   const brokenDraft = Object.assign({}, SEDIMENT.drafts[1], {
     state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
     pr: { number: 426, url: 'https://github.com/pillumina/ascend-sleuth/pull/426', platform: 'github', state: 'open', source: 'platform', checkedAt: '' },
@@ -3077,7 +3077,7 @@ function rowText(view, prNumber) {
     sediment: brokenQueue,
     prCheckResult: {
       ok: false,
-      error: { code: 'E_LEDGER', message: '台账不是合法 JSON（/repo/postmortems/inbox/.groom/pr-state.json）' },
+      error: { code: 'E_LEDGER', message: '记录不是合法 JSON（/repo/postmortems/inbox/.groom/pr-state.json）' },
     },
     prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
   })
@@ -3092,12 +3092,12 @@ function rowText(view, prNumber) {
   click(findButton(view, '查合入状态'))
   await t.settle()
   view = await t.settle()
-  expect('读坏台账：不进写指令弹层', !view.text.includes('python3 scripts/pr_status.py --root . --check'), view.text.slice(-400))
-  expect('读坏台账：仍给原因', view.text.includes('查合入没成功') && view.text.includes('台账不是合法 JSON'), view.text.slice(-400))
+  expect('记录损坏：不进写指令弹层', !view.text.includes('python3 scripts/pr_status.py --root . --check'), view.text.slice(-400))
+  expect('记录损坏：仍给原因', view.text.includes('查合入没成功') && view.text.includes('记录不是合法 JSON'), view.text.slice(-400))
 }
 
 {
-  // 批次查合入成功但台账里没有可查的 PR（checked 为空）：给「没有待查的 PR」。
+  // 批次查合入成功但记录里没有可查的 PR（checked 为空）：给「没有待查的 PR」。
   const emptyDraft = Object.assign({}, SEDIMENT.drafts[1], {
     state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
     pr: { number: 420, url: 'https://github.com/pillumina/ascend-sleuth/pull/420', platform: 'github', state: 'unknown', source: 'platform', checkedAt: '' },
@@ -3126,7 +3126,7 @@ function rowText(view, prNumber) {
 }
 
 {
-  // 只读档位：单条查合入不写台账，回落成生成查证指令；按钮不能是禁用到底的死路。
+  // 只读档位：单条查合入不写记录，回落成生成查证指令；按钮不能是禁用到底的死路。
   const roDraft = Object.assign({}, SEDIMENT.drafts[1], {
     state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
     pr: { number: 418, url: 'https://github.com/pillumina/ascend-sleuth/pull/418', platform: 'github', state: 'open', source: 'platform', checkedAt: '' },
@@ -3154,12 +3154,12 @@ function rowText(view, prNumber) {
   click(checkBtn)
   view = await t.settle()
   expect('只读：单条查合入回落生成指令', byClass(view, 'scp-modal').length === 1 && view.text.includes('查合入状态的指令'))
-  expect('只读：单条查合入不写台账', t.rpcCalls.slice(before).every((item) => item.endpoint !== 'copilot-pr-target'))
+  expect('只读：单条查合入不写记录', t.rpcCalls.slice(before).every((item) => item.endpoint !== 'copilot-pr-target'))
   expect('只读：指令弹层不重复流程句', (view.text.split('流程：按 skill 第 5 步执行').length - 1) === 1, view.text.slice(-300))
 }
 
 {
-  // 手动改状态遇到 CAS 冲突：刷新台账、弹层留着让读者重试，不静默。
+  // 手动改状态遇到 CAS 冲突：刷新记录、弹层留着让读者重试，不静默。
   const casDraft = Object.assign({}, SEDIMENT.drafts[1], {
     state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
     pr: { number: 422, url: 'https://github.com/pillumina/ascend-sleuth/pull/422', platform: 'github', state: 'open', source: 'platform', checkedAt: '' },
@@ -3173,7 +3173,7 @@ function rowText(view, prNumber) {
   })
   const t = await mount('recent', {
     sediment: casQueue,
-    prMarkResult: { ok: false, error: { code: 'E_CAS', message: '台账已变，请刷新后重试' } },
+    prMarkResult: { ok: false, error: { code: 'E_CAS', message: '记录已变，请刷新后重试' } },
     prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
   })
   click(findToolbar(t.view()))
@@ -3189,8 +3189,8 @@ function rowText(view, prNumber) {
   const before = t.rpcCalls.length
   click(byClass(view, 'scp-pick').find((pick) => nodeText(pick).includes('已合入')))
   view = await t.settle()
-  expect('手动改状态：CAS 冲突给原因', view.text.includes('台账已变'))
-  expect('手动改状态：CAS 后刷新台账', t.rpcCalls.slice(before).some((item) => item.endpoint === 'copilot-sediment'))
+  expect('手动改状态：CAS 冲突给原因', view.text.includes('记录已变'))
+  expect('手动改状态：CAS 后刷新记录', t.rpcCalls.slice(before).some((item) => item.endpoint === 'copilot-sediment'))
   expect('手动改状态：CAS 后弹层留开', byClass(view, 'scp-modal').length === 1)
 }
 
@@ -3574,7 +3574,7 @@ function rowText(view, prNumber) {
 }
 
 {
-  // 手动改状态写台账失败：与查合入同一份台账，给 --mark 指令，不让人对着不可写的文件重试。
+  // 手动改状态写记录失败：与查合入同一份记录，给 --mark 指令，不让人对着不可写的文件重试。
   const markDraft = Object.assign({}, SEDIMENT.drafts[1], {
     state: 'pr_open', stage: '已提 PR · 合入未确认', stageTone: 'accent',
     pr: { number: 427, url: 'https://github.com/pillumina/ascend-sleuth/pull/427', platform: 'github', state: 'open', source: 'platform', checkedAt: '' },
@@ -3593,7 +3593,7 @@ function rowText(view, prNumber) {
     }),
     prMarkResult: {
       ok: false, write_failed: true,
-      error: { code: 'E_LEDGER', message: '台账写不进去：D:/repo/postmortems/inbox/.groom/pr-state.json.lock（拒绝访问）' },
+      error: { code: 'E_LEDGER', message: '记录写不进去：D:/repo/postmortems/inbox/.groom/pr-state.json.lock（拒绝访问）' },
     },
     prefs: { dockCollapsed: false, paletteFilter: 'all', pins: {} },
   })
@@ -3612,12 +3612,12 @@ function rowText(view, prNumber) {
   await t.settle()
   view = await t.settle()
   expect('手动改状态写失败：给 --mark 指令', view.text.includes('--mark --draft ' + markDraft.key + ' --state merged'), view.text.slice(-500))
-  expect('手动改状态写失败：说明台账路径', view.text.includes('PR 台账：postmortems/inbox/.groom/pr-state.json'), view.text.slice(-500))
-  expect('手动改状态写失败：命令带台账 CAS 令牌', view.text.includes('--expect-sha256 ' + CAS), view.text.slice(-600))
+  expect('手动改状态写失败：说明记录文件路径', view.text.includes('PR 记录：postmortems/inbox/.groom/pr-state.json'), view.text.slice(-500))
+  expect('手动改状态写失败：命令带记录 CAS 令牌', view.text.includes('--expect-sha256 ' + CAS), view.text.slice(-600))
 }
 
 {
-  // 写推送目标失败落在本地配置（settings.json），兜底要指配置文件，不能指 PR 台账。
+  // 写推送目标失败落在本地配置（settings.json），兜底要指配置文件，不能指 PR 记录。
   const t = await mount('recent', {
     prSetTargetResult: {
       ok: false, write_failed: true,
@@ -3639,10 +3639,10 @@ function rowText(view, prNumber) {
   await t.settle()
   view = await t.settle()
   expect('写目标失败：说明写的是本地配置', view.text.includes('面板没把推送目标写进本地配置'), view.text.slice(-500))
-  expect('写目标失败：指配置文件而不是台账', view.text.includes('配置文件：.local/settings.json')
-    && !view.text.includes('PR 台账：postmortems/inbox/.groom/pr-state.json'), view.text.slice(-600))
+  expect('写目标失败：指配置文件而不是记录', view.text.includes('配置文件：.local/settings.json')
+    && !view.text.includes('PR 记录：postmortems/inbox/.groom/pr-state.json'), view.text.slice(-600))
   expect('写目标失败：给 --set-target 指令', view.text.includes('--set-target --remote origin --base main'), view.text.slice(-600))
-  expect('写目标失败：写配置那一路不带台账 CAS 令牌', !view.text.includes('--expect-sha256'), view.text.slice(-600))
+  expect('写目标失败：写配置那一路不带记录 CAS 令牌', !view.text.includes('--expect-sha256'), view.text.slice(-600))
 }
 
 {

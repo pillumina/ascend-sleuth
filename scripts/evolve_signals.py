@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""evolve_signals.py —— 演进信号台账：收尾观察的仓库内记录 + 导出成 issue/MR 文本
+"""evolve_signals.py —— 演进信号记录：收尾观察的仓库内记录 + 导出成 issue/MR 文本
 
 ## 为什么需要
 
@@ -204,7 +204,7 @@ def render_md(items, title: str = "") -> str:
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="演进信号台账：写、列、导出")
+    ap = argparse.ArgumentParser(description="演进信号记录：写、列、导出")
     ap.add_argument("--root", type=Path, default=None, help="仓库根（默认当前检出顶层）")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
@@ -223,7 +223,7 @@ def main(argv=None):
     m.add_argument("--status", required=True, choices=list(STATUSES), help="目标状态")
     m.add_argument("--note", default="", help="一句话说明（为什么丢 / 为什么提升）")
 
-    sub.add_parser("list", help="列出台账里的信号")
+    sub.add_parser("list", help="列出记录里的信号")
     sub.add_parser("export", help="导出成可粘贴的 issue / MR 描述")
 
     for name in ("list", "export"):

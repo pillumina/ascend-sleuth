@@ -373,9 +373,9 @@ def check_error_gap_views(root: Path, errors: list):
     """错误码缺口的两个视图必须一致：族内视图（`content.code_gaps`）⊆ 生成索引（`_code-gaps.yaml`）。
 
     为什么需要：族内视图让"在这个族里没查到"的当下就能看到"这个码我知道但官方表没有行"，
-    它离读者最近；生成索引是完整台账。两份表达同一件事——手工维护的那一份（族内）一旦与
-    生成的台账漂移，最小代价的修法不是"记得两边都改"，是让它红。方向只查**族内 ⊆ 台账**：
-    族内视图是**节选**（只收本族的码），比台账少是正常的，多出来才是漂移。"""
+    它离读者最近；生成索引是完整记录。两份表达同一件事——手工维护的那一份（族内）一旦与
+    生成的记录漂移，最小代价的修法不是"记得两边都改"，是让它红。方向只查**族内 ⊆ 记录**：
+    族内视图是**节选**（只收本族的码），比记录少是正常的，多出来才是漂移。"""
     gap_path = root / "references" / "errors" / "_code-gaps.yaml"
     if not gap_path.exists():
         errors.append("references/errors/_code-gaps.yaml 不存在——运行 scripts/build_error_gap_index.py 生成")
@@ -773,7 +773,7 @@ def main():
     errors += check_tool_binding_coverage(root, [])
     # 3c) related_references 悬挂：互链是"缺行时的跳板"的来源，断了只是静默点不动
     errors = check_related_references(root, ref_ids, errors)
-    # 3d) 错误码缺口的两个视图（族内节选 vs 生成台账）不得漂移
+    # 3d) 错误码缺口的两个视图（族内节选 vs 生成记录）不得漂移
     errors = check_error_gap_views(root, errors)
     seen_ids = {}
     for path in sorted(refs_dir.rglob("*.yaml")):

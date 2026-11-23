@@ -2,7 +2,7 @@
 
 护的是「撤销一次沉淀」这条写路径：草稿出队、评估状态文件删除、来源 trace 回写，三处都做过
 才叫撤干净；只做一半不会报错，只会留下「trace 说已交草稿、inbox 里没有」或「草稿没了、
-评估状态文件还挂着」的不一致状态。另外两条边界也必须拦住：台账里已有 PR 的草稿不能撤，
+评估状态文件还挂着」的不一致状态。另外两条边界也必须拦住：记录里已有 PR 的草稿不能撤，
 痕迹（评估 id、人决定、草稿去向）必须留在 undo-log 里。
 
 做法：真实临时 git 仓库 + 真实共享 inbox（`groom_common.shared_inbox` 解析到该仓库），
@@ -234,7 +234,7 @@ class SedimentUndoTest(unittest.TestCase):
 
         proc, payload = self.run_undo("--draft-key", key)
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-        self.assertIn("PR 台账", proc.stdout)
+        self.assertIn("PR 记录", proc.stdout)
         self.assertIn("已关闭", proc.stdout)
         self.assertIn("#431", proc.stdout)
         self.assertTrue(draft.is_file())
@@ -338,7 +338,7 @@ class SedimentUndoTest(unittest.TestCase):
         with mock.patch.object(
                 su.pr_status, "forget_pr",
                 side_effect=su.pr_status.PrRecordError(
-                    "E_NOT_FOUND", "台账里没有这份草稿的 PR 记录：draft-a")):
+                    "E_NOT_FOUND", "PR 记录里没有这份草稿的条目：draft-a")):
             with contextlib.redirect_stdout(buf):
                 code = su.run(["--draft-key", key, "--apply", "--json",
                                "--root", str(self.repo)])

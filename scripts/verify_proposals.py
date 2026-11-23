@@ -18,7 +18,7 @@
 #   8. supersedes/superseded_by 引用的卡 id 存在（若填）
 #   9. decisions 为列表，元素含 who/when/conclusion（若非空）；type ∈ {proposal, action,
 #      eval, decision} 若填（生命周期阶段标注，pipeline §7）
-#   10. validation.method ∈ {golden_replay, metrics_compare, issue_replay, scan_review}（2026-09 去 tally_recheck——台账复测已改归因事件复测；scan_review 补"指引面/文档面改动"——不跑检索 golden，scan + 人审，见 evolve-check 分级）
+#   10. validation.method ∈ {golden_replay, metrics_compare, issue_replay, scan_review}（2026-09 去 tally_recheck——记录复测已改归因事件复测；scan_review 补"指引面/文档面改动"——不跑检索 golden，scan + 人审，见 evolve-check 分级）
 #   11. 生命周期完整性（pipeline §7「生命周期完整性规则」）：
 #       - 终态卡（validated/rejected/superseded）必须有 agent 决策记录
 #       - validated 后 actual_cost.tokens 必填（成本审计缺口；口径与面板 ev_board_data
@@ -477,7 +477,7 @@ def check_branches_and_self_reference(root: Path, errors: list):
             if not str(ext or "").strip():
                 errors.append(f"{f}: 改的是演进流程（{tc}），缺 predicted_effect.external——"
                               "measure 只能证明脚本能跑，效果信号要来自流程之外"
-                              "（如台账提升率、intake 拒收率、no-signal 比率、单卡合入天数）")
+                              "（如信号提升率、intake 拒收率、no-signal 比率、单卡合入天数）")
             elif str(ext).strip() == tc:
                 errors.append(f"{f}: predicted_effect.external 不能指回被改的组件本身（自指度量不可证伪）")
 

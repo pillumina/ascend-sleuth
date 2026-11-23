@@ -35,6 +35,7 @@
 | 判词 | 结论、判定结论 | 评估台的三种结论；字段名 `verdict` 照原样 |
 | 两臂 | 基线与候选 | 指对照实验的两侧 |
 | 账本 | 记录、评估记录 | `impact.yaml` 写「影响记录」；文件路径不改 |
+| 台账 | 记录（PR 记录 / 信号记录 / 摄取记录） | 存多条记录的本地文件或目录；容量台账写「容量视图」 |
 | 成本轴 | 成本指标 | 成本的一个维度 |
 | 收题 | 收尾、结单 | 一单诊断或一轮工作结束 |
 | 半硬 | 需人工确认的检查 | 检查本身机械，但要人签字才生效 |
@@ -56,7 +57,7 @@
 | gate | 验收条件、检查条件 | `proposals/gates.yaml`、`metrics/gates.yaml`、`no_regression_scope` 等路径与字段 |
 | holdout | 保留测试集 | `eval/holdout.yaml`、`scripts/holdout.py` |
 | verdict | 结论 | trace 字段 `verdict` 与取值 `case_error`、`execution_error` |
-| ledger | 记录 | `impact.yaml` 写「影响记录」；文件名不改 |
+| ledger | 记录 | `impact.yaml` 写「影响记录」、`pr-state.json` 写「PR 记录」；文件名不改 |
 | fixture | 固定回归样例 | `*.fixture.yaml`、`scripts/replay_golden.py` |
 
 ### 3.3 多义词：按上下文改，不全局替换
@@ -84,7 +85,7 @@
 只有禁用词能脚本扫描，一条 `grep` 即可。扫描范围是目标文档，命中先判是不是原值（引用旧词、字段名、文件名、本表自身）：
 
 ```bash
-grep -rnE "夹具|判词|两臂|账本|成本轴|收题|半硬|硬门|软门|证据包|落点|留痕|收口|腐烂|咬人" docs/mechanism docs/spec
+grep -rnE "夹具|判词|两臂|账本|台账|成本轴|收题|半硬|硬门|软门|证据包|落点|留痕|收口|腐烂|咬人" docs/mechanism docs/spec
 ```
 
 一译一义与多义词两条只能人审：检查工具判不了语境，也不该标记情态。提交前对着 §3 读一遍改动过的段落，比加一条会误报的扫描更有用。

@@ -95,7 +95,7 @@ flowchart LR
     D[diagnose] --> T[本地 trace]
     T --> C[case / reference]
     C --> P1[PR]
-    T -.-> S[signal 台账]
+    T -.-> S[signal 记录]
   end
   subgraph M[演进维护者]
     S --> SE[self-evolve<br/>归类与候选]

@@ -1277,7 +1277,7 @@ export function apply(ctx) {
     return /^[A-Za-z0-9][A-Za-z0-9._-]{0,180}$/.test(String(value || ''))
   }
 
-  // PR 台账写在共享 inbox（主检出侧），写动作的沙箱根取主检出。
+  // PR 记录写在共享 inbox（主检出侧），写动作的沙箱根取主检出。
   async function prTarget(payload) {
     const cwd = typeof payload.cwd === 'string' ? payload.cwd : ''
     const action = String(payload.action || 'list')
@@ -1295,19 +1295,19 @@ export function apply(ctx) {
     if (!(await isFile(script))) return { ok: false, code: 'E_NO_HELPER', message: '检出里缺少 scripts/pr_status.py' }
     const rootArgs = ['--root', shq(root)]
     if (action === 'list') {
-      // 一次调用就带出台账指纹（pr_status.py 的 list-targets 返回 sha256，台账不存在为 null）：
+      // 一次调用就带出记录指纹（pr_status.py 的 list-targets 返回 sha256，记录不存在为 null）：
       // 写动作的 CAS 令牌由客户端从这里取，不再单起一次 --status。
       return runJsonHelper(root, python, script, [...rootArgs, '--list-targets', '--json'], 30000, policy,
-        timeoutMessage('PR 台账读取', 30000))
+        timeoutMessage('PR 记录读取', 30000))
     }
     const caps = await writeCaps(payload.sessionId)
     if (!caps.canWrite) return { ok: false, code: caps.reasonCode || 'E_PERM', message: caps.reason }
     const mainRoot = await mainRootOf(root)
-    // 台账写在共享 inbox（主检出侧），与状态写入同一类失败：完全权限会话不降级。
+    // 记录写在共享 inbox（主检出侧），与状态写入同一类失败：完全权限会话不降级。
     const writePolicy = writeSandboxPolicy(caps.policy, mainRoot)
     const expectSha = typeof payload.expectSha256 === 'string' ? payload.expectSha256.trim() : ''
     if (expectSha && !/^[0-9a-f]{64}$/.test(expectSha)) {
-      return { ok: false, code: 'E_SCHEMA', message: '台账内容指纹格式不对，请刷新沉淀队列后重试' }
+      return { ok: false, code: 'E_SCHEMA', message: '记录内容指纹格式不对，请刷新沉淀队列后重试' }
     }
     const casArgs = expectSha ? ['--expect-sha256', shq(expectSha)] : []
     const argv = [...rootArgs]
@@ -1322,7 +1322,7 @@ export function apply(ctx) {
       }
       argv.push('--mark', '--draft', shq(String(payload.key)), '--state', shq(String(payload.state)), ...casArgs)
     } else if (action === 'check-all') {
-      // 一次查完所有 open/unknown；脚本自己按台账做 CAS，写回 state/checked_at/source。
+      // 一次查完所有 open/unknown；脚本自己按记录做 CAS，写回 state/checked_at/source。
       // 逐行模式只服务进度，最终结果仍以 stdout 里最后一行 done 为准（见 runCheckAll）。
       // 面板多选时带 keys：只查所选，未选中的行不动。
       const keys = Array.isArray(payload.keys) ? payload.keys.filter(validDraftKey) : []
@@ -1346,7 +1346,7 @@ export function apply(ctx) {
       return runCheckAll(root, python, script, argv, timeoutMs, writePolicy, payload)
     }
     return runJsonHelper(root, python, script, argv, timeoutMs, writePolicy,
-      timeoutMessage('PR 台账写入', timeoutMs))
+      timeoutMessage('PR 记录写入', timeoutMs))
   }
 
   // ── 知识库更新提醒 ─────────────────────────────────────────────────────────

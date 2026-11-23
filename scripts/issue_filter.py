@@ -69,7 +69,7 @@ def load_state(path: Path) -> dict:
 def save_state(path: Path, state: dict) -> None:
     """原子写状态文件：临时文件 + os.replace。
 
-    为什么：这份台账是 issue 去重的唯一依据。直接 json.dump 到目标文件时，进程在写一半
+    为什么：这份记录是 issue 去重的唯一依据。直接 json.dump 到目标文件时，进程在写一半
     中断会留下半截 JSON，下一轮 load_state 直接失败，而且没有第二份记录可恢复。
     """
     atomic_write_text(path, json.dumps(state, ensure_ascii=False, indent=2) + "\n")

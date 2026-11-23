@@ -14,7 +14,7 @@
 | 部署级演进角色 `evolution.role` | [operations.md](operations.md) 3.1 | 已落地 | `python3 scripts/evolve_mode.py` |
 | 全库体检轮 | [operations.md](operations.md) 3.1 | 已落地 | `ls skills/self-evolve/SKILL.md` |
 | 每周批审 | [operations.md](operations.md) 3.3 | 已落地 | `ls skills/knowledge-groom/SKILL.md` |
-| 信号台账（下游部署的收尾交接） | [signals/README.md](../../proposals/signals/README.md) | 已落地 | `python3 scripts/evolve_signals.py list` |
+| 信号记录（下游部署的收尾交接） | [signals/README.md](../../proposals/signals/README.md) | 已落地 | `python3 scripts/evolve_signals.py list` |
 | 演进记录入口 `evolve_intake` 与信号生命周期 | [evolve-check/SKILL.md](../../skills/evolve-check/SKILL.md) 第 3 步 | 已落地 | `python3 scripts/evolve_intake.py record --help` |
 | 改进项的过程档案、状态机与卡 schema 校验（含 `status_lag`，与面板同一判断） | [records.md](records.md) 3.1 | 已落地 | `python3 scripts/verify_proposals.py --check`；`grep -n "状态滞后" scripts/verify_proposals.py` |
 | 知识层分级 `authorization` 取 auto / review / dual | [records.md](records.md) 3.1、[operations.md](operations.md) 3.2 | 已落地 | `grep -h "^authorization:" proposals/ideas/*.yaml \| sort \| uniq -c` |

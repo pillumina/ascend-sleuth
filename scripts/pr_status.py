@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-# pr_status.py —— 提 PR 的目标（target）与每份草稿的 PR 台账（prs），带平台适配器派发
+# pr_status.py —— 提 PR 的目标（target）与每份草稿的 PR 记录（prs），带平台适配器派发
 #
 # 为什么需要它：队列停在「已提 PR · 合入未确认」之后，界面要回答两个问题——「提到哪」
-# 与「合入没有」——而这两件事实都有多个写侧（agent 开完 PR 写台账、人手动确认、平台查询）。
-# 让每个写侧各自手编 JSON 会漂移：字段名不一致、状态被推断、丢 checked_at。所以台账只有
+# 与「合入没有」——而这两件事实都有多个写侧（agent 开完 PR 写记录、人手动确认、平台查询）。
+# 让每个写侧各自手编 JSON 会漂移：字段名不一致、状态被推断、丢 checked_at。所以记录只有
 # 这一个读写入口：原子写 + 文件字节 sha256 CAS，agent 不手编 JSON（设计 5.6、5.7）。
 #
 # 它做什么：
-#   1. 台账读写（`<inbox>/.groom/pr-state.json`，共享 inbox，同一克隆的 worktree 共用）；
+#   1. 记录读写（`<inbox>/.groom/pr-state.json`，共享 inbox，同一克隆的 worktree 共用）；
 #   2. 列远端并识别平台（`--list-targets`，不探测网络）；
 #   3. 写目标与 PR 记录（`--set-target` / `--set` / `--mark`）；删掉一条已关闭的
 #      PR 记录（`--forget`，只有 `closed` 可以删，撤销沉淀时用）；
 #   4. 按 PR URL 的 host 查状态（`--check` / `--check-all`）。状态只由平台查询或人手确认
 #      更新，不由「分支是否存在」「commit 是否在 main」推断（设计 5.6）。`--check-all`
-#      把台账里同一 PR 的多份草稿合并成一次查询，查到的状态分发给组内每份。
+#      把记录里同一 PR 的多份草稿合并成一次查询，查到的状态分发给组内每份。
 #
 # 平台适配两层（加平台不改本文件，设计 5.8）：
 #   - 声明式：`scripts/platforms/<id>.yaml`，REST + token；本文件用 urllib 执行；
@@ -32,7 +32,7 @@
 #       "write_failed"?:true}
 #      成功时 sha256 是字符串；E_CHECK_PARTIAL / E_CAS / E_LEDGER 都在 error 里给 code 与 message；
 #      write_failed 只在落盘被系统拒绝（E_LEDGER）时出现，面板据此给可复制指令。
-#   3. row 的行序是查询完成序；done 里 checked[] 仍是台账键序（与 --json 相同），面板以 done 为准。
+#   3. row 的行序是查询完成序；done 里 checked[] 仍是草稿键序（与 --json 相同），面板以 done 为准。
 #   4. 未预期异常（E_INTERNAL）与参数错误（E_ARGS）不在 done 行里。E_ARGS 出现在任何 row 之前；
 #      E_INTERNAL 可能出现在已打出的 row 之后。两者都是**一行 compact JSON**（不含 type，退出码不变），
 #      读端按「最后一段行首 { 到末尾」整体解析一次即可还原 error.code / message。
@@ -86,7 +86,7 @@ CHECKABLE = ("open", "unknown")
 
 #: --check-all 查询阶段的并发度。取 4 而不是更大：一个批次是 N 次独立的平台请求，
 #: 并发太高会撞平台速率限制，也把本机连接与请求日志放大到难排查；4 路已能把 N 次
-#: 请求压到 N/4 波。落盘仍是全部查完后的一次 CAS 写，不并发写台账。
+#: 请求压到 N/4 波。落盘仍是全部查完后的一次 CAS 写，不并发写记录。
 CHECK_ALL_WORKERS = 4
 
 DEFAULT_BASE = "main"
@@ -99,14 +99,14 @@ EXIT_ARGS = 2
 
 
 class LedgerError(RuntimeError):
-    """台账读不出来（坏 JSON / 不是对象）。调用方折成 E_LEDGER。"""
+    """记录读不出来（坏 JSON / 不是对象）。调用方折成 E_LEDGER。"""
 
 
 class CasConflict(LedgerError):
     """写前发现文件字节已变（别的进程写过）。调用方折成 E_CAS，不覆盖。"""
 
     def __init__(self, expected: str, actual: str):
-        super().__init__(f"台账已被改动：expect {expected or '（文件不存在）'}，实际 {actual or '（文件不存在）'}")
+        super().__init__(f"记录已被改动：expect {expected or '（文件不存在）'}，实际 {actual or '（文件不存在）'}")
         self.expected = expected
         self.actual = actual
 
@@ -119,7 +119,7 @@ class PrRecordError(RuntimeError):
         self.code = code
 
 
-# ---------------------------------------------------------------- 台账：路径 / 读 / 原子写 + CAS
+# ---------------------------------------------------------------- 记录：路径 / 读 / 原子写 + CAS
 
 def ledger_path(root) -> Path:
     return Path(shared_inbox(Path(root))) / LEDGER_REL
@@ -137,7 +137,7 @@ def file_sha256(path: Path):
     except FileNotFoundError:
         return None
     except OSError as exc:
-        raise LedgerError(f"读台账失败：{exc}") from exc
+        raise LedgerError(f"读记录失败：{exc}") from exc
 
 
 def ledger_sha256(root) -> str:
@@ -145,16 +145,16 @@ def ledger_sha256(root) -> str:
 
 
 def load_ledger(root) -> dict:
-    """读台账。不存在返回空台账（首次使用不是错误）；坏文件抛 LedgerError。"""
+    """读记录文件。不存在时返回空 dict（首次使用不是错误）；坏文件抛 LedgerError。"""
     path = ledger_path(root)
     if not path.exists():
         return empty_ledger()
     try:
         data = load_json(path)
     except Exception as exc:
-        raise LedgerError(f"台账不是合法 JSON（{path}）：{exc}") from exc
+        raise LedgerError(f"记录不是合法 JSON（{path}）：{exc}") from exc
     if not isinstance(data, dict):
-        raise LedgerError(f"台账顶层不是对象（{path}）")
+        raise LedgerError(f"记录顶层不是对象（{path}）")
     data.setdefault("schema", SCHEMA)
     data.setdefault("updated_at", "")
     data.setdefault("target", None)
@@ -162,12 +162,12 @@ def load_ledger(root) -> dict:
     if prs is None:
         data["prs"] = {}
     elif not isinstance(prs, dict):
-        raise LedgerError("台账 `prs` 不是对象")
+        raise LedgerError("记录 `prs` 不是对象")
     return data
 
 
 def _load_ledger_soft(root) -> dict:
-    """只读场景（列目标）用：坏台账不阻断远端列表，退化成空台账。"""
+    """只读场景（列目标）用：记录损坏不阻断远端列表，退化成空 dict。"""
     try:
         return load_ledger(root)
     except LedgerError:
@@ -175,13 +175,13 @@ def _load_ledger_soft(root) -> dict:
 
 
 def save_ledger(root, data: dict, expect_sha=None) -> str:
-    """原子写台账，并做文件字节 sha256 CAS。
+    """原子写记录，并做文件字节 sha256 CAS。
 
     CAS 语义：`expect_sha` 给了就必须等于写前读到的那一版字节哈希，否则抛 CasConflict
-    （两个 agent 同时写台账时，后写者不能静默覆盖先写者）。写后重新读一遍字节校验，
+    （两个 agent 同时写记录时，后写者不能静默覆盖先写者）。写后重新读一遍字节校验，
     确认落盘的就是本次序列化的内容。返回新文件哈希，供下一次 CAS 用。
 
-    文件层失败（开锁文件、建目录、替换台账被系统拒绝）一律折成 LedgerError：
+    文件层失败（开锁文件、建目录、替换记录被系统拒绝）一律折成 LedgerError：
     调用方按 E_LEDGER 显示路径与原因，不落成 E_INTERNAL 的裸异常。
     """
     import hashlib
@@ -193,22 +193,22 @@ def save_ledger(root, data: dict, expect_sha=None) -> str:
         text = dump_json(data)
         with log_lock(path) as locked:
             if not locked:
-                raise LedgerError(f"台账写锁不可用：{path}")
+                raise LedgerError(f"记录写锁不可用：{path}")
             actual = file_sha256(path)
             if expect_sha is not None and actual != expect_sha:
                 raise CasConflict(expect_sha, actual or "")
             atomic_write_text(path, text)
             written = hashlib.sha256(path.read_bytes()).hexdigest()
     except OSError as exc:
-        raise LedgerError(write_refused_message("台账", path, exc)) from exc
+        raise LedgerError(write_refused_message("记录", path, exc)) from exc
     expected = hashlib.sha256(text.encode("utf-8")).hexdigest()
     if written != expected:
-        raise LedgerError("台账写后校验失败（磁盘内容与本次序列化不一致）")
+        raise LedgerError("记录写后校验失败（磁盘内容与本次序列化不一致）")
     return written
 
 
 def forget_pr(root, key: str, expect_sha=None) -> dict:
-    """删掉一份草稿的 PR 台账记录；返回被删掉的记录与新文件哈希。
+    """删掉一份草稿的 PR 记录；返回被删掉的记录与新文件哈希。
 
     只有 `state: closed` 的记录可以删：PR 关闭后这次提交流程已经结束，本地再留着它只会让
     队列把一条结束了的 PR 当现行状态显示。`open` / `unknown` 还可能变成合入，`merged` 已有
@@ -225,12 +225,12 @@ def forget_pr(root, key: str, expect_sha=None) -> dict:
     before = ledger_sha256(root)
     data = load_ledger(root)
     if key not in data["prs"]:
-        raise PrRecordError("E_NOT_FOUND", f"台账里没有这份草稿的 PR 记录：{key}")
+        raise PrRecordError("E_NOT_FOUND", f"PR 记录里没有这份草稿的条目：{key}")
     pr = data["prs"].get(key)
     if not isinstance(pr, dict):
         raise PrRecordError(
             "E_BAD_RECORD",
-            f"台账里这份草稿的记录不是对象（台账可能被手改坏了）：{key}。先修台账再清记录。")
+            f"记录里这份草稿的条目不是对象（记录可能被手改坏了）：{key}。先修好记录文件，再清这个条目。")
     state = str(pr.get("state") or "unknown").strip().lower()
     if state not in STATES:
         state = "unknown"
@@ -666,7 +666,7 @@ def _settings_expect_sha(settings_sha, explicit=None):
     字节会被拦下，不会用这份旧快照覆盖掉对方刚写的 `sync` 段。先取 sha 的代价是变化
     落在「取 sha 之后、读配置之前」时会多报一次冲突——方向安全，重试即可。
 
-    `--set-target` 的 `--expect-sha256` 是**台账**令牌（面板从 `--list-targets` 的
+    `--set-target` 的 `--expect-sha256` 是**记录**令牌（面板从 `--list-targets` 的
     `sha256` 取），不能拿来当 settings 令牌；那个写点不传 explicit。
     """
     return explicit if explicit is not None else settings_sha
@@ -685,7 +685,7 @@ def _settings_sha_or_none(root):
 
 
 def load_target(root):
-    """读 target：主检出 `.local/settings.json` 优先；没有则从旧台账迁一次。
+    """读 target：主检出 `.local/settings.json` 优先；没有则从旧记录迁一次。
 
     迁移写回 settings，旧 `.groom/pr-state.json` 不删——两个界面版本可能同时在用。
     写回带读配置时取的文件指纹：迁移期间配置被别的写者改过就不覆盖（下次再迁）。
@@ -707,9 +707,9 @@ def load_target(root):
 
 
 def _last_used(ledger: dict, remote_name: str, repo: str, platform: str) -> str:
-    """该远端「上次使用」= 台账里最近一条相关 PR 的 created_at。
+    """该远端「上次使用」= 记录里最近一条相关 PR 的 created_at。
 
-    PR 台账没有远端字段时按 repo（owner/repo）、再按 platform 兜底；有 `remote` 字段的条目
+    PR 记录没有远端字段时按 repo（owner/repo）、再按 platform 兜底；有 `remote` 字段的条目
     只按 remote 匹配——否则同一个 platform 的两个远端会互相冒充「上次使用」。
     """
     prs = [p for p in (ledger.get("prs") or {}).values() if isinstance(p, dict)]
@@ -782,7 +782,7 @@ def list_targets(root) -> dict:
     identity_out = {key: identity.get(key) for key in ("remote", "url", "explicit")}
     return {"target": target, "remotes": remotes, "identity": identity_out,
             "recommendation": _recommend(root, target, remotes, identity),
-            # 面板写回时的 CAS 令牌：与 `--status` 的 `sha256` 同一算法。台账不存在时为 null。
+            # 面板写回时的 CAS 令牌：与 `--status` 的 `sha256` 同一算法。记录不存在时为 null。
             "sha256": ledger_sha256(root)}
 
 
@@ -928,7 +928,7 @@ def _run_check(ledger: dict, key: str, adapters: list):
     """查一份草稿的 PR。返回 (新条目, error, detail)。error 非空时新条目是 unknown 态。"""
     pr = (ledger.get("prs") or {}).get(key)
     if not isinstance(pr, dict):
-        return None, {"code": "E_NOT_FOUND", "message": f"台账里没有这份草稿的 PR 记录：{key}"}, ""
+        return None, {"code": "E_NOT_FOUND", "message": f"PR 记录里没有这份草稿的条目：{key}"}, ""
     url = str(pr.get("url") or "")
     adapter = adapter_for_url(adapters, url)
     if adapter is None:
@@ -968,9 +968,9 @@ def _check_group_key(pr: dict, adapters: list) -> tuple:
     """`--check-all` 的去重键：键相同的草稿共用一次平台查询。
 
     有 url 时按（适配器 id、repo、number、url）判定，适配器 id 由 URL 的 host 得到，
-    台账里的 platform 字段不参与；没有 url 时退回（platform、repo、number），
+    记录里的 platform 字段不参与；没有 url 时退回（platform、repo、number），
     首项与有 url 的形式不同，两者不会分到一组。repo 去首尾空白并转小写、number 统一
-    转字符串、url 去掉尾部斜杠，避免同一 PR 因台账写法不同被拆成两组。界面按同一套归一
+    转字符串、url 去掉尾部斜杠，避免同一 PR 因记录写法不同被拆成两组。界面按同一套归一
     规则计「同 PR N 份」（`lib/client.js` 的 sedPrKey）；界面计全部草稿，脚本只查待合入的
     草稿，终态与待查混合时两边份数可能不同。
     """
@@ -1052,7 +1052,7 @@ def cmd_status(root) -> int:
 
 
 def cmd_migrate(root, args) -> int:
-    """把旧台账的 target 搬进 settings 一次；旧文件保留。
+    """把旧记录的 target 搬进 settings 一次；旧文件保留。
 
     令牌：显式 `--expect-sha256` 优先，否则取读配置时的文件指纹。写动作在
     `save_settings` 的 `log_lock` 内重新读 sha 比对，读配置后被人改过就拒绝覆盖。
@@ -1072,7 +1072,7 @@ def cmd_migrate(root, args) -> int:
         return _ok({"migrated": False, "reason": "settings 已有 target",
                     "target": current, **base})
     if legacy is None:
-        return _ok({"migrated": False, "reason": "旧台账没有 target",
+        return _ok({"migrated": False, "reason": "旧记录没有 target",
                     "target": None, **base})
     settings["target"] = legacy
     try:
@@ -1211,9 +1211,9 @@ def cmd_set_target(root, args) -> int:
     }
     data = load_ledger(root)
     data["target"] = target
-    # 先取文件指纹、再读 settings 内容：台账写完后才写 settings，这一段窗口里别的写者
+    # 先取文件指纹、再读 settings 内容：记录写完后才写 settings，这一段窗口里别的写者
     # （面板 --set-sync）改过配置就必须放弃覆盖，而不是拿旧 sync 段盖回去。
-    # 这里不传 --expect-sha256：那个令牌是台账的（面板从 --list-targets 的 sha256 取）。
+    # 这里不传 --expect-sha256：那个令牌是记录的（面板从 --list-targets 的 sha256 取）。
     settings_sha = _settings_sha_or_none(root)
     settings, _source, _problem = kb_sync.load_settings(Path(root))
     try:
@@ -1222,7 +1222,7 @@ def cmd_set_target(root, args) -> int:
         return _fail("E_CAS", str(exc))
     except LedgerError as exc:
         return _fail("E_LEDGER", str(exc), extra={"write_failed": True})
-    # target 的读侧已迁到 settings；台账里仍写一份，旧版本面板与 --migrate 都能读到。
+    # target 的读侧已迁到 settings；记录里仍写一份，旧版本面板与 --migrate 都能读到。
     settings["target"] = target
     try:
         settings_digest = kb_sync.save_settings(Path(root), settings, expect_sha=settings_sha)
@@ -1296,7 +1296,7 @@ def cmd_mark(root, args) -> int:
     data = load_ledger(root)
     pr = data["prs"].get(draft)
     if not isinstance(pr, dict):
-        return _fail("E_NOT_FOUND", f"台账里没有这份草稿的 PR 记录：{draft}")
+        return _fail("E_NOT_FOUND", f"PR 记录里没有这份草稿的条目：{draft}")
     entry = dict(pr)
     entry.update({"state": state, "source": "manual", "checked_at": now_iso()})
     data["prs"][draft] = entry
@@ -1345,8 +1345,8 @@ def cmd_check(root, args) -> int:
     except CasConflict as exc:
         return _fail("E_CAS", str(exc))
     except LedgerError as exc:
-        # 平台结果已经拿到，只是没写进台账：把 state / checked_at 一起带出去，
-        # 面板能说「查到 X，但没写进台账」，读者不必白查一遍。
+        # 平台结果已经拿到，只是没写进记录：把 state / checked_at 一起带出去，
+        # 面板能说「查到 X，但没写进记录」，读者不必白查一遍。
         return _fail("E_LEDGER", str(exc), extra={"draft": draft,
                                                   "state": entry["state"],
                                                   "checked_at": entry["checked_at"],
@@ -1403,18 +1403,18 @@ def cmd_check_all(root, args) -> int:
     adapters = load_adapters()
     data = load_ledger(root)
     before = ledger_sha256(root)
-    # 查询走只读快照：worker 只返回结果，不改台账；写回统一在主线程按台账键顺序做。
+    # 查询走只读快照：worker 只返回结果，不改记录；写回统一在主线程按草稿键顺序做。
     snapshot = {"prs": {key: dict(value) if isinstance(value, dict) else value
                         for key, value in (data.get("prs") or {}).items()}}
     drafts = [draft for draft in sorted(snapshot["prs"].keys())
               if isinstance(snapshot["prs"].get(draft), dict)
               and str(snapshot["prs"][draft].get("state") or "") in CHECKABLE]
-    # 面板多选后按所选查询：只查这些台账键，其余行不动。未知键直接忽略——
-    # 界面上的 key 来自同一份台账快照，对不上说明台账在两次读之间变了，不是参数错。
+    # 面板多选后按所选查询：只查这些草稿键，其余行不动。未知键直接忽略——
+    # 界面上的 key 来自同一份记录快照，对不上说明记录在两次读之间变了，不是参数错。
     only = set(str(key) for key in (getattr(args, "only_draft", None) or []) if key)
     if only:
         drafts = [draft for draft in drafts if draft in only]
-    # 同一 PR 的多份草稿只查一次：按 PR 身份分组，组内台账键最小的一条代表提交查询。
+    # 同一 PR 的多份草稿只查一次：按 PR 身份分组，组内草稿键最小的一条代表提交查询。
     groups = {}
     for draft in drafts:
         groups.setdefault(_check_group_key(snapshot["prs"][draft], adapters), []).append(draft)
@@ -1430,13 +1430,13 @@ def cmd_check_all(root, args) -> int:
                 group_result = future.result()
                 for draft in members:
                     results[draft] = _spread_group_result(snapshot["prs"][draft], group_result)
-                # 组内按台账键序打 row；行序仍是查询完成序（面板按 draft 覆盖，不看顺序）。
+                # 组内按草稿键序打 row；行序仍是查询完成序（面板按 draft 覆盖，不看顺序）。
                 if json_lines:
                     for draft in members:
                         _print_json_line(_row_line(draft, results[draft]))
     checked = []
     all_ok = True
-    for draft in drafts:  # 按台账键排序输出，与并发完成顺序无关
+    for draft in drafts:  # 按草稿键排序输出，与并发完成顺序无关
         entry, error, detail = results[draft]
         if entry is None:
             checked.append({"draft": draft, "ok": False, "state": "unknown",
@@ -1509,20 +1509,20 @@ def cmd_selftest(root, platform_id: str) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(description="提 PR 目标与 PR 状态台账（只写本地台账）")
+    ap = argparse.ArgumentParser(description="提 PR 目标与 PR 状态记录（只写本地 PR 记录）")
     ap.add_argument("--root", default=None, help="ascend-sleuth 检出根；默认当前目录")
     ap.add_argument("--json", action="store_true", help="输出 JSON（所有命令都输出 JSON，保留兼容）")
     ap.add_argument("--json-lines", action="store_true", dest="json_lines",
                     help="配合 --check-all：每查完一条输出一行 JSON，最后输出汇总行（契约见文件头）")
     ap.add_argument("--only-draft", action="append", default=None, metavar="KEY",
-                    help="配合 --check-all：只查这些台账键（可重复）；不传则查全部")
+                    help="配合 --check-all：只查这些草稿键（可重复）；不传则查全部")
     ap.add_argument("--expect-sha256", default=None,
-                    help="写前 CAS 令牌：--set-target / --set / --mark / --forget / --check 用台账 sha256，"
+                    help="写前 CAS 令牌：--set-target / --set / --mark / --forget / --check 用记录 sha256，"
                          "--migrate / --set-sync / --set-identity 用 settings 的 sha256")
     group = ap.add_mutually_exclusive_group()
     group.add_argument("--list-targets", action="store_true", help="列远端、平台与推荐目标")
     group.add_argument("--set-target", action="store_true", help="写 target 段")
-    group.add_argument("--migrate", action="store_true", help="把旧台账的 target 搬进 settings")
+    group.add_argument("--migrate", action="store_true", help="把旧记录的 target 搬进 settings")
     group.add_argument("--set-sync", action="store_true", dest="set_sync",
                        help="写 settings 的 sync 段")
     group.add_argument("--set-identity", action="store_true", dest="set_identity",
@@ -1604,7 +1604,7 @@ def main(argv=None) -> int:
         return cmd_status(root)
     except LedgerError as exc:
         if args.json_lines:
-            # 台账读坏发生在任何 row 之前；仍折成一行 compact JSON，与 E_INTERNAL 同形。
+            # 记录读坏发生在任何 row 之前；仍折成一行 compact JSON，与 E_INTERNAL 同形。
             _print_json_line({"ok": False, "error": {"code": "E_LEDGER", "message": str(exc)}})
             return EXIT_OK
         return _fail("E_LEDGER", str(exc))

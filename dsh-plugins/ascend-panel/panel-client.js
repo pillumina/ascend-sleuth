@@ -3660,7 +3660,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       )
     }
 
-    // ============ 首屏：状态条 / 判决 / 闭环检验 / 容量台账 ============
+    // ============ 首屏：状态条 / 判决 / 闭环检验 / 容量视图 ============
     // 取向（对齐 ev-panel 的 FocusStrip）：首屏只回答**一个**问题——"现在有什么要我处理"。
     // 明细照旧在下面，但不再由读者自己去 20 行数字里筛。
 
@@ -4012,7 +4012,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       )
     }
 
-    // 容量台账：逐格（framework × category）——判据逐格计，加总到 namespace 会让人看不出是哪一格爆了
+    // 容量视图：逐格（framework × category）——判据逐格计，加总到 namespace 会让人看不出是哪一格爆了
     function CapacityLedger({ cells, gates, periods }) {
       if (!cells || !cells.length) return null
       const softTok = (gates || []).filter(g => g.id === 'cell_read_soft_tok').map(g => g.value)[0]
@@ -4023,7 +4023,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       return React.createElement('div', { className: 'sleu-card', style: { ...rise(1), border: '1px solid var(--hair)', borderRadius: 'var(--r-lg)', background: T.bg, backgroundImage: 'var(--surf)', marginBottom: 8, overflow: 'hidden' } },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', flexWrap: 'wrap' } },
           React.createElement('span', { style: { width: 8, height: 16, borderRadius: 'var(--r-xs)', background: 'var(--acc-amber)', display: 'inline-block' } }),
-          React.createElement('span', { className: 'sleu-title', style: { fontSize: 'var(--t-lg)', fontWeight: 700 } }, '容量台账'),
+          React.createElement('span', { className: 'sleu-title', style: { fontSize: 'var(--t-lg)', fontWeight: 700 } }, '容量视图'),
           React.createElement('span', { style: { fontSize: 'var(--t-md)', color: T.text2 } },
             '逐格：查一次问题要读进来多少 token（评估线 ' + (softTok === undefined ? '—' : softTok)
             + (hardTok === undefined ? '' : ' / 硬线 ' + hardTok) + '，数值读 metrics/gates.yaml）'),
@@ -4612,7 +4612,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
           ea: (r && r.entryActivity) || null, health: health, verdict: vd,
           onCopy: doCopy, copied: copied,
         }),
-        // ③ 闭环检验（判据全貌，含正常项）+ 容量台账（**逐格**，与判据同口径）
+        // ③ 闭环检验（判据全貌，含正常项）+ 容量视图（**逐格**，与判据同口径）
         // ③ 体检器失效时，判决条的"处置"含义完全不同——单独说清，不让读者把
         // "没有结论"读成"没有问题"（这一条正是假绿的反面：宁可吵，不可静默）
         React.createElement(BrokenDetector, { verdict: vd, error: verdictErr }),

@@ -8,7 +8,7 @@
 
     调用方（任何 skill）→ evolve_intake record <观察载荷>
                               │ 读 sleuth.config.yaml 的 evolution.role
-                              ├─ maintainer  → 写信号台账，上游分诊后走 RSI
+                              ├─ maintainer  → 写信号记录，上游分诊后走 RSI
                               ├─ signal-only → 写 proposals/signals/<部署>-<哈希>.yaml
                               └─ off         → 不落盘，只打印一行
 
@@ -104,7 +104,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="演进记录入口：采集 → 按部署声明分流")
     ap.add_argument("--root", type=Path, default=None, help="仓库根（默认当前检出顶层）")
     sub = ap.add_subparsers(dest="cmd", required=True)
-    r = sub.add_parser("record", help="记录一条演进观察（信号台账）")
+    r = sub.add_parser("record", help="记录一条演进观察（信号记录）")
     r.add_argument("--signal", required=True, help="信号编号或自由文本（如 T10）")
     r.add_argument("--signal-text", default="", help="信号的中文含义")
     r.add_argument("--target", required=True, help="要改的组件：仓库内路径或组件名")

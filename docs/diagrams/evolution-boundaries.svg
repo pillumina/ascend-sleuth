@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1100" height="360" viewBox="0 0 1100 360" role="img" aria-labelledby="title desc">
   <title id="title">自演进信号、提案、实验、决策与落地边界</title>
-  <desc id="desc">用户摩擦进入信号台账；确定性 bug 走回归测试与 PR；行为质量走 RSI proposal、真实实验、decision 与 PR；EV 卡只保留高风险授权和历史视图。</desc>
+  <desc id="desc">用户摩擦进入信号记录；确定性 bug 走回归测试与 PR；行为质量走 RSI proposal、真实实验、decision 与 PR；EV 卡只保留高风险授权和历史视图。</desc>
   <rect width="1100" height="360" fill="#f6f7f9"/>
   <text x="32" y="40" font-family="PingFang SC, sans-serif" font-size="20" font-weight="700" fill="#15181d">自演进边界</text>
   <text x="32" y="64" font-family="PingFang SC, sans-serif" font-size="12" fill="#69707c">signal 只记录；proposal 才承诺改；experiment 才提供统计证据；PR 才落地。</text>

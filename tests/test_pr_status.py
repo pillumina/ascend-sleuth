@@ -2,7 +2,7 @@
 
 护四件「错了不报错、只让状态静默失真」的事：
 
-1. **台账 CAS**：两个写者同时写 `.groom/pr-state.json` 时，后写者不能覆盖先写者；
+1. **记录 CAS**：两个写者同时写 `.groom/pr-state.json` 时，后写者不能覆盖先写者；
    写后校验落盘字节与本次序列化一致。
 2. **目标推荐**：已保存目标 → 当前分支上游 → 唯一远端 → 不猜，顺序与理由都固定。
 3. **平台适配器**：清单坏不抛、缺 token 标 available:false；YAML 适配器的 map/normalize
@@ -117,7 +117,7 @@ class RepoCase(unittest.TestCase):
 
 
 def seed_pr_records(repo, records):
-    """按草稿键写 PR 台账：每条记录在同一个默认值上覆盖给定字段。
+    """按草稿键写 PR 记录：每条记录在同一个默认值上覆盖给定字段。
 
     用来构造指向同一 PR 的多份草稿（同 repo/number/url），与 `_seed_ledger` 的
     「每份草稿一个不同 PR」相对。
@@ -134,7 +134,7 @@ def seed_pr_records(repo, records):
     pr.save_ledger(repo, data)
 
 
-# ---------------------------------------------------------------- 台账
+# ---------------------------------------------------------------- 记录
 
 class LedgerTest(RepoCase):
     def test_ledger_lives_in_shared_inbox(self):
@@ -166,7 +166,7 @@ class LedgerTest(RepoCase):
             with self.assertRaises(pr.LedgerError) as ctx:
                 pr.save_ledger(self.repo, pr.empty_ledger())
         message = str(ctx.exception)
-        self.assertIn("台账写不进去", message)
+        self.assertIn("记录写不进去", message)
         self.assertIn("pr-state.json.lock", message)
         self.assertIn("Permission denied", message)
 
@@ -197,7 +197,7 @@ class LedgerTest(RepoCase):
         path.write_text("{not json", encoding="utf-8")
         with self.assertRaises(pr.LedgerError):
             pr.load_ledger(self.repo)
-        # 列目标只读：坏台账退化成空目标，远端照列。
+        # 列目标只读：记录损坏退化成空目标，远端照列。
         targets = pr.list_targets(self.repo)
         self.assertIsNone(targets["target"])
         self.assertEqual(targets["remotes"][0]["name"], "origin")
@@ -210,7 +210,7 @@ class LedgerTest(RepoCase):
         code, payload = run_cli("--root", str(self.repo), "--list-targets")
         self.assertEqual(code, 0, payload)
         self.assertEqual(payload["sha256"], digest)
-        # 另一个写者改台账后，旧令牌与新给的 sha 不一致（面板据此判断自己的队列过期）。
+        # 另一个写者改记录后，旧令牌与新给的 sha 不一致（面板据此判断自己的队列过期）。
         data = pr.load_ledger(self.repo)
         data["target"] = {"remote": "origin"}
         pr.save_ledger(self.repo, data)
@@ -229,7 +229,7 @@ class SettingsCasTest(RepoCase):
     """settings 的四个写点（--set-sync / --set-target / --migrate / 迁移写回）同一套 CAS。"""
 
     def test_load_target_migration_keeps_sync_section(self):
-        # settings 已有 sync 段但没有 target；旧台账里有 target → 迁移写回时 sync 不能丢。
+        # settings 已有 sync 段但没有 target；旧记录里有 target → 迁移写回时 sync 不能丢。
         pr.kb_sync.save_settings(self.repo, {"sync": {"remote": "origin", "branch": "main",
                                                       "enabled": False, "auto_merge": False}})
         data = pr.empty_ledger()
@@ -290,7 +290,7 @@ class SettingsCasTest(RepoCase):
         after_race = {}
 
         def racing_save(root, data, expect_sha=None):
-            # --set-target 先写台账、再写 settings；模拟两个写点之间另一个写者改了配置。
+            # --set-target 先写记录、再写 settings；模拟两个写点之间另一个写者改了配置。
             digest = real_save_ledger(root, data, expect_sha=expect_sha)
             pr.kb_sync.save_settings(self.repo, {"sync": {"remote": "origin", "branch": "main",
                                                           "enabled": False, "auto_merge": True}})
@@ -308,7 +308,7 @@ class SettingsCasTest(RepoCase):
         settings, _source, _problem = pr.kb_sync.load_settings(self.repo)
         self.assertIsNone(settings["target"])
         self.assertFalse(settings["sync"]["enabled"])
-        # 台账里的 target 仍在（旧读侧不丢），下次迁移写回还能补上 settings。
+        # 记录里的 target 仍在（旧读侧不丢），下次迁移写回还能补上 settings。
         self.assertEqual(pr.load_ledger(self.repo)["target"]["remote"], "origin")
         self.assertNotEqual(pr.kb_sync.settings_sha256(self.repo), stale)
 
@@ -753,7 +753,7 @@ class PlatformTest(RepoCase):
         self.assertIn("access_token=***", redacted)
 
 
-# ---------------------------------------------------------------- 台账写入与查询流程
+# ---------------------------------------------------------------- 记录写入与查询流程
 
 class FlowTest(RepoCase):
     def _set_pr(self, draft="draft-a", url="https://github.com/o/r/pull/1",
@@ -896,7 +896,7 @@ class FlowTest(RepoCase):
         self.assertEqual(entry["source"], "platform")
 
     def _add_other_writer_change(self):
-        """模拟另一个写者先改台账：加一条 PR 记录，内容与旧版必然不同。"""
+        """模拟另一个写者先改记录：加一条 PR 记录，内容与旧版必然不同。"""
         data = pr.load_ledger(self.repo)
         data["prs"]["draft-b"] = {"platform": "github", "repo": "o/r", "number": 2,
                                   "url": "https://github.com/o/r/pull/2", "state": "open",
@@ -927,7 +927,7 @@ class FlowTest(RepoCase):
             code, payload = run_cli("--root", str(self.repo), "--check", "--draft", "draft-a",
                                     "--expect-sha256", current)
         self.assertEqual(code, 0, payload)
-        # CAS 通过后查询确实执行：没 token 的结果留痕并写回台账。
+        # CAS 通过后查询确实执行：没 token 的结果留痕并写回记录。
         self.assertEqual(payload["error"]["code"], "E_NO_AUTH")
         entry = pr.load_ledger(self.repo)["prs"]["draft-a"]
         self.assertEqual(entry["source"], "platform")
@@ -959,7 +959,7 @@ class FlowTest(RepoCase):
         self.assertEqual(after_b, before_b)
 
     def test_check_all_only_draft_ignores_unknown_key(self):
-        # 界面给的 key 来自同一份台账快照；对不上说明台账变了，忽略而不是报参数错。
+        # 界面给的 key 来自同一份记录快照；对不上说明记录变了，忽略而不是报参数错。
         self._set_pr("draft-a", url="https://example.com/o/r/pulls/1", platform="unknown")
         code, payload = run_cli("--root", str(self.repo), "--check-all", "--only-draft", "draft-gone")
         self.assertEqual(code, 0)
@@ -975,8 +975,8 @@ class FlowTest(RepoCase):
         self.assertEqual(payload["checked"], [])
 
     def test_check_write_refused_reports_ledger_error_with_checked_state(self):
-        # 平台结果已经查到、只是没写进台账：失败载荷要带上 state 与 checked_at，
-        # 面板才能说「查到 X，但没写进台账」，而不是让读者白查一遍。
+        # 平台结果已经查到、只是没写进记录：失败载荷要带上 state 与 checked_at，
+        # 面板才能说「查到 X，但没写进记录」，而不是让读者白查一遍。
         self._set_pr(url="https://example.com/o/r/pulls/1", platform="unknown")
         refused = RefusedLock("/tmp/r/.groom/pr-state.json.lock")
         with mock.patch.object(pr, "log_lock", return_value=refused):
@@ -984,7 +984,7 @@ class FlowTest(RepoCase):
         self.assertEqual(code, 0, payload)
         self.assertFalse(payload["ok"], payload)
         self.assertEqual(payload["error"]["code"], "E_LEDGER")
-        self.assertIn("台账写不进去", payload["error"]["message"])
+        self.assertIn("记录写不进去", payload["error"]["message"])
         self.assertIn("pr-state.json.lock", payload["error"]["message"])
         self.assertEqual(payload["draft"], "draft-a")
         self.assertEqual(payload["state"], "unknown")
@@ -992,7 +992,7 @@ class FlowTest(RepoCase):
         self.assertTrue(payload["write_failed"])
 
     def test_check_write_refused_keeps_real_platform_state(self):
-        # 平台确实查到 merged、只是没写进台账：带回的必须是平台状态，不是 _unknown_entry 的占位值。
+        # 平台确实查到 merged、只是没写进记录：带回的必须是平台状态，不是 _unknown_entry 的占位值。
         # 这条走真实 http_check + 假 urlopen，而不是手工喂 state。
         self._set_pr(url="https://gitcode.com/o/r/pulls/1", platform="gitcode")
         refused = RefusedLock("/tmp/r/.groom/pr-state.json.lock")
@@ -1019,7 +1019,7 @@ class FlowTest(RepoCase):
         self.assertEqual(code, 0, payload)
         self.assertFalse(payload["ok"], payload)
         self.assertEqual(payload["error"]["code"], "E_LEDGER")
-        self.assertIn("台账写不进去", payload["error"]["message"])
+        self.assertIn("记录写不进去", payload["error"]["message"])
         self.assertTrue(payload["write_failed"])
 
     def test_default_read_lists_ledger(self):
@@ -1067,7 +1067,7 @@ class CheckAllParallelTest(RepoCase):
         return fake_run_check
 
     def test_check_all_runs_queries_concurrently(self):
-        # 插入顺序与排序顺序不同，确保断言的是台账键排序而不是提交顺序。
+        # 插入顺序与排序顺序不同，确保断言的是草稿键排序而不是提交顺序。
         drafts = {"draft-h": "open", "draft-a": "open", "draft-c": "open",
                   "draft-b": "open", "draft-g": "open", "draft-e": "open",
                   "draft-d": "open", "draft-f": "open", "draft-z": "merged"}
@@ -1095,7 +1095,7 @@ class CheckAllParallelTest(RepoCase):
         self.assertEqual(pr.CHECK_ALL_WORKERS, 4)
         self.assertEqual(state["peak"], pr.CHECK_ALL_WORKERS)
         self.assertEqual(state["calls"], 8)
-        # 主断言 2：checked[] 按台账键排序，终态跳过。
+        # 主断言 2：checked[] 按草稿键排序，终态跳过。
         expected = sorted(key for key, value in drafts.items() if value in pr.CHECKABLE)
         self.assertEqual([item["draft"] for item in payload["checked"]], expected)
         for draft in expected:
@@ -1107,7 +1107,7 @@ class CheckAllParallelTest(RepoCase):
         self.assertLess(elapsed, len(expected) * self.SLEEP_S * 3 / 4)
 
     def test_check_all_output_order_ignores_completion_order(self):
-        # 先提交的查得慢、后提交的查得快：完成顺序与台账键顺序相反，输出仍须按键排序。
+        # 先提交的查得慢、后提交的查得快：完成顺序与草稿键顺序相反，输出仍须按键排序。
         keys = ["draft-a", "draft-b", "draft-c", "draft-d", "draft-e", "draft-f"]
         self._seed_ledger({key: "open" for key in keys})
         delays = {key: 0.02 * (len(keys) - index) for index, key in enumerate(keys)}
@@ -1125,7 +1125,7 @@ class CheckAllParallelTest(RepoCase):
 
     def test_check_all_queries_shared_pr_once(self):
         # 两份草稿指向同一个 PR：只提交一次查询，但 checked 与写回仍是两条。
-        # 分组用的是 URL 对应的适配器，台账 platform 不参与；组结果把 platform 刷新成
+        # 分组用的是 URL 对应的适配器，记录 platform 不参与；组结果把 platform 刷新成
         # 代表查询那次得到的适配器 id，repo/number/url 保留各自的值。
         seed_pr_records(self.repo, {"draft-a": {}, "draft-b": {"platform": "other"}})
         lock = threading.Lock()
@@ -1261,7 +1261,7 @@ class CheckAllJsonLinesTest(RepoCase):
     def test_rows_arrive_in_completion_order_checked_stays_sorted(self):
         keys = ["draft-a", "draft-b", "draft-c", "draft-d"]
         self._seed({key: "open" for key in keys})
-        # 提交序 = 台账键序，完成序相反：row 按完成序，done.checked 按键序。
+        # 提交序 = 草稿键序，完成序相反：row 按完成序，done.checked 按键序。
         delays = {"draft-a": 0.30, "draft-b": 0.20, "draft-c": 0.10, "draft-d": 0.0}
 
         def fake_run_check(ledger, key, adapters):
@@ -1280,8 +1280,8 @@ class CheckAllJsonLinesTest(RepoCase):
         self.assertEqual([item["draft"] for item in done["checked"]], keys)
 
     def test_json_lines_shared_pr_emits_one_row_per_draft(self):
-        # 同一 PR 的两份草稿：查询一次，但每份草稿各有一行 row；checked 仍按台账键排序。
-        # 台账插入序与键序相反，row 的顺序断言的是组内台账键序。
+        # 同一 PR 的两份草稿：查询一次，但每份草稿各有一行 row；checked 仍按草稿键排序。
+        # 记录插入序与键序相反，row 的顺序断言的是组内草稿键序。
         seed_pr_records(self.repo, {"draft-b": {}, "draft-a": {}})
         calls = []
         checked_at = "2026-11-01T10:00:00+08:00"
@@ -1423,7 +1423,7 @@ class CheckAllJsonLinesTest(RepoCase):
 
         with mock.patch.object(pr, "_run_check", side_effect=fake_run_check), \
                 mock.patch.object(pr, "save_ledger",
-                                  side_effect=pr.LedgerError("台账写不进去：x（拒绝访问）")):
+                                  side_effect=pr.LedgerError("记录写不进去：x（拒绝访问）")):
             code, text = run_cli_lines("--root", str(self.repo), "--check-all", "--json-lines")
         self.assertEqual(code, 0, text)
         _rows, done = self._rows_and_done(text)

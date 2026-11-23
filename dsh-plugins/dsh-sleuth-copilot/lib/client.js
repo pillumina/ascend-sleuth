@@ -34,7 +34,7 @@ window.__ModuleLoader__.load({
     const KB_RECHECK_DELAYS_MS = [30000, 60000]
     const PREFS_KEY = 'dsh-sleuth-copilot.prefs.v2'
     const FILTER_KEYS = ['all', 'open', 'pending', 'sediment']
-    // PR 台账允许的状态（与 scripts/pr_status.py 的 STATES 一致）。
+    // PR 记录允许的状态（与 scripts/pr_status.py 的 STATES 一致）。
     const PR_STATE_KEYS = ['open', 'merged', 'closed', 'unknown']
     // 详情抬头默认收起成四行；「展开全文」优先看实际溢出（scrollHeight > clientHeight）。
     // 离线渲染没有布局引擎，拿不到尺寸时退回这个字数近似：四行在 400–510px 列宽下约 110–150 字，
@@ -456,10 +456,10 @@ window.__ModuleLoader__.load({
       'sediment.prState.unknown': '未确认',
       'sediment.prSource.platform': '平台查询',
       'sediment.prSource.manual': '手动确认',
-      'sediment.prSource.ledger': '台账',
+      'sediment.prSource.ledger': 'PR 记录',
       'sediment.detail.lastChecked': '上次查证',
-      'sediment.detail.closedDraft': '草稿不在 inbox；这条记录来自收尾日志（close-log）或 PR 台账。',
-      'sediment.detail.prBroken': 'PR 台账里这份草稿的记录不是对象，先修台账再撤销。',
+      'sediment.detail.closedDraft': '草稿不在 inbox；这条记录来自收尾日志（close-log）或 PR 记录。',
+      'sediment.detail.prBroken': 'PR 记录里这份草稿的条目不是对象，先修记录再撤销。',
       'sediment.checkFailed': '查合入没有全部成功；查不到的行记为「未确认」，也可以手动改状态。',
       'sediment.checkFailedWith': '查合入没有全部成功；查不到的行记为「未确认」，也可以手动改状态（原因：{reason}）。',
       'sediment.checkDoneOne': '查合入完成：{pr} · {state}',
@@ -477,7 +477,7 @@ window.__ModuleLoader__.load({
       'sediment.manualState': '手动改状态',
       'sediment.manualTitle': '手动改 PR 状态',
       'sediment.prompt.sub': '预览将填入输入框的指令',
-      'sediment.manualSub': '平台查不到时按人工确认写 PR 台账，来源记为「手动确认」；下次查合入仍以平台结果为准。',
+      'sediment.manualSub': '平台查不到时按人工确认写 PR 记录，来源记为「手动确认」；下次查合入仍以平台结果为准。',
       'sediment.manualDone': 'PR 状态已手动记为：{state}',
       'sediment.primary.checkAll': '查全部合入状态',
       'sediment.primary.closeBatch': '合入后收尾',
@@ -488,20 +488,20 @@ window.__ModuleLoader__.load({
       'sediment.checkError.E_NO_AUTH': '没配 token',
       'sediment.checkError.E_FETCH': '查询失败',
       'sediment.checkError.E_PLATFORM': '平台适配器不可用',
-      'sediment.checkError.E_NOT_FOUND': '台账里没有这条 PR',
-      'sediment.checkError.E_LEDGER': '台账写入失败',
+      'sediment.checkError.E_NOT_FOUND': 'PR 记录里没有这条 PR',
+      'sediment.checkError.E_LEDGER': 'PR 记录写入失败',
       'sediment.checkError.unknown': '未知原因',
-      'sediment.prompt.fallbackTitle': '写不进台账时的指令',
+      'sediment.prompt.fallbackTitle': '写不进记录时的指令',
       'sediment.fallback.targetTitle': '写推送目标时的指令',
       'sediment.fallback.sub': '面板写不进本地文件；这条指令填进输入框后交给会话里的 agent 执行，不会自动发送。',
-      'sediment.fallback.checked': '平台已经查到：{state}；这次没写进 PR 台账。',
-      'sediment.fallback.checkedMany': '平台已经查到 {n} 条：{list}；这次没写进 PR 台账。',
-      'sediment.fallback.ledgerLede': '面板没把结果写进 PR 台账。',
+      'sediment.fallback.checked': '平台已经查到：{state}；这次没写进 PR 记录。',
+      'sediment.fallback.checkedMany': '平台已经查到 {n} 条：{list}；这次没写进 PR 记录。',
+      'sediment.fallback.ledgerLede': '面板没把结果写进 PR 记录。',
       'sediment.fallback.settingsLede': '面板没把推送目标写进本地配置。',
       'sediment.fallback.policyLede': '面板的子进程被拒绝。',
       'sediment.fallback.reason': '原因：{reason}',
       'sediment.fallback.command': '请在仓库根目录执行：',
-      'sediment.fallback.ledger': 'PR 台账：{path}',
+      'sediment.fallback.ledger': 'PR 记录：{path}',
       'sediment.fallback.settings': '配置文件：{path}',
       'sediment.fallback.repairFile': '这条命令也报权限错误时，先确认没有残留的 python 进程，再删掉该文件旁的 .lock 文件重试。',
       'sediment.fallback.repairFileAcl': '仍不行就看它的只读属性与访问控制列表（ACL）。',
@@ -570,7 +570,7 @@ window.__ModuleLoader__.load({
       'sel.checkSelected': '查合入 {n} 份',
       'sel.checkingSelected': '查合入中 {n}/{m}',
       'sel.checkNone': '所选没有待合入的行。',
-      'sel.writeReadonly': '当前会话只读，不写台账。',
+      'sel.writeReadonly': '当前会话只读，不写 PR 记录。',
       'sel.stale': '数据可能过期，先刷新再执行。',
       'sel.scopedLoading': '正在按所选生成指令…',
       'sel.scopedFailed': '按所选生成指令失败：{reason}',
@@ -594,7 +594,7 @@ window.__ModuleLoader__.load({
       'sediment.primary.check': '查合入状态',
       'sediment.primary.close': '生成收尾指令',
       'sediment.secondary.pr': '提 PR（{n}）',
-      'sediment.secondary.checkHint': '查台账里全部待合入的 PR；同一个 PR 只查平台一次',
+      'sediment.secondary.checkHint': '查记录里全部待合入的 PR；同一个 PR 只查平台一次',
       'sediment.prShared': '同 PR {n} 份',
       'sediment.prSharedHint': '同一 PR 有 {n} 份草稿',
       'sediment.detail.prShared': '同一 PR 有 {n} 份草稿',
@@ -3110,7 +3110,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       return 'groom'
     }
 
-    // 决策枚举是台账里的机器值，展开视图里给人看时换成中文；未知值原样保留。
+    // 决策枚举是记录里的机器值，展开视图里给人看时换成中文；未知值原样保留。
     function sedDecisionLabel(value) {
       const key = String(value || '')
       if (!key) return tr('label.none')
@@ -4951,7 +4951,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       const [sedFilter, setSedFilter] = React.useState('all')
       const [promptKind, setPromptKind] = React.useState('')
       const [promptDetailsOpen, setPromptDetailsOpen] = React.useState(false)
-      // 写台账失败时的兜底指令：与普通指令预览同一个弹层，正文由失败上下文生成。
+      // 写记录失败时的兜底指令：与普通指令预览同一个弹层，正文由失败上下文生成。
       const [promptFallback, setPromptFallback] = React.useState(null)
       // 批量沉淀指令在弹层打开时冻结：后台每 10 秒刷新会重算 filtered，不能让名单在读者看的时候变。
       const [batchSed, setBatchSed] = React.useState(null)
@@ -4973,7 +4973,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
       // 显式选择态：默认不显示行前复选框（悬停才露），点「选择」或有勾选后全部露出。
       const [selecting, setSelecting] = React.useState({ diagnosis: false, sediment: false })
       const [batchMenu, setBatchMenu] = React.useState(false)
-      // 动作回执：prompt = 指令类（只写「已填入，未确认发送」）；write = 面板自己写台账，可反写。
+      // 动作回执：prompt = 指令类（只写「已填入，未确认发送」）；write = 面板自己写记录，可反写。
       const [receipt, setReceipt] = React.useState(null)
       const [receiptAsk, setReceiptAsk] = React.useState(false)
       // 所选范围的批次指令由 host 按 key 现算；加载中不让旧的全量指令先闪一下。
@@ -6609,7 +6609,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         })
       }
 
-      // 写台账被系统拒绝时的指令弹层：复用指令预览这一个面（复制 / 填入输入框），
+      // 写记录被系统拒绝时的指令弹层：复用指令预览这一个面（复制 / 填入输入框），
       // 正文由失败上下文生成。点了才填进输入框，不自动发送，也不覆盖读者正在写的内容。
       function openPromptFallback(head, text, sub, rows) {
         if (!text) return
@@ -6683,7 +6683,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           + '先看计划（只读）：\npython3 scripts/sediment_undo.py ' + args + '\n'
           + '确认后执行：\npython3 scripts/sediment_undo.py ' + args + ' --apply\n'
           + '脚本逐份处理；被拒的会跳过并报原因，不要绕过。撤销还原沉淀状态，不改诊断状态；'
-          + 'PR 已关闭的行会一并清掉本地台账记录（PR 本身不动），撤销前先在平台上确认这些 PR 仍关闭；'
+          + 'PR 已关闭的行会一并清掉本地 PR 记录（PR 本身不动），撤销前先在平台上确认这些 PR 仍关闭；'
           + '要回到进行中，在诊断面板用「重新打开」。'
         openPromptFallback(tr('sediment.undo.batchTitle'), text, tr('sediment.undo.batchSub'), list)
       }
@@ -6707,7 +6707,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         closePrompt()
       }
 
-      // 台账版本：list 侧返回的 sha256，写动作带上做 CAS；还没有台账时为空、不带令牌。
+      // 记录版本：list 侧返回的 sha256，写动作带上做 CAS；还没有记录时为空、不带令牌。
       function ledgerSha() {
         const doc = sedDoc && sedDoc.target ? sedDoc.target : null
         return doc && typeof doc.sha256 === 'string' ? doc.sha256 : ''
@@ -6730,7 +6730,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             const message = result && (result.message || (result.error && result.error.message))
             const writeKind = prWriteFailureKind(result)
             if (writeKind) {
-              // 台账没写进去时带 CAS 令牌；写配置失败时台账已经写过，旧令牌只会先撞 E_CAS。
+              // 记录没写进去时带 CAS 令牌；写配置失败时记录已经写过，旧令牌只会先撞 E_CAS。
               const target = failureCode(result) === 'E_SETTINGS' ? 'settings' : 'ledger'
               setTargetOpen(false)
               openPromptFallback(tr('sediment.fallback.targetTitle'), prWriteFallbackText(
@@ -6774,13 +6774,13 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           })
           if (!result || result.ok === false) {
             const message = result && (result.message || (result.error && result.error.message))
-            // 失败也可能已经写了台账（查不到时写 unknown + checked_at），刷新把行里的状态与时间对齐。
+            // 失败也可能已经写了记录（查不到时写 unknown + checked_at），刷新把行里的状态与时间对齐。
             await refreshSediment(true)
             // 刷新期间切了会话：旧 key 的兜底弹层不能弹在新会话上。
             if (store.sessionId !== runSession) return
             const writeKind = prWriteFailureKind(result)
             if (writeKind) {
-              // 平台结果拿到了、台账没写进去：给一条能填进输入框的指令交给会话 agent 写。
+              // 平台结果拿到了、记录没写进去：给一条能填进输入框的指令交给会话 agent 写。
               const state = result && PR_STATE_KEYS.indexOf(String(result.state || '')) >= 0
                 ? tr('sediment.prState.' + String(result.state)) : ''
               openPromptFallback(tr('sediment.primary.check'), prWriteFallbackText(
@@ -6814,9 +6814,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         return ''
       }
 
-      // 写本地文件被拒绝时该给哪一层指令：'file' = 文件/权限层拒绝（写台账、写配置），
+      // 写本地文件被拒绝时该给哪一层指令：'file' = 文件/权限层拒绝（写记录、写配置），
       // 'policy' = 会话档位或沙箱可写面的判断（命令在会话 shell 里通常能过）。
-      // 读坏台账也是 E_LEDGER，不能当作写失败去生成写指令。
+      // 记录损坏也是 E_LEDGER，不能当作写失败去生成写指令。
       function prWriteFailureKind(result) {
         const code = failureCode(result)
         if (code === 'E_PERM') return 'policy'
@@ -6824,8 +6824,9 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         const message = String((result && (result.message || (result.error && result.error.message))) || '')
         if (code === 'E_LEDGER') {
           if (result && result.write_failed === true) return 'file'
-          // 旧版脚本没有 write_failed 标记，按它当时的两句写失败原文认。
-          return /台账写不进去|配置写不进去|写锁不可用/.test(message) ? 'file' : ''
+          // 旧版脚本没有 write_failed 标记，按它当时的两句写失败原文认（旧版写「台账写不进去」，
+          // 新版写「记录写不进去」，两种都要认，否则新面板配旧检出时兜底指令不出现）。
+          return /台账写不进去|记录写不进去|配置写不进去|写锁不可用/.test(message) ? 'file' : ''
         }
         if (code !== 'E_INTERNAL') return ''
         // 面板与脚本版本错配：旧脚本把系统拒绝落成 E_INTERNAL 的裸异常。
@@ -6865,8 +6866,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         return lines.join('\n')
       }
 
-      // 台账 CAS 令牌跟着兜底命令走：面板手里有 sha 时带上，恢复动作不绕开 CAS。
-      // 写配置失败不带：那一路台账已经写过，旧令牌会先撞 E_CAS。
+      // 记录 CAS 令牌跟着兜底命令走：面板手里有 sha 时带上，恢复动作不绕开 CAS。
+      // 写配置失败不带：那一路记录已经写过，旧令牌会先撞 E_CAS。
       function ledgerCasArg() {
         const sha = ledgerSha()
         return sha ? ' --expect-sha256 ' + sha : ''
@@ -6955,7 +6956,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             const codes = Array.from(new Set(failed.map((item) => String(item.error || 'unknown'))))
             const reason = codes.map(checkErrorText).filter(Boolean).join('、')
             const message = result && (result.message || (result.error && result.error.message))
-            // 部分失败是查询类问题、台账已经写进去了；整体写失败才给指令。
+            // 部分失败是查询类问题、记录已经写进去了；整体写失败才给指令。
             if (store.sessionId !== runSession) return
             const writeKind = !partial ? prWriteFailureKind(result) : ''
             if (writeKind) {
@@ -6986,7 +6987,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         }
       }
 
-      // 人工兜底：平台一直查不到时，按人确认写台账（source=manual）。只写本地台账，
+      // 人工兜底：平台一直查不到时，按人确认写记录（source=manual）。只写本地记录，
       // 下一次「查合入状态」仍以平台结果为准。
       async function markState(key, state) {
         const nextState = String(state || '')
@@ -7004,7 +7005,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             const message = result && (result.message || (result.error && result.error.message))
             const writeKind = prWriteFailureKind(result)
             if (writeKind) {
-              // 手动改状态与查合入写同一份台账：写不进时也给指令，不让读者对着不可写的文件重试。
+              // 手动改状态与查合入写同一份记录：写不进时也给指令，不让读者对着不可写的文件重试。
               setManualOpen(false)
               openPromptFallback(tr('sediment.manualState'), prWriteFallbackText(
                 message,
@@ -7036,8 +7037,8 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         }
       }
 
-      // 反写台账：只对面板自己写过的动作成立。旧状态是写之前记下的，写入再走一次 CAS，
-      // 台账被别的进程改过就报冲突、不覆盖。撤销成功后回执改成「已恢复」，不再给撤销。
+      // 反写记录：只对面板自己写过的动作成立。旧状态是写之前记下的，写入再走一次 CAS，
+      // 记录被别的进程改过就报冲突、不覆盖。撤销成功后回执改成「已恢复」，不再给撤销。
       async function undoMark() {
         if (!receipt || receipt.kind !== 'write' || receipt.undone) return
         if (!canWrite) { flash(tr('write.disabled')); return }
@@ -7185,7 +7186,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
         }
         if (kind === 'check') {
           if (staleBlocked) { flash(tr('sel.stale')); return }
-          // 按所选查会回写台账；只读档位下不生成整批指令冒充所选范围。
+          // 按所选查会回写记录；只读档位下不生成整批指令冒充所选范围。
           if (canWrite) checkAllPrs(selCheckRows)
           else flash(tr('sel.writeReadonly'))
           return
@@ -7306,7 +7307,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
           else flash(tr('sediment.prompt.empty'))
           return
         }
-        // 查合入不再生成指令：有写权限时直接查平台并回写台账，结果回到行里。
+        // 查合入不再生成指令：有写权限时直接查平台并回写记录，结果回到行里。
         if (sedBatchKind === 'check') {
           if (canWrite) checkAllPrs()
           else openPrompt('check', undefined, 'whole')
@@ -7786,7 +7787,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
             h('button', {
               key: 'check', type: 'button', className: 'scp-btn',
               disabled: prRowBusy,
-              // 只读档位不写台账，但可以生成查证指令；与批次条和 Enter 的行为一致。
+              // 只读档位不写记录，但可以生成查证指令；与批次条和 Enter 的行为一致。
               title: canWrite ? undefined : tr('sediment.check.readonly'),
               onClick: () => { if (canWrite) checkPr(sedPick.key); else openPrompt('check', undefined, 'single') },
             }, checkBusy === sedPick.key ? tr('sediment.refreshing') : tr('sediment.check')),
@@ -8079,7 +8080,7 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
               onClick: saveTarget,
             }, targetBusy ? tr('sediment.refreshing') : tr('sediment.target.save'))))) : null
 
-      // 人工兜底：平台一直查不到时，按人确认把 PR 状态写进本地台账（source=manual）。
+      // 人工兜底：平台一直查不到时，按人确认把 PR 状态写进本地记录（source=manual）。
       const manualModal = manualOpen && sedPick ? h('div', {
         className: 'scp-veil',
         onMouseDown: (event) => { if (event.target === event.currentTarget) setManualOpen(false) },
