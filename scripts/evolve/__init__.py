@@ -9,13 +9,17 @@
     store
         RSI 事件存储：models 定义事件、ports 定义 Backend 端口、local / memory
         是两个实现，service 只依赖端口。
+    errors
+        领域错误基类；各模块的错误仍按 ValueError / RuntimeError 区分方向。
     targets / algorithms / sources / stages
         各扩展面的静态注册表；一个目标的全部事实在 targets.registry.TARGETS。
     evaluations
         评测面注册表（哪个 target 走哪套 scorer/gate）与门禁执行（gates.py 读文件、
         起子进程）。
+    usage / usage_dimensions
+        用量维度的共用骨架与接线表；CLI 子命令、pilot 约束、flow 证据都从表里取。
     adapters
-        旧脚本（s2_replay / verify_evidence / ev_proposal / 体检器）的薄包装；
+        旧脚本（s2_replay / fetch_issues / issue_filter / 体检器）的薄包装；
         允许反向 import 旧脚本，核心模块不 import 这里。
     cli
         编排与命令行；scripts/evolve.py 是薄包装。

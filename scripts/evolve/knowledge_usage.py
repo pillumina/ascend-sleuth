@@ -12,6 +12,7 @@ from .statistics import paired_diff_ci
 from .usage import (EPSILON, check_bool, check_int, check_num, count_directions,
                     decide, diff_intervals, elapsed_state, pair_rows,
                     partial_regressed, parse_records)
+from .errors import EvolveError
 
 EFFICIENCY_FIELDS = (
     "first_hit_step", "candidates_examined", "full_body_reads",
@@ -19,7 +20,7 @@ EFFICIENCY_FIELDS = (
 )
 
 
-class UsageError(ValueError):
+class UsageError(EvolveError, ValueError):
     pass
 
 

@@ -22,7 +22,6 @@
 
 import argparse
 import json
-import sys
 import tempfile
 from datetime import date
 from pathlib import Path
@@ -41,6 +40,7 @@ IMPLEMENTED_READABILITY_RULES = {"total_gt_0", "any_gt_0", "source_nonzero"}
 # **定义只有一处**：`index_read_cost.py` 是成本量的家（本 PR 自己的论点——同一个量两处定义，
 # 必有一处先腐烂；预核 2026-09-29 指出这里曾各写一份）。
 from index_read_cost import DEFAULT_HARD_TOK as HARD_TOK_FALLBACK, SOFT_TOK as SOFT_TOK_FALLBACK  # noqa: E402
+from _cli import main_entry
 
 
 def load_yaml(path: Path, errors: list = None):
@@ -642,6 +642,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

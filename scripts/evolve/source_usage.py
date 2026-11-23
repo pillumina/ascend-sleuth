@@ -10,13 +10,14 @@ from .statistics import paired_diff_ci
 from .usage import (EPSILON, check_bool, check_int, check_num, count_directions, decide,
                     diff_intervals, elapsed_state as elapsed_direction,
                     pair_rows, partial_regressed, parse_records)
+from .errors import EvolveError
 
 OBSERVED_FIELDS = ("files_read", "tool_calls", "fetch_calls", "grep_calls",
                   "followups", "downloads", "bytes", "elapsed_ms")
 GATE_FIELDS = ("files_read", "tool_calls", "fetch_calls", "grep_calls",
                "followups", "elapsed_ms")
 
-class SourceUsageError(ValueError):
+class SourceUsageError(EvolveError, ValueError):
     pass
 
 

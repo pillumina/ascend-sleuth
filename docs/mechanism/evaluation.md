@@ -416,7 +416,14 @@ python3 scripts/evolve.py tool-usage from-trace --trace <trace.yaml> --resolved 
 python3 scripts/evolve.py tool-usage compare --baseline base.json --candidate cand.json
 ```
 
-`compare` 与另两处一样逐样本配对：`resolved` 不降，且至少一项工具指标改善、没有项变差才给 `accept`。`replay_trace` 的 `experiment gate` 直接读这两份 JSON。
+三个用量维度（知识、源码、工具）的接线共用在 `usage_dimensions.py` 的一张表。表里每条记录给出七项：
+
+- 维度名与所属组件；
+- pilot collect 里的证据键；
+- trace 解析、汇总与判定函数；
+- 人读输出。
+
+CLI 的 `from-trace/evaluate/compare` 三组子命令由表生成；pilot 的约束循环与 flow 的证据映射也从这同一张表取。新增维度是加一条记录与一个模块。`compare` 与另两处一样逐样本配对：`resolved` 不降，且至少一项工具指标改善、没有项变差才给 `accept`。`replay_trace` 的 `experiment gate` 直接读这两份 JSON。
 
 工具补丁走 `target_kind: tooling` 的 candidate：文件只能落在 region 登记的 `paths`（`tooling.source_fetch` 是 `scripts/src_fetch.py` 与 `source-catalog.d`），不能碰 `skills/`、`knowledge/`、`eval/`、`tests/`、`.github/`。补丁可带 `checks`，取值是固定枚举：`py_compile`（编译补丁文件）、`diff_check`（`git diff --check`）、`src_fetch_self_test`（只对 `tooling.source_fetch` 与 `tooling.source_catalog`）。检查按 argv 在 worktree 内执行，不走 shell；任一失败回滚文件并删除 worktree。
 

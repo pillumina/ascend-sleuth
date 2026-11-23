@@ -37,6 +37,7 @@ import sys
 from pathlib import Path
 
 import yaml
+from _cli import main_entry
 
 RUN_DIR = ".ixn-replay"
 GOLD_FIELDS = ["held_out", "resolution_ref", "resolution_summary",
@@ -214,6 +215,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

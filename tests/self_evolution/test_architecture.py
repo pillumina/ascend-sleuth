@@ -16,10 +16,10 @@ PURE_MODULES = (
     "decision.py",
     "pools.py",
     "usage.py",
-    "inputs.py",
+    "errors.py",
 )
 ALL_MODULES = [path.name for path in sorted(PACKAGE.glob("*.py"))]
-IO_MODULES = ("samples.py", "records.py", "policy.py", "cli.py")
+IO_MODULES = ("samples.py", "records.py", "policy.py", "cli.py", "inputs.py")
 ADAPTER_MODULES = [
     path.name for path in sorted(ADAPTERS_DIR.glob("*.py"))
 ]
@@ -27,8 +27,6 @@ ADAPTER_MODULES = [
 # ImportBoundaryTest 守。
 ADAPTER_LEGACY_MAP = {
     "replay.py": "s2_replay",
-    "evidence.py": "verify_evidence",
-    "cards.py": "ev_proposal",
     "health.py": "evolution_health",
     "issues.py": "issue_filter",
 }
@@ -101,7 +99,7 @@ class PackageLayoutTest(unittest.TestCase):
         self.assertEqual(required - set(ALL_MODULES), set())
         self.assertEqual(
             {"__init__.py", "s2.py", "arena.py", "replay.py",
-             "evidence.py", "cards.py", "health.py", "issues.py"} - set(ADAPTER_MODULES),
+             "health.py", "issues.py"} - set(ADAPTER_MODULES),
             set(),
         )
         self.assertTrue((ROOT / "scripts" / "evolve.py").exists())
@@ -111,6 +109,41 @@ class PackageLayoutTest(unittest.TestCase):
         text = (ROOT / "scripts" / "evolve.py").read_text(encoding="utf-8")
         self.assertIn("from evolve.cli import main", text)
         self.assertLessEqual(len(text.splitlines()), 30)
+
+
+class ErrorTaxonomyTest(unittest.TestCase):
+    def test_every_package_error_inherits_evolve_error(self):
+        offenders = []
+        for path in PACKAGE.rglob("*.py"):
+            if path.name == "errors.py":
+                continue
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.ClassDef) or not node.name.endswith("Error"):
+                    continue
+                bases = [getattr(base, "id", getattr(base, "attr", "")) for base in node.bases]
+                if "EvolveError" not in bases:
+                    offenders.append(f"{path.relative_to(PACKAGE)}:{node.lineno}:{node.name}")
+        self.assertEqual(offenders, [])
+
+
+class InterfaceDisciplineTest(unittest.TestCase):
+    def test_no_cross_module_private_imports(self):
+        """跨模块只走公开接口；私有 helper 留在自己的模块里。"""
+        offenders = []
+        for path in PACKAGE.rglob("*.py"):
+            rel = path.relative_to(PACKAGE).as_posix()
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            for node in ast.walk(tree):
+                if not isinstance(node, ast.ImportFrom):
+                    continue
+                module = node.module or ""
+                if node.level == 0 and not module.startswith("evolve"):
+                    continue
+                for alias in node.names:
+                    if alias.name.startswith("_") and not alias.name.startswith("__"):
+                        offenders.append(f"{rel}:{node.lineno}:{alias.name}")
+        self.assertEqual(offenders, [])
 
 
 class ExternalDependencyTest(unittest.TestCase):
@@ -201,7 +234,7 @@ class PurityTest(unittest.TestCase):
     def test_pure_core_does_not_print(self):
         for name in ALL_MODULES:
             tree = ast.parse((PACKAGE / name).read_text(encoding="utf-8"))
-            if name == "cli.py":
+            if name in ("cli.py", "cli_usage.py"):
                 continue
             self.assertEqual(calls_to(tree, "print"), [], f"{name} must not print")
 

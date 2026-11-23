@@ -34,6 +34,7 @@ from _entry import framework_of, iter_case_docs, iter_case_files as _entry_case_
 from _stdio import write_text_lf
 from collections import defaultdict
 from pathlib import Path
+from _cli import main_entry
 
 try:
     import yaml
@@ -291,4 +292,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

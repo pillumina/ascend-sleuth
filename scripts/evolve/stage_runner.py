@@ -20,20 +20,21 @@ import yaml
 from .candidate import create_workspace, validate_candidate
 from .decision import required_exclusive_wins
 from .holdout_guard import HoldoutError, is_holdout_source, issue_numbers
-from .pilot import _short_id, checkpoint as pilot_checkpoint, collect as pilot_collect
-from .pilot import decide as pilot_decide, _judge_counts
+from .pilot import checkpoint as pilot_checkpoint, collect as pilot_collect, short_id
+from .pilot import decide as pilot_decide, judge_counts
 from .contracts import Conclusion, PROTOCOL_VERSION, Version, now_iso
 from .kb_content import content_rev
 from .policy import policy_hash
 from .records import ConclusionStore
+from .errors import EvolveError
 
 
 
-class StageError(ValueError):
+class StageError(EvolveError, ValueError):
     pass
 
 
-STAGES = {
+STAGE_KINDS = {
     "test": {"purpose": "test", "arms": ("baseline", "candidate"), "gate": "exact"},
     "regression": {"purpose": "regression", "arms": ("candidate",), "gate": "hard"},
 }
@@ -54,14 +55,15 @@ def _select_samples(root: Path, stage: str, policy: Dict[str, Any],
                     where: Optional[Dict[str, str]] = None) -> List[Dict[str, Any]]:
     from .samples import SampleStore
 
-    if stage not in STAGES:
+    if stage not in STAGE_KINDS:
         raise StageError(f"unknown stage: {stage}")
     try:
-        samples = [s for s in SampleStore(root).read_all()
-                   if s.status == "active" and s.purpose == STAGES[stage]["purpose"]]
+        store = SampleStore(root)
+        samples = [s for s in store.read_all()
+                   if s.status == "active" and s.purpose == STAGE_KINDS[stage]["purpose"]]
     except Exception as exc:
         raise StageError(f"cannot read samples: {exc}") from exc
-    by_short = {_short_id(s.id): s for s in samples}
+    by_short = {short_id(s.id): s for s in samples}
     try:
         reserved = issue_numbers(root)
     except HoldoutError as exc:
@@ -73,7 +75,7 @@ def _select_samples(root: Path, stage: str, policy: Dict[str, Any],
         samples = [sample for sample in samples
                    if all(str((sample.input or {}).get(key)) == value
                           for key, value in where.items())]
-        by_short = {_short_id(s.id): s for s in samples}
+        by_short = {short_id(s.id): s for s in samples}
     if stage == "test":
         config = _read_stage_config(root)
         selected = [str(sid) for sid in config.get("selected") or []]
@@ -91,11 +93,19 @@ def _select_samples(root: Path, stage: str, policy: Dict[str, Any],
         count = len(samples) if full else int(limit if limit is not None
                                               else runs.get("regression_pairs", 6))
         samples = sorted(samples, key=lambda item: item.id)[:max(0, count)]
+    # 只在最终选中的样本上校验字段完整性：没被选中或被 --where 排除的样本不影响本次执行。
+    rejected = {s.id: store.admission_errors(s) for s in samples}
+    rejected = {sid: errors for sid, errors in rejected.items() if errors}
+    if rejected:
+        detail = "; ".join(
+            f"{sid}: {', '.join(errors[:2])}" for sid, errors in sorted(rejected.items())
+        )
+        raise StageError(f"sample admission failed: {detail}")
     rows = []
     for sample in samples:
         rows.append({
             "id": sample.id,
-            "short_id": _short_id(sample.id),
+            "short_id": short_id(sample.id),
             "path": str((Path(root) / "eval" / "core" / "samples" / f"{sample.id}.yaml")),
             "purpose": sample.purpose,
             "source": sample.source,
@@ -163,7 +173,7 @@ def plan(root: Path, stage: str, output: Path, policy: Dict[str, Any],
     root, output = Path(root), Path(output)
     if output.exists():
         raise StageError(f"output already exists: {output}")
-    spec = STAGES[stage]
+    spec = STAGE_KINDS[stage]
     candidate = None
     candidate_root = root
     if candidate_path is not None:
@@ -422,7 +432,7 @@ def report(output: Path, stage: str, judge_path: Path,
         collected = pilot_collect(output, judge=Path(judge_path))
         if not collected.get("complete"):
             raise StageError("test evidence incomplete: trace or output missing")
-        counts = _judge_counts(tasks, judge)
+        counts = judge_counts(tasks, judge)
         if counts["n"] != len(tasks.get("samples") or []):
             raise StageError("test evidence incomplete: judge scores missing")
         result = pilot_decide(output, Path(judge_path), policy, pool="test", card=card)

@@ -34,7 +34,6 @@ import sys
 import time
 from pathlib import Path
 
-from _stdio import pin_utf8_stdio
 from _yaml import load_file
 from exec_log_path import log_lock
 from groom_common import (
@@ -43,6 +42,7 @@ from groom_common import (
 )
 from groom_recheck import check as recheck_check
 from groom_snapshot import cleanup_snapshot
+from _cli import main_entry
 
 TERMINAL_DECISIONS = ("new_pattern", "variant", "covered")
 SNAPSHOT_IN_USE_MINUTES = 30
@@ -457,7 +457,6 @@ class _Parser(argparse.ArgumentParser):
 
 
 def main():
-    pin_utf8_stdio()
     ap = _Parser(description="Groom 收尾清理（复核通过后按草稿删产物）")
     ap.add_argument("--repo", default=None)
     ap.add_argument("--pr-body-file", required=True)
@@ -520,4 +519,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

@@ -39,7 +39,8 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import entry_activity as ea  # noqa: E402
-from _stdio import pin_utf8_stdio, write_text_lf  # noqa: E402
+from _cli import main_entry  # noqa: E402
+from _stdio import write_text_lf  # noqa: E402
 
 CONF_RE = None
 
@@ -232,5 +233,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

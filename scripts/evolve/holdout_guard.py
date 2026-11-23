@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Set
 
 import yaml
+from .errors import EvolveError
 
 HOLDOUT_REL = Path("eval") / "holdout.yaml"
 _ISSUE = re.compile(
@@ -16,7 +17,7 @@ _ISSUE = re.compile(
 )
 
 
-class HoldoutError(ValueError):
+class HoldoutError(EvolveError, ValueError):
     """holdout 清单不可读。"""
 
 

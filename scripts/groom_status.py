@@ -31,12 +31,12 @@ import argparse
 import sys
 from pathlib import Path
 
-from _stdio import pin_utf8_stdio
 from groom_common import (
     case_fingerprint, draft_cases, dump_json, find_drafts, is_ancestor, knowledge_changes,
     load_assessment, load_json, normalize_commit, now_iso, repo_root, run_git,
     sanitize_key, shared_inbox, short_sha,
 )
+from _cli import main_entry
 
 
 # 目标本身有问题时的下一步：先确认基准，而不是一律重跑 groom。
@@ -420,7 +420,6 @@ def _fallback_target(root: Path):
 
 
 def main():
-    pin_utf8_stdio()
     ap = argparse.ArgumentParser(description="Groom 本地草稿状态与新鲜度")
     ap.add_argument("--repo", default=None)
     ap.add_argument("--target", default=None,
@@ -554,4 +553,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

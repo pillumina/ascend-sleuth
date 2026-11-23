@@ -27,12 +27,12 @@ import sys
 from pathlib import Path
 
 from _lexical import tokens_of
-from _stdio import pin_utf8_stdio
 from groom_common import (
     SCHEMA_WORK_ORDER, Draft, canonical_content_sha, case_fingerprint, draft_cases,
     draft_text_of, dump_json, find_drafts, load_json, load_yaml, now_iso, sanitize_key,
     shared_inbox, short_sha, work_order_id,
 )
+from _cli import main_entry
 
 DEFAULT_TOP = 6
 HARD_TOP = 8
@@ -294,7 +294,6 @@ snapshot_path_root = Path(".")
 
 def main():
     global snapshot_path_root
-    pin_utf8_stdio()
     ap = argparse.ArgumentParser(description="生成 Groom 子 agent 工作单（候选有界）")
     ap.add_argument("--snapshot", required=True, help="groom_snapshot.py --json 的 meta 文件")
     ap.add_argument("--draft", action="append", default=None, help="指定草稿 case 文件（可重复）")
@@ -402,4 +401,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

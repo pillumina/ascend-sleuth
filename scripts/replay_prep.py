@@ -13,6 +13,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from _cli import main_entry
 
 
 def clip_body(body: str, limit: int = 3500) -> str:
@@ -66,6 +67,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    main()
+    raise SystemExit(main_entry(main))

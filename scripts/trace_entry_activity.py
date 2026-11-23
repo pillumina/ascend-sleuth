@@ -53,7 +53,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import entry_activity as ea  # noqa: E402
 import index_read_cost as irc  # noqa: E402
-from _stdio import pin_utf8_stdio, write_text_lf  # noqa: E402
+from _cli import main_entry  # noqa: E402
+from _stdio import write_text_lf  # noqa: E402
 from exec_log_path import resolve_rel, resolve_traces  # noqa: E402
 
 # 结算游标同一份文件（gitignored、锚主检出）。为什么共用：两件事都是「本机幂等状态」，
@@ -1088,5 +1089,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

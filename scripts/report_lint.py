@@ -27,6 +27,7 @@ import argparse
 import re
 import sys
 from pathlib import Path
+from _cli import main_entry
 
 # 必需小节（按标题关键词匹配，允许编号与措辞小幅差异）
 REQUIRED_SECTIONS = [
@@ -208,7 +209,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-
-    pin_utf8_stdio()   # Windows 上标准流默认 locale 编码（GBK），✓/✗ 会直接 UnicodeEncodeError
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

@@ -43,6 +43,7 @@ from pathlib import Path
 import yaml
 
 from exec_log_path import main_checkout
+from _cli import main_entry
 
 SIGNALS_REL = Path("proposals") / "signals"
 
@@ -294,4 +295,4 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

@@ -9,12 +9,13 @@
 import json
 from pathlib import Path
 from typing import Any, Dict
+from .errors import EvolveError
 
 MIN_SCORE = 0.6
 PLACEHOLDERS = ("待补", "todo", "tbd", "待定")
 
 
-class QualityError(ValueError):
+class QualityError(EvolveError, ValueError):
     pass
 
 

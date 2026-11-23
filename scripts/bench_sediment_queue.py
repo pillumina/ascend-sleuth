@@ -34,7 +34,7 @@ from pathlib import Path
 
 import yaml
 
-from _stdio import pin_utf8_stdio
+from _cli import main_entry
 
 REPO = Path(__file__).resolve().parents[1]
 DEFAULT_PLUGIN = REPO / "dsh-plugins" / "dsh-sleuth-copilot"
@@ -226,7 +226,6 @@ def measure(plugin: Path, repo: Path, repeat: int) -> dict:
 
 
 def main(argv=None) -> int:
-    pin_utf8_stdio()
     args, plugin, repo_root = parse_args(sys.argv[1:] if argv is None else argv)
     with tempfile.TemporaryDirectory(prefix="sediment-bench-") as tmp:
         repo = build_fixture(Path(tmp), repo_root, args.drafts, args.traces, args.decided)
@@ -255,4 +254,4 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

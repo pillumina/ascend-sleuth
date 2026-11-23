@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import yaml  # noqa: E402
 
 from evolve.adapters import AdapterError, load_legacy  # noqa: E402
-from evolve.adapters import arena, cards, evidence, replay, s2  # noqa: E402
+from evolve.adapters import arena, replay, s2  # noqa: E402
 from evolve.samples import SampleStore  # noqa: E402
 
 S2_FIXTURE = """\
@@ -306,14 +306,6 @@ class LegacyWrapperTest(unittest.TestCase):
         message = str(ctx.exception)
         self.assertIn("s2_replay", message)
         self.assertIn("scripts/", message)
-
-    def test_evidence_wrapper_forwards_to_legacy_compare(self):
-        verdict, note = evidence.compare("same line", "same line")
-        self.assertEqual((verdict, note), ("PASS", None))
-
-    def test_cards_wrapper_forwards_next_id(self):
-        card_id = cards.next_id(self.root)
-        self.assertRegex(card_id, r"^EV-\d{4}-\d{3}$")
 
 
 if __name__ == "__main__":

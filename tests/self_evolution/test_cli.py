@@ -1174,6 +1174,122 @@ class PolicyWiringCliTest(unittest.TestCase):
         self.assertIn("split: group (policy)", result.stdout)
 
 
+class CliSafetyNetTest(unittest.TestCase):
+    def test_uncaught_domain_error_becomes_one_line(self):
+        from argparse import Namespace
+        from unittest import mock
+        from evolve.errors import EvolveError
+
+        def boom(_args):
+            raise EvolveError("demo failure")
+
+        parser = mock.Mock()
+        parser.parse_args.return_value = Namespace(func=boom)
+        err = io.StringIO()
+        with mock.patch.object(cli, "build_parser", return_value=parser):
+            with contextlib.redirect_stderr(err):
+                code = cli.main(["anything"])
+        self.assertEqual(code, 1)
+        self.assertEqual(err.getvalue().strip(), "error: demo failure")
+
+
+class JsonContractTest(unittest.TestCase):
+    """面板与脚本按 JSON 读的输出：键名是被消费的接口。"""
+
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.root = Path(self.td.name)
+        self.addCleanup(self.td.cleanup)
+
+    def cli(self, *args):
+        return run_cli(*args, "--root", str(self.root))
+
+    def test_sample_review_and_promote_json_shape(self):
+        created = self.cli(
+            "sample", "new", "--id", "J-1", "--object-type", "diagnosis",
+            "--source", "https://example.com/issues/J-1",
+            "--expected", '{"namespace": "inference/vllm-ascend"}',
+        )
+        self.assertEqual(created.returncode, 0, created.stderr)
+        reviewed = self.cli("sample", "review", "--id", "J-1", "--approve", "--json")
+        self.assertEqual(reviewed.returncode, 0, reviewed.stderr)
+        payload = json.loads(reviewed.stdout)
+        self.assertEqual(set(payload), {"ok", "id", "status"})
+        self.assertIs(payload["ok"], True)
+        self.assertEqual(payload["id"], "J-1")
+        promoted = self.cli("sample", "promote", "--id", "J-1", "--to", "core", "--json")
+        self.assertEqual(promoted.returncode, 0, promoted.stderr)
+        payload = json.loads(promoted.stdout)
+        self.assertEqual(set(payload), {"ok", "id", "status", "origin", "purpose", "exported"})
+        self.assertEqual(payload["origin"], "core")
+        self.assertIsNone(payload["exported"])
+
+
+class UsageJsonContractTest(unittest.TestCase):
+    """pilot/flow 与外部消费者按 JSON 读用量结果：键名是接口。"""
+
+    def setUp(self):
+        self.td = tempfile.TemporaryDirectory()
+        self.root = Path(self.td.name)
+        self.addCleanup(self.td.cleanup)
+
+    def cli(self, *args):
+        return run_cli(*args)
+
+    def _write(self, name, payload):
+        path = self.root / name
+        path.write_text(json.dumps(payload), encoding="utf-8")
+        return str(path)
+
+    def test_compare_json_shape_for_scored_dimensions(self):
+        knowledge = [{"sample_id": "S1", "hit": True, "first_hit_step": 2,
+                      "elapsed_ms": 1000, "wrong_cases": 0}]
+        baseline = self._write("a.json", knowledge)
+        candidate = self._write("b.json", knowledge)
+        result = self.cli("knowledge-usage", "compare", "--baseline", baseline,
+                          "--candidate", candidate, "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(set(payload), {"decision", "baseline", "candidate",
+                                        "deltas", "reasons", "paired", "ci"})
+        self.assertIn(payload["decision"], ("accept", "insufficient", "reject"))
+
+        source = [{"sample_id": "S1", "files_read": 2, "tool_calls": 1,
+                   "fetch_calls": 1, "grep_calls": 0, "followups": 0,
+                   "elapsed_ms": 2000, "cache_hits": 0, "source_ok": True}]
+        baseline = self._write("c.json", source)
+        candidate = self._write("d.json", source)
+        result = self.cli("source-usage", "compare", "--baseline", baseline,
+                          "--candidate", candidate, "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(set(payload), {"decision", "baseline", "candidate",
+                                        "deltas", "reasons", "paired", "ci"})
+
+        tools = [{"sample_id": "S1", "tool_calls": 2, "fetch_calls": 1,
+                  "grep_calls": 1, "retries": 0, "cache_hits": 0,
+                  "tool_ms": 100, "failures": 0, "resolved": True}]
+        baseline = self._write("e.json", tools)
+        candidate = self._write("f.json", tools)
+        result = self.cli("tool-usage", "compare", "--baseline", baseline,
+                          "--candidate", candidate, "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(set(payload), {"decision", "baseline", "candidate",
+                                        "deltas", "reasons", "paired"})
+
+    def test_from_trace_json_has_sample_id(self):
+        trace = self.root / "t.yaml"
+        trace.write_text(
+            "session_id: S1\ntrace:\n"
+            "  - {action: source_analysis, files_read: [a.py], tool_calls: [grep x], ts: 1}\n"
+            "  - {action: source_analysis, ts: 2}\n", encoding="utf-8")
+        result = self.cli("source-usage", "from-trace", "--trace", str(trace), "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["sample_id"], "S1")
+
+
 if __name__ == "__main__":
     unittest.main()
 

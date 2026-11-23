@@ -124,6 +124,7 @@ KNOWN_KB_MERGE = {"ff-only", "none"}
 
 # triage miss 归类用的 token 判据见 scripts/_lexical.py（单一事实源：rank_candidates.py 共用同一组模式）
 from _lexical import has_lexical_signal  # noqa: E402
+from _cli import main_entry
 
 
 def load_states(root: Path, traces_dir: Optional[Path] = None):
@@ -740,6 +741,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    main()
+    raise SystemExit(main_entry(main))

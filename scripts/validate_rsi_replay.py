@@ -13,8 +13,9 @@ from typing import Any, Dict
 
 import yaml
 
-from evolve.pilot import _judge_counts, collect, decide
+from evolve.pilot import collect, decide, judge_counts
 from evolve.policy import load_policy
+from _cli import main_entry
 
 
 def _load(path: Path) -> Dict[str, Any]:
@@ -32,7 +33,7 @@ def validate(pilot: Path, keep: bool = False) -> Dict[str, Any]:
         shutil.copytree(pilot, output)
         base = Path(td) / ".s2-replay" / "evolve"
         collected = collect(output, judge=judge)
-        counts = _judge_counts(tasks, judge_data)
+        counts = judge_counts(tasks, judge_data)
         result = decide(output, judge, load_policy(None), base=base)
         conclusion = result.get("conclusion") or {}
         candidate = tasks.get("candidate") or {}
@@ -89,4 +90,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main_entry(main))

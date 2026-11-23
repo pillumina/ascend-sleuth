@@ -49,11 +49,11 @@ import sys
 from pathlib import Path
 
 from _lexical import tokens_of
-from _stdio import pin_utf8_stdio
 from groom_common import (
     canonical_content_sha, dump_json, is_ancestor, normalize_commit,
     now_iso, repo_root, run_git,
 )
+from _cli import main_entry
 
 MARKER_RE = re.compile(r"<!--\s*groom-assessment\s*(.*?)-->", re.S)
 CATEGORIES = {"interrupt", "precision", "performance"}
@@ -474,7 +474,6 @@ def default_base(root: Path) -> str:
 
 
 def main():
-    pin_utf8_stdio()
     ap = argparse.ArgumentParser(description="Groom 合入前复核（stale assessment / 并发 PR）")
     ap.add_argument("--repo", default=None)
     ap.add_argument("--pr-body-file", default=None)
@@ -535,4 +534,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

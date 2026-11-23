@@ -15,8 +15,8 @@
 返回非零 = 不一致。
 """
 import re
-import sys
 from pathlib import Path
+from _cli import main_entry
 
 ROOT = Path(__file__).resolve().parent.parent
 PANELS = {
@@ -87,5 +87,5 @@ def main():
     return 0
 
 
-if __name__ == '__main__':
-    sys.exit(main())
+if __name__ == "__main__":
+    raise SystemExit(main_entry(main))

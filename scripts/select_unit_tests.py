@@ -49,6 +49,7 @@ import ast
 import re
 import sys
 from pathlib import Path
+from _cli import main_entry
 
 SCRIPT_DIR = "scripts"
 TEST_DIR = "tests"
@@ -487,4 +488,4 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

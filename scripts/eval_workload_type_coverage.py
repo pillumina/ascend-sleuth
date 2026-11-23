@@ -51,6 +51,7 @@ import sys
 from pathlib import Path
 
 import yaml
+from _cli import main_entry
 
 REPO = Path(__file__).resolve().parents[1]
 GOLDEN = "eval/golden"
@@ -319,6 +320,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

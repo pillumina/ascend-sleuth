@@ -17,6 +17,7 @@
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from .errors import EvolveError
 
 STATUSES = ("candidate", "active", "retired", "rejected")
 ORIGINS = ("core", "field")
@@ -34,7 +35,7 @@ DECISIONS = ("accept", "insufficient", "reject", "unknown")
 PROTOCOL_VERSION = "evolve-v1"
 
 
-class ContractError(ValueError):
+class ContractError(EvolveError, ValueError):
     """字段缺失、类型不对或枚举取值非法。"""
 
 

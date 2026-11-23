@@ -24,7 +24,7 @@ def _policy():
 from tests.self_evolution.test_cli import run_cli  # noqa: E402
 from evolve.proposal_engine import ProposalArchive, ProposalEngine  # noqa: E402
 from evolve.readback import latest_by_proposal  # noqa: E402
-from evolve.rsi_store import RSIStore  # noqa: E402
+from evolve.store import RSIStore  # noqa: E402
 
 
 def _repo(root: Path):

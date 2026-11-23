@@ -14,6 +14,7 @@ from .source_usage import SourceUsageError
 from .source_usage import from_trace as source_from_trace
 from .usage import (check_bool, check_int, check_num, count_directions, decide,
                     pair_rows, partial_regressed, parse_records)
+from .errors import EvolveError
 
 GATE_FIELDS = ("tool_calls", "fetch_calls", "grep_calls", "retries",
                "cache_hits", "tool_ms")
@@ -21,7 +22,7 @@ HIGHER_IS_BETTER = ("cache_hits",)
 OBSERVED_FIELDS = GATE_FIELDS + ("failures",)
 
 
-class ToolUsageError(ValueError):
+class ToolUsageError(EvolveError, ValueError):
     pass
 
 

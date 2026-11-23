@@ -8,9 +8,10 @@ import time
 from pathlib import Path
 from statistics import median
 from typing import Any, Dict, List, Optional
+from .errors import EvolveError
 
 
-class BenchmarkError(ValueError):
+class BenchmarkError(EvolveError, ValueError):
     pass
 
 

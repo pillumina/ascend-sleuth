@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from _cli import main_entry
 
 
 class JudgeError(ValueError):
@@ -72,4 +73,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
+    raise SystemExit(main_entry(lambda: main(sys.argv[1:])))

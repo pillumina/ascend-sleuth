@@ -53,7 +53,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import entry_activity as ea  # noqa: E402
-from _stdio import pin_utf8_stdio  # noqa: E402
+from _cli import main_entry  # noqa: E402
 
 #: 冷启动先验表（groom 的 `verification \ confidence(调查质量)` 那张表，执行值不另存一处）。
 PRIORS = {
@@ -310,5 +310,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

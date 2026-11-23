@@ -12,9 +12,10 @@
 
 import importlib
 from typing import Any
+from ..errors import EvolveError
 
 
-class AdapterError(RuntimeError):
+class AdapterError(EvolveError, RuntimeError):
     """旧脚本不可用或外部输入格式不对；调用方应转成可照做的提示。"""
 
 

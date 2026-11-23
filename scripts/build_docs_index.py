@@ -25,12 +25,12 @@
 # 退出码：0 = 一致；1 = 需要重新生成 / 有未登记文档。
 
 import argparse
-import sys
 from pathlib import Path
 
 import yaml
 
 from _stdio import write_text_lf
+from _cli import main_entry
 
 REPO = Path(__file__).resolve().parent.parent
 MANIFEST = "docs/_manifest.yaml"
@@ -267,6 +267,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

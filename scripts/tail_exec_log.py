@@ -30,13 +30,13 @@
 
 import argparse
 import json
-import sys
 from collections import Counter
 from pathlib import Path
 
 import yaml
 
 from exec_log_path import describe, resolve
+from _cli import main_entry
 
 
 def load_records(root: Path, explicit: Path = None, local: bool = False):
@@ -158,6 +158,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

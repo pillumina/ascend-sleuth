@@ -54,7 +54,7 @@ from pathlib import Path
 
 from _fs import atomic_write_text
 
-from _stdio import pin_utf8_stdio
+from _cli import main_entry
 
 from exec_log_path import REF_DOCS_REL, describe_ref, resolve_ref_docs  # noqa: E402
 
@@ -506,5 +506,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

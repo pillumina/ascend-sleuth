@@ -5,9 +5,10 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import yaml
+from .errors import EvolveError
 
 
-class ReplaySourceError(RuntimeError):
+class ReplaySourceError(EvolveError, RuntimeError):
     pass
 
 

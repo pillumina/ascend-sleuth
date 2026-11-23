@@ -37,11 +37,11 @@
 import argparse
 import json
 import subprocess
-import sys
 import time
 from pathlib import Path
 
 import yaml
+from _cli import main_entry
 
 BODY_CLIP = 3500
 # 流程/文档/发布类 title 前缀：S2 校准集一律不收（2026-10 扩充；起因＝池里进了 `[Misc]: Close
@@ -351,6 +351,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    main()
+    raise SystemExit(main_entry(main))

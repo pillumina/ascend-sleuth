@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 import yaml
+from _cli import main_entry
 
 CONFIG_NAME = "sleuth.config.yaml"
 SCHEMA = "sleuth-config-v1"
@@ -309,4 +310,4 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main_entry(main))

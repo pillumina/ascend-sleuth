@@ -24,7 +24,6 @@ import argparse
 import os
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 from _cli import emit, fail, main_entry
@@ -162,4 +161,4 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    sys.exit(main_entry(main))
+    raise SystemExit(main_entry(main))

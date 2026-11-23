@@ -55,7 +55,7 @@ from pathlib import Path
 
 import yaml
 
-from _stdio import pin_utf8_stdio
+from _cli import main_entry
 from _yaml import load_text
 from exec_log_path import resolve_traces, main_checkout
 from kb_rev import kb_rev
@@ -891,5 +891,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

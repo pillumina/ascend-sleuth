@@ -36,7 +36,8 @@ from .adapters.arena import counts_from_files
 from .adapters.metrics import load_metrics
 from .algorithms.registry import algorithm_ids, get_algorithm
 from .evaluations.gates import GateRequest, gate_for
-from .inputs import json_object
+from .cli_usage import register as register_usage_dimensions
+from .inputs import json_object, read_json
 from .targets.base import DEFAULT_TARGET
 from .targets.registry import get_target, resolve_evaluator, resolve_optimizer, target_ids
 from .rsi import apply_attribution, apply_selection, build_plan, save_plan
@@ -50,7 +51,6 @@ from .adapters.s2 import import_s2_samples
 from .decision import Decision, DecisionResult, decide
 from .experiments import ExperimentError, validate_experiment
 from .holdout_guard import is_holdout_source, issue_numbers
-from .knowledge_usage import UsageError, compare as compare_usage, evaluate as evaluate_usage, from_trace
 from .flow import FlowError, run_proposal
 from .proposal_engine import (BestPolicy, GepaPolicy, ParetoPolicy, ProposalArchive,
                               ProposalEngine)
@@ -59,15 +59,13 @@ from .pilot import (PilotError, checkpoint as pilot_checkpoint, collect as pilot
                     decide as pilot_decide, prepare as pilot_prepare)
 from .stage_runner import (StageError, judge as stage_judge, load_argv as stage_load_argv,
                     plan as stage_plan, report as stage_report, run as stage_run)
-from .source_usage import SourceUsageError, compare as compare_source_usage, evaluate as evaluate_source_usage, from_trace as source_from_trace
-from .tool_usage import ToolUsageError, compare as compare_tool_usage, evaluate as evaluate_tool_usage, from_trace as tool_from_trace
 from .quality import QualityError, load_quality
 from .policy import PolicyError, load_config_policy, load_policy, policy_hash, resolve_autonomy
 from .intake import IntakeError, completeness, extract_case, extract_trace, make_sample
 from .samples import import_pilot
 from .readback import (ReadbackError, latest_by_proposal, latest_conclusion,
                        summary as readback_summary)
-from .rsi_store import RSIStore
+from .store import RSIStore
 from .records import ConclusionStore, ExperimentStore, RecordError
 from .runner import issue_plan, render_plan
 from .scoring import RubricError
@@ -75,13 +73,14 @@ from .samples import SampleStore, StoreError
 from .sources.registry import get_source
 
 from exec_log_path import resolve_checkout_dir
+from .errors import EvolveError
 
 PROG = "evolve.py"
 
 JUDGE_METHODS = ("paired_binary", "cost_primary")
 
 
-class CliError(ValueError):
+class CliError(EvolveError, ValueError):
     """命令行输入错误。"""
 
 
@@ -743,7 +742,7 @@ def _print_decision(result: DecisionResult) -> None:
 
 # ---------------------------------------------------------------- experiment
 def cmd_store_history(args: argparse.Namespace) -> int:
-    from .rsi_store import RSIStore
+    from .store import RSIStore
     try:
         if not args.experiment and not args.proposal:
             raise ValueError("pass --experiment or --proposal")
@@ -1230,24 +1229,7 @@ def cmd_rsi_select(args: argparse.Namespace) -> int:
 
 
 def _read_json(path: str) -> Any:
-    import json
-    return json.loads(Path(path).read_text(encoding="utf-8"))
-
-
-def cmd_knowledge_usage_evaluate(args: argparse.Namespace) -> int:
-    try:
-        result = evaluate_usage(_read_json(args.file))
-    except (OSError, ValueError, UsageError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    if args.json:
-        import json
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-    else:
-        print(f"samples: {result['n']}")
-        print(f"hit_rate: {result['hit_rate']:.3f}")
-        print(f"wrong_cases: {result['wrong_cases']}")
-    return 0
+    return read_json(path)
 
 
 def _where_pairs(values):
@@ -1383,7 +1365,7 @@ def cmd_readback(args: argparse.Namespace) -> int:
         if args.proposal:
             record = latest_by_proposal(args.proposal, base)
             if record is None:
-                from .rsi_store import RSIStore
+                from .store import RSIStore
                 for event in reversed(RSIStore(base).history(proposal_id=args.proposal)):
                     data = event.get("data") or {}
                     if event.get("kind") == "decision":
@@ -1457,43 +1439,6 @@ def cmd_pilot_decide(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_tool_usage_from_trace(args: argparse.Namespace) -> int:
-    try:
-        document = yaml.safe_load(Path(args.trace).read_text(encoding="utf-8"))
-        resolved = None if args.resolved is None else args.resolved == "true"
-        result = tool_from_trace(document, resolved=resolved)
-    except (OSError, ValueError, yaml.YAMLError, ToolUsageError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    if args.json:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-    else:
-        print(f"sample_id: {result['sample_id']}")
-        print(f"tool_calls: {result['tool_calls']} fetch: {result['fetch_calls']} "
-              f"grep: {result['grep_calls']} retries: {result['retries']}")
-    return 0
-
-
-def cmd_tool_usage_evaluate(args: argparse.Namespace) -> int:
-    try:
-        result = evaluate_tool_usage(_read_json(args.file))
-    except (OSError, ValueError, ToolUsageError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0
-
-
-def cmd_tool_usage_compare(args: argparse.Namespace) -> int:
-    try:
-        result = compare_tool_usage(_read_json(args.baseline), _read_json(args.candidate))
-    except (OSError, ValueError, ToolUsageError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0
-
-
 def cmd_candidate_validate(args: argparse.Namespace) -> int:
     try:
         candidate = validate_candidate(_read_json(args.file))
@@ -1531,74 +1476,6 @@ def cmd_candidate_diff(args: argparse.Namespace) -> int:
     except (OSError, subprocess.CalledProcessError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    return 0
-
-
-def cmd_source_usage_from_trace(args: argparse.Namespace) -> int:
-    try:
-        document = yaml.safe_load(Path(args.trace).read_text(encoding="utf-8"))
-        source_ok = None if args.source_ok is None else args.source_ok == "true"
-        result = source_from_trace(document, source_ok=source_ok)
-    except (OSError, ValueError, yaml.YAMLError, SourceUsageError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    if args.json:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-    else:
-        print(f"sample_id: {result['sample_id']}")
-        print(f"files_read: {result['files_read']} tool_calls: {result['tool_calls']}")
-    return 0
-
-
-def cmd_source_usage_evaluate(args: argparse.Namespace) -> int:
-    try:
-        result = evaluate_source_usage(_read_json(args.file))
-    except (OSError, ValueError, SourceUsageError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0
-
-
-def cmd_source_usage_compare(args: argparse.Namespace) -> int:
-    try:
-        result = compare_source_usage(_read_json(args.baseline), _read_json(args.candidate))
-    except (OSError, ValueError, SourceUsageError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0
-
-
-def cmd_knowledge_usage_from_trace(args: argparse.Namespace) -> int:
-    try:
-        document = yaml.safe_load(Path(args.trace).read_text(encoding="utf-8"))
-        result = from_trace(document, expected_case=args.expected_case)
-    except (OSError, ValueError, yaml.YAMLError, UsageError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    if args.json:
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-    else:
-        print(f"sample_id: {result['sample_id']}")
-        print(f"hit: {result['hit']} first_hit_step={result['first_hit_step']}")
-    return 0
-
-
-def cmd_knowledge_usage_compare(args: argparse.Namespace) -> int:
-    try:
-        result = compare_usage(_read_json(args.baseline), _read_json(args.candidate))
-    except (OSError, ValueError, UsageError) as exc:
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
-    if args.json:
-        import json
-        print(json.dumps(result, ensure_ascii=False, indent=2))
-    else:
-        print(f"decision: {result['decision']}")
-        print(f"reasons: {', '.join(result['reasons']) or 'none'}")
-        print(f"baseline hit_rate: {result['baseline']['hit_rate']:.3f}")
-        print(f"candidate hit_rate: {result['candidate']['hit_rate']:.3f}")
     return 0
 
 
@@ -1768,7 +1645,7 @@ def cmd_brief(args: argparse.Namespace) -> int:
     except (OSError, ValueError):
         experiments = []
     try:
-        from .rsi_store import RSIStore
+        from .store import RSIStore
         events = RSIStore(_evolve_base(args)).read()
     except (OSError, ValueError):
         events = []
@@ -1816,6 +1693,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="自演进评估循环：策略、样本队列、判定与读数（v1）。",
     )
     sub = parser.add_subparsers(dest="command", required=True)
+    register_usage_dimensions(sub)
 
     policy = sub.add_parser("policy", help="策略文件检查/展示")
     policy_sub = policy.add_subparsers(dest="policy_command", required=True)
@@ -2285,52 +2163,6 @@ def build_parser() -> argparse.ArgumentParser:
     cand_diff.add_argument("--workspace", required=True)
     cand_diff.set_defaults(func=cmd_candidate_diff)
 
-    source_usage = sub.add_parser("source-usage", help="源码访问效率观测/对照")
-    source_sub = source_usage.add_subparsers(dest="source_command", required=True)
-    source_trace = source_sub.add_parser("from-trace", help="从 diagnose trace 推导 source usage")
-    source_trace.add_argument("--trace", required=True)
-    source_trace.add_argument("--source-ok", choices=("true", "false"), default=None)
-    source_trace.add_argument("--json", action="store_true")
-    source_trace.set_defaults(func=cmd_source_usage_from_trace)
-    source_eval = source_sub.add_parser("evaluate", help="汇总 source usage")
-    source_eval.add_argument("--file", required=True)
-    source_eval.set_defaults(func=cmd_source_usage_evaluate)
-    source_cmp = source_sub.add_parser("compare", help="source usage 门禁")
-    source_cmp.add_argument("--baseline", required=True)
-    source_cmp.add_argument("--candidate", required=True)
-    source_cmp.set_defaults(func=cmd_source_usage_compare)
-
-    tool_usage = sub.add_parser("tool-usage", help="工具使用与工具性能观测/对照")
-    tool_sub = tool_usage.add_subparsers(dest="tool_command", required=True)
-    tool_trace = tool_sub.add_parser("from-trace", help="从 diagnose trace 推导 tool usage")
-    tool_trace.add_argument("--trace", required=True)
-    tool_trace.add_argument("--resolved", choices=("true", "false"), default=None)
-    tool_trace.add_argument("--json", action="store_true")
-    tool_trace.set_defaults(func=cmd_tool_usage_from_trace)
-    tool_eval = tool_sub.add_parser("evaluate", help="汇总 tool usage")
-    tool_eval.add_argument("--file", required=True)
-    tool_eval.set_defaults(func=cmd_tool_usage_evaluate)
-    tool_cmp = tool_sub.add_parser("compare", help="tool usage 门禁")
-    tool_cmp.add_argument("--baseline", required=True)
-    tool_cmp.add_argument("--candidate", required=True)
-    tool_cmp.set_defaults(func=cmd_tool_usage_compare)
-
-    usage = sub.add_parser("knowledge-usage", help="知识使用效率观测/对照")
-    usage_sub = usage.add_subparsers(dest="usage_command", required=True)
-    usage_trace = usage_sub.add_parser("from-trace", help="从 diagnose trace 推导 usage")
-    usage_trace.add_argument("--trace", required=True)
-    usage_trace.add_argument("--expected-case", default=None)
-    usage_trace.add_argument("--json", action="store_true")
-    usage_trace.set_defaults(func=cmd_knowledge_usage_from_trace)
-    usage_eval = usage_sub.add_parser("evaluate", help="汇总一份 usage 记录")
-    usage_eval.add_argument("--file", required=True)
-    usage_eval.add_argument("--json", action="store_true")
-    usage_eval.set_defaults(func=cmd_knowledge_usage_evaluate)
-    usage_cmp = usage_sub.add_parser("compare", help="baseline/candidate 使用效率门禁")
-    usage_cmp.add_argument("--baseline", required=True)
-    usage_cmp.add_argument("--candidate", required=True)
-    usage_cmp.add_argument("--json", action="store_true")
-    usage_cmp.set_defaults(func=cmd_knowledge_usage_compare)
     rsi_status = rsi_sub.add_parser("status", help="读取已保存的 RSI 计划")
     rsi_status.add_argument("--state", required=True)
     rsi_status.set_defaults(func=cmd_rsi_status)
@@ -2366,8 +2198,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
     try:
         return int(args.func(args))
-    except (CliError, PolicyError, StoreError, RecordError, ContractError,
-            AdapterError) as exc:
+    except EvolveError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:

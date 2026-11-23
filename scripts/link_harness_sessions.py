@@ -59,6 +59,7 @@ from trace_entry_activity import (  # noqa: E402  （同目录复用，不复制
     harness_homes,
     read_log_text,
 )
+from _cli import main_entry
 
 TRACES_REL = "traces"
 #: 顶层该字段的行；自动扫描时"空值也算写过"不覆盖，显式给了 --session-id 时允许补空值。
@@ -343,7 +344,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

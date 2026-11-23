@@ -13,6 +13,7 @@ from typing import Any, Dict
 from evolve.flow import run_proposal
 from evolve.policy import load_policy
 from evolve.proposal_engine import ProposalArchive, ProposalEngine
+from _cli import main_entry
 
 
 def _load(path: Path) -> Dict[str, Any]:
@@ -72,4 +73,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main_entry(main))

@@ -6,9 +6,10 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .records import ConclusionStore, RecordError
+from .errors import EvolveError
 
 
-class ReadbackError(ValueError):
+class ReadbackError(EvolveError, ValueError):
     pass
 
 

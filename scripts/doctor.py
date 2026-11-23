@@ -43,7 +43,7 @@ import sys
 import sysconfig
 from pathlib import Path
 
-from _stdio import pin_utf8_stdio
+from _cli import main_entry
 
 SCRIPTS_DIR = Path(__file__).resolve().parent
 
@@ -650,5 +650,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

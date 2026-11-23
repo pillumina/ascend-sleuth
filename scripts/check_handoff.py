@@ -25,7 +25,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from _stdio import pin_utf8_stdio
+from _cli import main_entry
 from _yaml import load_text
 from exec_log_path import resolve_traces
 
@@ -497,5 +497,4 @@ def finish() -> int:
 
 
 if __name__ == "__main__":
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

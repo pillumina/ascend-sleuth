@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """命令行公共层：退出码归一与 JSON 输出。"""
 
+import ast
 import io
 import json
 import sys
@@ -59,3 +60,54 @@ class OutputTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EntryConsistencyTest(unittest.TestCase):
+    """入口统一走 _cli.main_entry：钉 stdio、归一退出码的行为不靠自觉。
+
+    扫描范围是 ``scripts/*.py``（顶层入口）。``scripts/fixtures/`` 是夹具构造脚本，
+    不作为独立入口；``scripts/_stdio.py`` 只在注释里提到 ``__main__``。
+    """
+
+    @staticmethod
+    def _guards(tree):
+        for node in tree.body:
+            if isinstance(node, ast.If):
+                dumped = ast.dump(node.test)
+                if "__name__" in dumped and "__main__" in dumped:
+                    yield node
+
+    @staticmethod
+    def _wraps_main_entry(guard):
+        for statement in guard.body:
+            if not isinstance(statement, ast.Raise):
+                continue
+            exc = statement.exc
+            if not (isinstance(exc, ast.Call) and getattr(exc.func, "id", "") == "SystemExit"):
+                continue
+            if not exc.args:
+                continue
+            inner = exc.args[0]
+            if isinstance(inner, ast.Call) and getattr(inner.func, "id", "") == "main_entry":
+                return True
+        return False
+
+    def test_every_entry_raises_through_main_entry(self):
+        offenders = []
+        for path in sorted((ROOT / "scripts").glob("*.py")):
+            text = path.read_text(encoding="utf-8")
+            if "__main__" not in text:
+                continue
+            tree = ast.parse(text, filename=str(path))
+            guards = list(self._guards(tree))
+            if not guards:
+                if path.name != "_stdio.py":
+                    offenders.append(f"{path.name}: no __main__ guard")
+                continue
+            for guard in guards:
+                if not self._wraps_main_entry(guard):
+                    offenders.append(f"{path.name}:{guard.lineno}: main() not wrapped by main_entry")
+                elif len(guard.body) != 1:
+                    offenders.append(
+                        f"{path.name}:{guard.lineno}: __main__ block must be exactly one statement")
+        self.assertEqual(offenders, [])

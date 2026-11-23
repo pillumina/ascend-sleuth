@@ -19,10 +19,10 @@
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 from _fs import atomic_write_text
+from _cli import main_entry
 
 # 标题硬排除规则（框架无关的低价值形态）
 SKIP_TITLE_PATTERNS = [
@@ -168,6 +168,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    main()
+    raise SystemExit(main_entry(main))

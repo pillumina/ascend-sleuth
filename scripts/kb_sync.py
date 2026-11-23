@@ -109,6 +109,7 @@ from _fs import atomic_write_text
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from exec_log_path import log_lock, main_checkout, write_refused_message  # noqa: E402
+from _cli import main_entry
 
 SCHEMA_SETTINGS = "ascend-sleuth-settings/1"
 SCHEMA_STATE = "ascend-sleuth-kb-sync-state/1"
@@ -1248,7 +1249,4 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

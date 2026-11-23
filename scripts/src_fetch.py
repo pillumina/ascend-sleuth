@@ -80,6 +80,7 @@ from _stdio import write_text_lf
 from exec_log_path import WHERE_LABEL_SRC, describe_src, resolve_src_code  # noqa: E402  （共享缓存根解析的单一事实源）
 
 import source_catalog  # noqa: E402  （仓目录：数据面在 source-catalog.d/，本脚本只做取用流程）
+from _cli import main_entry
 
 # 已知仓库 → 有序候选 URL host（按可信度排序；同一仓库不同 host 是常态，自动回退）
 HOSTS = {
@@ -1095,6 +1096,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

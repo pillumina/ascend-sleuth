@@ -23,6 +23,7 @@ import re
 from pathlib import Path
 
 import yaml
+from _cli import main_entry
 
 GOLDEN_DIR = "eval/golden"
 REPLAY_INPUT_DIR = ".replay-input"
@@ -138,6 +139,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    main()
+    raise SystemExit(main_entry(main))

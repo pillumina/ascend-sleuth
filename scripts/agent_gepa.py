@@ -16,6 +16,7 @@ from pathlib import Path
 
 from _fs import atomic_write_text
 from evolve.agent_gepa import GepaError, GepaSession
+from _cli import main_entry
 
 
 def _load(path: Path) -> GepaSession:
@@ -122,4 +123,4 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main_entry(main))

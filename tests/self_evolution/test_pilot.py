@@ -12,18 +12,18 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from evolve.pilot import (PilotError, _read_samples, _short_id, checkpoint,  # noqa: E402
+from evolve.pilot import (PilotError, _read_samples, checkpoint, short_id,  # noqa: E402
                           collect, models_from_collect, record_runs, version_for)
 
 
 class PilotIdTest(unittest.TestCase):
     def test_extracts_issue_from_common_forms(self):
-        self.assertEqual(_short_id("GH-VLLM-PROJECT-VLLM-ASCEND-13934"), "13934")
-        self.assertEqual(_short_id("VLLM-ASC-10253"), "10253")
-        self.assertEqual(_short_id("2026-11-18-15815-qwen"), "15815")
+        self.assertEqual(short_id("GH-VLLM-PROJECT-VLLM-ASCEND-13934"), "13934")
+        self.assertEqual(short_id("VLLM-ASC-10253"), "10253")
+        self.assertEqual(short_id("2026-11-18-15815-qwen"), "15815")
 
     def test_collision_is_visible(self):
-        self.assertEqual(_short_id("GH-X-10253"), _short_id("VLLM-ASC-10253"))
+        self.assertEqual(short_id("GH-X-10253"), short_id("VLLM-ASC-10253"))
 
 
 class PilotCollectTest(unittest.TestCase):

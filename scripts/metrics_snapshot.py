@@ -39,6 +39,7 @@ import yaml
 
 from exec_log_path import resolve as resolve_exec_log     # noqa: F401  （路径语义单一事实源）
 from tail_exec_log import aggregate as aggregate_exec_log, load_records
+from _cli import main_entry
 
 
 def _run_no_pipe(root: Path, args: list, env):
@@ -305,6 +306,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

@@ -46,6 +46,7 @@ from _entry import category_dir_of, iter_case_docs, iter_case_files, namespace_o
 from _lexical import tokens_of
 from _stdio import write_text_lf
 import score_entries
+from _cli import main_entry
 
 try:
     import yaml
@@ -782,6 +783,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    main()
+    raise SystemExit(main_entry(main))

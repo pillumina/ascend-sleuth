@@ -19,11 +19,12 @@ from typing import Any, Dict, List
 
 from .regions import REGIONS
 from .targets.registry import TARGETS, get_target
+from .errors import EvolveError
 
 CHECK_TIMEOUT = 120
 CHECK_KINDS = ("py_compile", "diff_check", "src_fetch_self_test")
 
-class CandidateError(ValueError):
+class CandidateError(EvolveError, ValueError):
     pass
 
 
@@ -86,7 +87,7 @@ def validate_candidate(data: Any) -> Dict[str, Any]:
     if component != region:
         raise CandidateError("target_component must equal region")
     skill = data.get("skill") or spec.skill
-    if target == "skill" and skill != spec.skill:
+    if target_spec.artifact.region_owns_skill and skill != spec.skill:
         raise CandidateError(f"region {region!r} belongs to skill {spec.skill!r}")
     file = _relative_path(data.get("file"))
     if not _file_allowed(file, target_spec, spec):

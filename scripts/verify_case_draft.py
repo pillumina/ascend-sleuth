@@ -46,7 +46,6 @@ except ImportError:
 
 from _cli import main_entry
 from _yaml import load_file  # noqa: E402  （解析后端单一事实源）
-from _stdio import pin_utf8_stdio  # noqa: E402
 from exec_log_path import resolve_traces
 from _trace_state import case_kind, derive, is_terminal, load_vocab  # noqa: E402  （traces/ 锚主检出，worktree 里没有）
 import source_catalog  # noqa: E402  （source_ref 指针要能在源码仓目录里解析）
@@ -353,7 +352,6 @@ def collect_targets(root: Path, args):
 
 
 def main():
-    pin_utf8_stdio()
     root = Path(__file__).resolve().parent.parent
     ap = argparse.ArgumentParser(description="case 草稿/知识库结构校验")
     ap.add_argument("targets", nargs="*", help="草稿文件或目录（缺省配合 --all）")
@@ -418,4 +416,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main_entry(main))
+    raise SystemExit(main_entry(main))

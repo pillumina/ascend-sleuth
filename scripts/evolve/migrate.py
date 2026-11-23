@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from .records import JsonlStore
-from .rsi_store import RSIStore
+from .store import RSIStore
 from .targets.registry import artifact_kind
 
 

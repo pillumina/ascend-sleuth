@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any, Dict, List
+from .errors import EvolveError
 
 try:  # Windows 没有 fcntl；单次 O_APPEND 写仍能避免行内交错。
     import fcntl
@@ -17,7 +18,7 @@ except ImportError:  # pragma: no cover - 平台分支
 EVOLVE_DIR = Path(".s2-replay") / "evolve"
 
 
-class RecordError(RuntimeError):
+class RecordError(EvolveError, RuntimeError):
     """记录文件不可读或内容不是合法 JSON。"""
 
 

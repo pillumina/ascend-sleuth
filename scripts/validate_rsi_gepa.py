@@ -14,6 +14,7 @@ from typing import Any, Dict, List
 from evolve.pilot import collect, decide
 from evolve.policy import load_policy
 from evolve.proposal_engine import GepaPolicy, ProposalArchive, ProposalEngine
+from _cli import main_entry
 
 
 def _load(path: Path) -> Dict[str, Any]:
@@ -81,4 +82,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main_entry(main))
