@@ -60,6 +60,7 @@ from pathlib import Path
 import yaml
 
 from _lexical import tokens_of
+from _cli import main_entry
 
 INDEX = Path("knowledge") / "_index.yaml"
 GOLDEN = Path("eval") / "golden"
@@ -499,6 +500,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

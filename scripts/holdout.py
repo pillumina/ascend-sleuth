@@ -33,7 +33,6 @@ import argparse
 import hashlib
 import json
 import os
-import sys
 from pathlib import Path
 
 from typing import Optional
@@ -41,6 +40,7 @@ from typing import Optional
 import yaml
 
 from _stdio import write_text_lf
+from _cli import main_entry
 
 MANIFEST = "eval/holdout.yaml"
 GOLDEN = "eval/golden"
@@ -267,6 +267,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

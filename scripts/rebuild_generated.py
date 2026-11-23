@@ -19,7 +19,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from _stdio import pin_utf8_stdio
+from _cli import main_entry
 from generated_plane import GENERATED_PATHS, is_generated
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -293,5 +293,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    pin_utf8_stdio()
-    raise SystemExit(main())
+    raise SystemExit(main_entry(main))

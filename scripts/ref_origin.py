@@ -36,6 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _yaml import load_file  # noqa: E402
 from verify_references import is_entry_file  # noqa: E402
+from _cli import main_entry
 
 PR_RE = re.compile(r"(?:pull request|merge request)\s+[#!](\d+)|(?:^|\s)[#!](\d+)\b", re.I)
 
@@ -289,4 +290,4 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

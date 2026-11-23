@@ -32,6 +32,7 @@ from pathlib import Path
 import yaml
 
 from exec_log_path import describe, log_lock, resolve
+from _cli import main_entry
 
 # 非 skill 的流程名：它们也往 exec-log 落记录（跑的是脚本而非 skills/ 下的 skill）。
 NON_SKILL_FLOWS = {"s2-replay", "replay-golden", "capacity-health"}
@@ -224,6 +225,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    main()
+    raise SystemExit(main_entry(main))

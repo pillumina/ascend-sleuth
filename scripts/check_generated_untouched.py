@@ -14,7 +14,7 @@ import argparse
 import subprocess
 from pathlib import Path
 
-from _stdio import pin_utf8_stdio
+from _cli import main_entry
 from generated_plane import is_generated
 
 
@@ -57,5 +57,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    pin_utf8_stdio()
-    raise SystemExit(main())
+    raise SystemExit(main_entry(main))

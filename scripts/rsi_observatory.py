@@ -27,7 +27,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _stdio import pin_utf8_stdio  # noqa: E402
+from _cli import main_entry  # noqa: E402
 from exec_log_path import resolve_checkout_dir  # noqa: E402
 from evolve.store import KINDS, SCHEMA as STORE_SCHEMA, open_store  # noqa: E402
 
@@ -491,5 +491,4 @@ def main(argv: Optional[List[str]] = None) -> int:
 
 
 if __name__ == "__main__":
-    pin_utf8_stdio()
-    raise SystemExit(main())
+    raise SystemExit(main_entry(main))

@@ -47,6 +47,7 @@ except Exception:  # 最小环境缺 PyYAML 等依赖时，同步降级但不挡
     kb_sync = None
 from exec_log_path import resolve_traces  # noqa: E402  （运行时件锚主检出，同 shared_dir.py）
 from evolve.harness_usage import model_of, tokens_of  # noqa: E402  （模型名与 token 只从 DSH 会话记录读）
+from _cli import main_entry
 
 SLUG_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[A-Za-z0-9._-]+$")
 
@@ -428,7 +429,4 @@ def selftest() -> int:
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

@@ -30,6 +30,7 @@ from pathlib import Path
 import yaml
 
 from _stdio import write_text_lf
+from _cli import main_entry
 
 IDEAS_DIR = "proposals/ideas"
 TEMPLATE = "examples/sample-idea.yaml"
@@ -480,6 +481,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    main()
+    raise SystemExit(main_entry(main))

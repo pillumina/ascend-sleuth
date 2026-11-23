@@ -35,7 +35,6 @@
 import argparse
 import json
 import re
-import sys
 from pathlib import Path
 
 import yaml
@@ -43,6 +42,7 @@ import yaml
 from exec_log_path import resolve_traces
 from _trace_state import is_terminal as _is_terminal, load_vocab as _load_vocab
 from _stdio import write_text_lf
+from _cli import main_entry
 
 # 终态判定改由判据库给出（`trace-status.yaml` 是唯一来源）；保留常量名给旧调用点。
 TERMINAL = {s["value"] for s in _load_vocab(__import__("pathlib").Path(__file__).resolve().parents[1])["statuses"]
@@ -315,4 +315,4 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

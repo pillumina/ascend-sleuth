@@ -54,12 +54,12 @@ try:
 except ImportError:  # pragma: no cover - 环境问题，明确报错而不是静默
     sys.exit("需要 PyYAML：pip install pyyaml")
 
-from _stdio import pin_utf8_stdio
 from exec_log_path import log_lock, resolve_traces
 import pr_status
 from groom_common import (
     draft_cases, dump_json, find_drafts, load_assessment, now_iso, repo_root, shared_inbox,
 )
+from _cli import main_entry
 
 # 人决定的终态：只有这三个会触发"知识已落盘"的状态回写。
 TERMINAL = ("new_pattern", "variant", "covered")
@@ -479,7 +479,6 @@ def print_plan(results: list, applied: bool, inbox: Path) -> None:
 
 
 def main(argv=None) -> int:
-    pin_utf8_stdio()
     ap = argparse.ArgumentParser(
         description="终态决定的收尾：回写 trace 沉淀状态并把草稿移出 inbox")
     ap.add_argument("--draft-key", action="append", default=None,
@@ -508,4 +507,4 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

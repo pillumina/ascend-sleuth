@@ -30,6 +30,7 @@ from collections import defaultdict
 from pathlib import Path
 
 import yaml
+from _cli import main_entry
 
 BYTES_PER_TOKEN = 3.4          # 与索引/EV 卡一致的口径（估算）
 DUP_MIN_CHARS = 30             # 计入"重复行"的最小长度（避免表格分隔线与短标签）
@@ -218,6 +219,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    main()
+    raise SystemExit(main_entry(main))

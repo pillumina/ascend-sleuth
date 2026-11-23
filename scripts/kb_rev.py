@@ -25,7 +25,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from _stdio import pin_utf8_stdio
+from _cli import main_entry
 from evolve.kb_content import content_rev
 
 UNKNOWN = "unknown"
@@ -97,5 +97,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

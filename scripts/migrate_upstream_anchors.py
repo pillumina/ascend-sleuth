@@ -36,7 +36,8 @@ import yaml
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _stdio import pin_utf8_stdio, write_text_lf  # noqa: E402
+from _cli import main_entry  # noqa: E402
+from _stdio import write_text_lf  # noqa: E402
 
 URL_RE = re.compile(r"https://github\.com/([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)/(issues|pull)/(\d+)")
 ID_NUM_RE = re.compile(r"(\d+)$")
@@ -148,5 +149,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

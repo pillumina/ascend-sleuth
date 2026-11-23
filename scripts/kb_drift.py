@@ -36,6 +36,7 @@ import kb_sync  # noqa: E402  （默认先 fetch；失败降级，不阻塞续�
 from _trace_state import case_kind, load_traces, load_vocab  # noqa: E402
 from _yaml import load_text  # noqa: E402
 from exec_log_path import resolve_traces  # noqa: E402
+from _cli import main_entry
 
 
 def git(root: Path, *args: str):
@@ -298,6 +299,4 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

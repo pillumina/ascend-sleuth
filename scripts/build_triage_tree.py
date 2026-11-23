@@ -37,10 +37,10 @@
 # diagnose 按顺序匹配，先命中先路由。新性质加在末尾，不要改已有文件的编号。
 
 import argparse
-import sys
 from pathlib import Path
 
 import yaml
+from _cli import main_entry
 
 SRC_DIR_REL = Path("triage-tree.d")
 OUT_REL = Path("triage-tree.yaml")
@@ -476,6 +476,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

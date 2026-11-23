@@ -35,12 +35,13 @@ from .pools import (
     split_test,
     stratum_of,
 )
+from .errors import EvolveError
 
 EVOLVE_DIR = Path(".s2-replay") / "evolve"
 SAMPLES_DIRNAME = "samples"
 
 
-class StoreError(RuntimeError):
+class StoreError(EvolveError, RuntimeError):
     """样本文件缺失、重复、格式错或状态转换非法。"""
 
 

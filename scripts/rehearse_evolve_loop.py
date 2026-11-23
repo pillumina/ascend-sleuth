@@ -404,6 +404,7 @@ import sys
 from pathlib import Path
 sys.path.insert(0, "scripts")
 import ev_proposal as ep
+from _cli import main_entry
 
 root = Path(".").resolve()
 target = root / "proposals" / "ideas" / "EV-2026-777.yaml"
@@ -1343,6 +1344,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from .contracts import Sample, now_iso, source_needs_provenance
+from .errors import EvolveError
 
 TRACE_LIMIT = 2400
 SYMPTOM_LIMIT = 1200
@@ -26,7 +27,7 @@ STATE_ORDER = (
 MARKER_RE = re.compile(r"(现象|根因|处置|排除链|结论|修复|已沉淀)[：:]")
 
 
-class IntakeError(ValueError):
+class IntakeError(EvolveError, ValueError):
     pass
 
 

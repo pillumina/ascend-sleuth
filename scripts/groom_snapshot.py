@@ -46,12 +46,12 @@ import tarfile
 from pathlib import Path
 
 import kb_sync
-from _stdio import pin_utf8_stdio
 from exec_log_path import main_checkout
 from groom_common import (
     SCHEMA_SNAPSHOT, atomic_write_text, dump_json, find_drafts, load_json, now_iso,
     repo_root, run_git, shared_inbox, short_sha,
 )
+from _cli import main_entry
 
 INDEX_CHECK = ["scripts/build_index.py", "--check"]
 INDEX_BUILD = ["scripts/build_index.py"]
@@ -555,7 +555,6 @@ def print_summary(meta: dict):
 
 
 def main():
-    pin_utf8_stdio()
     ap = argparse.ArgumentParser(description="Groom 知识快照（fetch + 只读 worktree + 索引校验）")
     ap.add_argument("--repo", default=None, help="仓库路径（默认当前目录）")
     ap.add_argument("--list-remotes", action="store_true",
@@ -666,4 +665,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

@@ -71,11 +71,11 @@ from pathlib import Path
 import yaml
 
 import kb_sync
-from _stdio import pin_utf8_stdio
 from exec_log_path import log_lock, write_refused_message
 from groom_common import (
     atomic_write_text, dump_json, load_json, now_iso, run_git, shared_inbox,
 )
+from _cli import main_entry
 
 SCHEMA = "groom-pr-state/v1"
 LEDGER_REL = Path(".groom") / "pr-state.json"
@@ -1566,7 +1566,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv=None) -> int:
-    pin_utf8_stdio()
     args = build_parser().parse_args(argv)
     if args.json and args.json_lines:
         return _arg_fail("--json 与 --json-lines 互斥")
@@ -1618,4 +1617,4 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

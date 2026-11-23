@@ -39,12 +39,12 @@ import argparse
 import hashlib
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 import yaml
 
-from _stdio import pin_utf8_stdio, write_text_lf
+from _cli import main_entry
+from _stdio import write_text_lf
 
 SCORECARD = "eval/scorecard.yaml"
 GOLDEN = "eval/golden"
@@ -297,5 +297,4 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

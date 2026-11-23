@@ -54,6 +54,7 @@ from verify_proposals import (  # noqa: E402
     exit_code_value,
     measure_enforced,
 )
+from _cli import main_entry
 
 CLIP_HEAD = 12          # 日志裁剪纪律：长输出只留头尾
 CLIP_TAIL = 25
@@ -459,6 +460,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

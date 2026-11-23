@@ -12,15 +12,15 @@ from typing import Any, Callable, Dict, List, Optional
 
 from .experiments import ExperimentError, validate_experiment
 from .candidate import diff_workspace, rollback_workspace
-from .knowledge_usage import compare as compare_knowledge
+from .usage_dimensions import DIMENSIONS
 from .pilot import collect as pilot_collect, decide as pilot_decide, prepare as pilot_prepare
-from .source_usage import compare as compare_source
 from .records import ExperimentStore
-from .rsi_store import RSIStore
+from .store import RSIStore
 from .proposal_engine import Proposal, ProposalArchive, ProposalEngine
+from .errors import EvolveError
 
 
-class FlowError(ValueError):
+class FlowError(EvolveError, ValueError):
     pass
 
 
@@ -240,14 +240,12 @@ def _experiment_record(proposal: Proposal, tasks: Dict[str, Any], judge: Path,
         "stage_reports": _stage_reports(proposal, tasks, data, decision,
                                         conclusion, collected, baseline, candidate),
     }
-    if proposal.component == "diagnose.knowledge_usage":
-        usage = _usage_evidence(collected, "knowledge_usage", compare_knowledge)
+    for dimension in DIMENSIONS:
+        if proposal.component != dimension.component:
+            continue
+        usage = _usage_evidence(collected, dimension.arm_key, dimension.compare)
         if usage is not None:
-            record["knowledge_usage"] = usage
-    if proposal.component == "diagnose.source_usage":
-        usage = _usage_evidence(collected, "source_usage", compare_source)
-        if usage is not None:
-            record["source_usage"] = usage
+            record[dimension.arm_key] = usage
     if conclusion.get("b") is not None:
         record["paired"] = {"b": conclusion["b"], "c": conclusion["c"],
                             "n": conclusion["n"],

@@ -27,11 +27,11 @@
 
 import argparse
 import json
-import sys
 from pathlib import Path
 
 import yaml
 from exec_log_path import resolve_traces
+from _cli import main_entry
 
 
 def scan_traces(root: Path):
@@ -158,6 +158,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    main()
+    raise SystemExit(main_entry(main))

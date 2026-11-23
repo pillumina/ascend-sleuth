@@ -23,7 +23,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from _stdio import pin_utf8_stdio
+from _cli import main_entry
 
 from exec_log_path import (CHECKOUT_DIRS, describe_checkout_dir, resolve_checkout_dir)  # noqa: E402
 
@@ -65,5 +65,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

@@ -27,13 +27,13 @@ import re
 import sys
 from pathlib import Path
 
-from _stdio import pin_utf8_stdio
 from groom_common import (
     SCHEMA_ASSESSMENT, VALID_AXIS_VERDICTS, VALID_AXES, VALID_CLASSIFICATIONS,
     VALID_CONFIDENCE, CANONICAL_CONTENT_FIELDS, assessment_path, canonical_content_sha,
     case_fingerprint, compute_assessment_id, dump_json, load_assessment,
     load_json, load_yaml, now_iso, shared_inbox, work_order_id, write_assessment,
 )
+from _cli import main_entry
 
 MERGE_CLASSES = ("duplicate", "covered")
 MAX_RATIONALE = 4000
@@ -695,7 +695,6 @@ def pr_marker(doc, submitted_case_id=None, target_ref=None):
 
 
 def main():
-    pin_utf8_stdio()
     ap = argparse.ArgumentParser(description="记录 Agent Groom 评估（校验 + 保守聚合 + 本地状态）")
     ap.add_argument("--snapshot", default=None, help="groom_snapshot.py --json 的 meta")
     ap.add_argument("--work-orders", default=None, help="groom_candidates.py 生成的工作单")
@@ -827,4 +826,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

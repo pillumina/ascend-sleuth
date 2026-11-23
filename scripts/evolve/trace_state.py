@@ -14,12 +14,13 @@ from typing import Any, Dict, List, Optional
 from _fs import atomic_write_text
 
 from .trace_source import TraceDoc
+from .errors import EvolveError
 
 ATTRIBUTION_SCHEMA = "trace-attribution-v1"
 STATE_SCHEMA = "evolve-trace-state-v1"
 
 
-class TraceStateError(RuntimeError):
+class TraceStateError(EvolveError, RuntimeError):
     """状态文件不可读/不合法。"""
 
 

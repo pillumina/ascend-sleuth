@@ -65,7 +65,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from _stdio import pin_utf8_stdio  # noqa: E402
 from _yaml import load_text  # noqa: E402
 from exec_log_path import log_lock, resolve_traces  # noqa: E402
 from groom_close_draft import source_session_of  # noqa: E402
@@ -74,6 +73,7 @@ from groom_common import (  # noqa: E402
     now_iso, repo_root, shared_inbox, sanitize_key,
 )
 import pr_status  # noqa: E402
+from _cli import main_entry
 
 UNDONE_DIR = ".undone"
 UNDO_LOG_REL = Path(".groom") / "undo-log.jsonl"
@@ -714,9 +714,8 @@ def _run_batch(args, root: Path, inbox: Path, traces: Path, keys: list,
 
 
 def main(argv=None) -> int:
-    pin_utf8_stdio()
     return run(argv)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

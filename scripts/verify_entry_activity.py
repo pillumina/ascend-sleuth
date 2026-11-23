@@ -39,7 +39,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import entry_activity as ea  # noqa: E402
 from _cli import main_entry
-from _stdio import pin_utf8_stdio  # noqa: E402
 
 
 def known_ids(root: Path):
@@ -159,4 +158,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main_entry(main))
+    raise SystemExit(main_entry(main))

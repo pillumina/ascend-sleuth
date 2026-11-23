@@ -8,12 +8,13 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 from ..contracts import now_iso
+from ..errors import EvolveError
 
 SCHEMA = "rsi-store-v1"
 KINDS = ("experiment", "proposal", "decision", "rollout", "archive")
 
 
-class RSIStoreError(ValueError):
+class RSIStoreError(EvolveError, ValueError):
     pass
 
 

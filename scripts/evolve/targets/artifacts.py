@@ -112,6 +112,7 @@ def _tooling_check(file: str, text: str) -> None:
 
 SKILL_ARTIFACT = ArtifactRule(
     kind="text", max_text=8000, allowed=_skill_allowed, check=_no_check,
+    region_owns_skill=True,
 )
 KNOWLEDGE_ARTIFACT = ArtifactRule(
     kind="yaml", max_text=12000, allowed=_knowledge_allowed, check=_knowledge_check,

@@ -3,36 +3,7 @@
 from typing import Any, Dict, List
 
 from ..adapters import AdapterError, load_legacy
-
-
-def _labels(value: Any) -> List[str]:
-    if value is None:
-        return []
-    if isinstance(value, str):
-        return [item.strip() for item in value.split(",") if item.strip()]
-    out: List[str] = []
-    for item in value:
-        name = item.get("name") if isinstance(item, dict) else item
-        text = str(name or "").strip()
-        if text:
-            out.append(text)
-    return out
-
-
-def _wrap_gh_error(exc: BaseException) -> AdapterError:
-    if isinstance(exc, FileNotFoundError):
-        return AdapterError(
-            "gh CLI not found; install GitHub CLI and run `gh auth login` before "
-            "ingesting issues"
-        )
-    stderr = str(getattr(exc, "stderr", "") or "").strip()
-    lowered = stderr.lower()
-    if "auth" in lowered or "login" in lowered or "credential" in lowered:
-        return AdapterError(
-            "gh is not authenticated; run `gh auth login` before ingesting issues"
-        )
-    detail = stderr[-500:] if stderr else str(exc)
-    return AdapterError(f"gh api failed: {detail}")
+from .gh import gh_error, label_names
 
 
 class GitHubSource:
@@ -56,13 +27,13 @@ class GitHubSource:
         except (AdapterError, KeyboardInterrupt):
             raise
         except BaseException as exc:
-            raise _wrap_gh_error(exc) from exc
+            raise gh_error(exc) from exc
 
     def list_issues(self, repo: str, labels=None, since=None,
                     state: str = "closed") -> List[Dict[str, Any]]:
         repo = repo or self.repo
         url = f"repos/{repo}/issues?state={state}&per_page=100"
-        wanted = _labels(labels)
+        wanted = label_names(labels)
         if wanted:
             url += "&labels=" + ",".join(wanted)
         if since:

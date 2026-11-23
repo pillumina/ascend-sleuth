@@ -10,9 +10,10 @@ from pathlib import Path
 from typing import Any, Dict, List, Protocol
 
 import yaml
+from .errors import EvolveError
 
 
-class TraceSourceError(RuntimeError):
+class TraceSourceError(EvolveError, RuntimeError):
     """trace 源不可读或格式不合法。"""
 
 

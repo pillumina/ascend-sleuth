@@ -19,6 +19,7 @@ from .targets.registry import TARGETS, get_target
 from .stages import DEFAULT_STAGES, get_stage
 from .decision import DECISION_METHODS
 from .metrics import DEFAULT_METRICS
+from .errors import EvolveError
 
 AUTONOMY_LEVELS = ("A0", "A1", "A2", "A3", "A4", "A5")
 OBJECTIVE_PRIMARY = ("case_hit", "root_cause", "rubric")
@@ -87,7 +88,7 @@ DEFAULTS: Dict[str, Any] = {
 _FREE_FORM = {"autonomy.overrides", "samples.strata", "experiment.budget"}
 
 
-class PolicyError(ValueError):
+class PolicyError(EvolveError, ValueError):
     """策略文件缺失、含未知键或非法取值。"""
 
 

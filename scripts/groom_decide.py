@@ -18,11 +18,11 @@ import argparse
 import sys
 from pathlib import Path
 
-from _stdio import pin_utf8_stdio
 from groom_common import (
     VALID_HUMAN_DECISIONS, case_fingerprint, draft_cases, find_drafts, load_assessment,
     load_json, now_iso, shared_inbox, write_assessment,
 )
+from _cli import main_entry
 
 MERGE_DECISIONS = ("covered", "variant")
 
@@ -92,7 +92,6 @@ def apply_decision(doc, decision, candidate, by, note):
 
 
 def main():
-    pin_utf8_stdio()
     ap = argparse.ArgumentParser(description="记录 Groom 的人决定（agent 建议与之分家）")
     ap.add_argument("--draft-key", required=True)
     ap.add_argument("--decision", required=True, choices=VALID_HUMAN_DECISIONS)
@@ -176,4 +175,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

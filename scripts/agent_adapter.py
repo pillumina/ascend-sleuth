@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 import yaml
+from _cli import main_entry
 
 
 class AdapterError(ValueError):
@@ -153,4 +154,4 @@ def main(argv: List[str]) -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(sys.argv[1:]))
+    raise SystemExit(main_entry(lambda: main(sys.argv[1:])))

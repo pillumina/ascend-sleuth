@@ -26,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _trace_state import SCHEME, check_vocab, load_vocab, project  # noqa: E402
 from exec_log_path import resolve_traces  # noqa: E402
+from _cli import main_entry
 
 
 def main(argv=None) -> int:
@@ -98,4 +99,4 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

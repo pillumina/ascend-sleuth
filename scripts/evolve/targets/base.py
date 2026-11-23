@@ -29,6 +29,7 @@ class ArtifactRule:
     max_text: int
     allowed: Callable[[str, Any], bool]
     check: Callable[[str, str], None]
+    region_owns_skill: bool = False
 
     def validate(self) -> "ArtifactRule":
         if self.kind not in ARTIFACT_KINDS:
@@ -40,6 +41,8 @@ class ArtifactRule:
             raise ValueError("artifact.max_text must be a positive integer")
         if not callable(self.allowed) or not callable(self.check):
             raise ValueError("artifact.allowed and artifact.check must be callable")
+        if not isinstance(self.region_owns_skill, bool):
+            raise ValueError("artifact.region_owns_skill must be boolean")
         return self
 
 

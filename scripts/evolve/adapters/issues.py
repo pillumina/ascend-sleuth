@@ -22,25 +22,12 @@ from . import AdapterError, load_legacy
 from ..samples import SampleStore, StoreError
 from ..sources.github import GitHubSource
 from ..sources.base import IssueSource
+from ..sources.gh import gh_error, label_names
 from ..sources.registry import get_source
 
 MIN_BODY_CHARS = 20
 SOURCE_PREFIX = "github/"
 DEFAULT_AVOID_LABELS = ("stale", "wait-feedback")
-
-
-def _labels(value: Any) -> List[str]:
-    if value is None:
-        return []
-    if isinstance(value, str):
-        return [item.strip() for item in value.split(",") if item.strip()]
-    out: List[str] = []
-    for item in value:
-        name = item.get("name") if isinstance(item, dict) else item
-        text = str(name or "").strip()
-        if text:
-            out.append(text)
-    return out
 
 
 def _processed_numbers(value: Any) -> set:
@@ -51,22 +38,6 @@ def _processed_numbers(value: Any) -> set:
         except (TypeError, ValueError):
             continue
     return numbers
-
-
-def _wrap_gh_error(exc: BaseException) -> AdapterError:
-    if isinstance(exc, FileNotFoundError):
-        return AdapterError(
-            "gh CLI not found; install GitHub CLI and run `gh auth login` before "
-            "ingesting issues"
-        )
-    stderr = str(getattr(exc, "stderr", "") or "").strip()
-    lowered = stderr.lower()
-    if "auth" in lowered or "login" in lowered or "credential" in lowered:
-        return AdapterError(
-            "gh is not authenticated; run `gh auth login` before ingesting issues"
-        )
-    detail = stderr[-500:] if stderr else str(exc)
-    return AdapterError(f"gh api failed: {detail}")
 
 
 def fetch_metadata(repo: str, labels: Optional[Sequence[str]] = None,
@@ -89,7 +60,7 @@ def _filter_with_stats(
     avoid_labels: Sequence[str] = DEFAULT_AVOID_LABELS,
 ):
     module = load_legacy("issue_filter")
-    want_labels = _labels(labels)
+    want_labels = label_names(labels)
     done = _processed_numbers(processed)
     stats = {
         "skipped_pr": 0,
@@ -181,7 +152,7 @@ def issue_to_candidate(item: Dict[str, Any], body: Any, repo: str,
         body_text = body or ""
         title = item.get("title") or ""
         closed_at = item.get("closed_at")
-    labels = _labels(item.get("labels"))
+    labels = label_names(item.get("labels"))
     number_text = str(number).strip()
     source_id = source_id or f"{SOURCE_PREFIX}{repo}"
     return {
@@ -277,7 +248,7 @@ def ingest_issues(
     except AdapterError:
         raise
     except Exception as exc:
-        raise _wrap_gh_error(exc) from exc
+        raise gh_error(exc) from exc
     if not isinstance(items, list):
         raise AdapterError("fetch_metadata_fn must return a list")
 
@@ -327,7 +298,7 @@ def ingest_issues(
         except AdapterError:
             raise
         except Exception as exc:
-            raise _wrap_gh_error(exc) from exc
+            raise gh_error(exc) from exc
         if not isinstance(body, dict):
             raise AdapterError("fetch_body_fn must return an object")
         body_text = str(body.get("body") or "").strip()

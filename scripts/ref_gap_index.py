@@ -52,7 +52,7 @@ try:
 except ImportError:
     sys.exit("需要 PyYAML：pip install pyyaml")
 
-from _stdio import pin_utf8_stdio
+from _cli import main_entry
 
 # 键族。顺序即强弱：错误码与十六进制码是官方码，环境变量与算子名是可 grep 的标识符，
 # 异常类名是弱键（同名异常不一定是同一根因），排在最后。
@@ -526,5 +526,4 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    pin_utf8_stdio()
-    raise SystemExit(main())
+    raise SystemExit(main_entry(main))

@@ -21,13 +21,13 @@ import argparse
 import json
 import re
 import subprocess
-import sys
 from datetime import datetime, timedelta
 from pathlib import Path
 
 import yaml  # noqa: F401  (对齐仓库脚本风格，可能用于 config 扩展)
 
 from _stdio import write_text_lf
+from _cli import main_entry
 
 STATE_FILE = "ingest-state.json"
 OUT_DIR = ".auto-fetch"
@@ -155,6 +155,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    main()
+    raise SystemExit(main_entry(main))

@@ -22,10 +22,10 @@
 # 让"最上面是最新"不稳定——这里用**升序**（旧在前），与现有文件的历史顺序一致，便于人读趋势。
 
 import argparse
-import sys
 from pathlib import Path
 
 import yaml
+from _cli import main_entry
 
 SRC_DIR_REL = Path("metrics") / "timeline.d"
 OUT_REL = Path("metrics") / "timeline.yaml"
@@ -189,6 +189,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

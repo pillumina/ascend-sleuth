@@ -40,6 +40,7 @@ import yaml
 from _stdio import write_text_lf
 from exec_log_path import resolve_rel, resolve_traces
 import entry_activity as ea
+from _cli import main_entry
 
 TRACES_DIR = Path("traces")   # 相对名；实际取哪一份由 resolve_traces() 决定（主检出共享侧）
 
@@ -426,6 +427,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    main()
+    raise SystemExit(main_entry(main))

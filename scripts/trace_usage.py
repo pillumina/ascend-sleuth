@@ -21,6 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _stdio import write_text_lf  # noqa: E402
+from _cli import main_entry
 
 KEYS = ("model", "tokens", "tokens_start")
 
@@ -75,4 +76,4 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

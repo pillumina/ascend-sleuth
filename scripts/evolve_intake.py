@@ -40,6 +40,7 @@ import yaml
 
 import evolve_signals as ES
 import evolve_mode as EM
+from _cli import main_entry
 
 PLACEHOLDER_EVIDENCE = {"待填", "todo", "tbd", "证据", "无", "-", "...", "同上"}
 
@@ -141,4 +142,4 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

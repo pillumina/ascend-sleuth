@@ -32,7 +32,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-from _stdio import pin_utf8_stdio, write_text_lf
+from _cli import main_entry
+from _stdio import write_text_lf
 
 TEXT_SUFFIXES = {".md", ".yaml", ".yml", ".py", ".js", ".json", ".example", ".txt", ".html"}
 SKIP_DIRS = (".git/", "node_modules/")
@@ -299,5 +300,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

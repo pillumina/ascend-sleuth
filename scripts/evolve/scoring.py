@@ -6,9 +6,10 @@ evaluator 自己写一套阈值。当前只覆盖 case/reference 的人工 rubri
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
+from .errors import EvolveError
 
 
-class RubricError(ValueError):
+class RubricError(EvolveError, ValueError):
     """rubric 结构或评分输入不合法。"""
 
 

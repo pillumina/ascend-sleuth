@@ -18,12 +18,13 @@ from typing import Any, Dict, List, Optional
 
 from .selectors import BestSelector, NoneSelector, ParetoSelector
 from .stages import get_stage
+from .errors import EvolveError
 
 
 GEPA_STATE_SCHEMA = "agent-gepa-v1"
 
 
-class GepaError(ValueError):
+class GepaError(EvolveError, ValueError):
     """状态机输入或动作顺序不合法。"""
 
 

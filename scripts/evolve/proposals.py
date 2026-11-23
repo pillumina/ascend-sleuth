@@ -14,9 +14,10 @@ from .candidate import validate_candidate
 from .contracts import Patch
 from .evaluations.registry import get_eval_profile
 from .targets.registry import get_target
+from .errors import EvolveError
 
 
-class ProposalError(ValueError):
+class ProposalError(EvolveError, ValueError):
     pass
 
 

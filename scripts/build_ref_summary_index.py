@@ -24,6 +24,7 @@ from pathlib import Path
 import yaml
 
 from _stdio import write_text_lf
+from _cli import main_entry
 
 # methodology **不在背景类**（EV-2026-038）：流程类要的不是"读一行背景"而是
 # "选中一条、读全文、按判据执行"——摘要行当内容用与不加载等效（决定性判据会被截断）。
@@ -150,6 +151,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

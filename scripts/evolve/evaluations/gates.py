@@ -15,12 +15,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Tuple
 
-from ..inputs import json_object
+from ..inputs import json_object, read_json
 from ..scoring import score_rubric
 from ..tool_usage import compare as compare_tool_usage
+from ..errors import EvolveError
 
 
-class GateError(ValueError):
+class GateError(EvolveError, ValueError):
     """门禁缺参数、目标未实现，或输出不满足评测面的前提。"""
 
 
@@ -58,7 +59,7 @@ def _require(condition: Any, message: str) -> None:
 
 
 def _read_json(path: str) -> Any:
-    return json.loads(Path(path).read_text(encoding="utf-8"))
+    return read_json(path)
 
 
 def _parse_scores(text: Optional[str]) -> Optional[Dict[str, float]]:

@@ -44,6 +44,7 @@ import yaml
 from _stdio import write_text_lf
 from settle_trace_feedback import SETTLE_STATE_REL, load_cursors, resolve_default_state  # noqa: E402
 from exec_log_path import resolve_rel  # noqa: E402
+from _cli import main_entry
 
 REPLAY_DIR = Path(".s2-replay")
 
@@ -287,6 +288,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    main()
+    raise SystemExit(main_entry(main))

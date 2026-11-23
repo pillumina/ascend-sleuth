@@ -16,23 +16,22 @@ from .candidate import create_workspace, validate_candidate
 from .contracts import PROTOCOL_VERSION, Conclusion, Run, Version, now_iso
 from .decision import decide_binary, required_exclusive_wins
 from .kb_content import content_rev
-from .knowledge_usage import compare as compare_knowledge
 from .harness_usage import read_session
 from .knowledge_usage import from_trace as knowledge_from_trace
+from .usage_dimensions import BY_COMPONENT, DIMENSIONS
 from .policy import policy_hash
 from .records import ConclusionStore, RunStore
-from .source_usage import compare as compare_source
 from .source_usage import from_trace as source_from_trace
-from .tool_usage import compare as compare_tools
 from .tool_usage import from_trace as tool_from_trace
 import yaml
+from .errors import EvolveError
 
 
-class PilotError(ValueError):
+class PilotError(EvolveError, ValueError):
     pass
 
 
-def _short_id(sample_id: str) -> str:
+def short_id(sample_id: str) -> str:
     matches = re.findall(r"(?:^|[-_])(\d{3,6})(?=$|[-_])", sample_id)
     return matches[-1] if matches else sample_id
 
@@ -75,7 +74,7 @@ def _read_samples(paths: List[str], root: Optional[Path] = None) -> List[Dict[st
                 f"holdout sample cannot be used in pilot: {data['id']} "
                 f"(source={data.get('source')})"
             )
-        out.append({"id": str(data["id"]), "short_id": _short_id(str(data["id"])),
+        out.append({"id": str(data["id"]), "short_id": short_id(str(data["id"])),
                     "path": str(Path(path).resolve()), "input": data.get("input"),
                     "expected": data.get("expected")})
     short_ids = [item["short_id"] for item in out]
@@ -198,7 +197,7 @@ def collect(output: Path, judge: Optional[Path] = None) -> Dict[str, Any]:
         rows = []
         for sample in tasks.get("samples") or []:
             sample_id = sample["id"]
-            sid = sample.get("short_id") or _short_id(sample_id)
+            sid = sample.get("short_id") or short_id(sample_id)
             trace = output / arm / "traces" / f"{sid}.yaml"
             out = output / arm / "out" / f"{sid}.out.md"
             row = {"sample_id": sid, "source_id": sample_id, "trace": str(trace), "output": str(out),
@@ -358,10 +357,10 @@ def _usage_arms(collect: Dict[str, Any], key: str):
     return [baseline[sid] for sid in ids], [candidate[sid] for sid in ids]
 
 
-def _judge_counts(tasks: Dict[str, Any], judge: Dict[str, Any]) -> Dict[str, int]:
+def judge_counts(tasks: Dict[str, Any], judge: Dict[str, Any]) -> Dict[str, int]:
     b = c = n = 0
     for sample in tasks.get("samples") or []:
-        sid = sample.get("short_id") or _short_id(str(sample.get("id")))
+        sid = sample.get("short_id") or short_id(str(sample.get("id")))
         before = (judge.get("baseline") or {}).get(sid)
         after = (judge.get("candidate") or {}).get(sid)
         if before is None or after is None:
@@ -390,7 +389,7 @@ def checkpoint(output: Path, judge_path: Path, policy: Dict[str, Any], *,
     tasks = json.loads((output / "tasks.json").read_text(encoding="utf-8"))
     judge = json.loads(Path(judge_path).read_text(encoding="utf-8"))
     collected = collect(output, judge=judge_path)
-    counts = _judge_counts(tasks, judge)
+    counts = judge_counts(tasks, judge)
     budget = tasks.get("budget") or {}
     max_pairs = int(budget.get("max_pairs") or len(tasks.get("samples") or []))
     alpha = float(budget.get("alpha", 0.10))
@@ -444,25 +443,21 @@ def decide(output: Path, judge_path: Path, policy: Dict[str, Any], *,
     if not collect.get("complete"):
         raise PilotError("pilot evidence is incomplete; trace/out missing")
     judge = json.loads(Path(judge_path).read_text(encoding="utf-8"))
-    counts = _judge_counts(tasks, judge)
+    counts = judge_counts(tasks, judge)
 
     constraints: Dict[str, Any] = {}
     all_ids = sorted({row["sample_id"] for row in collect["arms"]["baseline"]})
-    for name, key, comparator in (
-        ("knowledge", "knowledge_usage", compare_knowledge),
-        ("source", "source_usage", compare_source),
-        ("tool", "tool_usage", compare_tools),
-    ):
-        before, after = _usage_arms(collect, key)
+    for dimension in DIMENSIONS:
+        before, after = _usage_arms(collect, dimension.arm_key)
         if before and after:
-            result = comparator({"samples": before}, {"samples": after})
-            constraints[name] = {
+            result = dimension.compare({"samples": before}, {"samples": after})
+            constraints[dimension.name] = {
                 "decision": result["decision"], "reasons": result["reasons"],
                 "paired": len(before), "missing": len(all_ids) - len(before),
             }
     component = str((tasks.get("candidate") or {}).get("target_component") or "")
-    required = {"diagnose.knowledge_usage": "knowledge",
-                "diagnose.source_usage": "source"}.get(component)
+    required_dimension = BY_COMPONENT.get(component)
+    required = required_dimension.name if required_dimension else None
     efficiency_reasons = {
         "efficiency_regressed",
         "no_efficiency_improvement",

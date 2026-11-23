@@ -208,4 +208,4 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    sys.exit(main_entry(main))
+    raise SystemExit(main_entry(main))

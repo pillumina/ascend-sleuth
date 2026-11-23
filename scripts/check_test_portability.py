@@ -64,7 +64,7 @@ import tokenize
 from dataclasses import dataclass
 from pathlib import Path
 
-from _stdio import pin_utf8_stdio
+from _cli import main_entry
 
 SUBPROCESS_CALLS = {"run", "check_output", "call", "check_call", "Popen"}
 TEXT_KEYS = ("text", "universal_newlines")
@@ -529,5 +529,4 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

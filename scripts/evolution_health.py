@@ -36,6 +36,7 @@ import ev_board_data as EBD                      # noqa: E402
 from ev_measure import (classify as classify_measure, load_cards,  # noqa: E402
                         stale_deps)
 from verify_proposals import measure_enforced    # noqa: E402
+from _cli import main_entry
 
 GATES_REL = Path("proposals") / "gates.yaml"
 
@@ -604,6 +605,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

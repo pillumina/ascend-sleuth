@@ -11,9 +11,10 @@ from .evaluations.registry import get_eval_profile
 from .stages import get_stage
 from .statistics import exact_mcnemar_ge
 from .targets.registry import TARGETS, get_target
+from .errors import EvolveError
 
 
-class ExperimentError(ValueError):
+class ExperimentError(EvolveError, ValueError):
     """实验记录字段缺失或非法。"""
 
 

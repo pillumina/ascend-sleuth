@@ -99,6 +99,7 @@ from pathlib import Path
 import yaml
 
 from evolve.statistics import exact_mcnemar_ge as _exact_mcnemar_ge_bc
+from _cli import main_entry
 
 ARENA_SUBDIR = ".s2-replay/arena"
 S2_RESULT_REL = ".s2-replay/{}.result.yaml"
@@ -1008,6 +1009,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    sys.exit(main())
+    raise SystemExit(main_entry(main))

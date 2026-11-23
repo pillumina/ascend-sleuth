@@ -28,6 +28,8 @@ def _sample(sid, purpose):
     return {
         "id": sid, "status": "active", "origin": "core", "purpose": purpose,
         "source": f"github/test#{sid}", "expected": {"resolution": "ok"},
+        "provenance": {"sanitized": True, "trigger": "issue_import",
+                       "confidence": "issue-verified", "extraction": "manual"},
     }
 
 
@@ -250,6 +252,41 @@ class StageTest(unittest.TestCase):
             with self.assertRaises(StageError):
                 plan(root, "regression", out, load_policy(None), limit=1,
                      baseline_traces=source)
+
+
+class AdmissionScopeTest(unittest.TestCase):
+    def _root(self, td, count=2):
+        root = Path(td) / "repo"
+        core = root / "eval" / "core" / "samples"
+        core.mkdir(parents=True)
+        for index in range(count):
+            sid = f"REGRESSION-{2001 + index}"
+            (core / f"{sid}.yaml").write_text(
+                yaml.safe_dump(_sample(sid, "regression")), encoding="utf-8")
+        return root
+
+    def _break(self, root, sid):
+        """active 样本缺 answer：admission_errors 的唯一实现会拒绝它。"""
+        path = root / "eval" / "core" / "samples" / f"{sid}.yaml"
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        data.pop("expected")
+        path.write_text(yaml.safe_dump(data), encoding="utf-8")
+
+    def test_unselected_bad_sample_does_not_block(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._root(td)
+            self._break(root, "REGRESSION-2002")
+            tasks = plan(root, "regression", Path(td) / "out",
+                         load_policy(None), limit=1)
+            self.assertEqual([row["id"] for row in tasks["samples"]],
+                             ["REGRESSION-2001"])
+
+    def test_selected_bad_sample_is_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = self._root(td)
+            self._break(root, "REGRESSION-2001")
+            with self.assertRaises(StageError):
+                plan(root, "regression", Path(td) / "out", load_policy(None), limit=1)
 
 
 if __name__ == "__main__":

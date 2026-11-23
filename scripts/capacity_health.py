@@ -31,6 +31,7 @@ import sys
 from pathlib import Path
 
 import yaml
+from _cli import main_entry
 
 OVERFLOW_THRESHOLD = 5   # 阶段二硬约束：候选 ≤5
 DEGRADE_RATE = 0.20      # ADR-0004：候选溢出率 >20% = 恶化
@@ -231,6 +232,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    main()
+    raise SystemExit(main_entry(main))

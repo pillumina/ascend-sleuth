@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from evolve.usage_dimensions import BY_COMPONENT, BY_NAME, DIMENSIONS  # noqa: E402
 from evolve.usage import (  # noqa: E402
     count_directions,
     decide,
@@ -22,6 +23,22 @@ class UsageError(ValueError):
 
 def records(*rows):
     return {row["sample_id"]: row for row in rows}
+
+
+class DimensionsTest(unittest.TestCase):
+    def test_every_dimension_wires_the_same_four_hooks(self):
+        for dimension in DIMENSIONS:
+            self.assertTrue(dimension.label.endswith("-usage"), dimension.name)
+            self.assertTrue(dimension.arm_key.endswith("_usage"), dimension.name)
+            for hook in (dimension.from_trace, dimension.evaluate, dimension.compare):
+                self.assertTrue(callable(hook), dimension.name)
+
+    def test_names_and_components_are_unique(self):
+        self.assertEqual(len(BY_NAME), len(DIMENSIONS))
+        self.assertEqual(len(BY_COMPONENT), len([d for d in DIMENSIONS if d.component]))
+        for dimension in DIMENSIONS:
+            if dimension.component:
+                self.assertIs(BY_COMPONENT[dimension.component], dimension)
 
 
 class PairRowsTest(unittest.TestCase):
