@@ -7,13 +7,14 @@ self-evolve 的 subagent 执行，不在 Python 里伪调用。
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 from _fs import atomic_write_text
 
 from .regions import recommend
 from .replay_source import scan_failures
 from .stages import DEFAULT_STAGES, get_stage
+from .targets.base import DEFAULT_TARGET
 
 
 def _trace_signals(state_path: Optional[Path]) -> Dict[str, Any]:
@@ -129,7 +130,7 @@ def build_plan(root: Path, trace_state: Optional[Path] = None,
     spec = None
     if region:
         spec = {
-            "target_kind": region.get("target_kind", "skill"),
+            "target_kind": region.get("target_kind", DEFAULT_TARGET),
             "target_skill": region["skill"],
             "mutable_region": region["region"],
             "hard": region["hard"],

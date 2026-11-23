@@ -1,10 +1,8 @@
 """Candidate Patch：有界文本改动、隔离 worktree、apply/diff/rollback。
 
-支持三类工件：
-- ``skill``：skill 文本 region，只改 ``skills/<skill>/**/*.md``；
-- ``knowledge``：case/reference 内容，只改 ``knowledge/`` 或 ``references/`` 下的 YAML；
-- ``tooling``：工具实现/路由数据，只改 region 登记的 ``paths``（如
-  ``scripts/src_fetch.py``、``source-catalog.d``）。
+每个目标的可改路径、体积上限与写前检查在 ``targets.artifacts`` 登记，本模块只
+取值并执行：``skill`` 改 skill 文本，``knowledge`` 改 case/reference YAML，
+``tooling`` 改工具实现与路由数据，``harness`` 改调度与控制流。
 
 tooling 补丁可以带 ``checks``：固定枚举 ``py_compile`` / ``diff_check`` /
 ``src_fetch_self_test``，按 argv 在 worktree 内执行，不走 shell；任一失败即
@@ -14,38 +12,16 @@ tooling 补丁可以带 ``checks``：固定枚举 ``py_compile`` / ``diff_check`
 
 import hashlib
 import json
-import yaml
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
 
 from .regions import REGIONS
+from .targets.registry import TARGETS, get_target
 
-
-TARGET_KINDS = ("skill", "knowledge", "tooling", "harness")
-FORBIDDEN_PREFIXES = (
-    ".git/", ".github/", "knowledge/", "references/", "postmortems/",
-    "eval/", "tests/", "docs/", "skills/", ".s2-replay/", ".worktrees/",
-)
 CHECK_TIMEOUT = 120
 CHECK_KINDS = ("py_compile", "diff_check", "src_fetch_self_test")
-MAX_TEXT = {"skill": 8000, "knowledge": 12000, "tooling": 20000, "harness": 20000}
-TOOLING_SUFFIXES = (".py", ".yaml", ".yml", ".json")
-
-REGION_MARKERS = {
-    "diagnose.routing_hints": ("triage", "路由", "追问", "routing"),
-    "diagnose.verification_checklist": ("quickly_check", "验证", "候选", "排除"),
-    "diagnose.trace_evidence": ("trace", "evidence", "证据"),
-    "diagnose.knowledge_usage": ("知识", "reference", "索引", "全文", "候选数"),
-    "diagnose.source_usage": ("源码分析", "src_fetch", "grep 定位", "source_analysis"),
-    "knowledge.case_content": ("症状", "symptoms", "quickly_check", "判别"),
-    "knowledge.reference_content": ("词条", "适用范围", "来源", "scope"),
-    "tooling.source_fetch": ("src_fetch", "cache", "缓存", "retry", "重试", "ref"),
-    "tooling.source_catalog": ("catalog", "repo", "仓", "签名", "signature"),
-    "harness.scheduler": ("scheduler", "调度", "budget", "预算", "stop", "停止"),
-}
-
 
 class CandidateError(ValueError):
     pass
@@ -79,34 +55,25 @@ def _checks(value: Any) -> List[str]:
     return out
 
 
-def _file_allowed(file: str, region) -> bool:
-    if region.target_kind == "knowledge":
-        return file.startswith(("knowledge/", "references/")) and file.endswith((".yaml", ".yml"))
-    if region.target_kind == "harness":
-        if file.startswith(("scripts/evolve/", "eval/core/", "tests/")):
-            return False
-        if file in ("eval/holdout.yaml", "sleuth.config.yaml", "config/rsi/pipelines.yaml"):
-            return False
-        return (file.startswith(("scripts/", "eval/"))
-                and file.endswith((".py", ".yaml", ".yml", ".json")))
-    if region.target_kind == "tooling":
-        if any(file == prefix or file.startswith(prefix.rstrip("/") + "/")
-               for prefix in FORBIDDEN_PREFIXES):
-            return False
-        if not file.endswith(TOOLING_SUFFIXES):
-            return False
-        return any(file == path or file.startswith(path.rstrip("/") + "/")
-                   for path in region.paths)
-    return file.startswith(f"skills/{region.skill}/") and file.endswith(".md")
+def _target_spec(target: Any):
+    try:
+        return get_target(str(target or ""))
+    except ValueError as exc:
+        raise CandidateError(
+            f"target_kind must be one of {list(TARGETS)}"
+        ) from exc
+
+
+def _file_allowed(file: str, spec, region) -> bool:
+    return spec.artifact.allowed(file, region)
 
 
 def validate_candidate(data: Any) -> Dict[str, Any]:
     if not isinstance(data, dict):
         raise CandidateError("candidate must be an object")
     cid = _text(data.get("candidate_id"), "candidate_id")
-    target = data.get("target_kind")
-    if target not in TARGET_KINDS:
-        raise CandidateError(f"target_kind must be one of {list(TARGET_KINDS)}")
+    target_spec = _target_spec(data.get("target_kind"))
+    target = target_spec.id
     component = _text(data.get("target_component"), "target_component")
     region = _text(data.get("region"), "region")
     spec = REGIONS.get(region)
@@ -122,7 +89,7 @@ def validate_candidate(data: Any) -> Dict[str, Any]:
     if target == "skill" and skill != spec.skill:
         raise CandidateError(f"region {region!r} belongs to skill {spec.skill!r}")
     file = _relative_path(data.get("file"))
-    if not _file_allowed(file, spec):
+    if not _file_allowed(file, target_spec, spec):
         raise CandidateError(f"file {file!r} is not allowed for region {region!r}")
     action = str(data.get("action") or "modify")
     if action not in ("modify", "add", "delete"):
@@ -136,15 +103,14 @@ def validate_candidate(data: Any) -> Dict[str, Any]:
     else:
         old = _text(data.get("old_text"), "old_text")
         new = _text(data.get("new_text"), "new_text")
-        markers = REGION_MARKERS.get(region, ())
-        if not any(marker.lower() in old.lower() for marker in markers):
+        if not any(marker.lower() in old.lower() for marker in spec.markers):
             raise CandidateError(f"old_text does not look like region {region!r}")
         if old == new:
             raise CandidateError("old_text and new_text must differ")
     checks = _checks(data.get("checks"))
     if "py_compile" in checks and not file.endswith(".py"):
         raise CandidateError("py_compile check requires a .py file")
-    if len(new) > MAX_TEXT[target]:
+    if len(new) > target_spec.artifact.max_text:
         raise CandidateError(f"new_text is too large for {target} patch")
     base = _text(data.get("base_rev"), "base_rev")
     return {
@@ -164,50 +130,11 @@ def _sha(path: Path) -> str:
 
 def _validate_content(candidate: Dict[str, Any], text: str) -> None:
     """在写入前做 target-specific 语法/结构检查；不判断语义正确性。"""
-    target = candidate["target_kind"]
-    file = candidate["file"]
-    if target == "knowledge":
-        try:
-            doc = yaml.safe_load(text)
-        except yaml.YAMLError as exc:
-            raise CandidateError(f"knowledge YAML is invalid: {exc}") from exc
-        if not isinstance(doc, dict) or not doc.get("id"):
-            raise CandidateError("knowledge YAML must be an object with id")
-    elif target == "harness":
-        if file.endswith(".py"):
-            try:
-                compile(text, file, "exec")
-            except SyntaxError as exc:
-                raise CandidateError(f"harness Python is invalid: {exc}") from exc
-        elif file.endswith((".yaml", ".yml")):
-            try:
-                doc = yaml.safe_load(text)
-            except yaml.YAMLError as exc:
-                raise CandidateError(f"harness YAML is invalid: {exc}") from exc
-            if file.endswith("scheduler.yaml"):
-                if not isinstance(doc, dict) or "scheduler" not in doc:
-                    raise CandidateError("harness scheduler.yaml requires scheduler key")
-        elif file.endswith(".json"):
-            try:
-                json.loads(text)
-            except json.JSONDecodeError as exc:
-                raise CandidateError(f"harness JSON is invalid: {exc}") from exc
-    elif target == "tooling":
-        if file.endswith(".py"):
-            try:
-                compile(text, file, "exec")
-            except SyntaxError as exc:
-                raise CandidateError(f"tooling Python is invalid: {exc}") from exc
-        elif file.endswith((".yaml", ".yml")):
-            try:
-                yaml.safe_load(text)
-            except yaml.YAMLError as exc:
-                raise CandidateError(f"tooling YAML is invalid: {exc}") from exc
-        elif file.endswith(".json"):
-            try:
-                json.loads(text)
-            except json.JSONDecodeError as exc:
-                raise CandidateError(f"tooling JSON is invalid: {exc}") from exc
+    spec = get_target(candidate["target_kind"])
+    try:
+        spec.artifact.check(candidate["file"], text)
+    except ValueError as exc:
+        raise CandidateError(str(exc)) from exc
 
 
 def _check_commands(root: Path, candidate: Dict[str, Any]) -> List[List[str]]:
@@ -252,8 +179,8 @@ def _resolve_target(root: Path, candidate: Dict[str, Any], *, must_exist: bool =
         relative = path.relative_to(root).as_posix()
     except ValueError as exc:
         raise CandidateError("candidate file escapes the repository") from exc
-    spec = REGIONS[candidate["region"]]
-    if not _file_allowed(relative, spec):
+    region = REGIONS[candidate["region"]]
+    if not _file_allowed(relative, get_target(candidate["target_kind"]), region):
         raise CandidateError("candidate file escapes its region paths")
     if must_exist and not path.exists():
         raise CandidateError(f"target file does not exist: {path}")

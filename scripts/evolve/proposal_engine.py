@@ -7,8 +7,6 @@
 
 from __future__ import annotations
 
-import json
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional
@@ -17,14 +15,7 @@ from .contracts import now_iso
 from .records import JsonlStore
 from .proposals import ProposalError, validate_draft
 from .selectors import BestSelector, ParetoSelector
-
-
-ARTIFACT_KIND = {
-    "skill": "text",
-    "knowledge": "yaml",
-    "tooling": "code",
-    "harness": "config",
-}
+from .targets.registry import TARGETS, artifact_kind
 
 
 @dataclass
@@ -98,14 +89,14 @@ def codec_errors(proposal: Proposal) -> List[str]:
 def proposal_from_draft(proposal_id: str, draft: Dict[str, Any],
                         parent: Optional[str] = None) -> Proposal:
     target = str(draft.get("target_kind") or "")
-    if target not in ARTIFACT_KIND:
+    if target not in TARGETS:
         raise ProposalError(f"unknown target_kind {target!r}")
     patch = validate_draft(draft)
     payload = patch.payload
     change = payload.get("change") or {}
     proposal = Proposal(
         id=proposal_id, target=target, component=patch.target_component,
-        summary=patch.summary, artifact_kind=ARTIFACT_KIND[target],
+        summary=patch.summary, artifact_kind=artifact_kind(target),
         artifact={"files": list(change.get("files") or []),
                   "diff": change.get("diff") or ""},
         draft=draft, parent=parent, expected=payload.get("expected") or "",
@@ -188,7 +179,7 @@ class ProposalEngine:
                 id=proposal_id, target=target,
                 component=str(draft.get("target_component") or ""),
                 summary=str(draft.get("summary") or ""),
-                artifact_kind=ARTIFACT_KIND.get(target, "unknown"),
+                artifact_kind=artifact_kind(target),
                 artifact=draft.get("change") if isinstance(draft.get("change"), dict) else {},
                 draft=draft, parent=parent, errors=[str(exc)],
             )

@@ -88,8 +88,8 @@
 | pilot 样本注册进本地队列 | [evaluation.md](evaluation.md) 3.9 | 已落地 | `python3 scripts/evolve.py sample import-pilot --help` |
 | 已闭环 case 回流样本（trace / postmortem，完整性与跨集查重） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/evolve.py sample new --from trace --help`；`python3 scripts/evolve.py sample status --help` |
 | 样本队列复核动作（通过 / 退回 / 升 core，失败在队列内显示） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `grep -n "ev-sample-action" dsh-plugins/ev-panel/panel-host.js` |
-| 记录端口层（六个 Protocol + `TraceSource`） | [records.md](records.md) 3.6 | 已落地 | `grep -n "class .*Protocol" scripts/evolve/ports.py scripts/evolve/trace_source.py` |
-| runner 的任务文件不含答案与样本路径；judge 单独拿 `judge-input.json` | [evaluation.md](evaluation.md) 3.8 | 已落地 | `grep -n "judge-input.json" scripts/evolve/stage.py` |
+| 记录之间的数据流与三处可替换接口（存储 `Backend`、trace 源 `TraceSource`、issue 源 `IssueSource`） | [records.md](records.md) 3.6 | 已落地 | `grep -n "class Backend" scripts/evolve/store/ports.py`；`grep -n "class TraceSource" scripts/evolve/trace_source.py`；`grep -n "class IssueSource" scripts/evolve/sources/base.py` |
+| runner 的任务文件不含答案与样本路径；judge 单独拿 `judge-input.json` | [evaluation.md](evaluation.md) 3.8 | 已落地 | `grep -n "judge-input.json" scripts/evolve/stage_runner.py` |
 | 版本坐标用 `knowledge/` 内容哈希 | [records.md](records.md) 3.4 | 已落地 | `python3 scripts/kb_rev.py --content`；`grep -n "content_rev" scripts/evolve/pilot.py` |
 | `exploratory` 不把小池提升成 accept；未校准 judge 不 accept | [evaluation.md](evaluation.md) 3.8 | 已落地 | `grep -n "acceptance_scope" scripts/evolve/pilot.py` |
 | 适配器层与旧脚本薄壳 | [records.md](records.md) 3.6 | 已落地 | `ls scripts/evolve/adapters`；`python3 scripts/evolve.py replay --help`；`python3 scripts/evolve.py sample import-s2 --help` |

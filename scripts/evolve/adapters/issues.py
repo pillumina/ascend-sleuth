@@ -21,6 +21,7 @@ from _fs import atomic_write_text
 from . import AdapterError, load_legacy
 from ..samples import SampleStore, StoreError
 from ..sources.github import GitHubSource
+from ..sources.base import IssueSource
 from ..sources.registry import get_source
 
 MIN_BODY_CHARS = 20
@@ -233,7 +234,7 @@ def ingest_issues(
     dry_run: bool = False,
     fetch_metadata_fn=None,
     fetch_body_fn=None,
-    source: Any = None,
+    source: Optional[IssueSource] = None,
     state_key: Optional[str] = None,
     holdout_numbers: Optional[Set[str]] = None,
     quality: Optional[Dict[str, Dict[str, Any]]] = None,

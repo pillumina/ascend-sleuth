@@ -4,36 +4,20 @@
 没有的 cache/download 数据不补 0。
 """
 
-from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from .statistics import paired_diff_ci
+from .usage import (EPSILON, check_bool, check_int, check_num, count_directions, decide,
+                    diff_intervals, elapsed_state as elapsed_direction,
+                    pair_rows, partial_regressed, parse_records)
 
 OBSERVED_FIELDS = ("files_read", "tool_calls", "fetch_calls", "grep_calls",
                   "followups", "downloads", "bytes", "elapsed_ms")
 GATE_FIELDS = ("files_read", "tool_calls", "fetch_calls", "grep_calls",
                "followups", "elapsed_ms")
-EPSILON = 1e-9
-
 
 class SourceUsageError(ValueError):
     pass
-
-
-def _int(value: Any, name: str, *, optional: bool = False) -> Optional[int]:
-    if value is None and optional:
-        return None
-    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-        raise SourceUsageError(f"{name} must be a non-negative integer")
-    return value
-
-
-def _num(value: Any, name: str, *, optional: bool = False) -> Optional[float]:
-    if value is None and optional:
-        return None
-    if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
-        raise SourceUsageError(f"{name} must be a non-negative number")
-    return float(value)
 
 
 def validate_record(record: Any) -> Dict[str, Any]:
@@ -44,11 +28,14 @@ def validate_record(record: Any) -> Dict[str, Any]:
         raise SourceUsageError("sample_id is required")
     out = {"sample_id": sample_id}
     for name in OBSERVED_FIELDS:
-        out[name] = _int(record.get(name), name, optional=True) if name != "elapsed_ms" else _num(record.get(name), name, optional=True)
-    out["cache_hits"] = _int(record.get("cache_hits"), "cache_hits", optional=True)
-    out["source_ok"] = record.get("source_ok")
-    if out["source_ok"] is not None and not isinstance(out["source_ok"], bool):
-        raise SourceUsageError("source_ok must be boolean or null")
+        if name == "elapsed_ms":
+            out[name] = check_num(record.get(name), name, SourceUsageError, optional=True)
+        else:
+            out[name] = check_int(record.get(name), name, SourceUsageError, optional=True)
+    out["cache_hits"] = check_int(record.get("cache_hits"), "cache_hits",
+                                  SourceUsageError, optional=True)
+    out["source_ok"] = check_bool(record.get("source_ok"), "source_ok",
+                                  SourceUsageError, optional=True)
     repos = record.get("repos") or []
     refs = record.get("refs") or []
     if not isinstance(repos, list) or not all(isinstance(x, str) for x in repos):
@@ -61,14 +48,7 @@ def validate_record(record: Any) -> Dict[str, Any]:
 
 
 def _records(data: Any) -> List[Dict[str, Any]]:
-    items = data.get("samples") if isinstance(data, dict) else data
-    if not isinstance(items, list) or not items:
-        raise SourceUsageError("source usage data must be a non-empty list")
-    out = [validate_record(item) for item in items]
-    ids = [item["sample_id"] for item in out]
-    if len(set(ids)) != len(ids):
-        raise SourceUsageError("source usage sample_id must be unique")
-    return out
+    return parse_records(data, validate_record, SourceUsageError, "source usage")
 
 
 def _sum(values: List[Optional[int]]) -> Optional[int]:
@@ -86,18 +66,6 @@ def summarize(data: Any) -> Dict[str, Any]:
     ok = [item["source_ok"] for item in records]
     result["source_ok"] = (sum(1 for item in ok if item) if all(v is not None for v in ok) else None)
     return result
-
-
-def _elapsed_state(delta, ci):
-    """连续成本项只在置信区间排除 0 时才判方向。"""
-    if delta is None or abs(delta) <= EPSILON:
-        return "neutral"
-    low, high = ci.get("low"), ci.get("high")
-    if low is not None and low > 0:
-        return "worse"
-    if high is not None and high < 0:
-        return "better"
-    return "unconfirmed"
 
 
 def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
@@ -125,70 +93,35 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
         bs["source_ok"], cs["source_ok"] = b_ok, c_ok
         if c_ok < b_ok:
             reasons.append("source_correctness_regressed")
-    paired: Dict[str, Dict[str, Any]] = {}
-    deltas = {}
-    improved = worsened = 0
-    partial: List[str] = []
-    for field in GATE_FIELDS:
-        pairs = [(b[i][field], c[i][field]) for i in ids
-                 if b[i][field] is not None and c[i][field] is not None]
-        if not pairs:
-            paired[field] = {"n": 0, "unknown": len(ids), "baseline": None,
-                             "candidate": None, "delta": None}
-            deltas[field] = None
-            continue
-        total_b = sum(pair[0] for pair in pairs)
-        total_c = sum(pair[1] for pair in pairs)
-        paired[field] = {"n": len(pairs), "unknown": len(ids) - len(pairs),
-                         "baseline": total_b, "candidate": total_c,
-                         "delta": total_c - total_b}
-        bs[field], cs[field] = total_b, total_c
-        deltas[field] = total_c - total_b
-        if field == "elapsed_ms":
-            continue
-        if paired[field]["unknown"]:
-            partial.append(field)
-            continue
-        if deltas[field] < -EPSILON:
-            improved += 1
-        elif deltas[field] > EPSILON:
-            worsened += 1
+    paired = pair_rows(b, c, ids, GATE_FIELDS, aggregate="sum")
+    deltas = {field: paired[field]["delta"] for field in GATE_FIELDS}
     deltas["cache_hits"] = None
     elapsed_diffs = [c[i]["elapsed_ms"] - b[i]["elapsed_ms"] for i in ids
                      if b[i]["elapsed_ms"] is not None and c[i]["elapsed_ms"] is not None]
     elapsed_delta = paired["elapsed_ms"]["delta"]
     if elapsed_delta is None or abs(elapsed_delta) <= EPSILON:
-        elapsed_state = "neutral"
+        elapsed = "neutral"
     elif paired["elapsed_ms"]["unknown"]:
-        elapsed_state = "unconfirmed"
+        elapsed = "unconfirmed"
     else:
-        elapsed_state = _elapsed_state(elapsed_delta, paired_diff_ci(elapsed_diffs))
-    if elapsed_state == "worse":
-        worsened += 1
-    elif elapsed_state == "better":
-        improved += 1
-    elif (elapsed_state == "unconfirmed"
-          and paired["elapsed_ms"]["delta"] is not None
-          and paired["elapsed_ms"]["delta"] > 0):
+        elapsed = elapsed_direction(elapsed_delta, paired_diff_ci(elapsed_diffs))
+    counts = count_directions(paired, GATE_FIELDS,
+                              elapsed_field="elapsed_ms", elapsed=elapsed)
+    if (elapsed == "unconfirmed" and elapsed_delta is not None
+            and elapsed_delta > 0):
         reasons.append("source_elapsed_inconclusive")
-    if any(paired[field]["delta"] is not None and paired[field]["delta"] > EPSILON
-           for field in partial):
+    if partial_regressed(paired, counts["partial"]):
         reasons.append("source_efficiency_partial_unknown")
-    if worsened:
+    if counts["worsened"]:
         reasons.append("source_efficiency_regressed")
-    if not improved:
+    if not counts["improved"]:
         reasons.append("no_source_efficiency_improvement")
-    if any(r in ("source_correctness_regressed", "source_efficiency_regressed") for r in reasons):
-        decision = "reject"
-    elif reasons:
-        decision = "insufficient"
-    else:
-        decision = "accept"
-    ci = {}
+    decision = decide(reasons, ("source_correctness_regressed",
+                                "source_efficiency_regressed"))
+    ci = diff_intervals(b, c, ids, GATE_FIELDS)
     for field in GATE_FIELDS:
-        diffs = [c[i][field] - b[i][field] for i in ids
-                 if b[i][field] is not None and c[i][field] is not None]
-        ci[field] = paired_diff_ci(diffs)
+        if paired[field]["delta"] is not None:
+            bs[field], cs[field] = paired[field]["baseline"], paired[field]["candidate"]
     return {"decision": decision, "baseline": bs, "candidate": cs,
             "deltas": deltas, "reasons": reasons, "paired": paired, "ci": ci}
 

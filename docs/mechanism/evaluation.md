@@ -422,7 +422,7 @@ python3 scripts/evolve.py tool-usage compare --baseline base.json --candidate ca
 
 ### 3.11 算法适配器
 
-算法只做提案者，不做判定、不直接写库、不合入。`scripts/evolve/ports.py` 定义 `Optimizer`，`scripts/evolve/algorithms/registry.py` 是静态注册表；当前只有 `baseline`。`policy.experiment.target`/`algorithm` 选目标与算法，`Version.algorithm`/`algorithm_version` 记身份，`budget`/`seed` 记实验条件。GEPA/AEL/SkillProx/EvolveMem 只在后续的实验适配器里接入，一次只接一个组件；没有动态插件加载。
+算法只做提案者，不做判定、不直接写库、不合入。`scripts/evolve/algorithms/registry.py` 是静态注册表，一个算法提供 `id`、`version`、`scope` 与 `propose(...)`；当前只有 `baseline`。`policy.experiment.target`/`algorithm` 选目标与算法，`Version.algorithm`/`algorithm_version` 记身份，`budget`/`seed` 记实验条件。GEPA/AEL/SkillProx/EvolveMem 只在后续的实验适配器里接入，一次只接一个组件；没有动态插件加载。
 
 优化目标与评估对象正交，四个 target 的当前定论：
 
@@ -433,7 +433,7 @@ python3 scripts/evolve.py tool-usage compare --baseline base.json --candidate ca
 | tooling | 工具路由、缓存、重试、目录数据 | replay + trace 工具使用 | 已接（`replay_trace`） | A1 | baseline |
 | harness | 调度与控制流 | 端到端回放 + 回归 | 未接（`end_to_end`） | A1 | baseline |
 
-`evaluations/registry.py` 把 target 映射到 `EvalProfile`，`implemented` 只表示当前有没有端到端 scorer/gate，不表示有真实数据。未接的 target 仍可记录 baseline Patch，但 `experiment propose` 会打印 `eval_ready: false` 并警告“记录但不 gate-ready”；不把目标分发误当评测完成。
+`evaluations/registry.py` 把 target 映射到 `EvalProfile`，`implemented` 只表示当前有没有端到端 scorer/gate，不表示有真实数据。门禁的执行在 `evaluations/gates.py`：profile 的 `gate` 字段指向一个已注册的 gate，CLI 的 `experiment gate` 只整理参数与打印；新增评测面的动作是写一个 gate 函数、注册它、在 profile 里指过去，不改 CLI。未接的 target 仍可记录 baseline Patch，但 `experiment propose` 会打印 `eval_ready: false` 并警告“记录但不 gate-ready”；不把目标分发误当评测完成。
 
 knowledge 的 rubric 评分是确定性算分：`rubric.dimensions` 是维度名列表或对象；`threshold` 由 `sleuth.config.yaml 的 evolution.policy` 的 `rubrics.threshold` 决定（当前 0.7），不在 scorer 里另写一份。每维只接受 0/1/2，任一维 0 即退回；缺维度不当 0 补，分数不可计算，`score` 显示 unavailable。入口只接受 target 允许的 object_type（knowledge 只收 case/reference）：
 
@@ -518,7 +518,7 @@ python3 scripts/evolve.py experiment gate --target tooling \
 | 实践 | 来源 | 采用 | 不采用 |
 |---|---|---|---|
 | 目标、约束、运营指标三分 | Langfuse | 主指标、约束、硬约束、次要指标与读数 | 单一加权总分 |
-| Task、Solver、Scorer 分离 | Inspect AI | 执行器、评分器、评估器端口 | 任务 DSL |
+| Task、Solver、Scorer 分离 | Inspect AI | 执行、评分、判定分层（接口是函数与 CLI 契约，不固化成端口） | 任务 DSL |
 | 离线评估做实验，线上记录做监控 | Langfuse | 回放判定，现场记录只作读数 | 把生产记录当基准 |
 | 留出集、按来源去重、泄漏检查、版本化 | Polyaxon、DSPy | 测试集、吸收检查、版本字段 | 无来源数据 |
 | 优化器 30 条以上样本 | DSPy | 30 条目标，13 条冒烟 | 现在接优化器；评估集不套 20/80 |

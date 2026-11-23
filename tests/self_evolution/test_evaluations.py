@@ -7,6 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from evolve.evaluations.gates import GATES, GateError, gate_for  # noqa: E402
 from evolve.evaluations.registry import (  # noqa: E402
     EVAL_PROFILES,
     eval_profile_ids,
@@ -28,6 +29,18 @@ class EvalProfileTest(unittest.TestCase):
     def test_unknown_profile_is_an_error(self):
         with self.assertRaises(ValueError):
             get_eval_profile("magic")
+
+    def test_every_implemented_profile_has_a_gate(self):
+        for name in eval_profile_ids():
+            profile = get_eval_profile(name)
+            if not profile.implemented:
+                continue
+            self.assertIn(profile.gate, GATES, profile.id)
+            self.assertIs(gate_for(profile.gate), GATES[profile.gate])
+
+    def test_unregistered_gate_is_an_error(self):
+        with self.assertRaises(GateError):
+            gate_for("no-such-gate")
 
     def test_targets_resolve_to_eval_profiles(self):
         self.assertEqual(resolve_evaluator("skill")[1].id, "arena")

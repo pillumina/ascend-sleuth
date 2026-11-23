@@ -1,6 +1,5 @@
 """Candidate Patch：有界校验、隔离 worktree、apply/rollback。"""
 
-import json
 import os
 import subprocess
 import sys
@@ -171,7 +170,7 @@ class CandidateTest(unittest.TestCase):
 
     def test_harness_cannot_change_judge_policy_or_holdout(self):
         for file in ("sleuth.config.yaml", "config/rsi/pipelines.yaml", "eval/holdout.yaml", "eval/core/test.yaml",
-                     "scripts/evolve/stage.py", "tests/self_evolution/test_flow.py"):
+                     "scripts/evolve/stage_runner.py", "tests/self_evolution/test_flow.py"):
             with self.assertRaises(CandidateError):
                 validate_candidate({
                     "candidate_id": "C-H3", "target_kind": "harness",

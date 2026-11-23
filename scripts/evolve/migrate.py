@@ -10,14 +10,11 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 from .records import JsonlStore
 from .rsi_store import RSIStore
-
-ARTIFACT_KIND = {
-    "skill": "text", "knowledge": "yaml", "tooling": "code", "harness": "config",
-}
+from .targets.registry import artifact_kind
 
 
 def _digest(*parts: Any) -> str:
@@ -43,7 +40,7 @@ def _proposal(record: Dict[str, Any], source: str, line: int) -> Dict[str, Any]:
     return {
         "id": pid, "target": target, "component": component,
         "summary": str(record.get("summary") or ""),
-        "artifact_kind": ARTIFACT_KIND.get(target, "unknown"),
+        "artifact_kind": artifact_kind(target),
         "artifact": {}, "draft": {}, "parent": None,
         "expected": "", "risk": "", "rollback": "", "evidence": [],
         "candidate": None, "status": str(record.get("decision") or "unknown"),
