@@ -1,0 +1,12 @@
+{
+  "id": "VLLM-ASC-16447",
+  "category": "interrupt",
+  "title": "训练挂起在 allreduce",
+  "symptoms": "训练进程挂起",
+  "sig": "allreduce timeout",
+  "tok": "allreduce hang",
+  "compat": "\">=0.9 <1.0\"",
+  "tags": "hang,allreduce",
+  "score": "0.82",
+  "file": "knowledge/inference/vllm-ascend/interrupt/VLLM-ASC-16447.yaml"
+}

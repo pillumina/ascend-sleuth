@@ -28,6 +28,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _trace_content import validate_content  # noqa: E402
+from _cli import main_entry
 from _trace_state import check_vocab, is_terminal, load_vocab, load_traces  # noqa: E402
 from exec_log_path import resolve_traces  # noqa: E402
 
@@ -222,4 +223,4 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main_entry(main))

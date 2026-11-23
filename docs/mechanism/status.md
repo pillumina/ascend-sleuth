@@ -11,7 +11,7 @@
 | 机制 | 定义在哪 | 现状 | 确认方式 |
 |---|---|---|---|
 | 内容流程收尾的伴随演进 | [operations.md](operations.md) 3.1 | 已落地 | `ls skills/evolve-check/SKILL.md` |
-| 部署级演进模式 `evolution.role` | [operations.md](operations.md) 3.1 | 已落地 | `python3 scripts/evolve_mode.py` |
+| 部署级演进角色 `evolution.role` | [operations.md](operations.md) 3.1 | 已落地 | `python3 scripts/evolve_mode.py` |
 | 全库体检轮 | [operations.md](operations.md) 3.1 | 已落地 | `ls skills/self-evolve/SKILL.md` |
 | 每周批审 | [operations.md](operations.md) 3.3 | 已落地 | `ls skills/knowledge-groom/SKILL.md` |
 | 信号台账（下游部署的收尾交接） | [signals/README.md](../../proposals/signals/README.md) | 已落地 | `python3 scripts/evolve_signals.py list` |

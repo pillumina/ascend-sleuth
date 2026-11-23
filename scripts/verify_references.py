@@ -33,6 +33,7 @@ try:
 except ImportError:
     sys.exit("需要 PyYAML：pip install pyyaml")
 
+from _cli import main_entry
 from _yaml import load_file   # noqa: E402  （解析后端单一事实源，快路径见 _yaml.py）
 
 VALID_STATUSES = {"draft", "active", "pending-review", "deprecated"}
@@ -799,6 +800,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    main()
+    sys.exit(main_entry(main))

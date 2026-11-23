@@ -48,8 +48,7 @@ class IntakeTest(unittest.TestCase):
             os.environ["ASCEND_SLEUTH_EVOLUTION"] = self._saved
         self.tmp.cleanup()
 
-    def decl(self, mode):
-        role = {"full": "maintainer", "record-only": "signal-only", "off": "off"}[mode]
+    def decl(self, role):
         (self.root / "sleuth.config.yaml").write_text(
             f'schema: sleuth-config-v1\nevolution:\n  role: {role}\n', encoding="utf-8")
 
@@ -57,14 +56,14 @@ class IntakeTest(unittest.TestCase):
         (self.root / "sleuth.config.yaml").write_text(
             'schema: sleuth-config-v1\nevolution:\n  role: maintainer\n', encoding="utf-8")
         res = EI.record(self.root, **GOOD)
-        self.assertEqual(res["mode"], "record-only")
+        self.assertEqual(res["role"], "maintainer")
         self.assertTrue(str(res["path"]).endswith(".yaml"))
         self.assertNotIn("ideas", str(res["path"]))
 
-    def test_record_only_writes_signal(self):
-        self.decl("record-only")
+    def test_signal_only_writes_signal(self):
+        self.decl("signal-only")
         res = EI.record(self.root, **GOOD)
-        self.assertEqual(res["mode"], "record-only")
+        self.assertEqual(res["role"], "signal-only")
         doc = ES.load(res["path"])
         self.assertEqual(doc["status"], "new")
         self.assertEqual(doc["target_component"], GOOD["target"])
@@ -76,27 +75,27 @@ class IntakeTest(unittest.TestCase):
         self.assertEqual(list((self.root / "proposals" / "signals").glob("*.yaml")), [])
 
     def test_short_evidence_rejected(self):
-        self.decl("record-only")
+        self.decl("signal-only")
         with self.assertRaises(ValueError):
             EI.record(self.root, **{**GOOD, "evidence": "太短"})
 
     def test_missing_trajectory_rejected(self):
-        self.decl("record-only")
+        self.decl("signal-only")
         with self.assertRaises(ValueError):
             EI.record(self.root, **{**GOOD, "trajectory": []})
 
     def test_unknown_target_path_rejected(self):
-        self.decl("record-only")
+        self.decl("signal-only")
         with self.assertRaises(ValueError):
             EI.record(self.root, **{**GOOD, "target": "skills/nope/SKILL.md"})
 
     def test_component_name_target_accepted(self):
-        self.decl("record-only")
+        self.decl("signal-only")
         res = EI.record(self.root, **{**GOOD, "target": "triage:vllm-ascend-startup"})
         self.assertTrue(res["path"].exists())
 
     def test_cli_contract_error_exit_2(self):
-        self.decl("record-only")
+        self.decl("signal-only")
         with redirect_stderr(io.StringIO()), redirect_stdout(io.StringIO()):
             rc = EI.main(["--root", str(self.root), "record", "--signal", "T10",
                           "--target", "skills/nope/SKILL.md",

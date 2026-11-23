@@ -18,6 +18,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import _fs  # noqa: E402
 import issue_filter  # noqa: E402
 
 
@@ -37,13 +38,14 @@ class SaveStateTest(unittest.TestCase):
             issue_filter.save_state(path, old)
             before = path.read_text(encoding="utf-8")
 
-            with mock.patch.object(issue_filter.os, "replace", side_effect=OSError("disk full")):
+            with mock.patch.object(_fs.os, "replace", side_effect=OSError("disk full")):
                 with self.assertRaises(OSError):
                     issue_filter.save_state(path, {"sources": {"github/x/y": {"processed": [1, 2]}}})
 
             self.assertEqual(path.read_text(encoding="utf-8"), before)
             self.assertEqual(json.loads(path.read_text(encoding="utf-8")), old)
-            self.assertTrue((Path(td) / "ingest-state.json.tmp").exists())
+            # 失败时临时件要清掉，不能留半截记录给下一轮误读。
+            self.assertEqual([p for p in Path(td).iterdir() if p.name.endswith(".tmp")], [])
 
 
 class MarkImportedTest(unittest.TestCase):

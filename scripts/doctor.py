@@ -347,35 +347,30 @@ def check_index(root: Path):
 def check_evolution(root: Path):
     """部署级演进角色（sleuth.config.yaml）。这是策略声明，不是环境缺陷。
 
-    为什么放进体检：内网 fork 的预期形态是 `record-only`（只记信号不产卡）。不显示时，
-    用户在收尾报告里只看到"没有卡"，会以为演进坏了；显示后，"按声明不产卡"与"演进失败"
+    为什么放进体检：内网 fork 的预期形态是 `signal-only`（只记信号、不跑实验）。不显示时，
+    用户在收尾报告里只看到"没有卡"，会以为演进坏了；显示后，"按声明不跑实验"与"演进失败"
     能分开。声明写坏只挡演进流程，不挡诊断与沉淀，所以记降级而不是阻断。
     """
     try:
         from evolve_mode import read_role, ModeError
     except Exception as e:
-        return {"id": "evolution", "label": "演进模式", "kind": "policy", "state": DEGRADE,
+        return {"id": "evolution", "label": "演进角色", "kind": "policy", "state": DEGRADE,
                 "detail": f"读不出声明（{e.__class__.__name__}）",
-                "fix": "确认 scripts/evolve_mode.py 在（缺文件时收尾读不到部署模式）"}
+                "fix": "确认 scripts/evolve_mode.py 在（缺文件时收尾读不到部署角色）"}
     try:
         role, source = read_role(root)
-        if role is None:
-            from evolve_mode import read_mode
-            mode, source = read_mode(root)
-        else:
-            mode = {"maintainer": "full", "signal-only": "record-only", "off": "off"}[role]
     except ModeError as e:
-        return {"id": "evolution", "label": "演进模式", "kind": "policy", "state": DEGRADE,
+        return {"id": "evolution", "label": "演进角色", "kind": "policy", "state": DEGRADE,
                 "detail": f"声明写坏：{e}",
                 "note": "收尾检查会停下来问人，不会自己挑一档跑",
                 "fix": "改 sleuth.config.yaml 的 evolution.role 为 maintainer / signal-only / off 之一"}
     meaning = {
-        "full": "维护者部署：信号分诊后可跑 RSI 实验；EV 卡只作高风险授权",
-        "record-only": "只记信号，不产卡、不跑实验（本地/内网 fork）",
+        "maintainer": "维护者部署：信号分诊后可跑 RSI 实验；EV 卡只作高风险授权",
+        "signal-only": "只记信号，不跑实验（本地/内网 fork）",
         "off": "不做收尾检查",
-    }[mode]
-    return {"id": "evolution", "label": "演进模式", "kind": "policy", "state": OK,
-            "detail": f"{mode} —— {meaning}（来源：{source}）", "fix": ""}
+    }[role]
+    return {"id": "evolution", "label": "演进角色", "kind": "policy", "state": OK,
+            "detail": f"{role} —— {meaning}（来源：{source}）", "fix": ""}
 
 
 def check_pr_platforms(root):

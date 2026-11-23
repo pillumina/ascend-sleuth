@@ -248,6 +248,7 @@ schema 在 `metrics/skill-exec-log.yaml`，只追加；`scripts/log_skill_exec.p
 - 卡 schema 与生命周期完整性校验、三道生效日检查：`scripts/verify_proposals.py --check`（CI job `proposal-audit`）、`MEASURE_CUTOVER`、`TARGET_CUTOVER`、`MEASURE_EVIDENCE_CUTOVER`；预测口径缺口由 `ev_measure.py --audit` 报出，新卡实测证据缺口由 `verify_proposals.py --check` 报出。
 - 评审把手与替换链：`python3 scripts/ev_measure.py <卡号> --run --record` 打印命令、实测与退出码，并把这次实测追加进卡的 `measure_evidence`；`supersedes` 与 `superseded_by` 已进 schema。
 - `validated` 的实测门：生效日后的卡标 `validated` 必须有一条同命令的 PASS `measure_evidence`；只写 `measure.reason` 的卡不能标 `validated`。存量卡不追溯，缺口由 `verify_proposals.py --check` 报出。
+- 体检读数：`measure_evidence_cards` 是卡内有 PASS 证据的卡数；`runnable_never_measured` 取卡内证据与 `metrics/ev-measure-log.yaml` 的并集，日志只作本机运行历史——fresh clone 不会把已有 PASS 的卡报成「从未执行」。
 - v1 数据契约与命令：`scripts/evolve/` 的 `contracts.py`、`object_types.py`、`metrics.py`、`statistics.py`、`decision.py`、`pools.py`、`policy.py`、`samples.py`、`records.py`、`ports.py`；CLI 子命令 `policy`（check / show）、`sample`（new / list / check / review / promote / retire / set-purpose / absorb / draw-test）、`judge`、`brief`；结论与执行记录追加进 `.s2-replay/evolve/`。
 - 指标校验与执行记录：`scripts/verify_metrics.py --check`；执行记录的 schema、写入、校验、读取与聚合进 timeline。
 - 条目使用记录的源与生成物、`merge=union`、行级去重：见 [diagnosis-observability.md](diagnosis-observability.md)。

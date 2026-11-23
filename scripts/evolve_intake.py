@@ -84,24 +84,20 @@ def soft_warnings(root: Path, trajectory) -> list:
 def record(root: Path, *, signal: str, signal_text: str, target: str, evidence: str,
            trajectory, suggested: str = "", source: str = "evolve-check",
            session: str = "") -> dict:
-    role, mode_source = EM.read_role(root)
-    # 目标态：maintainer 先把观察落成信号；是否提升为 RSI 由分诊决定。
-    mode = "off" if role == "off" else "record-only"
+    role, role_source = EM.read_role(root)
+    # 目标态：maintainer 与 signal-only 都先把观察落成信号；是否提升为 RSI 由分诊决定。
     errors = validate(root, target, evidence, trajectory)
     if errors:
         raise ValueError("；".join(errors))
 
-    if mode == "off":
-        return {"mode": mode, "mode_source": mode_source, "path": None}
+    if role == "off":
+        return {"role": role, "role_source": role_source, "path": None}
 
-    if mode == "record-only":
-        r = ES.add(root, signal=signal, target=target, evidence=evidence,
-                   trajectory=trajectory, suggested=suggested, source=source,
-                   session=session, signal_text=signal_text)
-        return {"mode": mode, "mode_source": mode_source, "path": r["path"],
-                "occurrences": r["doc"]["occurrences"]}
-
-    raise AssertionError(f"unreachable mode: {mode}")
+    r = ES.add(root, signal=signal, target=target, evidence=evidence,
+               trajectory=trajectory, suggested=suggested, source=source,
+               session=session, signal_text=signal_text)
+    return {"role": role, "role_source": role_source, "path": r["path"],
+            "occurrences": r["doc"]["occurrences"]}
 
 
 def main(argv=None):
@@ -136,13 +132,11 @@ def main(argv=None):
     for w in warns:
         print(f"! 出处解析不到（按制品 id 处理）：{w}", file=sys.stderr)
 
-    mode = res["mode"]
-    if mode == "off":
-        print(f"skip：部署声明 off（{res['mode_source']}）——不记录")
-    elif mode == "record-only":
-        print(f"signal：{res['path']}（{res['occurrences']} 次；{res['mode_source']}）")
+    role = res["role"]
+    if role == "off":
+        print(f"skip：部署声明 off（{res['role_source']}）——不记录")
     else:
-        print(f"card：{res['path']}（骨架已填 source_signals，measure 待填；{res['mode_source']}）")
+        print(f"signal：{res['path']}（{res['occurrences']} 次；{res['role_source']}）")
     return 0
 
 

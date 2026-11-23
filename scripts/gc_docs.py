@@ -44,7 +44,6 @@
 import argparse
 import hashlib
 import json
-import os
 import re
 import sys
 import time
@@ -52,6 +51,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from pathlib import Path
+
+from _fs import atomic_write_text
 
 from _stdio import pin_utf8_stdio
 
@@ -207,10 +208,8 @@ def save_state(st: dict) -> None:
     for src in (st.get("sources") or {}).values():
         for path, e in list((src.get("docs") or {}).items()):
             src["docs"][path] = {k: v for k, v in e.items() if k in DOC_KEYS}
-    tmp = STATE_REL.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(st, ensure_ascii=False, indent=1, sort_keys=True) + "\n",
-                   encoding="utf-8")
-    os.replace(tmp, STATE_REL)
+    atomic_write_text(STATE_REL, json.dumps(st, ensure_ascii=False, indent=1,
+                                            sort_keys=True) + "\n")
 
 
 def src_key(owner: str, repo: str) -> str:

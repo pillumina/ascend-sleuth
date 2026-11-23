@@ -17,11 +17,9 @@
 
 import hashlib
 import json
-import os
 import re
 import subprocess
 import sys
-import tempfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,6 +28,8 @@ try:
     import yaml
 except ImportError:  # pragma: no cover - 环境问题，明确报错而不是静默
     sys.exit("需要 PyYAML：pip install pyyaml")
+
+from _fs import atomic_write_text as _atomic_write_text, dump_yaml as _fs_dump_yaml
 
 from exec_log_path import log_lock, resolve_checkout_dir  # noqa: E402
 import _yaml  # noqa: E402
@@ -77,25 +77,12 @@ def file_sha(path: Path) -> str:
 
 
 def atomic_write_text(path: Path, text: str) -> None:
-    """同目录临时文件 + fsync + os.replace；崩溃点最多留下 `.tmp`，读者不会看到半份。"""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=str(path.parent))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
-            fh.write(text)
-            fh.flush()
-            os.fsync(fh.fileno())
-        os.replace(tmp, path)
-    finally:
-        if os.path.exists(tmp):
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
+    """同目录临时文件 + fsync + os.replace；实现见 _fs。"""
+    _atomic_write_text(path, text)
 
 
 def dump_yaml(obj) -> str:
-    return yaml.safe_dump(obj, allow_unicode=True, sort_keys=False, width=1000)
+    return _fs_dump_yaml(obj, width=1000)
 
 
 def load_yaml(path: Path):

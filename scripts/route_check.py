@@ -27,6 +27,8 @@ from pathlib import Path
 
 import yaml
 
+from _entry import workload_and_nature
+
 REPO = Path(__file__).resolve().parents[1]
 TRIAGE = REPO / "triage-tree.yaml"
 SIDE_PLACEHOLDER = "<side>/"  # 聚合里的字面记号（取值为 training / inference），别改名
@@ -128,14 +130,7 @@ def case_workload_type_and_nature(path: Path, root: Path):
     "这条 case 归哪个性质、属于哪一种负载类型"的事实来源，不回答"负载类型怎么判出来的"。
     common/ 下的共性 case 框架无关，两项都返回空串表示"本条不判"。
     """
-    try:
-        rel = path.resolve().relative_to((root / "knowledge").resolve())
-    except ValueError:
-        return "", ""
-    parts = rel.parts
-    if len(parts) >= 3 and parts[0] in ("training", "inference"):
-        return parts[0], parts[2]
-    return "", ""
+    return workload_and_nature(root, path)
 
 
 def expected_branch(path: Path, root: Path) -> str:

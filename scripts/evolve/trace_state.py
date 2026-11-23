@@ -8,9 +8,10 @@
 
 import hashlib
 import json
-import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
+from _fs import atomic_write_text
 
 from .trace_source import TraceDoc
 
@@ -115,14 +116,5 @@ class TraceState:
         return value
 
     def save(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(prefix=self.path.name, dir=str(self.path.parent))
-        try:
-            with open(fd, "w", encoding="utf-8") as handle:
-                json.dump(self.data, handle, ensure_ascii=False, indent=2, sort_keys=True)
-            Path(tmp).replace(self.path)
-        finally:
-            try:
-                Path(tmp).unlink()
-            except OSError:
-                pass
+        atomic_write_text(self.path, json.dumps(
+            self.data, ensure_ascii=False, indent=2, sort_keys=True))

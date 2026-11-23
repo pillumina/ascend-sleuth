@@ -30,6 +30,7 @@ import argparse
 import re
 import sys
 
+from _entry import framework_of, iter_case_docs, iter_case_files as _entry_case_files
 from _stdio import write_text_lf
 from collections import defaultdict
 from pathlib import Path
@@ -59,36 +60,28 @@ def load_vocab(path: Path) -> dict:
 # ---- 扫描 ----
 
 def iter_case_files(root: Path):
-    kdir = root / "knowledge"
-    for p in sorted(kdir.rglob("*.yaml")):
-        rel = p.relative_to(kdir)
-        if rel.parts[0] in ("_archive", "_index") or p.name.startswith("_"):
+    """本脚本的入口文件：在 _entry 的公共枚举上保留「跳过下划线文件」的旧行为。"""
+    for path, _rel in _entry_case_files(root):
+        if path.name.startswith("_"):
             continue
-        yield p
+        yield path
 
 
 def load_cases(root: Path):
-    """→ [(path, case_dict), ...]"""
+    """→ [(path, case_dict), ...]；YAML 坏掉的文件跳过（与旧行为一致）。"""
     out = []
-    for p in iter_case_files(root):
-        try:
-            doc = yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-        except yaml.YAMLError:
+    for path, _rel, doc in iter_case_docs(root, skip_bad=True):
+        if path.name.startswith("_"):
             continue
-        for c in doc.get("cases") or []:
-            if isinstance(c, dict):
-                out.append((p, c))
+        for case in doc.get("cases") or []:
+            if isinstance(case, dict):
+                out.append((path, case))
     return out
 
 
 def ns_of(rel: Path) -> str:
-    """目录 → namespace 名（与 build_index.py 的折叠规则一致）。"""
-    parts = rel.parts
-    if len(parts) >= 3 and parts[0] in ("inference", "training"):
-        return parts[1]
-    if len(parts) >= 2 and parts[0] == "common":
-        return "common"
-    return parts[0] if parts else ""
+    """目录 → tag 去重用的叶子名（verl / common）；规则只在 _entry 一处。"""
+    return framework_of(rel)
 
 
 def auto_drop(root: Path) -> set:

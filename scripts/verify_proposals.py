@@ -56,6 +56,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from _cli import main_entry
+from _measure_evidence import card_passes
 from _yaml import load_file   # 解析后端单一事实源（快路径见 _yaml.py）
 
 # 「预测的出处」强制生效日（第 16 条，EV-2026-050 的迁移窗口）：本日及之后创建的卡必须带
@@ -235,14 +237,7 @@ def check_measure_evidence(doc, rel, errors):
             "改回 in_experiment 并记待办，或补一条可复现判据后跑一次")
         return
     wanted = command.strip()
-    evidence = doc.get("measure_evidence")
-    ok = isinstance(evidence, list) and any(
-        isinstance(entry, dict)
-        and str(entry.get("verdict") or "") == "PASS"
-        and str(entry.get("command") or "").strip() == wanted
-        for entry in evidence
-    )
-    if not ok:
+    if not card_passes(doc, wanted):
         errors.append(
             f"{rel}: validated 卡没有 measure PASS 证据——先跑 "
             f"python3 scripts/ev_measure.py {doc.get('id')} --run --record，"
@@ -537,6 +532,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    main()
+    sys.exit(main_entry(main))

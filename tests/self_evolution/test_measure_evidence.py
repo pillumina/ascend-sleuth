@@ -12,6 +12,9 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import _measure_evidence as evidence  # noqa: E402
+import evolution_health  # noqa: E402
+
 
 def _card(created="2026-11-21"):
     return {
@@ -119,4 +122,33 @@ class MeasureEvidenceTest(unittest.TestCase):
             self.assertEqual(doc["measure_evidence"][0]["command"], command.strip())
             rc = _run(root, "scripts/verify_proposals.py", "--check", "--root", ".")
             self.assertEqual(rc.returncode, 0, rc.stdout + rc.stderr)
+
+    def test_record_writes_version_and_health_uses_card_evidence(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            ideas = root / "proposals" / "ideas"
+            ideas.mkdir(parents=True)
+            path = ideas / "EV-2026-999.yaml"
+            path.write_text(yaml.safe_dump(_card(), allow_unicode=True, sort_keys=False),
+                            encoding="utf-8")
+            rc = _run(root, "scripts/ev_measure.py", "EV-2026-999", "--run", "--record",
+                      "--root", ".", "--local")
+            self.assertEqual(rc.returncode, 0, rc.stdout + rc.stderr)
+            doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+            self.assertIn("version", doc["measure_evidence"][0])
+
+            # fresh clone 没有本机日志，只剩卡内证据。体检必须仍把这张卡算作已测过。
+            log = root / "metrics" / "ev-measure-log.yaml"
+            if log.exists():
+                log.unlink()
+            dims, _readouts = evolution_health.collect_dimensions(root)
+            self.assertEqual(dims["runnable_never_measured"], 0)
+            self.assertEqual(dims["measure_evidence_cards"], 1)
+            self.assertEqual(dims["reproducible_evidence_ratio"], 1.0)
+
+    def test_card_passes_accepts_old_entry_without_version(self):
+        doc = {"measure_evidence": [{"verdict": "PASS", "command": "python3 x.py"}]}
+        self.assertTrue(evidence.card_passes(doc, "python3 x.py"))
+        self.assertFalse(evidence.card_passes(doc, "python3 y.py"))
+        self.assertEqual(evidence.card_entries({"measure_evidence": "bad"}), [])
 

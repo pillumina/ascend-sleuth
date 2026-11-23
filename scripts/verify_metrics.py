@@ -21,6 +21,7 @@ import sys
 from datetime import date
 from pathlib import Path
 
+from _cli import main_entry
 import yaml
 
 
@@ -233,6 +234,4 @@ def main():
 
 
 if __name__ == "__main__":
-    from _stdio import pin_utf8_stdio
-    pin_utf8_stdio()
-    main()
+    sys.exit(main_entry(main))

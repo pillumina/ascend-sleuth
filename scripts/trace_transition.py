@@ -48,6 +48,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import yaml  # noqa: E402
 
 import _trace_content as tc  # noqa: E402
+from _cli import main_entry
 from _stdio import write_text_lf  # noqa: E402
 from _trace_state import (  # noqa: E402
     SCHEME, actions_for, case_kind, derive, is_terminal, load_vocab, status_meta,
@@ -1002,4 +1003,4 @@ def main(argv=None) -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main_entry(main))
