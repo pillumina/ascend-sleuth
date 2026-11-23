@@ -28,7 +28,6 @@ from .contracts import (
     STATUSES,
     Conclusion,
     ContractError,
-    Patch,
     Version,
     now_iso,
 )
@@ -36,6 +35,9 @@ from .adapters import AdapterError
 from .adapters.arena import counts_from_files
 from .adapters.metrics import load_metrics
 from .algorithms.registry import algorithm_ids, get_algorithm
+from .evaluations.gates import GateRequest, gate_for
+from .inputs import json_object
+from .targets.base import DEFAULT_TARGET
 from .targets.registry import get_target, resolve_evaluator, resolve_optimizer, target_ids
 from .rsi import apply_attribution, apply_selection, build_plan, save_plan
 from .trace_attribution import status as trace_status, sync as trace_sync
@@ -55,7 +57,7 @@ from .proposal_engine import (BestPolicy, GepaPolicy, ParetoPolicy, ProposalArch
 from .proposals import ProposalError, request as proposal_request, validate_draft
 from .pilot import (PilotError, checkpoint as pilot_checkpoint, collect as pilot_collect,
                     decide as pilot_decide, prepare as pilot_prepare)
-from .stage import (StageError, judge as stage_judge, load_argv as stage_load_argv,
+from .stage_runner import (StageError, judge as stage_judge, load_argv as stage_load_argv,
                     plan as stage_plan, report as stage_report, run as stage_run)
 from .source_usage import SourceUsageError, compare as compare_source_usage, evaluate as evaluate_source_usage, from_trace as source_from_trace
 from .tool_usage import ToolUsageError, compare as compare_tool_usage, evaluate as evaluate_tool_usage, from_trace as tool_from_trace
@@ -68,7 +70,7 @@ from .readback import (ReadbackError, latest_by_proposal, latest_conclusion,
 from .rsi_store import RSIStore
 from .records import ConclusionStore, ExperimentStore, RecordError
 from .runner import issue_plan, render_plan
-from .scoring import RubricError, score_rubric
+from .scoring import RubricError
 from .samples import SampleStore, StoreError
 from .sources.registry import get_source
 
@@ -84,15 +86,7 @@ class CliError(ValueError):
 
 
 def _json_object(text: Optional[str], name: str) -> Optional[Dict[str, Any]]:
-    if text is None:
-        return None
-    try:
-        value = json.loads(text)
-    except json.JSONDecodeError as exc:
-        raise CliError(f"{name} is not valid JSON: {exc}") from exc
-    if value is not None and not isinstance(value, dict):
-        raise CliError(f"{name} must be a JSON object")
-    return value
+    return json_object(text, name, CliError)
 
 
 def _yaml_or_json_object(text: Optional[str], name: str) -> Optional[Dict[str, Any]]:
@@ -808,7 +802,7 @@ def cmd_experiment_list(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     experiment = policy.get("experiment") or {}
-    configured_target = experiment.get("target", "skill")
+    configured_target = experiment.get("target", DEFAULT_TARGET)
     configured = experiment.get("algorithm", "baseline")
     print(f"configured_target: {configured_target}")
     for tid in target_ids():
@@ -925,7 +919,7 @@ def cmd_experiment_search(args: argparse.Namespace) -> int:
 def cmd_experiment_request(args: argparse.Namespace) -> int:
     try:
         policy = _policy_for(args)
-        target = args.target or ((policy.get("experiment") or {}).get("target") or "skill")
+        target = args.target or ((policy.get("experiment") or {}).get("target") or DEFAULT_TARGET)
         evidence = None
         if args.evidence:
             evidence = json.loads(Path(args.evidence).read_text(encoding="utf-8"))
@@ -943,7 +937,7 @@ def cmd_experiment_propose(args: argparse.Namespace) -> int:
     try:
         policy = _policy_for(args)
         experiment = policy.get("experiment") or {}
-        target = args.target or experiment.get("target", "skill")
+        target = args.target or experiment.get("target", DEFAULT_TARGET)
         algorithm = args.algorithm or experiment.get("algorithm", "baseline")
         budget = _json_object(args.budget, "budget")
         if budget is None:
@@ -1092,65 +1086,38 @@ def cmd_experiment_records(args: argparse.Namespace) -> int:
 
 
 def cmd_experiment_gate(args: argparse.Namespace) -> int:
+    """按评测面执行门禁；参数整理与打印在这里，执行在 ``evaluations/gates``。"""
     try:
         spec, profile = resolve_evaluator(args.target)
         if not profile.implemented:
             raise ValueError(
                 f"target {args.target!r} has no implemented evaluator ({profile.id})"
             )
-        if profile.id == "arena":
-            if not args.baseline or not args.candidate or not args.component:
-                raise ValueError("arena gate requires --baseline, --candidate and --component")
-            command = [sys.executable, str(Path(args.root or ".") / "scripts" / "eval_arena.py"),
-                       "--gate", "--baseline", args.baseline, "--candidate", args.candidate,
-                       "--component", args.component, "--alpha", str(args.alpha),
-                       "--root", str(Path(args.root or "."))]
-            if args.candidate_ref:
-                command += ["--candidate-ref", args.candidate_ref]
-            if args.note:
-                command += ["--note", args.note]
-            return subprocess.run(command, cwd=str(Path(args.root or "."))).returncode
-        if profile.id == "replay_trace":
-            if not args.baseline or not args.candidate:
-                raise ValueError("replay_trace gate requires --baseline and --candidate")
-            result = compare_tool_usage(_read_json(args.baseline), _read_json(args.candidate))
-            print(f"target: {spec.id}")
-            print(f"eval_profile: {profile.id}")
-            print(f"decision: {result['decision']}")
-            print(f"reasons: {', '.join(result['reasons']) or 'none'}")
-            print(json.dumps(result["deltas"], ensure_ascii=False, sort_keys=True))
-            return 0 if result["decision"] == "accept" else 1
-        if profile.id != "rubric":
-            raise ValueError(
-                f"target {args.target!r} uses {profile.id}; no gate wired for it"
-            )
-        if not args.sample or not args.scores:
-            raise ValueError("rubric gate requires --sample and --scores")
-        sample = _store(args).require(args.sample)
-        if sample.object_type not in profile.object_types:
-            raise ValueError(
-                f"sample {sample.id!r} object_type {sample.object_type!r} is not "
-                f"in target {args.target!r} ({', '.join(profile.object_types)})"
-            )
-        if sample.rubric is None:
-            raise ValueError(f"sample {sample.id!r} has no rubric")
-        policy = _policy_for(args)
-        threshold = (policy.get("rubrics") or {}).get("threshold")
-        scores = _json_object(args.scores, "--scores")
-        result = score_rubric(sample.rubric, scores, threshold=threshold)
+        adapter = gate_for(profile.gate)
+        sample = threshold = None
+        if adapter.needs_sample:
+            if not args.sample or not args.scores:
+                raise ValueError(f"{adapter.label} gate requires --sample and --scores")
+            sample = _store(args).require(args.sample)
+            threshold = (_policy_for(args).get("rubrics") or {}).get("threshold")
+        request = GateRequest(
+            root=Path(args.root or "."), profile_id=profile.id,
+            target=spec.id,
+            baseline=args.baseline, candidate=args.candidate,
+            component=args.component, candidate_ref=args.candidate_ref,
+            note=args.note, alpha=args.alpha,
+            object_types=profile.object_types,
+            sample=sample, scores_text=args.scores, threshold=threshold,
+        )
+        outcome = adapter.run(request)
     except (ValueError, RubricError, CliError, StoreError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
-    print(f"target: {spec.id}")
-    print(f"eval_profile: {profile.id}")
-    print(f"passed: {str(result.passed).lower()}")
-    print(f"score: {result.score:.4f}" if result.score is not None else "score: unavailable")
-    print(f"threshold: {result.threshold:.4f}")
-    if result.failed_dimensions:
-        print("failed_dimensions: " + ", ".join(result.failed_dimensions))
-    if result.missing:
-        print("missing: " + ", ".join(result.missing))
-    return 0 if result.passed else 1
+    if outcome.passthrough:
+        return outcome.code
+    for line in outcome.lines:
+        print(line)
+    return outcome.code
 
 
 def cmd_experiment_resolve(args: argparse.Namespace) -> int:

@@ -13,6 +13,18 @@ from evolve.adapters import AdapterError  # noqa: E402
 from evolve.adapters import issues  # noqa: E402
 from evolve.samples import SampleStore  # noqa: E402
 from evolve.sources import GitHubSource, LocalSource, get_source  # noqa: E402
+from evolve.sources.base import IssueSource  # noqa: E402
+
+
+class IssueSourcePortTest(unittest.TestCase):
+    def test_both_implementations_satisfy_the_port(self):
+        with tempfile.TemporaryDirectory() as td:
+            cache = Path(td) / "issues.json"
+            cache.write_text("[]", encoding="utf-8")
+            local = get_source("local", repo="o/r", cache=cache)
+        github = get_source("github", repo="o/r")
+        self.assertIsInstance(github, IssueSource)
+        self.assertIsInstance(local, IssueSource)
 
 
 class GitHubSourceTest(unittest.TestCase):

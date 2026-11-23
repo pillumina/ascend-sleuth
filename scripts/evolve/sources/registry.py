@@ -3,6 +3,7 @@
 from typing import Any
 
 from ..adapters import AdapterError
+from .base import IssueSource
 from .github import GitHubSource
 from .local import LocalSource
 
@@ -12,7 +13,7 @@ SOURCES = {
 }
 
 
-def get_source(name: str, repo: str = None, cache: Any = None):
+def get_source(name: str, repo: str = None, cache: Any = None) -> IssueSource:
     """按 CLI 名构造源；未知源直接报错，不静默退回 GitHub。"""
     if name not in SOURCES:
         raise AdapterError(

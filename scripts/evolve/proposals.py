@@ -7,7 +7,6 @@ request（给 agent 的提示与边界）、draft schema 校验、以及转成 P
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import Any, Dict, List, Optional
 
@@ -21,66 +20,24 @@ class ProposalError(ValueError):
     pass
 
 
-@dataclass(frozen=True)
-class ProposalSpec:
-    target_kind: str
-    change_surface: str
-    allowed_paths: tuple
-    forbidden_paths: tuple
-    prompt_rules: tuple
-    required_checks: tuple
-
-
-SPECS: Dict[str, ProposalSpec] = {
-    "skill": ProposalSpec(
-        target_kind="skill",
-        change_surface="skill 文本 / 步骤 / 流程 / 提示",
-        allowed_paths=("skills/",),
-        forbidden_paths=("knowledge/", "scripts/", "eval/"),
-        prompt_rules=("只能改已登记的 skill 可变异区，不替换整份 SKILL.md",
-                      "不改 phase、工具、trace schema、severity、halt 条件",
-                      "输出文本 diff，并写预期、风险、回滚"),
-        required_checks=("区域在 REGIONS 内", "diff 可应用"),
-    ),
-    "knowledge": ProposalSpec(
-        target_kind="knowledge",
-        change_surface="case / reference 内容",
-        allowed_paths=("knowledge/", "references/"),
-        forbidden_paths=("scripts/", "skills/", "eval/"),
-        prompt_rules=("只改 case/reference 内容，不改代码或流程",
-                      "保留原结构，补证据与来源；不编造维护者结论",
-                      "输出 YAML 变更片段，并写预期、风险、回滚"),
-        required_checks=("YAML 可解析", "来源/预期可核对"),
-    ),
-    "tooling": ProposalSpec(
-        target_kind="tooling",
-        change_surface="工具路由 / 重试 / 缓存 / 目录",
-        allowed_paths=("scripts/", "source-catalog.d/"),
-        forbidden_paths=("knowledge/", "skills/"),
-        prompt_rules=("只改允许的工具代码或目录数据",
-                      "输出 code diff；说明编译、测试或 benchmark",
-                      "必须写回滚路径；不能改诊断结论"),
-        required_checks=("py_compile", "定向 benchmark 或测试"),
-    ),
-    "harness": ProposalSpec(
-        target_kind="harness",
-        change_surface="调度 / 控制流 / 预算与停止条件",
-        allowed_paths=("scripts/", "eval/"),
-        forbidden_paths=("knowledge/", "scripts/evolve/", "eval/core/",
-                         "eval/holdout.yaml", "sleuth.config.yaml", "config/rsi/", "tests/"),
-        prompt_rules=("只改调度/控制流；不改知识内容与评分规则",
-                      "高风险 A1：必须写回归范围、回滚和人工审原因",
-                      "输出 code/config diff，并写预期、风险、回滚"),
-        required_checks=("evaluator 已就绪", "end-to-end 回归"),
-    ),
-}
-
-
-def _spec(target: str) -> ProposalSpec:
+def _target_spec(target: str):
+    """目标事实的唯一来源在 ``targets.registry``；这里只换成提案层的错误类型。"""
     try:
-        return SPECS[target]
-    except KeyError as exc:
+        return get_target(target)
+    except ValueError as exc:
         raise ProposalError(f"unknown target_kind {target!r}") from exc
+
+
+def _check_paths(spec, files: List[str]) -> None:
+    for raw in files:
+        path = _safe_path(raw)
+        text = path.as_posix()
+        if not any(text == prefix.rstrip("/") or text.startswith(prefix)
+                   for prefix in spec.allowed_paths):
+            raise ProposalError(f"path outside {spec.id} surface: {text}")
+        if any(text == prefix.rstrip("/") or text.startswith(prefix)
+               for prefix in spec.forbidden_paths):
+            raise ProposalError(f"path is forbidden for {spec.id}: {text}")
 
 
 def _safe_path(path: str) -> PurePosixPath:
@@ -92,23 +49,12 @@ def _safe_path(path: str) -> PurePosixPath:
     return pure
 
 
-def _check_paths(spec: ProposalSpec, files: List[str]) -> None:
-    for raw in files:
-        path = _safe_path(raw)
-        text = path.as_posix()
-        if any(text == prefix.rstrip("/") or text.startswith(prefix) for prefix in spec.allowed_paths) is False:
-            raise ProposalError(f"path outside {spec.target_kind} surface: {text}")
-        if any(text == prefix.rstrip("/") or text.startswith(prefix) for prefix in spec.forbidden_paths):
-            raise ProposalError(f"path is forbidden for {spec.target_kind}: {text}")
-
-
 def request(target: str, component: str, evidence: Optional[Any] = None,
             constraints: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     if not isinstance(component, str) or not component.strip():
         raise ProposalError("target_component is required")
-    target_spec = get_target(target)
-    spec = _spec(target)
-    profile = get_eval_profile(target_spec.eval_profile_id)
+    spec = get_target(target)
+    profile = get_eval_profile(spec.eval_profile_id)
     prompt = (
         f"你是 ascend-sleuth 的提案 agent。目标 target={target}，"
         f"可改变面={spec.change_surface}，区域={component}。\n"
@@ -125,8 +71,8 @@ def request(target: str, component: str, evidence: Optional[Any] = None,
         "allowed_paths": list(spec.allowed_paths),
         "forbidden_paths": list(spec.forbidden_paths),
         "required_checks": list(spec.required_checks),
-        "authority": target_spec.authority,
-        "eval_profile_id": target_spec.eval_profile_id,
+        "authority": spec.authority,
+        "eval_profile_id": spec.eval_profile_id,
         "eval_ready": profile.implemented,
         "output_schema": {
             "target_kind": "str",
@@ -152,7 +98,7 @@ def validate_draft(data: Any, target_override: Optional[str] = None) -> Patch:
         if target and target != target_override:
             raise ProposalError("draft target_kind does not match requested target")
         target = target_override
-    spec = _spec(target)
+    spec = _target_spec(target)
     candidate = data.get("candidate")
     if candidate is not None:
         if not isinstance(candidate, dict):

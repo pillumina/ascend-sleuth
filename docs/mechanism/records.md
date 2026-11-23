@@ -199,7 +199,7 @@ conclusion:
 
 记录之间是单向数据流：卡声明预期，样本提供输入，执行产生指标与成本，结论比较两侧，影响记录追加一次判定。接口按数据流定义，读文件、调模型、发 PR 都由适配器负责。
 
-| 端口 | 方法 | 输入 → 输出 |
+| 接口 | 方法 | 输入 → 输出 |
 |---|---|---|
 | 样本源 | `load()` | → 样本列表 |
 | 执行器 | `evaluate(sample, versions)` | 样本、版本 → 执行 |
@@ -213,7 +213,13 @@ conclusion:
 
 三条约定。权限在接口层强制：执行器拿到的样本不含答案，评分器与评估器拿到的含答案，归因与起草拿到的是反馈集。缺数据返回 `unknown`，不返回 0 或空字符串。错误只保留四类——数据缺失、版本不一致、评审不可用、结果格式错误——统一映射到 `unknown`，不吞异常。
 
-端口层在 `scripts/evolve/ports.py` 定义六个 Protocol：样本源、执行器、评分器、优化器、记录存储、周读数；本地 trace 读取另有 `TraceSource`（`scripts/evolve/trace_source.py`）。归因、改动起草与判定是领域函数（`trace_attribution.py`、`proposal_engine.py`、`decision.py`），不是可替换端口。适配器层（`scripts/evolve/adapters/`）只包旧脚本，旧脚本仍是完整实现。
+代码里固化为可替换接口的有三处：
+
+- 记录存储 `Backend`（`store/ports.py`）：本地文件与内存两个实现；`store/service.py` 的 `RSIStore` 只依赖它。
+- trace 源 `TraceSource`（`trace_source.py`）：`trace_attribution.sync` 以参数注入。
+- issue 源 `IssueSource`（`sources/base.py`）：GitHub 与本地导出两个实现经 `sources/registry.py` 注册，`adapters/issues.py` 注入。
+
+其余接口是模块间函数调用与 CLI 契约：归因、改动起草与判定是领域函数（`trace_attribution.py`、`proposal_engine.py`、`decision.py`）。适配器层（`scripts/evolve/adapters/`）只包旧脚本，旧脚本仍是完整实现。
 
 ### 3.7 内容流程的执行记录
 
@@ -249,7 +255,7 @@ schema 在 `metrics/skill-exec-log.yaml`，只追加；`scripts/log_skill_exec.p
 - 评审把手与替换链：`python3 scripts/ev_measure.py <卡号> --run --record` 打印命令、实测与退出码，并把这次实测追加进卡的 `measure_evidence`；`supersedes` 与 `superseded_by` 已进 schema。
 - `validated` 的实测门：生效日后的卡标 `validated` 必须有一条同命令的 PASS `measure_evidence`；只写 `measure.reason` 的卡不能标 `validated`。存量卡不追溯，缺口由 `verify_proposals.py --check` 报出。
 - 体检读数：`measure_evidence_cards` 是卡内有 PASS 证据的卡数；`runnable_never_measured` 取卡内证据与 `metrics/ev-measure-log.yaml` 的并集，日志只作本机运行历史——fresh clone 不会把已有 PASS 的卡报成「从未执行」。
-- v1 数据契约与命令：`scripts/evolve/` 的 `contracts.py`、`object_types.py`、`metrics.py`、`statistics.py`、`decision.py`、`pools.py`、`policy.py`、`samples.py`、`records.py`、`ports.py`；CLI 子命令 `policy`（check / show）、`sample`（new / list / check / review / promote / retire / set-purpose / absorb / draw-test）、`judge`、`brief`；结论与执行记录追加进 `.s2-replay/evolve/`。
+- v1 数据契约与命令：`scripts/evolve/` 的 `contracts.py`、`object_types.py`、`metrics.py`、`statistics.py`、`decision.py`、`pools.py`、`policy.py`、`samples.py`、`records.py`；CLI 子命令 `policy`（check / show）、`sample`（new / list / check / review / promote / retire / set-purpose / absorb / draw-test）、`judge`、`brief`；结论与执行记录追加进 `.s2-replay/evolve/`。
 - 指标校验与执行记录：`scripts/verify_metrics.py --check`；执行记录的 schema、写入、校验、读取与聚合进 timeline。
 - 条目使用记录的源与生成物、`merge=union`、行级去重：见 [diagnosis-observability.md](diagnosis-observability.md)。
 

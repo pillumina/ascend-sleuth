@@ -12,33 +12,17 @@ from typing import Any, Dict, List, Optional
 
 from .source_usage import SourceUsageError
 from .source_usage import from_trace as source_from_trace
+from .usage import (check_bool, check_int, check_num, count_directions, decide,
+                    pair_rows, partial_regressed, parse_records)
 
 GATE_FIELDS = ("tool_calls", "fetch_calls", "grep_calls", "retries",
                "cache_hits", "tool_ms")
-LOWER_IS_BETTER = ("tool_calls", "fetch_calls", "grep_calls", "retries", "tool_ms")
 HIGHER_IS_BETTER = ("cache_hits",)
 OBSERVED_FIELDS = GATE_FIELDS + ("failures",)
-EPSILON = 1e-9
 
 
 class ToolUsageError(ValueError):
     pass
-
-
-def _int(value: Any, name: str, *, optional: bool = False) -> Optional[int]:
-    if value is None and optional:
-        return None
-    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-        raise ToolUsageError(f"{name} must be a non-negative integer")
-    return value
-
-
-def _num(value: Any, name: str, *, optional: bool = False) -> Optional[float]:
-    if value is None and optional:
-        return None
-    if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
-        raise ToolUsageError(f"{name} must be a non-negative number")
-    return float(value)
 
 
 def validate_record(record: Any) -> Dict[str, Any]:
@@ -49,24 +33,17 @@ def validate_record(record: Any) -> Dict[str, Any]:
         raise ToolUsageError("sample_id is required")
     out: Dict[str, Any] = {"sample_id": sample_id}
     for field in OBSERVED_FIELDS:
-        out[field] = _num(record.get(field), field, optional=True) \
-            if field == "tool_ms" else _int(record.get(field), field, optional=True)
-    resolved = record.get("resolved")
-    if resolved is not None and not isinstance(resolved, bool):
-        raise ToolUsageError("resolved must be boolean or null")
-    out["resolved"] = resolved
+        if field == "tool_ms":
+            out[field] = check_num(record.get(field), field, ToolUsageError, optional=True)
+        else:
+            out[field] = check_int(record.get(field), field, ToolUsageError, optional=True)
+    out["resolved"] = check_bool(record.get("resolved"), "resolved",
+                                 ToolUsageError, optional=True)
     return out
 
 
 def _records(data: Any) -> List[Dict[str, Any]]:
-    items = data.get("samples") if isinstance(data, dict) else data
-    if not isinstance(items, list) or not items:
-        raise ToolUsageError("tool usage data must be a non-empty list or {samples: [...]}")
-    out = [validate_record(item) for item in items]
-    ids = [item["sample_id"] for item in out]
-    if len(set(ids)) != len(ids):
-        raise ToolUsageError("tool usage sample_id must be unique")
-    return out
+    return parse_records(data, validate_record, ToolUsageError, "tool usage")
 
 
 def summarize(data: Any) -> Dict[str, Any]:
@@ -79,18 +56,6 @@ def summarize(data: Any) -> Dict[str, Any]:
     result["resolved"] = sum(1 for item in resolved if item) \
         if all(item is not None for item in resolved) else None
     return result
-
-
-def _paired(b, c, ids, field):
-    pairs = [(b[i][field], c[i][field]) for i in ids
-             if b[i][field] is not None and c[i][field] is not None]
-    if not pairs:
-        return {"n": 0, "unknown": len(ids), "baseline": None,
-                "candidate": None, "delta": None}
-    total_b = sum(pair[0] for pair in pairs)
-    total_c = sum(pair[1] for pair in pairs)
-    return {"n": len(pairs), "unknown": len(ids) - len(pairs),
-            "baseline": total_b, "candidate": total_c, "delta": total_c - total_b}
 
 
 def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
@@ -113,46 +78,16 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
         bs["resolved"], cs["resolved"] = b_ok, c_ok
         if c_ok < b_ok:
             reasons.append("resolved_regressed")
-    paired = {field: _paired(b, c, ids, field) for field in GATE_FIELDS}
+    paired = pair_rows(b, c, ids, GATE_FIELDS, aggregate="sum")
     deltas = {field: paired[field]["delta"] for field in GATE_FIELDS}
-    improved = worsened = 0
-    partial: List[str] = []
-    for field in GATE_FIELDS:
-        row = paired[field]
-        if row["delta"] is None:
-            continue
-        if row["unknown"]:
-            partial.append(field)
-            continue
-        delta = row["delta"]
-        if field in HIGHER_IS_BETTER:
-            if delta > EPSILON:
-                improved += 1
-            elif delta < -EPSILON:
-                worsened += 1
-        else:
-            if delta < -EPSILON:
-                improved += 1
-            elif delta > EPSILON:
-                worsened += 1
-    partial_regressed = any(
-        paired[field]["delta"] is not None and (
-            paired[field]["delta"] < -EPSILON if field in HIGHER_IS_BETTER
-            else paired[field]["delta"] > EPSILON)
-        for field in partial
-    )
-    if partial_regressed:
+    counts = count_directions(paired, GATE_FIELDS, higher_is_better=HIGHER_IS_BETTER)
+    if partial_regressed(paired, counts["partial"], higher_is_better=HIGHER_IS_BETTER):
         reasons.append("tool_efficiency_partial_unknown")
-    if worsened:
+    if counts["worsened"]:
         reasons.append("tool_efficiency_regressed")
-    if not improved:
+    if not counts["improved"]:
         reasons.append("no_tool_efficiency_improvement")
-    if any(r in ("resolved_regressed", "tool_efficiency_regressed") for r in reasons):
-        decision = "reject"
-    elif reasons:
-        decision = "insufficient"
-    else:
-        decision = "accept"
+    decision = decide(reasons, ("resolved_regressed", "tool_efficiency_regressed"))
     for field in GATE_FIELDS:
         bs[field] = paired[field]["baseline"]
         cs[field] = paired[field]["candidate"]

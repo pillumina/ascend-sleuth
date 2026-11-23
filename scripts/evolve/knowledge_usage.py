@@ -5,10 +5,13 @@
 """
 
 from datetime import datetime
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, List, Optional
 
 from .harness_usage import read_session
 from .statistics import paired_diff_ci
+from .usage import (EPSILON, check_bool, check_int, check_num, count_directions,
+                    decide, diff_intervals, elapsed_state, pair_rows,
+                    partial_regressed, parse_records)
 
 EFFICIENCY_FIELDS = (
     "first_hit_step", "candidates_examined", "full_body_reads",
@@ -20,41 +23,26 @@ class UsageError(ValueError):
     pass
 
 
-def _int(value: Any, name: str, *, optional: bool = False) -> Optional[int]:
-    if value is None and optional:
-        return None
-    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-        raise UsageError(f"{name} must be a non-negative integer")
-    return value
-
-
-def _num(value: Any, name: str, *, optional: bool = False) -> Optional[float]:
-    if value is None and optional:
-        return None
-    if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
-        raise UsageError(f"{name} must be a non-negative number")
-    return float(value)
-
-
 def validate_record(record: Any) -> Dict[str, Any]:
     if not isinstance(record, dict):
         raise UsageError("usage record must be an object")
     sample_id = record.get("sample_id")
     if not isinstance(sample_id, str) or not sample_id.strip():
         raise UsageError("sample_id is required")
-    hit = record.get("hit")
-    if not isinstance(hit, bool):
-        raise UsageError("hit must be boolean")
-    wrong = _int(record.get("wrong_cases"), "wrong_cases", optional=True)
-    candidate_examined = _int(record.get("candidates_examined"), "candidates_examined", optional=True)
-    full_body = _int(record.get("full_body_reads"), "full_body_reads", optional=True)
-    refs = _int(record.get("reference_lookups"), "reference_lookups", optional=True)
-    first_step = _int(record.get("first_hit_step"), "first_hit_step", optional=True)
-    tokens = _int(record.get("tokens"), "tokens", optional=True)
-    elapsed = _num(record.get("elapsed_ms"), "elapsed_ms", optional=True)
-    resolution = record.get("resolution_ok")
-    if resolution is not None and not isinstance(resolution, bool):
-        raise UsageError("resolution_ok must be boolean or null")
+    hit = check_bool(record.get("hit"), "hit", UsageError)
+    wrong = check_int(record.get("wrong_cases"), "wrong_cases", UsageError, optional=True)
+    candidate_examined = check_int(record.get("candidates_examined"), "candidates_examined",
+                                   UsageError, optional=True)
+    full_body = check_int(record.get("full_body_reads"), "full_body_reads",
+                          UsageError, optional=True)
+    refs = check_int(record.get("reference_lookups"), "reference_lookups",
+                     UsageError, optional=True)
+    first_step = check_int(record.get("first_hit_step"), "first_hit_step",
+                           UsageError, optional=True)
+    tokens = check_int(record.get("tokens"), "tokens", UsageError, optional=True)
+    elapsed = check_num(record.get("elapsed_ms"), "elapsed_ms", UsageError, optional=True)
+    resolution = check_bool(record.get("resolution_ok"), "resolution_ok",
+                            UsageError, optional=True)
     if hit and first_step is None:
         raise UsageError("hit=true requires first_hit_step")
     return {
@@ -92,14 +80,7 @@ def _tokens_from_doc(document: Dict[str, Any]) -> Optional[int]:
 
 
 def _records(data: Any) -> List[Dict[str, Any]]:
-    items = data.get("samples") if isinstance(data, dict) else data
-    if not isinstance(items, list) or not items:
-        raise UsageError("usage data must be a non-empty list or {samples: [...]}")
-    out = [validate_record(item) for item in items]
-    ids = [item["sample_id"] for item in out]
-    if len(set(ids)) != len(ids):
-        raise UsageError("usage sample_id must be unique")
-    return out
+    return parse_records(data, validate_record, UsageError, "usage")
 
 
 def summarize(data: Any) -> Dict[str, Any]:
@@ -119,35 +100,6 @@ def summarize(data: Any) -> Dict[str, Any]:
     result["resolved"] = (sum(1 for item in resolutions if item)
                           if all(item is not None for item in resolutions) else None)
     return result
-
-
-EPSILON = 1e-9
-
-
-def _paired_row(b: Dict[str, Dict[str, Any]], c: Dict[str, Dict[str, Any]],
-                ids: List[str], field: str) -> Dict[str, Any]:
-    """按样本配对：只用两侧都有值的样本算均值，缺失数单独报。"""
-    pairs = [(b[i][field], c[i][field]) for i in ids
-             if b[i][field] is not None and c[i][field] is not None]
-    if not pairs:
-        return {"n": 0, "unknown": len(ids), "baseline": None,
-                "candidate": None, "delta": None}
-    mean_b = sum(pair[0] for pair in pairs) / len(pairs)
-    mean_c = sum(pair[1] for pair in pairs) / len(pairs)
-    return {"n": len(pairs), "unknown": len(ids) - len(pairs),
-            "baseline": mean_b, "candidate": mean_c, "delta": mean_c - mean_b}
-
-
-def _elapsed_state(delta, ci):
-    """连续成本项只在置信区间排除 0 时才判方向。"""
-    if delta is None or abs(delta) <= EPSILON:
-        return "neutral"
-    low, high = ci.get("low"), ci.get("high")
-    if low is not None and low > 0:
-        return "worse"
-    if high is not None and high < 0:
-        return "better"
-    return "unconfirmed"
 
 
 def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
@@ -182,60 +134,32 @@ def compare(baseline: Any, candidate: Any) -> Dict[str, Any]:
             reasons.append("wrong_cases_unknown")
         elif c_sum["wrong_cases"] > b_sum["wrong_cases"]:
             reasons.append("wrong_cases_increased")
-    paired = {field: _paired_row(b, c, ids, field) for field in EFFICIENCY_FIELDS}
+    paired = pair_rows(b, c, ids, EFFICIENCY_FIELDS, aggregate="mean")
     deltas = {field: paired[field]["delta"] for field in EFFICIENCY_FIELDS}
     elapsed_diffs = [c[i]["elapsed_ms"] - b[i]["elapsed_ms"] for i in ids
                      if b[i]["elapsed_ms"] is not None and c[i]["elapsed_ms"] is not None]
     elapsed_delta = paired["elapsed_ms"]["delta"]
     if elapsed_delta is None or abs(elapsed_delta) <= EPSILON:
-        elapsed_state = "neutral"
+        elapsed = "neutral"
     elif paired["elapsed_ms"]["unknown"]:
-        elapsed_state = "unconfirmed"
+        elapsed = "unconfirmed"
     else:
-        elapsed_state = _elapsed_state(elapsed_delta, paired_diff_ci(elapsed_diffs))
-    improved = 0
-    worsened = 0
-    partial = []
-    for field in EFFICIENCY_FIELDS:
-        if field == "elapsed_ms":
-            continue
-        row = paired[field]
-        if row["delta"] is None:
-            continue
-        if row["unknown"]:
-            partial.append(field)
-            continue
-        if row["delta"] < -EPSILON:
-            improved += 1
-        elif row["delta"] > EPSILON:
-            worsened += 1
-    if elapsed_state == "worse":
-        worsened += 1
-    elif elapsed_state == "better":
-        improved += 1
-    elif (elapsed_state == "unconfirmed"
-          and paired["elapsed_ms"]["delta"] is not None
-          and paired["elapsed_ms"]["delta"] > 0):
+        elapsed = elapsed_state(elapsed_delta, paired_diff_ci(elapsed_diffs))
+    counts = count_directions(paired, EFFICIENCY_FIELDS,
+                              elapsed_field="elapsed_ms", elapsed=elapsed)
+    if (elapsed == "unconfirmed"
+            and paired["elapsed_ms"]["delta"] is not None
+            and paired["elapsed_ms"]["delta"] > 0):
         reasons.append("elapsed_inconclusive")
-    if any(paired[field]["delta"] is not None and paired[field]["delta"] > EPSILON
-           for field in partial):
+    if partial_regressed(paired, counts["partial"]):
         reasons.append("efficiency_partial_unknown")
-    if worsened:
+    if counts["worsened"]:
         reasons.append("efficiency_regressed")
-    if not improved:
+    if not counts["improved"]:
         reasons.append("no_efficiency_improvement")
-    if any(r in ("accuracy_regressed", "wrong_cases_increased", "resolution_regressed",
-                 "efficiency_regressed") for r in reasons):
-        decision = "reject"
-    elif reasons:
-        decision = "insufficient"
-    else:
-        decision = "accept"
-    ci = {}
-    for field in EFFICIENCY_FIELDS:
-        diffs = [c[i][field] - b[i][field] for i in ids
-                 if b[i][field] is not None and c[i][field] is not None]
-        ci[field] = paired_diff_ci(diffs)
+    decision = decide(reasons, ("accuracy_regressed", "wrong_cases_increased",
+                                "resolution_regressed", "efficiency_regressed"))
+    ci = diff_intervals(b, c, ids, EFFICIENCY_FIELDS)
     b_side = dict(b_sum)
     c_side = dict(c_sum)
     for field in EFFICIENCY_FIELDS:

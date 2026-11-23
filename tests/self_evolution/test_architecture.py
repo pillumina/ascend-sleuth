@@ -1,7 +1,6 @@
 """架构边界：核心不 import CLI/适配器/旧脚本，不打印，不各自实现统计与状态机。"""
 
 import ast
-import sys
 import unittest
 from pathlib import Path
 
@@ -16,7 +15,8 @@ PURE_MODULES = (
     "statistics.py",
     "decision.py",
     "pools.py",
-    "ports.py",
+    "usage.py",
+    "inputs.py",
 )
 ALL_MODULES = [path.name for path in sorted(PACKAGE.glob("*.py"))]
 IO_MODULES = ("samples.py", "records.py", "policy.py", "cli.py")
@@ -31,6 +31,15 @@ ADAPTER_LEGACY_MAP = {
     "cards.py": "ev_proposal",
     "health.py": "evolution_health",
     "issues.py": "issue_filter",
+}
+
+# 包外的 scripts 级原语：以 ``scripts/`` 在 sys.path 为前提（入口 scripts/evolve.py
+# 已保证）。新增一条外向依赖必须在这里登记，否则本测试报红——依赖方向不能靠
+# 读代码发现。
+ALLOWED_SCRIPT_PRIMITIVES = {
+    "_fs": {"samples.py", "rsi.py", "trace_state.py", "adapters/issues.py"},
+    "exec_log_path": {"cli.py", "trace_source.py", "adapters/metrics.py"},
+    "sleuth_config": {"cli.py", "policy.py", "store/config.py"},
 }
 
 FORBIDDEN = (
@@ -87,7 +96,7 @@ class PackageLayoutTest(unittest.TestCase):
         required = {
             "__init__.py", "contracts.py", "object_types.py", "metrics.py",
             "statistics.py", "decision.py", "pools.py", "policy.py",
-            "samples.py", "records.py", "ports.py", "runner.py", "cli.py",
+            "samples.py", "records.py", "runner.py", "cli.py",
         }
         self.assertEqual(required - set(ALL_MODULES), set())
         self.assertEqual(
@@ -102,6 +111,41 @@ class PackageLayoutTest(unittest.TestCase):
         text = (ROOT / "scripts" / "evolve.py").read_text(encoding="utf-8")
         self.assertIn("from evolve.cli import main", text)
         self.assertLessEqual(len(text.splitlines()), 30)
+
+
+class ExternalDependencyTest(unittest.TestCase):
+    def test_only_registered_scripts_primitives_are_imported(self):
+        scripts_dir = ROOT / "scripts"
+        # 同名包目录（scripts/evolve/）优先解析成包，不算包外原语。
+        primitives = {path.stem for path in scripts_dir.glob("*.py")
+                      if not (scripts_dir / path.stem).is_dir()}
+        for path in PACKAGE.rglob("*.py"):
+            rel = path.relative_to(PACKAGE).as_posix()
+            for module in imported_modules(path):
+                top = module.split(".")[0]
+                if top not in primitives:
+                    continue
+                allowed = ALLOWED_SCRIPT_PRIMITIVES.get(top, set())
+                self.assertIn(
+                    rel, allowed,
+                    f"{rel} imports scripts/{top}.py without registering it in "
+                    f"ALLOWED_SCRIPT_PRIMITIVES",
+                )
+
+    def test_registered_primitives_are_actually_used(self):
+        allowlist = {}
+        for path in PACKAGE.rglob("*.py"):
+            rel = path.relative_to(PACKAGE).as_posix()
+            for module in imported_modules(path):
+                top = module.split(".")[0]
+                if top in ALLOWED_SCRIPT_PRIMITIVES:
+                    allowlist.setdefault(top, set()).add(rel)
+        for name, modules in ALLOWED_SCRIPT_PRIMITIVES.items():
+            self.assertEqual(
+                allowlist.get(name, set()), set(modules),
+                f"ALLOWED_SCRIPT_PRIMITIVES[{name!r}] is stale; actual importers: "
+                f"{sorted(allowlist.get(name, set()))}",
+            )
 
 
 class ImportBoundaryTest(unittest.TestCase):
@@ -190,14 +234,6 @@ class PurityTest(unittest.TestCase):
                     if isinstance(target, ast.Name) and target.id == "STATUS_TRANSITIONS":
                         definitions.append(path.name)
         self.assertEqual(definitions, ["pools.py"])
-
-    def test_ports_only_protocols(self):
-        tree = ast.parse((PACKAGE / "ports.py").read_text(encoding="utf-8"))
-        classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
-        self.assertTrue(classes)
-        for node in classes:
-            bases = [getattr(base, "id", getattr(base, "attr", "")) for base in node.bases]
-            self.assertIn("Protocol", bases, f"{node.name} must be a Protocol")
 
 
 if __name__ == "__main__":

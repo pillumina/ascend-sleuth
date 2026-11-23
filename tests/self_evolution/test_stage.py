@@ -1,7 +1,6 @@
 """通用 stage runner：plan / run / report。"""
 
 import json
-import subprocess
 import sys
 import tempfile
 import unittest
@@ -13,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from evolve.policy import load_policy  # noqa: E402
-from evolve.stage import StageError, judge, plan, report, run  # noqa: E402
+from evolve.stage_runner import StageError, judge, plan, report, run  # noqa: E402
 
 ADAPTER = ROOT / "scripts" / "agent_adapter.py"
 AGENT = [

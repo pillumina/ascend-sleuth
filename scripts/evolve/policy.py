@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional
 import yaml
 
 from .algorithms.registry import ALGORITHMS
+from .targets.base import DEFAULT_TARGET
 from .targets.registry import TARGETS, get_target
 from .stages import DEFAULT_STAGES, get_stage
 from .decision import DECISION_METHODS
@@ -74,7 +75,7 @@ DEFAULTS: Dict[str, Any] = {
         "double_label": 10,
     },
     "experiment": {
-        "target": "skill",
+        "target": DEFAULT_TARGET,
         "algorithm": "baseline",
         "stages": dict(DEFAULT_STAGES),
         "budget": {},

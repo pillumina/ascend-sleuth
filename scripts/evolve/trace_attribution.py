@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from .targets.base import DEFAULT_TARGET
 from .trace_source import LocalTraceSource, TraceSource
 from .regions import recommend
 from .trace_state import TraceState, attribute_trace
@@ -55,7 +56,7 @@ def experiment_spec(stats: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         return None
     region = regions[0]
     return {
-        "target_kind": region.get("target_kind", "skill"),
+        "target_kind": region.get("target_kind", DEFAULT_TARGET),
         "target_skill": region["skill"],
         "mutable_region": region["region"],
         "hard": region["hard"],

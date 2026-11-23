@@ -8,6 +8,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from .targets.base import DEFAULT_TARGET
 from .decision import required_exclusive_wins
 from .pools import stratum_of
 from .policy import policy_hash
@@ -236,7 +237,7 @@ def issue_plan(root: Any, base: Any, policy: Dict[str, Any],
         "policy_hash": policy_hash(policy),
         "trace_snapshot": (trace_state or {}).get("snapshot_id"),
         "trace_state": trace_state or {"available": False},
-        "target": ((policy.get("experiment") or {}).get("target") or "skill"),
+        "target": ((policy.get("experiment") or {}).get("target") or DEFAULT_TARGET),
         "algorithm": ((policy.get("experiment") or {}).get("algorithm") or "baseline"),
         "counts": counts,
         "metrics": metrics,
