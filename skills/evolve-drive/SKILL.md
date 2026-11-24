@@ -1,9 +1,10 @@
 ---
 name: evolve-drive
 description: >
-  驱动自演进实验循环：按流水线预设的 stage 组合，在「取动作 → subagent 执行 →
-  回写状态」之间循环，直到预算耗尽或达到停止条件。用户说「跑一轮自演进实验 /
-  用 GEPA 跑这个 skill 的实验 / 继续上一轮实验」时用。需要能起 subagent 的会话。
+  驱动自演进实验循环或留一效用审计：按流水线预设的 stage 组合，在「取动作 →
+  subagent 执行 → 回写状态」之间循环，直到预算耗尽或达到停止条件。用户说
+  「跑一轮自演进实验 / 用 GEPA 跑这个 skill 的实验 / 继续上一轮实验 /
+  审计知识冗余 / 哪些 case 或条目可以删」时用。需要能起 subagent 的会话。
 ---
 
 # RSI-Drive（实验循环驱动器）
@@ -15,20 +16,16 @@ description: >
 
 1. 读流水线预设确认 stage 组合。预设名来自实验命令的 `--pipeline <名>`（主入口，
    预设清单在 `config/rsi/pipelines.yaml`）；部署级默认是 sleuth.config.yaml 的
-   `evolution.pipeline`，profile 可再覆盖，三者优先级依次升高：
+   `evolution.pipeline`，profile 可再覆盖，三者优先级依次升高。查清单：
 
 ```bash
-python3 - <<'PY'
-import sys; sys.path.insert(0, "scripts")
-import sleuth_config as SC
-print(SC.pipeline_for(SC.load_config(), "gepa")["stages"])
-PY
+python3 scripts/sleuth_config.py --pipelines
 ```
 
-六个 stage 点的算法名以 `scripts/evolve/stages.py` 的 `STAGES` 为准，正文不复述。
-`select_candidate` / `propose` 这类 `manual` / `library` 标注的 stage，其逻辑在
-驱动命令组的状态机内部执行，不产生 subagent 调用；subagent 只用于下面循环里
-`evaluate` / `reflect` 两种动作。
+输出每个预设的名字、说明与六点 stage 组合。`select_candidate` / `propose`
+这类 `manual` / `library` 标注的 stage，其逻辑在驱动命令组的状态机内部执行，
+不产生 subagent 调用；subagent 只用于下面循环里 `evaluate` / `reflect`
+两种动作。
 
 2. 状态目录锚到主检出的运行时件，用绝对路径：
 
@@ -91,9 +88,12 @@ python3 scripts/evolve.py gepa init --state "$STATE" \
   --max-metric-calls <预算> --population <候选上限>
 ```
 
-驱动命令组按算法入口区分：本版走 `evolve gepa` 命令组（GEPA 是第一个实例）。
-第二个算法接入时新增自己的命令组，并在本节增补「预设名 → 命令组」映射；
-分派规则与收尾流程不变。
+驱动命令组按算法入口区分。当前映射：
+
+- `gepa` 组（`evolve gepa init/next/apply/result`）：反思进化循环（预设 `gepa`、`critique` 及各消融预设），动作为 `evaluate` / `reflect` / `stop`。
+- `loo` 组（`evolve loo init/next/apply/result`）：留一效用审计——逐单元消融打效用，负效用单元进收缩队列；动作为 `evaluate`（variant 为 `full` 或 `without:<unit_id>`，照抄回写）/ `stop`。审计集须与训练集分离（从 holdout 方向取），低频执行；收缩方案只输出队列，落地走正常知识 PR。
+
+新增命令组时在本节增补映射；分派规则与收尾流程不变。
 
 断点续跑：状态全在 `$STATE`，新会话直接从「取动作」一步继续，不需要回放历史。
 

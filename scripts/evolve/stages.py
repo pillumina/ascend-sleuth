@@ -67,6 +67,10 @@ STAGES: Dict[str, StageSpec] = {
         "propose.reflection", "propose", "v1", "subagent",
         "propose.agent 的兼容别名，历史实验仍可读",
     ),
+    "propose.critique": StageSpec(
+        "propose.critique", "propose", "v1", "subagent",
+        "ProTeGi 式定向批评：提案 prompt 带逐样例的期望/实际/反馈，改动须逐条对应失败差异",
+    ),
     "judge.subagent": StageSpec(
         "judge.subagent", "judge", "v1", "subagent",
         "独立 judge subagent 按 rubric/expected 打分",

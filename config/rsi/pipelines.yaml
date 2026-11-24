@@ -1,6 +1,13 @@
 # RSI 流水线预设。默认预设随仓库提供；做消融时复制本文件（或新建
 # config/rsi/ablations.yaml）覆盖/追加同名 preset，再把文件加进
 # sleuth.config.yaml 的 evolution.pipeline_config 列表。
+#
+# 用法速览（详细入口：python3 scripts/sleuth_config.py --pipelines）：
+# - 预设只决定六个 stage 点各用哪个算法；提案的输入构造与预设正交——
+#   digest（数据/候选池摘要）与 failures（逐样例定向批评）是提案命令的
+#   可选输入（experiment request --digest-file / --failures-file），
+#   任何预设都可叠加，不在这里逐预设声明。
+# - 留一效用审计不走流水线，用 evolve loo 命令组直接驱动（见 evolve-drive skill）。
 pipelines:
   default:
     description: 六个环节全开：规则归因、区域选择、best 候选、agent 提案、subagent judge、paired gate。
@@ -30,3 +37,10 @@ pipelines:
     stages:
       select_candidate: select.pareto
       propose: propose.reflection
+
+  critique:
+    description: 定向批评组合（ProTeGi 机制）：Pareto 选择配带失败样例的定向批评提案；提案命令需带 --failures-file。
+    extends: default
+    stages:
+      select_candidate: select.pareto
+      propose: propose.critique
