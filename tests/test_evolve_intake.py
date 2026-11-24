@@ -146,6 +146,13 @@ class GateAndLifecycleTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             ES.mark(self.root, "nope", "dropped")
 
+    def test_bare_target_typo_warns(self):
+        (self.root / "skills").mkdir(exist_ok=True)
+        self.assertEqual(EI.soft_warnings(self.root, [], "skills"), [])
+        warns = EI.soft_warnings(self.root, [], "no-such-component-xyz")
+        self.assertEqual(len(warns), 1)
+        self.assertIn("裸名", warns[0])
+
 
 if __name__ == "__main__":
     unittest.main()

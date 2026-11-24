@@ -70,7 +70,7 @@ class ClassifyTest(unittest.TestCase):
         """信号记录是数据不是判定逻辑：单独改它不派会话，但 ideas/ 仍按脚本/机制档。"""
         r = PC.classify(["proposals/signals/ascend-sleuth-7430e5f2.yaml"])
         self.assertEqual(r["tier"], "selfcheck")
-        self.assertTrue(any("evolve_signals.py list" in c for c in r["checks"]))
+        self.assertTrue(any("evolve_signals.py --local list" in c for c in r["checks"]))
         self.assertEqual(PC.classify(["proposals/ideas/EV-2026-001.yaml"])["tier"], "script")
         self.assertFalse(any("verify_proposals" in c for c in r["checks"]))
 
@@ -79,7 +79,7 @@ class ClassifyTest(unittest.TestCase):
         for other, tier in (("scripts/a.py", "script"), ("knowledge/a/b.yaml", "content"), ("docs/x.md", "docs")):
             r = PC.classify(["proposals/signals/x.yaml", other])
             self.assertEqual(r["tier"], tier, other)
-            self.assertTrue(any("evolve_signals.py list" in c for c in r["checks"]), other)
+            self.assertTrue(any("evolve_signals.py --local list" in c for c in r["checks"]), other)
 
 
 class DocsSyncTest(unittest.TestCase):

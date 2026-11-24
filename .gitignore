@@ -85,6 +85,7 @@ proposals/sessions/*
 proposals/tasks/*
 proposals/reviews/*
 proposals/experiments/*
+proposals/signals/.swept/
 !proposals/sessions/.gitkeep
 !proposals/tasks/.gitkeep
 !proposals/reviews/.gitkeep

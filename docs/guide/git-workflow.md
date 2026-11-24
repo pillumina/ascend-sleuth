@@ -129,7 +129,7 @@ fetch 失败时标 `kb_sync: failed`，原因写进 `kb_sync_reason`。
 追加型共享源（两边都写，且同一仓内多人同周并发追加）：`metrics/entry-activity.d/`。
 它与「两边都写」的差别在追加的粒度：一周一个文件、一行一条自包含记录（每行带 `deployment`），配了 `merge=union`——同周并发时各人各写各的行、两侧都留住，行序不影响结果（前提是「一行一条」，见 `.gitattributes` 的注释）。读端按 `deployment` 分组，一个部署出一份生成物 `metrics/entry-activity/<部署>.yaml`，不跨部署合并：合并两侧的行只解决同部署的并发，两份部署的计数不会被加成一条排行。它与 `metrics/timeline.d/` 一样按自然周命名，一个文件里可能装两个部署的行。
 
-追加型（一信号一文件，跨部署不冲突）：`proposals/signals/`。
+追加型（一信号一文件，跨部署不冲突）：`proposals/signals/`（落在主检出，周批收进 PR）。
 文件名是内容哈希，不是序号——两个部署各写各的文件，不会撞号；同名文件表示同一条信号，只追加 `occurrences` 与 `last_seen`。`signal-only` 部署用它交接收尾信号；`maintainer` 也先写信号，再按分诊进入 RSI。本目录只放信号、证据与出处。
 
 每部署一份（不参与合并）：`sleuth.config.yaml`、`metrics/timeline.d/`、`metrics/timeline.yaml`、`ingest-state.json`、`reference-ingest-state.json`、`eval/scorecard.yaml`、`.github/CODEOWNERS`（owner 名单各仓不同）。

@@ -8,8 +8,8 @@ RSI。卡号按检出递增，两个仓各产各的必然重号。但"不产卡"
 "不记信号"：信号只留在会话里会随对话消散，只落在 exec-log 里又进不了版本库（那是
 `.gitignore` 的运行时件，按克隆各一份，跨人不聚合）。两头都不构成交接。
 
-本脚本把信号写成**仓库里的文件**：`proposals/signals/<部署>-<哈希>.yaml`，一条信号一个文件，
-可 review、可 diff、可随 PR 提交。上游维护者拿这批文件分诊；需要时再产卡；`export` 把它们
+本脚本把信号写成**主检出里的文件**：`proposals/signals/<部署>-<哈希>.yaml`，一条信号一个文件，
+可 review、可 diff，由周批 PR 带上。上游维护者拿这批文件分诊；需要时再产卡；`export` 把它们
 渲染成一段可粘贴的 issue / MR 描述。
 
 ## 为什么用内容哈希而不是序号
@@ -36,6 +36,7 @@ import argparse
 import hashlib
 import json
 import re
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -51,10 +52,9 @@ _SAFE = re.compile(r"[^0-9A-Za-z._-]+")
 
 
 def repo_root(start: Path = None) -> Path:
-    """当前检出的顶层（信号要随分支提交，所以读当前检出，不读主检出）。"""
+    """当前检出的 git 顶层（信号文件落哪个目录见 `signals_dir`）。"""
     start = Path(start or Path.cwd())
     try:
-        import subprocess
         r = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True,
                            text=True, cwd=str(start), encoding="utf-8", errors="replace")
         if r.returncode == 0 and r.stdout.strip():
@@ -82,8 +82,53 @@ def _now() -> str:
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
-def signals_dir(root: Path) -> Path:
-    return Path(root) / SIGNALS_REL
+def signals_dir(root: Path, local: bool = False) -> Path:
+    """信号落 **主检出**（同一克隆的共享侧），不是当前 worktree。
+
+    信号不随修复 PR 入库，由周批统一收进它的 PR；写在当前检出会让主检出里跑出来的
+    信号变成任何 worktree 都看不见的孤儿。`local=True` 读当前检出——PR 里校验本分支
+    带的信号文件时用（主检出那一份可能已被 sweep 归档）。无 git 时退回 root。
+    """
+    return (Path(root) if local else Path(main_checkout(Path(root)) or root)) / SIGNALS_REL
+
+
+def pending(root: Path) -> list:
+    """主检出里还没进 git 的信号文件（按文件名排序）；周批要收的就是这些。"""
+    main = Path(main_checkout(Path(root)) or root)
+    d = signals_dir(root)
+    if not d.is_dir():
+        return []
+    try:
+        r = subprocess.run(["git", "-C", str(main), "ls-files", "--", str(SIGNALS_REL)],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace")
+        tracked = {Path(x).name for x in r.stdout.splitlines() if x.strip()} if r.returncode == 0 else set()
+    except Exception:
+        tracked = set()
+    return [p for p in sorted(d.glob("*.yaml")) if p.name not in tracked]
+
+
+def sweep(root: Path, into: Path) -> list:
+    """把主检出里未入库的信号复制进 `into` 的 `proposals/signals/`，原件移进 `.swept/`。
+
+    移走原件是必须的：留在主检出会在周批 PR 合入时被 git 拦下
+    （untracked working tree files would be overwritten by merge），且 pending 永不空。
+    `.swept/` 是 gitignored 的本地归档，PR 被丢弃时可手工取回。
+    """
+    src_dir = signals_dir(root)
+    dst = Path(into) / SIGNALS_REL
+    if dst.resolve() == src_dir.resolve():
+        return []          # 目标就是主检出本身：没有可收的
+    archive = src_dir / ".swept"
+    written = []
+    for p in pending(root):
+        dst.mkdir(parents=True, exist_ok=True)
+        target = dst / p.name
+        if not target.exists() or target.read_bytes() != p.read_bytes():
+            target.write_bytes(p.read_bytes())
+            written.append(target)
+        archive.mkdir(parents=True, exist_ok=True)
+        p.replace(archive / p.name)
+    return written
 
 
 def load(path: Path) -> dict:
@@ -132,8 +177,8 @@ def add(root: Path, *, signal: str, target: str, evidence: str, trajectory,
     return {"path": path, "doc": doc}
 
 
-def collect(root: Path):
-    d = signals_dir(root)
+def collect(root: Path, local: bool = False):
+    d = signals_dir(root, local)
     if not d.is_dir():
         return []
     out = []
@@ -148,10 +193,10 @@ def collect(root: Path):
 STATUSES = ("new", "triaged", "promoted", "dropped")
 
 
-def find(root: Path, key: str):
+def find(root: Path, key: str, local: bool = False):
     """按文件名、id 或路径找一个信号文件（找不到返回 None）。"""
     key = str(key).strip()
-    d = signals_dir(root)
+    d = signals_dir(root, local)
     if not d.is_dir():
         return None
     for p in sorted(d.glob("*.yaml")):
@@ -207,6 +252,8 @@ def render_md(items, title: str = "") -> str:
 def main(argv=None):
     ap = argparse.ArgumentParser(description="演进信号记录：写、列、导出")
     ap.add_argument("--root", type=Path, default=None, help="仓库根（默认当前检出顶层）")
+    ap.add_argument("--local", action="store_true",
+                    help="读写当前检出的 proposals/signals（PR 自检用；默认读写主检出）")
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     a = sub.add_parser("add", help="写一条信号（同内容重复写只累加次数）")
@@ -225,6 +272,9 @@ def main(argv=None):
     m.add_argument("--note", default="", help="一句话说明（为什么丢 / 为什么提升）")
 
     sub.add_parser("list", help="列出记录里的信号")
+    sub.add_parser("pending", help="列出主检出里还没进 git 的信号（周批收件清单）")
+    sw = sub.add_parser("sweep", help="把主检出里未入库的信号复制进本检出（周批提交用）")
+    sw.add_argument("--into", type=Path, default=Path("."), help="复制到哪个检出（默认当前检出）")
     sub.add_parser("export", help="导出成可粘贴的 issue / MR 描述")
 
     for name in ("list", "export"):
@@ -244,7 +294,7 @@ def main(argv=None):
     if args.cmd == "add":
         r = add(root, signal=args.signal, target=args.target, evidence=args.evidence,
                 trajectory=args.trajectory, suggested=args.suggested, source=args.source,
-                session=args.session, signal_text=args.signal_text)
+                session=args.session, signal_text=args.signal_text, local=args.local)
         print(f"{r['path']}（{r['doc']['occurrences']} 次）")
         return 0
 
@@ -257,8 +307,28 @@ def main(argv=None):
         print(f"{p.name} → {args.status}")
         return 0
 
+    if args.cmd == "pending":
+        files = pending(root)
+        for p in files:
+            print(p)
+        if not files:
+            print(f"无未入库信号（{signals_dir(root)}）")
+        return 0
+
+    if args.cmd == "sweep":
+        if (Path(args.into).resolve() / SIGNALS_REL).resolve() == signals_dir(root).resolve():
+            print("目标是主检出本身，未收")
+            return 0
+        copied = sweep(root, args.into)
+        for p in copied:
+            print(p)
+        print(f"收进 {len(copied)} 条（目标 {Path(args.into).resolve()}）")
+        if copied:
+            print(f"原件移进 {signals_dir(root) / '.swept'}")
+        return 0
+
     try:
-        items = collect(root)
+        items = collect(root, args.local)
     except ValueError as e:
         print(f"✗ {e}", file=sys.stderr)
         return 2

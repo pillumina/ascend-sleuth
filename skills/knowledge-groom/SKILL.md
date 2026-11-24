@@ -351,6 +351,8 @@ python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --post-merge \
 
    条目使用记录与本期读数是**两个粒度**：记录每次运行都追加（一行一条，3.5 / 3.6 写），期文件只在周界组装（这一步）。读端读的是生成物（`metrics/entry-activity/<部署>.yaml` 与 `metrics/timeline.yaml`），不读源。
 
+8.6. **收信号（提交前）**：跑 `python3 scripts/evolve_signals.py sweep --into .`，把主检出里还没进 git 的信号复制进本轮检出（原件移进 `.swept/`，避免合入时撞未跟踪文件）；变更摘要写「本轮带上 N 条信号」。信号落主检出是因为它不随修复 PR 入库（见 `proposals/signals/README.md`）；`pending` 子命令列未入库清单。
+
 ## 先验知识层（`references/`——与 case 流程并行）
 
 先验知识层是独立资产，维护动作与 case 平行。哪些条目每轮跑、哪些在本轮有变更时跑，见「groom 成本预算与脚本先行」第 2 条；本节写各条的动作细则。

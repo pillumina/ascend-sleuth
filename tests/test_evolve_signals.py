@@ -10,6 +10,7 @@
 
 import io
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -117,6 +118,81 @@ class LedgerTest(unittest.TestCase):
             rc = ES.main(["--root", str(self.root), "export"])
         self.assertEqual(rc, 0)
         self.assertIn("无信号可导出", err.getvalue())
+
+
+class MainCheckoutAnchorTest(unittest.TestCase):
+    """信号落主检出：worktree 里写的信号不是孤儿，周批收得走。"""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        base = Path(self.tmp.name)
+        self.main = base / "main"
+        self.main.mkdir()
+        self._git("init", "-q")
+        (self.main / "README.md").write_text("x\n", encoding="utf-8")
+        self._git("add", "README.md")
+        self._git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "init")
+        self.wt = base / "wt"
+        self._git("worktree", "add", "-q", "-b", "b", str(self.wt))
+        self._saved = os.environ.get("ASCEND_SLEUTH_DEPLOYMENT")
+        os.environ["ASCEND_SLEUTH_DEPLOYMENT"] = "test-dep"
+
+    def tearDown(self):
+        if self._saved is None:
+            os.environ.pop("ASCEND_SLEUTH_DEPLOYMENT", None)
+        else:
+            os.environ["ASCEND_SLEUTH_DEPLOYMENT"] = self._saved
+        self.tmp.cleanup()
+
+    def _git(self, *args):
+        subprocess.run(["git", "-C", str(self.main), *args], check=True,
+                       capture_output=True, text=True, encoding="utf-8")
+
+    def _add(self, evidence="证据一"):
+        return ES.add(self.wt, signal="T10", signal_text="自审发现的缺口",
+                      target="skills/evolve-check/SKILL.md", evidence=evidence,
+                      trajectory=["products/X(submitted)"], suggested="建议一")
+
+    def test_signals_dir_is_main_checkout(self):
+        want = (self.main / "proposals" / "signals").resolve()
+        self.assertEqual(ES.signals_dir(self.wt).resolve(), want)
+        self.assertEqual(ES.signals_dir(self.main).resolve(), want)
+
+    def test_add_from_worktree_lands_in_main(self):
+        r = self._add()
+        self.assertEqual(r["path"].parent.resolve(), (self.main / "proposals" / "signals").resolve())
+        self.assertTrue(r["path"].is_file())
+        self.assertFalse((self.wt / "proposals" / "signals").exists())
+
+    def test_pending_excludes_tracked_files(self):
+        r = self._add()
+        self.assertEqual([p.name for p in ES.pending(self.wt)], [r["path"].name])
+        self._git("add", "proposals/signals/" + r["path"].name)
+        self._git("-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "-m", "signal")
+        self.assertEqual(ES.pending(self.wt), [])
+
+    def test_sweep_copies_into_worktree_and_archives_source(self):
+        r = self._add()
+        copied = ES.sweep(self.wt, self.wt)
+        self.assertEqual([p.name for p in copied], [r["path"].name])
+        self.assertTrue((self.wt / "proposals" / "signals" / r["path"].name).is_file())
+        # 原件移进 .swept：pending 立即为空，周批 PR 合入时不会撞未跟踪文件
+        self.assertFalse(r["path"].exists())
+        self.assertTrue((self.main / "proposals" / "signals" / ".swept" / r["path"].name).is_file())
+        self.assertEqual(ES.pending(self.wt), [])
+
+    def test_sweep_into_main_is_noop(self):
+        self._add()
+        self.assertEqual(ES.sweep(self.wt, self.main), [])
+        self.assertEqual(len(ES.pending(self.wt)), 1)
+
+    def test_local_mode_reads_current_checkout(self):
+        self._add()
+        local = self.wt / "proposals" / "signals"
+        self.assertNotEqual(ES.signals_dir(self.wt), ES.signals_dir(self.wt, local=True))
+        self.assertEqual(ES.signals_dir(self.wt, local=True), local)
+        # 当前检出里没有信号时，--local 读空（PR 自检不能空过主检出那份）
+        self.assertEqual(ES.collect(self.wt, local=True), [])
 
 
 if __name__ == "__main__":

@@ -14,7 +14,7 @@
 ## 安装
 
 本包在 ascend-sleuth 仓库的 `dsh-plugins/dsh-sleuth-canvas/`，与另外三个包一起由 `/skill:preload-panel`
-装载（`panel_status.js` 快检、`panel_install.js --all` 一次装四个包、路由三/四/五都覆盖它）。也可单独装本目录的绝对路径：
+装载（`panel_status.js` 快检、`panel_install.js --all` 一次装五个包、路由三/四/五都覆盖它）。也可单独装本目录的绝对路径：
 
 ```
 plugin_manager install_bundle(target: "<本目录绝对路径>")

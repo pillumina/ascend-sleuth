@@ -47,7 +47,7 @@ PR body 正文从首个 "## " 区块开始。
 - [ ] 改动前跑了 golden 套件，基线：N 条通过
 - [ ] 改动后重跑，原通过项无一变为失败
 - [ ] **若改动了 `eval/golden/**` 或它指向的 case**：按「更新 fixture 头注 → `python3 scripts/eval_scorecard.py --build` → 账本随夹具同 PR 提交」记账；自查跑 `--check`（CI `eval-scorecard` 会验夹具哈希，夹具改了不重建账本即红）
-- [ ] **本改动对应的记录**：本 PR 为什么改，写在上面「背景与动机」第一行（现象 + 出处）。git / PR 历史就是记录，不另要文件。有卡时贴卡号与 `predicted_effect.measure`（命令 + 期望，或如实声明不可度量），reviewer 用 `python3 scripts/ev_measure.py <card-id> --run` 机械复核。本 PR **没做完**、要演进环后续分诊的观察另记信号（`python3 scripts/evolve_intake.py record`，只记剩余部分）。它随下一次内容 PR 或周批入库；修复 PR 不带它，剩余观察写进「影响面」的留作后续一行
+- [ ] **本改动对应的记录**：本 PR 为什么改，写在上面「背景与动机」第一行（现象 + 出处）。git / PR 历史就是记录，不另要文件。有卡时贴卡号与 `predicted_effect.measure`（命令 + 期望，或如实声明不可度量），reviewer 用 `python3 scripts/ev_measure.py <card-id> --run` 机械复核。本 PR **没做完**、要演进环后续分诊的观察另记信号（`python3 scripts/evolve_intake.py record`，只记剩余部分）。它随下一次周批入库（信号落在主检出，周批用 `scripts/evolve_signals.py sweep --into .` 收进 PR）；修复 PR 不带它，剩余观察写进「影响面」的留作后续一行
 - [ ] **若触及输出契约 / 交互形态**（输出模板、结论呈现、追问链形态）：附**盲辨对照**（同问题新旧输出各一份、去掉来源、交不知情者判"哪份更清楚 / 更不像模板"），或说明为何不需要——此类改动的成败是主观的，无对照无法排除"只是换了措辞"；强度为**约定**，由 reviewer 核
 - [ ] **若改动交接包链路**（`scripts/export_trace.py` / `import_trace.py` / `docs/guide/handoff.md`）：
       `python3 scripts/check_handoff.py` 末行「全部通过」。该检查**不进 CI**（新检查尚无复发记录，
