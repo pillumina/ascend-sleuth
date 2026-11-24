@@ -52,10 +52,12 @@ DOC_PREFIXES = ("docs/", "skills/", ".github/PULL_REQUEST_TEMPLATE/")
 DOC_FILES = ("README.md", "CLAUDE.md", "AGENTS.md", "CONTEXT.md")
 
 # 生成物、数据与资产：机器能判，不派会话。未列出的路径按脚本/机制档做（判不准时取高）。
+# 信号记录（proposals/signals/）是数据不是判定逻辑：只要求能被 evolve_signals.py 解析，不派会话。
 SELFCHECK_PREFIXES = (
     "metrics/timeline.d/",
     "metrics/entry-activity.d/",
     "assets/",
+    "proposals/signals/",
 )
 
 CAPS = {
@@ -105,7 +107,10 @@ def classify(paths, labels=()):
     hit_script, hit_content, hit_docs, hit_selfcheck, unknown = [], [], [], [], []
 
     for p in paths:
-        if _match(p, SCRIPT_PREFIXES, SCRIPT_FILES):
+        # signals 先于 proposals/ 判：同在 proposals/ 下，但它不是脚本/机制面。
+        if _match(p, ("proposals/signals/",), ()):
+            hit_selfcheck.append(p)
+        elif _match(p, SCRIPT_PREFIXES, SCRIPT_FILES):
             hit_script.append(p)
         elif _match(p, CONTENT_PREFIXES, ()):
             hit_content.append(p)
@@ -135,7 +140,7 @@ def classify(paths, labels=()):
         ]
         if any(p.startswith("tests/") for p in paths):
             checks.append("python3 scripts/check_test_portability.py")
-        if any(p.startswith("proposals/") for p in paths):
+        if any(p.startswith("proposals/") and not p.startswith("proposals/signals/") for p in paths):
             checks.append("python3 scripts/verify_proposals.py --check")
     elif hit_content:
         mode, tier = "light", "content"
@@ -156,6 +161,10 @@ def classify(paths, labels=()):
     else:
         mode, tier = "full", "script"
         reasons.append("没有可识别的改动面：按脚本/机制档兜底")
+
+    # 信号文件混在任何档位里都要能解析：提示放在分档之后，不只在纯 signals 时发出。
+    if any(p.startswith("proposals/signals/") for p in paths):
+        checks.append("python3 scripts/evolve_signals.py list  # 信号文件能解析即可")
 
     return {
         "mode": mode,

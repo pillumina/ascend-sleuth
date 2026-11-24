@@ -1,7 +1,9 @@
 ---
 name: reference-ingest
 description: >
-  从 GitCode 等可按 API 枚举的**文档仓**批量摄取官方文档，沉淀为 reference 先验词条（面向训练/推理的中断、精度、性能定位）。编排「仓库文档面普查 → 增量扫描（path×blob sha 记账，防重复抓取与重复评估）→ 候选筛选 → 按需抓正文到本地缓存（ref-docs/，git-ignored，sha 校验）→ 抽取 → 走 to-reference 归类产出 → mark 回写判定」；状态只写 reference-ingest-state.json 这一份文件，`skipped` 也记账（判过不沉淀的文档下一轮不再评估）。以 token 节省为设计约束：脚本只拉目录树、正文按候选抓、码块与日志裁剪后再读。这是「文档语料 → reference」的统一批量注入入口，与 issue-ingest（issue → case）、to-reference（零散来源 → reference）互补。
+  从 GitCode 等可按 API 枚举的文档仓批量摄取官方文档，沉淀为 reference 先验词条：
+  用户说「把这个文档仓沉淀成 reference / 继续沉淀上一批」时用。增量扫描、按候选抓正文，
+  产出走 to-reference。
 ---
 
 # Reference Ingest
@@ -151,7 +153,7 @@ python3 scripts/build_ref_summary_index.py && python3 scripts/build_procedure_in
 python3 scripts/gc_docs.py status          # 记录核对：本批 harvested/skipped/pending 是否归零
 ```
 
-PR body 里必须写清的：**吃了哪些源与子面、跳过了哪些、未提取的图（`figures/*.png` 一类）**、`verification` 口径、以及 token 成本量级。批次结束接 `/skill:evolve-check`（流程摩擦与 miss 是演进信号）。
+PR body 里必须写清的：**吃了哪些源与子面、跳过了哪些、未提取的图（`figures/*.png` 一类）**、`verification` 定义、以及 token 成本量级。批次结束接 `/skill:evolve-check`（流程摩擦与 miss 是演进信号）。
 
 ## 批次节奏
 

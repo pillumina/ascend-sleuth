@@ -66,6 +66,21 @@ class ClassifyTest(unittest.TestCase):
                   "tests/test_precheck.py", "proposals/ideas/EV-2026-188.yaml"):
             self.assertEqual(PC.classify([p])["mode"], "full", p)
 
+    def test_signals_alone_is_selfcheck(self):
+        """信号记录是数据不是判定逻辑：单独改它不派会话，但 ideas/ 仍按脚本/机制档。"""
+        r = PC.classify(["proposals/signals/ascend-sleuth-7430e5f2.yaml"])
+        self.assertEqual(r["tier"], "selfcheck")
+        self.assertTrue(any("evolve_signals.py list" in c for c in r["checks"]))
+        self.assertEqual(PC.classify(["proposals/ideas/EV-2026-001.yaml"])["tier"], "script")
+        self.assertFalse(any("verify_proposals" in c for c in r["checks"]))
+
+    def test_signals_check_survives_mixed_tiers(self):
+        """混档 PR 里信号文件也要能解析：提示不随档位丢。"""
+        for other, tier in (("scripts/a.py", "script"), ("knowledge/a/b.yaml", "content"), ("docs/x.md", "docs")):
+            r = PC.classify(["proposals/signals/x.yaml", other])
+            self.assertEqual(r["tier"], tier, other)
+            self.assertTrue(any("evolve_signals.py list" in c for c in r["checks"]), other)
+
 
 class DocsSyncTest(unittest.TestCase):
     """触发表要能看懂脚本的判定面；少一行，作者就会按「其余→自检」读错。"""

@@ -1,7 +1,9 @@
 ---
 name: issue-ingest
 description: >
-  从外部 issue 源（GitHub 等）批量导入案例知识。编排上游 issue 拉取、硬过滤、价值评估、沉淀与状态标记：拉取精简元数据（fetch_issues.py，不含 body），硬过滤+启发式排序（issue_filter.py：label 池/评论数/标题规则/已处理排除），对候选按需评估（subagent 读 body 判断可否沉淀），通过的走 to-postmortem 沉淀为 case 草稿（进 inbox 待审），完成后标记已导入（幂等）。框架差异（repo、label 体系）参数化配置。前置环境：gh CLI 已安装并登录（未登录引导 gh auth login）。这是外部 issue 源 → case 的统一批量注入入口，与 to-postmortem（人工笔记等异构来源）互补。
+  从外部 issue 源（GitHub 等）批量导入案例知识：用户说「把这批 issue 沉淀成 case /
+  导入某仓的 issue」时用。拉取、过滤、评估后走 to-postmortem 产 case 草稿进 inbox 待审。
+  需要 gh CLI 已登录。
 ---
 
 # Issue Ingest
@@ -68,6 +70,8 @@ gh api "search/issues?q=repo:<repo>+is:issue+is:closed+label:<候选label>&per_p
 
 给用户建议（主池 label、min_comments、limit、预计候选数），用户确认或调整 → **写入 `config`**；用户给了完整参数 → 跳过本步，直接执行（并把参数记入 config 供下次复用）。
 
+### 1. 拉取（只拉元数据，不进 context）
+
 ```bash
 python3 scripts/fetch_issues.py --repo <repo> --state closed --labels <labels> \
   [--since <游标>] --output /tmp/issues-<repo>.json
@@ -90,9 +94,9 @@ python3 scripts/issue_filter.py --cached /tmp/issues-<repo>.json \
 ### 3. 评估（~1-2K token/条，只花在候选上）
 
 对候选逐条：`gh api repos/<repo>/issues/<n>` 取 **body + 评论**（issue 的 body 多为环境信息+现象，**根因和 fix 通常沉淀在评论里**——至少读最后 2-3 条评论，结论常在尾部；body 只读现象段落），判断：
-- **可否沉淀**：症状→根因→fix 是否闭环（根因有定论、fix 有方向即可，不必等社区验证）、是否昇腾相关、是否与现有 case 重复（对照 `knowledge/` 与 `postmortems/`）；
+- **可否沉淀**：症状→根因→fix 是否走通（根因有定论、fix 有方向即可，不必等社区验证）、是否昇腾相关、是否与现有 case 重复（对照 `knowledge/` 与 `postmortems/`）；
 - 评论数多的不等于可沉淀（可能多问题未定论）——以"根因是否定论 + fix 是否明确"为判据，不只看评论热度；
-- **fix 指向 PR 时，核对那个 PR 是否真的动了所述代码位**（零 token：`gh pr view <n> --json title,files`；要对齐到行就 `gh api repos/<repo>/pulls/<n>/files` 看 patch）。关单评论里的"#NNNNN fix it"**不等于**该 PR 就是所述修复——先例：VLLM-ASC-12957 被记成"PR #14269 加了流同步"，而该 PR 实为删除 `batch_matmul_transpose` 算子，照 case 给用户的"升级到含 #14269 的版本"是**空路**。核对不上就写成待确认（草案 `fix_type: pending-investigation` + 注明"上游自述 PR 与所述修复不符"），不要记成既定修复；
+- **fix 指向 PR 时，核对那个 PR 是否真的动了所述代码位**（零 token：`gh pr view <n> --json title,files`；要看具体行就 `gh api repos/<repo>/pulls/<n>/files` 看 patch）。关单评论里的"#NNNNN fix it"**不等于**该 PR 就是所述修复——先例：VLLM-ASC-12957 被记成"PR #14269 加了流同步"，而该 PR 实为删除 `batch_matmul_transpose` 算子，照 case 给用户的"升级到含 #14269 的版本"是**空路**。核对不上就写成待确认（草案 `fix_type: pending-investigation` + 注明"上游自述 PR 与所述修复不符"），不要记成既定修复；
 - **版本号认准维度**：issue 里的 `VLLM_VERSION` 是 **vLLM** 的版本，镜像 tag（如 `quay.io/ascend/vllm-ascend:glm5.2-a3`）也不是 vllm-ascend 的版本号。写 `compat.ranges` 必须用 vllm-ascend 自身版本（`pip show vllm-ascend` 级别的事实）；取不到就留空或标注待补，**不要拿 vLLM 版本凑**——先例：VLLM-ASC-12461 的版本范围一度按现场的 `VLLM_VERSION=0.21.0` 误判；
 - 不可沉淀（feature/讨论/无结论）→ 跳过，但记录到 `ingest-state.json` 的 `processed`（`--mark-imported` 一并标记，防反复评估）。
 
@@ -104,7 +108,7 @@ python3 scripts/issue_filter.py --cached /tmp/issues-<repo>.json \
 
 **产出时同步 pre-triage**（省去提交时重复判断）：用**命中 (namespace × category) 的读侧视图** `knowledge/_index/<ns>__<category>.list`（一行一条 case；category 未定回退 `<ns>.list`；已知 namespace 时不读全库总表）按 symptoms/tags 定位现有 case 候选，再全量读候选本体比对 root_cause 与 fix，给 `new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 证据（简要），写入 draft 头注释（如 `# pre-triage: variant_of VLLM-ASC-XXXX（同算子×同网络，增量=维护者确认升级修复）`）。groom 复核该标签而非重判。
 
-### 5. 标记已导入（幂等闭环）
+### 5. 标记已导入（幂等收尾）
 
 ```bash
 python3 scripts/issue_filter.py --state ingest-state.json \
@@ -113,7 +117,7 @@ python3 scripts/issue_filter.py --state ingest-state.json \
 
 把本次处理过的编号（含评估跳过与已沉淀）追加 `processed`——下次拉取不重导。评估跳过的不反复评估。
 
-### 6. 报告落点
+### 6. 报告位置
 
 ```
 拉取 N 条 → 候选 M 条 → 评估通过 K 条 → 沉淀 case 草稿 K 条 → inbox（待审；路径先 `python3 scripts/shared_dir.py inbox` 解析，锚主检出）
@@ -127,15 +131,12 @@ python3 scripts/issue_filter.py --state ingest-state.json \
 `python3 scripts/log_skill_exec.py --skill issue-ingest --products "<本轮产出 case id(submitted),...>" --reason "<一句话：拉取 N/评估 K/沉淀 M>" --source issue-ingest --tokens <估算>`
 
 沉淀完成、出最终报告前，执行一次伴随演进评估（`read skills/evolve-check/SKILL.md`
-遵循；**先按它的第 0 步读部署角色**）：对照它的触发条件表看本轮现场——同族沉淀满三条（记信号，**不在这里归纳**）、新 issue
-类型/新错误码无覆盖、拉取/评估环节有重复手动动作或流程摩擦。**内容动作直接执行、不产卡**：
-补 case 走 `/skill:to-postmortem`。**归纳 reference 只在 case 已升格入库后做**——本管道直接
-升格的批次可当轮做；落在 inbox 等周批的只记信号，由 `knowledge-groom` 的 R8 执行
-（`sources[].cases` 不得引用未升格的草稿 id，CI 会红）；
-行为面（triage 分支、skill 步骤、闸门绑定、索引形态）只记录信号，交给后续显式
-`/skill:self-evolve` 分诊；收尾不产 EV 卡、不跑 RSI。
-无信号则报告加一行"evolve-check：无演进信号"。这是流程默认收尾，**不需要用户另说
-"改进系统"**——演进由数据触发，像人学习。产出与流程报告一并给出。
+遵循；**先按它的第 0 步读部署角色**），对照它的触发条件表看本轮现场：新 issue
+类型 / 新错误码无覆盖、拉取与评估环节有重复手动动作，命中就记信号。同族归纳缺口由 `knowledge-groom` 每轮扫，不记。
+**归纳 reference 只在 case 已升格入库后做**——本管道直接
+升格的批次可当轮做；落在 inbox 等周批的由 `knowledge-groom` 的 R8 执行
+（`sources[].cases` 不得引用未升格的草稿 id，CI 会红）。
+无信号则报告加一行"evolve-check：无演进信号"。演进评估与流程报告一并给出。
 
 ## 与既有 skill 的关系
 

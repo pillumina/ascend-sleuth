@@ -1,12 +1,14 @@
 ---
 name: to-reference
 description: >
-  把昇腾先验知识沉淀成 reference 词条。输入支持内联粘贴、单个文件、URL 爬取、或从已有 case 集合归纳共性。提取事实/方法论，按 references/_types.yaml 归类（error-code / tool / platform-fact / command-side-effect / methodology），标来源类型（official-doc / engineer-input / case-derived）与验证状态，经 grill 阶段与用户反复确认意图后，产出结构化 YAML 词条（status: active 直进正式 type 目录，PR review 即审核闸门——合入即生效）。这是先验知识的统一入口——与 to-postmortem（案例）并列，先验知识从这里汇入，不从 diagnose 自动生成。
+  把昇腾先验知识（错误码、工具、平台事实、命令副作用、定位方法论）沉淀成 reference 词条：
+  用户说「把这个沉淀成 reference / 加一条词条 / 从这几个 case 归纳共性」时用。
+  输入可以是内联粘贴、文件、URL 或一组已有 case；逐项与用户确认后产出 YAML 词条，PR 合入即生效。
 ---
 
 # To Reference
 
-先验知识注入入口，与案例知识（`/skill:to-postmortem`）并列。**reference 是独立于任何具体事故的领域事实与方法论**——不是 case，不携带 symptoms/diagnosis/fix 闭环。本 skill 的产物以 `status: active` 直接落入正式 type 目录（`references/<type-dir>/`），**PR review 即审核闸门——合入即生效**：词条随 PR 提交，review 通过合入 = active 进入诊断上下文。未合入的 PR 分支不 main，天然不进诊断上下文——安全性语义由"合入动作"承担，不再需要 draft 中间态隔离。
+先验知识注入入口，与案例知识（`/skill:to-postmortem`）并列。**reference 是独立于任何具体事故的领域事实与方法论**——不是 case，不携带 symptoms/diagnosis/fix 这类事故收尾。本 skill 的产物以 `status: active` 直接落入正式 type 目录（`references/<type-dir>/`），**PR review 即审核闸门——合入即生效**：词条随 PR 提交，review 通过合入 = active 进入诊断上下文。未合入的 PR 分支不 main，天然不进诊断上下文——安全性语义由"合入动作"承担，不再需要 draft 中间态隔离。
 
 > ⚠️ **质量原则（比 case 更严）**：reference 是知识库的浓缩资产，一旦错误，污染的是所有引用它的诊断。**本 skill 的产出不是"录进去"，是"提交审核"**——先与用户反复确认意图（grill），再产出 active 词条随 PR 提交，由 maintainer 在 PR review 审核。环节缺一不可。
 
@@ -48,7 +50,7 @@ description: >
 ```
 
 - agent 读现有词条 + 新材料，产出**修订 diff 建议**（改了什么/为什么），人确认后落 PR；
-- 修订 active 内容 = 修改已生效知识 → **kb/high-risk 双签**（对齐 case 层 knowledge_modification）；
+- 修订 active 内容 = 修改已生效知识 → **kb/high-risk 双签**（与 case 层 knowledge_modification 对应）；
 - 修订前先确认该 ref 已被标 `pending-review` 或 `draft`（降级中修订；diagnose 只读 active 天然隔离）；
 - 小修（错别字/补一句/改一个错误码含义）→ 不启动 --update，维护者直接改 YAML + PR 更轻（git diff 可追溯）；--update 留给大修（methodology 流程重写/错误码表按新官方文档整体更新）。
 
@@ -113,7 +115,7 @@ description: >
 
 区分 `platform-fact` 与 `software-fact`：绑定具体硬件平台/芯片规格（如 "A5 HBM 64GB"）→ `platform-fact`；CANN 软件栈或运行时系统的可验证事实（如日志路径、格式、机制，跨平台成立）→ `software-fact`。
 
-**fault-pattern 表形态（组织单元 = 验证单元）**：官方手册的"现象→根因→处理"排障条目（非多步流程、非事故闭环）→ 按主题域成表（如 `references/fault-patterns/dvpp-decode.yaml` 承载 VDEC/JPEGD 解码故障）。`symptoms` 是可直接 grep 的日志签名/错误码（诊断时按签名命中根因），`cause`/`fix` 提炼自来源。
+**fault-pattern 表形态（组织单元 = 验证单元）**：官方手册的"现象→根因→处理"排障条目（非多步流程、非事故收尾）→ 按主题域成表（如 `references/fault-patterns/dvpp-decode.yaml` 承载 VDEC/JPEGD 解码故障）。`symptoms` 是可直接 grep 的日志签名/错误码（诊断时按签名命中根因），`cause`/`fix` 提炼自来源。
 
 **error-code 表形态（组织单元 = 验证单元）**：错误码天然成族（CANN Runtime 507xxx / HCCL / aicpu / Driver），同族同源同验证——**一个族一个文件**（如 `references/errors/cann-runtime.yaml` 承载 507903/507018/507057...），表级共享 sources/status/applies_to，不逐码建文件。case 提炼的条目逐条验证 → 条目带可选 `source_cases`。检索时 agent 按族定位文件，表内 grep code 一次命中。**数据集类的 `applies_to` 平台/版本应从来源的结构化字段映射（如官方文档的 models/support 字段），不靠 agent 猜测**——来源没声明的平台不写。
 
@@ -138,7 +140,7 @@ description: >
 
 **official-doc**：不逐项 grill（来源明确），但**必须在报告里显式告诉用户验证状态**——`auto-extracted` 要说明"这是模型抽取的摘要，建议打开原文核对语义"；`cross-checked-source` 要说明"已对源原文核验，可抽查"。把 `verification` 写进草稿 `sources[]`。
 
-**grill 分级（体验瘦身——反复对齐是置信度增加过程，但按需分级，不是无差别多轮）**：
+**grill 分级（体验瘦身——反复确认是置信度增加过程，但按需分级，不是无差别多轮）**：
 
 - **高置信（默认）**：来源明确（official-doc）、内容自包含、无歧义 → **单次确认**——一次复述"我理解你说的是：……，对吗？"，用户认可即过，不逐项追问；
 - **中置信**：工程师输入但表述清晰 → 确认意图 + 出处，边界/反例顺带一问；
@@ -192,7 +194,7 @@ applies_to:                        # 能确定就填，确定不了留待 grill 
   versions: {...}
   categories: [...]                # methodology 必填
 
-status: active                      # 产出即 active——PR review 即审核闸门，合入即生效
+status: active                      # 产出即 active——PR review 即审核环节，合入即生效
 last_verified: <今天>              # 人确认的日期（grill 认可即视为一次人核）
 # 观测字段（可选；产出时**不填**，由 groom 在 reference 观测回写时有数据才填）：
 #   hits: <int>                    # 被引用次数（trace.reference_lookup 计数）
@@ -208,8 +210,8 @@ content:
   #       source_cases: [<case-id>]   # case 提炼的证据（可选）
 ```
 
-- `status` **写 `active`**——产出即 active，PR review 即审核闸门，合入即生效；**深审条件在产出时就满足**（case-derived + methodology 需 ≥3 条 case 引用，CI 强校验，产出时不达标 PR 直接红——不允许以 active 提交未达深审门槛的词条）。未合入的 PR 分支不 main，天然不进诊断上下文；合入动作即审核通过；
-- 初始可信度按来源类型（写进词条注释，供审核参考；与 case 的排序分数不是一回事）：`official-doc` 0.6 / `engineer-input` 0.3 / `case-derived` 0.3–0.6（case 数与一致性越高越靠近 0.6）；
+- `status` **写 `active`**——产出即 active，PR review 即审核环节，合入即生效；**深审条件在产出时就满足**（case-derived + methodology 需 ≥3 条 case 引用，CI 强校验，产出时不达标 PR 直接红——不允许以 active 提交未达深审门槛的词条）。未合入的 PR 分支不 main，天然不进诊断上下文；合入动作即审核通过；
+- 初始可信度按来源类型取档位表（`references/README.md`「来源类型」；与 case 的排序分数不是一回事），写进 PR 说明供审核参考，不写进词条（词条零注释）；
 - **`sources[].cases` / `content.*.source_cases` 只引用已升格的 case id**（在 `knowledge/` 里，含 `_archive/`）：草稿还在 `postmortems/inbox/` 时**不得**归纳——`verify_references.py` 会红（引用了不存在的 case），且草稿被 groom 拒掉后来源永久指空。升格后再提炼，或由 groom 的 R8 在本轮执行；
 - `last_verified` 填今天——grill 阶段用户认可即视为一次人工确认，但**这不替代 maintainer 审核**；
 - **产出前检查：词条文件里不得有任何 `#` 注释行**（上模板中的注释全部删掉）——`grep -c "#" <file>` 应为 0。
@@ -227,7 +229,7 @@ content:
 - 来源 trace 不在本机、候选已被标过、或这轮输入根本不是诊断候选：如实说明「未回写」与原因，不要为了回写去改别的单；
 - 这单的先验候选都标成 produced 后，面板显示「已产出先验词条 N 条」，不再挂在「待复核」；`sediment_batch.py` 也不再把它列进「可沉淀」。
 
-### 7. 报告落点（生成后必须明确告知）
+### 7. 报告位置（生成后必须明确告知）
 
 ```
 词条 → references/<type-dir>/<ref-id>.yaml（status: active）
@@ -245,19 +247,17 @@ content:
 `python3 scripts/log_skill_exec.py --skill to-reference --products "<ref-id>(active),..." --reason "<一句话：归纳 N case / 新增家族>" --source <来源> --tokens <估算>`
 
 词条产出、出最终报告前，执行一次伴随演进评估（`read skills/evolve-check/SKILL.md`
-遵循）：本轮发现可跨词条归纳的共性、新错误码家族首次入表需扩覆盖、
-或提取/归类环节有流程摩擦时，**只记录信号**，交给后续显式
-`/skill:self-evolve` 分诊；收尾不产 EV 卡、不跑 RSI。无信号则报告加一行"evolve-check：无演进
-信号"。这是流程默认收尾，**不需要用户另说"改进系统"**——演进由数据触发，像人
-学习。产出与流程报告一并给出。
+遵循）：本轮发现新错误码家族首次入表需扩覆盖、或提取与归类环节有流程摩擦时，只记录信号。
+跨词条归纳的共性由 `knowledge-groom` 每轮扫，不记。无信号则报告加一行"evolve-check：无演进
+信号"。演进评估与流程报告一并给出。
 
-## 产出落点
+## 产出位置
 
-- `references/<type-dir>/<ref-id>.yaml`——词条（status: active；PR review 即审核闸门，合入即生效，无中间 draft 态）
+- `references/<type-dir>/<ref-id>.yaml`——词条（status: active；PR review 即审核环节，合入即生效，无中间 draft 态）
 - PR review：reject → 不合并（分支废弃，词条不进 main）；request changes → 修改后重新提交；approve + 合入 → active 生效
 - 遗留 draft（历史旧态，修订 3 前产出）：由 `/skill:knowledge-groom` R1 按需清理或补审
 
-**与 to-postmortem 的分工**：案例（事故闭环）→ `/skill:to-postmortem` → `knowledge/`；先验知识（独立事实/方法论）→ `/skill:to-reference` → `references/`。两条入口不互相覆盖——to-postmortem 不自动产 reference，to-reference 不反向产 case。
+**与 to-postmortem 的分工**：案例（事故收尾）→ `/skill:to-postmortem` → `knowledge/`；先验知识（独立事实/方法论）→ `/skill:to-reference` → `references/`。两条入口不互相覆盖——to-postmortem 不自动产 reference，to-reference 不反向产 case。
 
 ## 为什么先验知识要专门入口
 

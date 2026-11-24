@@ -24,7 +24,7 @@
 - 没有报错，但输出乱码、答非所问、生僻字重复 → 先按输入预处理 / 前向计算 / 传输与后处理三段定界，再按五条机制分流 → `ascend-garbled-output-triage`
 - 已经知道从第几层、第几个 token 或哪个算子开始不对 → 先定阈值，找首个超标节点并过三关，再溯源到引入点 → `precision-first-divergence-triage`（只想单独验一个算子见 `single-operator-accuracy-verification`）
 - 推理服务（vLLM）答得不对，或离线 om 模型精度不达标 → 先把问题场景与标杆场景对齐，找到首个差异 token 再 dump 比对 → `vllm-infer-precision-triage` / `ascend-om-infer-precision-triage`
-- RL 场景里 reward 对不上、训练侧和推理侧对不齐 → 先约定指标口径、对齐环境与权重，再用首步 bad case 定界是训还是推 → `rl-precision-alignment-overview`
+- RL 场景里 reward 对不上、训练侧和推理侧对不齐 → 先约定指标定义、统一环境与权重，再用首步 bad case 定界是训还是推 → `rl-precision-alignment-overview`
 
 判不出属于哪支时问：**是跟基线或 GPU 比出来的差异，还是同一条命令自己跑两次都不一样？**
 
