@@ -1,4 +1,4 @@
-"""RSI 各节点的算法注册表：归因、选择、提案、judge、gate。
+"""实验各节点的算法注册表：归因、选择、提案、judge、gate。
 
 算法不直接改文件；每个 stage 记录 id/version/execution，实验时固定组合。
 GEPA 不是整条循环，而是 select_candidate=pareto + propose=agent 的一个组合。

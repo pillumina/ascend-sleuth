@@ -5,7 +5,7 @@ maintainer 只调用 `/skill:self-evolve`；本文件是内部执行参考，不
 ## 先选目标
 
 - 先跑 `python3 scripts/evolve.py traces sync`，再跑 `python3 scripts/evolve.py rsi plan`；有 replay 结果时加 `--replay .s2-replay`；
-- RSI plan 合并 trace/metrics/replay 信号，推荐 region，并标记 `actionable` / `needs_agent_attribution` / `needs_agent_selection`；
+- 实验计划合并 trace/metrics/replay 信号，推荐 region，并标记 `actionable` / `needs_agent_attribution` / `needs_agent_selection`；
 - 规则不确定时，让 agent 产出带 evidence 的 region 结论，用 `rsi attribute/select --state` 写回；不要在 skill 里手改 plan；
 - 目标必须是具体 skill 的可变异区；骨架、phase、工具、schema、trace 字段、severity、halt 条件冻结；
 - holdout issue 不进候选池；没有可变异区或归因不明确就停，记 `insufficient`。

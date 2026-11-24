@@ -162,7 +162,7 @@
 
 ## 4 有意保留的例外
 
-- 原则编号（一至十一）与名字是引用锚点：`rsi-mechanism.md`、`evaluation.md`、`records.md`、`operations.md` 与多份 ADR 都按「原则 N（名字）」引用。不重排、不合并、不改名。
+- 原则编号（一至十一）与名字是引用锚点：`evolution-mechanism.md`、`evaluation.md`、`records.md`、`operations.md` 与多份 ADR 都按「原则 N（名字）」引用。不重排、不合并、不改名。
 - 「理论 §N」「推论一」「A1」这类编号指向 [design-theory.md](design-theory.md)，照原样保留。
 - 「halt」「prompt」「fallback」「Tier 3」「fixture」「rollback」等词是本行的执行原值，不翻译。
 
@@ -190,4 +190,4 @@
 
 规范性引用：[design-theory.md](design-theory.md)、[ADR-0001](../adr/0001-soft-version-matching.md)、[ADR-0002](../adr/0002-retrieval-no-rag-lightweight-index.md)。
 
-资料性引用：[rsi-mechanism.md](../mechanism/rsi-mechanism.md)（展开自演进机制，其理论生成处为理论 §4.3）、[roadmap.md](../plan/roadmap.md)。
+资料性引用：[evolution-mechanism.md](../mechanism/evolution-mechanism.md)（展开自演进机制，其理论生成处为理论 §4.3）、[roadmap.md](../plan/roadmap.md)。

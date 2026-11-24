@@ -83,22 +83,22 @@ python3 scripts/evolve_intake.py record \
 role: maintainer / signal-only / off（来源：...）
 信号：<N> 条（或“无”）
 去向：内容 / 确定性 bug / 行为质量 / 高风险 / 观察
-未做：EV 卡、RSI 实验、验证门（按目标态不自动执行）
+未做：演进卡（EV 卡）、受控实验、验证门（按目标态不自动执行）
 ```
 
 ## 去向矩阵（给下一棒看，不在本协议执行）
 
 | 信号性质 | 下一棒 | 入口 |
 |---|---|---|
-| 确定性代码 bug | 回归测试 + PR | 直接修，不产 EV 卡、不跑 RSI |
+| 确定性代码 bug | 回归测试 + PR | 直接修，不产 EV 卡、不跑实验 |
 | 内容缺口 | to-reference / to-postmortem / issue-ingest | 内容 skill |
-| 行为质量 | RSI proposal → experiment → decision → PR | 用户显式发起，见 /skill:self-evolve |
-| 高风险改动 | 轻量 EV 卡作为授权记录 | 人审触发，不替代 RSI/PR |
+| 行为质量 | 实验提案 → experiment → decision → PR | 用户显式发起，见 /skill:self-evolve |
+| 高风险改动 | 轻量 EV 卡作为授权记录 | 人审触发，不替代实验/PR |
 | 体验/质量反馈 | skill-review 的输入 | 累积观察 |
 
 ## 不做什么
 
 - 不在收尾时产 EV 卡；
-- 不自动跑 RSI 实验、不自动判定；
+- 不自动跑受控实验、不自动判定；
 - 不把信号当方案，不写预测；
 - 不因“没有产卡”而认为演进失败——本协议的目标就是只记录。

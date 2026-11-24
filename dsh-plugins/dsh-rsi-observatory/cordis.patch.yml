@@ -1,4 +1,4 @@
-# RSI 实验台：左侧栏图标 + 主区整页
+# 实验台：左侧栏图标 + 主区整页
 #
 # 装法：plugin_manager install_bundle(target: <本目录绝对路径>)
 # 卸载：plugin_manager remove_bundle(target: 'dsh-rsi-observatory')

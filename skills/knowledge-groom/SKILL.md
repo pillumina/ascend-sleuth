@@ -20,7 +20,7 @@ disable-model-invocation: true
 - **人工使用场景（默认周批）**：人通过 diagnose/to-postmortem 等沉淀的草稿——攒 inbox
   到周批统一处理，人审 ~30s/条后升格提 PR（人的注意力是稀缺资源，批处理是预算分配，
   原则九）；
-- **自动化 ingest 场景（可直接升格，不等周批）**：issue-ingest/S2 补 case 等自动化
+- **自动化 ingest 场景（可直接升格，不等周批）**：issue-ingest / issue 回放校准集（S2）补 case 等自动化
   链路产出的草稿——verification 链完整（upstream-fix-merged 等外部验证）+ agent 已过
   语义校验 + pre-triage 判别完成，质量前提与人工场景不同，**产出后可直接走本流程升格
   入库提 PR**（同 2026-W36 round2 全自动轮 22 case 升格先例）。前提：owner 已预授权该
@@ -50,7 +50,7 @@ disable-model-invocation: true
    的索引分片行** `knowledge/_index/<ns>__<category>.list`（一行一条 case；category 未定回退 `<ns>.list`；
    不读全库总表）按 symptoms/tags 定位候选，并只读 1-2 个最高分候选全文核对。draft 头注释已有
    to-postmortem/issue-ingest 产出的分诊建议 → 复核证据是否成立，不重判。
-4. 变更摘要 = 各脚本输出摘要 + agent 判断行；审计链在 EV 卡/PR，不靠每次重读全库。
+4. 变更摘要 = 各脚本输出摘要 + agent 判断行；审计链在演进卡（EV 卡）/PR，不靠每次重读全库。
 
 ## Agent 语义比对（Groom 的强制前置，先于 intake）
 
@@ -274,7 +274,7 @@ python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --post-merge \
    - 逐条**复核预分诊**（agent 判断，给证据；当前不引入 embedding，论证见 docs/adr/0002——可选论证层）：`new_pattern` / `variant_of:<case-id>` / `covered_by:<case-id>` + 置信度。比对对象与候选来自 sidecar 的 `provenance.candidates`；需要复核时读候选全文核对 root_cause/fix（成本预算第 3 条：不全文重读全库）。**draft 头注释已带 to-postmortem/issue-ingest 产出的分诊建议 → 一并核对证据是否成立**（建议与决定分离：判断在产出时做，groom 是审核者）；
    **先判后看（顺序纪律，改不了的自觉就别指望）**：复核候选前，先只读草稿与 sidecar 的 `evidence` 轴，自己写一句判断——症状签名（错误码/关键日志行/数值阈值）、根因假设、修复族方向；再打开候选全文**取证**（我这条假设能否被候选解释，还是只是"看起来像"）。先看候选再判断，判的是**像不像**而不是**对不对**：候选一旦在眼前，语义相近就会把判断拉过去（尤其是措辞相似但根因不同的 draft）。判断行写进批审清单：先写自己的判断，再写与 sidecar / 候选的对照结论；两者不一致时**以证据为准**，别用"候选里有类似的"当理由；
    - 产出**批审清单**交 owner 处理（像清 PR inbox，~30 秒/条）：
-     - `covered_by` → 建议关闭升格；postmortem 转正 `postmortems/YYYY-QN/`（Tier 3 语料，**不是丢弃**）；开 PR，合入后再跑 `groom_close_draft.py` 把草稿移出队列
+     - `covered_by` → 建议关闭升格；postmortem 转正 `postmortems/YYYY-QN/`（Tier 3 语料，即 postmortem 层，**不是丢弃**）；开 PR，合入后再跑 `groom_close_draft.py` 把草稿移出队列
      - `variant_of` → 用草稿**整篇替换**已有 case（先把要保留的内容合并进草稿，再评估；评估后不要再合并）；若要动 `expected`/`fix_on_mismatch` 按高风险变更走双签
      - `new_pattern` → 结构化 + 语义校验 → **过升格条件** → 升格 `knowledge/<ns>/`。写 case 时删掉草稿专用的 `created_at`（它不是 case schema 字段）。校验失败标 `needs-structurer-review`，语义不明标 `needs-human-review`
      - **升格条件（按来源分，不是一刀切）**：跑 `python3 scripts/verify_case_draft.py --gate <草稿路径>`。
@@ -459,7 +459,7 @@ python3 scripts/groom_cleanup.py --pr-body-file <pr-body.md> --post-merge \
 
 批审产出、出变更摘要前，执行一次伴随演进评估（`read skills/evolve-check/SKILL.md`
 遵循；**先按它的第 0 步读部署角色**）：本轮暴露覆盖缺口、reference 家族需扩、或批审环节有重复手动动作与流程摩擦时，**只记录信号**（容量格子压线与健康指标恶化由体检脚本判，不记）：观察交给
-`python3 scripts/evolve_intake.py record …`；收尾不产 EV 卡、不跑 RSI。无信号则摘要加一行"evolve-check：无演进信号"。
+`python3 scripts/evolve_intake.py record …`；收尾不产 EV 卡、不跑实验。无信号则摘要加一行"evolve-check：无演进信号"。
 这是流程默认收尾，**不需要用户另说"改进系统"**。
 
 > 为什么 groom 也要挂：groom 是**批量改动知识库的收尾动作**（升格 / 退休 / 汇总使用记录），

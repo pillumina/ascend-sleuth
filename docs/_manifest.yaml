@@ -40,7 +40,7 @@ layers:
     when: 你要判断某个设计/改动是否合规，或要挑战一条既有规则时
   - id: mechanism
     title: 演进机制（改机制本身才读；日常不必读）
-    when: 你要改演进/评测/编排机制本身时——日常只读 docs/mechanism/rsi-mechanism.md 一篇，论证层在 docs/mechanism/
+    when: 你要改演进/评测/编排机制本身时——日常只读 docs/mechanism/evolution-mechanism.md 一篇，论证层在 docs/mechanism/
   - id: guide
     title: 操作指南（用到那个环节时才读）
     when: 你要搭新部署、装环境（Windows skills 使能）、跑评测、看指标、走 git 门控、或做导入时
@@ -76,16 +76,13 @@ docs:
   - path: docs/spec/terminology.md
     layer: spec
     purpose: 内部行话、易混词与禁用词：禁用词改写、五个英文词的一译一义、六个多义词按语境改；业界通用词不进表
-  - path: docs/evolution.md
-    layer: mechanism
-    purpose: "旧链接入口（保留以免旧链接失效）：内容已并入 mechanism/rsi-mechanism.md，本文只是一页指路，不要在此续写"
   - path: docs/mechanism/evolution-config.md
     layer: mechanism
-    purpose: 自演进配置的唯一入口：sleuth.config.yaml 的角色、policy、profile、store、sync、pipeline 组合与信号/RSI/EV 边界
-  - path: docs/mechanism/rsi-acceptance.md
+    purpose: 自演进配置的唯一入口：sleuth.config.yaml 的角色、policy、profile、store、sync、pipeline 组合与信号/实验/EV 边界
+  - path: docs/mechanism/experiment-acceptance.md
     layer: mechanism
-    purpose: RSI 真实数据验收记录：样本、候选、A/B gate、full flow、store 缺口与插件验证结论
-  - path: docs/mechanism/rsi-mechanism.md
+    purpose: 实验真实数据验收记录：样本、候选、A/B gate、full flow、store 缺口与插件验证结论
+  - path: docs/mechanism/evolution-mechanism.md
     layer: mechanism
     purpose: "机制技术入口：目标、三条环路、一轮演进、角色、人工介入等级、八篇文档地图"
   - path: docs/mechanism/evaluation.md

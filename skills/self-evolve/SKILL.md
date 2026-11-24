@@ -26,8 +26,8 @@ disable-model-invocation: true
 python3 scripts/evolve_mode.py --json
 ```
 
-- `maintainer`：可做观测、分诊、生成 RSI 候选；
-- `signal-only`：只读本地信号与执行记录，不生成 RSI 候选；无信号时报 role 与 0 条并停；
+- `maintainer`：可做观测、分诊、生成受控实验候选；
+- `signal-only`：只读本地信号与执行记录，不生成受控实验候选；无信号时报 role 与 0 条并停；
 - `off`：不做深度轮，报告一行跳过。
 
 ## 第 1 步：聚合信号
@@ -54,8 +54,8 @@ python3 scripts/evolve_mode.py --json
 |---|---|---|
 | 确定性 bug | 可复现、有确定 oracle | 回归测试 + PR |
 | 内容缺口 | 缺 case / reference / 词条 | 内容 skill 的输入 |
-| 行为质量 | 无确定 oracle，需要样本对照 | RSI 候选 |
-| 高风险授权 | 规范文档、评估协议、权限、自动合并边界 | 轻量 EV 卡，作为授权记录 |
+| 行为质量 | 无确定 oracle，需要样本对照 | 受控实验候选 |
+| 高风险授权 | 规范文档、评估协议、权限、自动合并边界 | 轻量演进卡（EV 卡），作为授权记录 |
 | 观察 | 只有现象，没有可执行方案 | 留记录，不升级 |
 
 分诊结论写回记录：
@@ -71,7 +71,7 @@ python3 scripts/evolve_signals.py mark <id> --status triaged|dropped|promoted \
 
 - **确定性 bug**：写清复现步骤、最小回归测试、影响面；可直接进入修复 PR。
 - **内容缺口**：写明缺哪类知识、建议走哪个内容 skill。
-- **行为质量**：写 RSI 候选，至少包含：
+- **行为质量**：写受控实验候选，至少包含：
   - `source_signal`：来自哪条信号；
   - `target_component`：要改的组件；
   - `hypothesis`：改什么、为什么可能有效；
@@ -90,7 +90,7 @@ python3 scripts/evolve_signals.py mark <id> --status triaged|dropped|promoted \
 本轮观测：N 条信号
 归类：确定性 bug A / 内容缺口 B / 行为候选 C / 高风险 D / 观察 E
 建议先做：...
-未执行：RSI 实验、EV 卡、PR（等用户选定）
+未执行：受控实验、EV 卡、PR（等用户选定）
 ```
 
 用户看到的是“有哪些可做的事、建议先做哪条”，不是“哪条已经通过”。
@@ -99,10 +99,10 @@ python3 scripts/evolve_signals.py mark <id> --status triaged|dropped|promoted \
 
 1. **确定性 bug** → 回归测试 + PR；
 2. **内容缺口** → 内容 skill；
-3. **行为质量** → 显式 RSI；
+3. **行为质量** → 显式实验；
 4. **高风险** → 轻量 EV 卡 + 人审。
 
-## 显式 RSI 路径
+## 显式实验路径
 
 只有用户选中行为候选后才执行，不自动运行：
 
@@ -121,7 +121,7 @@ python3 scripts/evolve.py experiment show --proposal <id>
 
 规则：
 
-- 没有真实样本、runner、judge，不进入 RSI；
+- 没有真实样本、runner、judge，不进入实验；
 - 小池只能 `insufficient`，不得用 `weak_accept` 冒充通过；
 - accept 才进入 PR；reject / insufficient 保留结论，不补仪式记录；
 - 实验用哪个 stage 组合由 `evolution.pipeline` 预设决定，不手工改 stage。
@@ -132,14 +132,14 @@ EV 卡只用于授权与历史，不是行为改动的默认前置：
 
 - 规范文档、评估协议、权限、自动合并边界等高风险改动；
 - 需要人明确授权，或需要留授权/回滚记录；
-- 不替代 RSI 实验，也不替代 PR；
+- 不替代受控实验，也不替代 PR；
 - 历史 EV 卡只读，不再作为新行为改动的全量门。
 - 卡标 `validated` 前必须跑 `python3 scripts/ev_measure.py <卡号> --run --record`，PASS 写进 `measure_evidence`；只写 `measure.reason` 的卡不能标 `validated`。
 
 ## 边界
 
-- 深度轮不自动执行 RSI，不自动产 EV 卡；不写 RSI 结论——结论只由 experiment 的 decision 产出；
+- 深度轮不自动执行实验，不自动产 EV 卡；不写实验结论——结论只由 experiment 的 decision 产出；
 - 不把内容缺口和行为质量混成同一类；
 - 不为“有信号”强行造方案；
 - 不越过部署角色；
-- 不把 EV 卡当成 RSI 的 proposal 或 experiment。
+- 不把 EV 卡当成实验提案或 experiment。

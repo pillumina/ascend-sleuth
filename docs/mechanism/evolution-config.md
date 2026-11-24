@@ -4,7 +4,7 @@
 
 ## 1 为什么是一份
 
-自演进配置只在仓库根 `sleuth.config.yaml`。角色、评估策略、成本 profile、RSI store、同步模式、流水线声明都从这里进入；流水线预设本身放独立的 `config/rsi/pipelines.yaml`，避免主配置被 stage 组合膨胀。
+自演进配置只在仓库根 `sleuth.config.yaml`。角色、评估策略、成本 profile、实验记录库、同步模式、流水线声明都从这里进入；流水线预设本身放独立的 `config/rsi/pipelines.yaml`，避免主配置被 stage 组合膨胀。
 
 `sleuth.config.yaml` 是唯一入口：
 
@@ -107,7 +107,7 @@ flowchart TD
   B --> C{分诊}
   C -->|内容缺口| D[issue / eval ingest]
   C -->|确定性 bug| E[回归测试 + PR]
-  C -->|行为质量| F[RSI proposal<br/>source_signal / measure / risk]
+  C -->|行为质量| F[实验提案<br/>source_signal / measure / risk]
   F --> G[experiment<br/>baseline vs candidate]
   G --> H{decision}
   H -->|accept| I[PR]
@@ -122,7 +122,7 @@ flowchart TD
 - **experiment**：同一批真实样本上的 baseline/candidate 对照；证据写进 RSIStore。
 - **decision**：accept / reject / insufficient。
 - **PR**：真正落地。
-- **EV 卡**：不是实验结果的别名。新流程只在高风险或 RSI 覆盖不到时保留轻量授权记录；历史卡只读。
+- **EV 卡**：不是实验结果的别名。新流程只在高风险或实验覆盖不到时保留轻量授权记录；历史卡只读。
 
 ### 3.1 谁在什么时候做什么
 
@@ -132,13 +132,13 @@ flowchart TD
 | 归类与候选 | 用户显式发起深度轮 | `self-evolve` | 分类后的候选队列 |
 | 确定性 bug | 归类或现场发现 | agent | 回归测试 + PR |
 | 内容缺口 | 归类 | 内容 skill | case / reference / ingest |
-| 行为质量 | 用户选中候选后显式发起 | RSI | proposal → experiment → decision |
+| 行为质量 | 用户选中候选后显式发起 | 实验 | proposal → experiment → decision |
 | 高风险授权 | 规范/协议/权限/自动合并边界 | 人审 + agent | 轻量 EV 卡 |
 | 落地 | accept 或修复完成 | agent + 人审 | PR |
 
-`evolve-check` 和 `self-evolve` 都不自动执行 RSI；`self-evolve` 只生产候选，不生产结论。
+`evolve-check` 和 `self-evolve` 都不自动执行实验；`self-evolve` 只生产候选，不生产结论。
 
-## 4 确定性 bug 不走 RSI
+## 4 确定性 bug 不走实验
 
 代码 bug 有确定 oracle：
 
@@ -147,7 +147,7 @@ flowchart TD
 不能复现 → signal + 环境诊断/防御性报错，不写 validated
 ```
 
-只有“没有确定 oracle、需要样本对照”的行为质量改动才走 RSI。
+只有“没有确定 oracle、需要样本对照”的行为质量改动才走实验。
 
 ## 5 配置组合，不做迁移
 

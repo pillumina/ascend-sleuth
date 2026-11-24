@@ -27,11 +27,11 @@ ascend-sleuth 是面向昇腾 NPU 训练与推理问题的诊断知识库。它�
 - 第一次接触、先看系统在做什么：留在本篇，读「0. 两分钟架构总览」，再对照 [ascend-sleuth-architecture.html](diagrams/ascend-sleuth-architecture.html)。
 - 要跑一次诊断、或续接被打断的诊断：读 `skills/diagnose/SKILL.md`、`skills/resume-diagnosis/SKILL.md`。
 - 要把一次调查沉淀成知识、或批量导入上游 issue：读 `skills/to-postmortem/SKILL.md`、`skills/to-reference/SKILL.md`、`skills/issue-ingest/SKILL.md`。
-- 要改演进、评测、编排机制本身，或按层浏览全部文档：先读 [rsi-mechanism.md](mechanism/rsi-mechanism.md)，全部文档见 [docs 怎么读](README.md)。
+- 要改演进、评测、编排机制本身，或按层浏览全部文档：先读 [evolution-mechanism.md](mechanism/evolution-mechanism.md)，全部文档见 [docs 怎么读](README.md)。
 
 ## 不覆盖什么
 
-本篇是导览与演示，不覆盖安装部署、字段定义、机制论证与规范条文。要动手装环境、跑评测、看指标、走 git 门控，读 `docs/guide/`；要判断某个设计或改动是否合规，读 `docs/spec/`；要改机制本身，读 [rsi-mechanism.md](mechanism/rsi-mechanism.md)；case 的字段定义与口径见 `docs/spec/case-schema.md`，reference（先验知识层词条）的字段见 `references/README.md` 与 `references/_types.yaml`。
+本篇是导览与演示，不覆盖安装部署、字段定义、机制论证与规范条文。要动手装环境、跑评测、看指标、走 git 门控，读 `docs/guide/`；要判断某个设计或改动是否合规，读 `docs/spec/`；要改机制本身，读 [evolution-mechanism.md](mechanism/evolution-mechanism.md)；case 的字段定义与口径见 `docs/spec/case-schema.md`，reference（先验知识层词条）的字段见 `references/README.md` 与 `references/_types.yaml`。
 
 ---
 
@@ -46,7 +46,7 @@ ascend-sleuth 是面向昇腾 NPU 训练与推理问题的诊断知识库。它�
 | Tier 1 | `triage-tree.yaml` 路由表 | 症状 → 命名空间（约 30 个分支） |
 | Tier 2 | `knowledge/<ns>/*.yaml` case 规则 | 结构化诊断案例（症状/检查/fix） |
 | Tier 3 | `postmortems/` 原始记录 | 未结构化的排查底稿，关键词兜底 |
-| 先验知识（非检索层）| `references/` 事实与方法论 | 独立于事故；在"缺测量数据"与"缺签名/背景/修复依据"两个缺口处被读（机制见 `docs/mechanism/rsi-mechanism.md`）|
+| 先验知识（非检索层）| `references/` 事实与方法论 | 独立于事故；在"缺测量数据"与"缺签名/背景/修复依据"两个缺口处被读（机制见 `docs/mechanism/evolution-mechanism.md`）|
 
 诊断时 Tier 2 命中直接给结论，未命中走 Tier 3 或源码分析，定位完沉淀成新知识。这就是"知识随使用变厚"：每次兜底后沉淀，下次同类问题直接命中。
 

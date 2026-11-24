@@ -1,4 +1,4 @@
-// dsh-rsi-observatory —— host 半：RSI 实验台的只读数据服务
+// dsh-rsi-observatory —— host 半：实验台的只读数据服务
 //
 // 职责只有三件：
 //   1. 解析会话工作区（含 scripts/rsi_observatory.py 的那份检出）与 Python 解释器；

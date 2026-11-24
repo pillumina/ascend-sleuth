@@ -15,7 +15,7 @@
 
 训练或推理在昇腾 NPU 上中断、精度异常、性能退化时，把日志与版本信息交给 agent。它按症状路由，查先验知识（官方文档与已沉淀事实）框定方向，再加载候选 case 逐条验证。未命中时继续深度排查，可按版本拉源码分析。输出定位结论与修复方案。
 
-定位结束后，新知识进待审队列，每周例行维护去重、升格为 case，同类问题下次直接命中。共性另归纳成先验知识。系统也按使用记录演进：未命中、执行出错、条目过期先记为 signal；深度轮只分诊，确定性 bug 走回归测试，内容缺口走内容 skill，行为质量才显式进入 RSI，高风险改动另做授权。所有改动最终仍走 PR 人审。
+定位结束后，新知识进待审队列，每周例行维护去重、升格为 case，同类问题下次直接命中。共性另归纳成先验知识。系统也按使用记录演进：未命中、执行出错、条目过期先记为 signal；深度轮只分诊，确定性 bug 走回归测试，内容缺口走内容 skill，行为质量才显式进入实验，高风险改动另做授权。所有改动最终仍走 PR 人审。
 
 skill 按 [Agent Skills](https://agentskills.io/) 标准打包。可在 pi、Claude Code、Codex、DeepSeek Harness（DSH）等支持该标准的 agent 中运行；推荐 DSH，面板加载见下文。
 
@@ -108,11 +108,11 @@ knowledge/
 |---|---|---|---|
 | 诊断闭环 | 每次问题（分钟级） | `/skill:diagnose` | 修复建议 + trace |
 | 沉淀闭环 | 定位结束后 / 定期批量 | `/skill:to-postmortem`、`/skill:to-reference`、`/skill:issue-ingest` | 待审队列 → case / reference 词条 |
-| 演进闭环 | 内容流程收尾 / 全库体检轮 | `/skill:evolve-check`、`/skill:self-evolve` | signal → 分诊 → 确定性修复 / 内容 / 显式 RSI / 高风险授权 → PR（人审） |
+| 演进闭环 | 内容流程收尾 / 全库体检轮 | `/skill:evolve-check`、`/skill:self-evolve` | signal → 分诊 → 确定性修复 / 内容 / 显式实验 / 高风险授权 → PR（人审） |
 
 ![ascend-sleuth 架构](docs/diagrams/ascend-sleuth-architecture.png)
 
-每个机制配了什么护栏、每周实际要做什么，见 [自演进元机制](docs/mechanism/rsi-mechanism.md)。
+每个机制配了什么护栏、每周实际要做什么，见 [自演进元机制](docs/mechanism/evolution-mechanism.md)。
 
 ## 适用范围与限制
 

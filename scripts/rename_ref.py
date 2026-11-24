@@ -123,7 +123,7 @@ def rewrite_links(text: str, base_dir: Path, root: Path, old: str, new: str):
         rel = _link_rel(os.path.relpath(new_p, base_dir))
         n += 1
         # 标签本身**是路径形态**（含 `/`）且解到旧路径时一并对齐——否则会出现"指向 A 却写着 B"的链接
-        # （实测形态：[../rsi-mechanism.md](rsi-mechanism.md)）。只当标签不含 `/` 时（如 [eval.md](…)）
+        # （实测形态：[../evolution-mechanism.md](evolution-mechanism.md)）。只当标签不含 `/` 时（如 [eval.md](…)）
         # 它是人读的名字，不是路径，别动。
         lab = label.strip()
         lab_is_path = "/" in lab

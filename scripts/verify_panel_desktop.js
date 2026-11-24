@@ -404,14 +404,14 @@ async function runVerification(options, io) {
       const result = response.envelope && response.envelope.result ? response.envelope.result : null
       const errorCode = result && result.error && result.error.code
       if (response.status === 200 && errorCode === 'E_NO_REPO') {
-        io.warn('RSI RPC      已注册，但临时实例没有仓库 cwd（E_NO_REPO）；host 路由存在')
+        io.warn('实验 RPC   已注册，但临时实例没有仓库 cwd（E_NO_REPO）；host 路由存在')
       } else if (response.status !== 200 || result === null || result.ok !== true) {
         io.warn('RPC /rsi-observatory/rsi-list 不通：HTTP ' + response.status + '，'
           + (result === null ? '应答不是合法信封'
              : 'result.ok=' + String(result.ok) + ' error=' + JSON.stringify(result.error || null)))
         return 1
       } else {
-        io.say('RSI RPC      ok（rsi-list 回 result.ok=true）')
+        io.say('实验 RPC     ok（rsi-list 回 result.ok=true）')
       }
     }
 

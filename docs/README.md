@@ -10,14 +10,14 @@
 
 ## 2 它解决什么问题
 
-同一层的两篇文档如果结构不一致，读者每读一篇都要重新判断哪一节才是结论。分层回答"我现在该读哪篇"；每层内统一的骨架回答"这篇的结论在哪"。某件事由哪篇文档说了算，查 [mechanism/rsi-mechanism.md](mechanism/rsi-mechanism.md) §11.2 的权威归属表——那张表也说明每篇什么时候该读。
+同一层的两篇文档如果结构不一致，读者每读一篇都要重新判断哪一节才是结论。分层回答"我现在该读哪篇"；每层内统一的骨架回答"这篇的结论在哪"。某件事由哪篇文档说了算，查 [mechanism/evolution-mechanism.md](mechanism/evolution-mechanism.md) §4 的权威归属表——那张表也说明每篇什么时候该读。
 
 ## 3 由哪几块组成
 
 | 目录 | 这一层是给谁的 | 什么时候读 |
 |---|---|---|
 | `spec/` | 要改设计或实现的人 | 判断某个改动是否合规之前 |
-| `mechanism/` | 要改机制本身的人、以及要看全景的人 | 改演进、评测、编排机制时。**先读 `mechanism/rsi-mechanism.md`**，那是这一层的入口 |
+| `mechanism/` | 要改机制本身的人、以及要看全景的人 | 改演进、评测、编排机制时。**先读 `mechanism/evolution-mechanism.md`**，那是这一层的入口 |
 | `guide/` | 要动手操作的人 | 装环境、跑评测、看指标、走 git 门控、做导入时 |
 | `plan/` | 要排下一步工作的人 | 决定接下来做什么，或评估能不能推广给一个团队时 |
 | `adr/` | 要推翻某个既有选择的人 | 先看它当初的论证与重评条件 |
@@ -48,12 +48,11 @@
 - [terminology.md](../docs/spec/terminology.md) — 内部行话、易混词与禁用词：禁用词改写、五个英文词的一译一义、六个多义词按语境改；业界通用词不进表
 
 **演进机制（改机制本身才读；日常不必读）**
-*你要改演进/评测/编排机制本身时——日常只读 docs/mechanism/rsi-mechanism.md 一篇，论证层在 docs/mechanism/*
+*你要改演进/评测/编排机制本身时——日常只读 docs/mechanism/evolution-mechanism.md 一篇，论证层在 docs/mechanism/*
 
-- [evolution.md](../docs/evolution.md) — 旧链接入口（保留以免旧链接失效）：内容已并入 mechanism/rsi-mechanism.md，本文只是一页指路，不要在此续写
-- [evolution-config.md](../docs/mechanism/evolution-config.md) — 自演进配置的唯一入口：sleuth.config.yaml 的角色、policy、profile、store、sync、pipeline 组合与信号/RSI/EV 边界
-- [rsi-acceptance.md](../docs/mechanism/rsi-acceptance.md) — RSI 真实数据验收记录：样本、候选、A/B gate、full flow、store 缺口与插件验证结论
-- [rsi-mechanism.md](../docs/mechanism/rsi-mechanism.md) — 机制技术入口：目标、三条环路、一轮演进、角色、人工介入等级、八篇文档地图
+- [evolution-config.md](../docs/mechanism/evolution-config.md) — 自演进配置的唯一入口：sleuth.config.yaml 的角色、policy、profile、store、sync、pipeline 组合与信号/实验/EV 边界
+- [experiment-acceptance.md](../docs/mechanism/experiment-acceptance.md) — 实验真实数据验收记录：样本、候选、A/B gate、full flow、store 缺口与插件验证结论
+- [evolution-mechanism.md](../docs/mechanism/evolution-mechanism.md) — 机制技术入口：目标、三条环路、一轮演进、角色、人工介入等级、八篇文档地图
 - [evaluation.md](../docs/mechanism/evaluation.md) — 评估对象与评估集、rubric、配对判定、成本、版本，以及评估台（arena）的池与结论
 - [records.md](../docs/mechanism/records.md) — 记录与数据契约：改进项卡 schema、样本、执行、结论、接口、存储归属、版本坐标
 - [operations.md](../docs/mechanism/operations.md) — 运行节奏：触发入口、运行模式与授权、停止条件、每周流程、采样、内容维护、长期任务

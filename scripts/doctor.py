@@ -365,7 +365,7 @@ def check_evolution(root: Path):
                 "note": "收尾检查会停下来问人，不会自己挑一档跑",
                 "fix": "改 sleuth.config.yaml 的 evolution.role 为 maintainer / signal-only / off 之一"}
     meaning = {
-        "maintainer": "维护者部署：信号分诊后可跑 RSI 实验；EV 卡只作高风险授权",
+        "maintainer": "维护者部署：信号分诊后可跑受控实验；EV 卡只作高风险授权",
         "signal-only": "只记信号，不跑实验（本地/内网 fork）",
         "off": "不做收尾检查",
     }[role]

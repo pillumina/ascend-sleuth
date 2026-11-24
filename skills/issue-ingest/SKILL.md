@@ -142,7 +142,7 @@ python3 scripts/issue_filter.py --state ingest-state.json \
 
 - **to-postmortem**：issue 提炼复用其沉淀逻辑（本 skill 只做"外部源的预过滤与编排"，不重复提炼）；
 - **knowledge-groom**：inbox 批量审、转正、索引重建在 groom 轮；
-- **诊断**（diagnose）：沉淀的 case 转正后进入 Tier 2，下次诊断命中。
+- **诊断**（diagnose）：沉淀的 case 转正后进入二级 case 层（Tier 2），下次诊断命中。
 
 ## 幂等与可重复
 

@@ -1,6 +1,6 @@
 # 自演进用户指南
 
-本文写给使用这套系统的工程师：你用什么语言下目标、系统在什么时候只记录、什么时候会变重、怎么进入 RSI、怎么读结果。机制设计与判定细节见 [rsi-mechanism.md](../mechanism/rsi-mechanism.md)、[evaluation.md](../mechanism/evaluation.md) 与 [evolution-config.md](../mechanism/evolution-config.md)。
+本文写给使用这套系统的工程师：你用什么语言下目标、系统在什么时候只记录、什么时候会变重、怎么进入实验、怎么读结果。机制设计与判定细节见 [evolution-mechanism.md](../mechanism/evolution-mechanism.md)、[evaluation.md](../mechanism/evaluation.md) 与 [evolution-config.md](../mechanism/evolution-config.md)。
 
 ## 1 先看边界
 
@@ -14,7 +14,7 @@
   → 结束
 ```
 
-不产 EV 卡，不跑 RSI 实验，不跑验证门。这是默认行为，不需要你额外说“别跑重的”。
+不产 EV 卡，不跑受控实验，不跑验证门。这是默认行为，不需要你额外说“别跑重的”。
 
 真正会改系统行为的三条路是分开的：
 
@@ -22,7 +22,7 @@
 |---|---|---|
 | 确定性代码 bug | 回归测试 + PR | 现场发现即可修 |
 | 内容缺口 | to-reference / to-postmortem / issue-ingest | 内容流程 |
-| 行为质量（无确定 oracle） | RSI proposal → experiment → decision → PR | 你显式发起 |
+| 行为质量（无确定 oracle） | 实验提案 → experiment → decision → PR | 你显式发起 |
 | 高风险授权 | 轻量 EV 卡 | 人审触发 |
 
 ## 2 日常：只记信号
@@ -77,7 +77,7 @@ samples（够不够）
 
 样本不够时先补样本，不跑空实验。
 
-## 4 显式 RSI
+## 4 显式实验
 
 只有你选中行为候选后，才进入重型流程：
 
@@ -96,7 +96,7 @@ python3 scripts/evolve.py experiment show --proposal <id>
 
 规则：
 
-- 没有真实样本、runner、judge，不进入 RSI；
+- 没有真实样本、runner、judge，不进入实验；
 - 小池只能 `insufficient`，不得用 `weak_accept` 冒充通过；
 - `accept` 才进入 PR；`reject` / `insufficient` 保留结论；
 - stage 组合由 `evolution.pipeline` 预设决定，不手工改 stage；
@@ -109,7 +109,7 @@ EV 卡不是行为改动的默认前置，也不是实验结果的别名。它�
 - 规范文档、评估协议、权限、自动合并边界；
 - 需要人明确授权或留授权/回滚记录的高风险改动。
 
-EV 卡不替代 RSI，也不替代 PR。历史 EV 卡只读。
+EV 卡不替代实验，也不替代 PR。历史 EV 卡只读。
 
 ## 6 部署角色
 
@@ -119,7 +119,7 @@ evolution:
   role: maintainer   # maintainer | signal-only | off
 ```
 
-| role | 收尾 | 深度轮 | RSI |
+| role | 收尾 | 深度轮 | 实验 |
 |---|---|---|---|
 | `maintainer` | 记信号 | 可归类行为候选 | 可显式跑 |
 | `signal-only` | 记信号 | 只读本地观察 | 不跑 |
@@ -137,12 +137,12 @@ python3 scripts/evolve_mode.py --set signal-only
 
 - 想停：让 agent 停止当前轮；已写信号保留。
 - 想换方向：改本轮目标，已归类的候选可标 `dropped`。
-- 想回滚：代码改动走 revert；RSI 结论保留原 decision，不篡改历史。
+- 想回滚：代码改动走 revert；实验结论保留原 decision，不篡改历史。
 - 想关演进：设 `role: off`，只留跳过记录。
 
 ## 8 常见误解
 
 - “收尾没产卡 = 演进失败”：不是，收尾只记录信号。
 - “深度轮会自动改系统”：不会，只给候选。
-- “行为改动必须先产 EV 卡”：不是，行为质量走 RSI；EV 卡只用于高风险授权。
-- “EV 卡就是 RSI 结论”：不是，EV 卡是授权/历史记录，实验结论在 RSIStore。
+- “行为改动必须先产 EV 卡”：不是，行为质量走实验；EV 卡只用于高风险授权。
+- “EV 卡就是实验结论”：不是，EV 卡是授权/历史记录，实验结论在 RSIStore。

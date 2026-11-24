@@ -130,7 +130,7 @@ fetch 失败时标 `kb_sync: failed`，原因写进 `kb_sync_reason`。
 它与「两边都写」的差别在追加的粒度：一周一个文件、一行一条自包含记录（每行带 `deployment`），配了 `merge=union`——同周并发时各人各写各的行、两侧都留住，行序不影响结果（前提是「一行一条」，见 `.gitattributes` 的注释）。读端按 `deployment` 分组，一个部署出一份生成物 `metrics/entry-activity/<部署>.yaml`，不跨部署合并：合并两侧的行只解决同部署的并发，两份部署的计数不会被加成一条排行。它与 `metrics/timeline.d/` 一样按自然周命名，一个文件里可能装两个部署的行。
 
 追加型（一信号一文件，跨部署不冲突）：`proposals/signals/`（落在主检出，周批收进 PR）。
-文件名是内容哈希，不是序号——两个部署各写各的文件，不会撞号；同名文件表示同一条信号，只追加 `occurrences` 与 `last_seen`。`signal-only` 部署用它交接收尾信号；`maintainer` 也先写信号，再按分诊进入 RSI。本目录只放信号、证据与出处。
+文件名是内容哈希，不是序号——两个部署各写各的文件，不会撞号；同名文件表示同一条信号，只追加 `occurrences` 与 `last_seen`。`signal-only` 部署用它交接收尾信号；`maintainer` 也先写信号，再按分诊进入实验。本目录只放信号、证据与出处。
 
 每部署一份（不参与合并）：`sleuth.config.yaml`、`metrics/timeline.d/`、`metrics/timeline.yaml`、`ingest-state.json`、`reference-ingest-state.json`、`eval/scorecard.yaml`、`.github/CODEOWNERS`（owner 名单各仓不同）。
 冲突时保留本仓那份。同期名的指标文件也按本仓处理——两份部署的读数混进一条趋势线本身不成立。
@@ -152,7 +152,7 @@ idea 卡（`proposals/ideas/`）是机制账本，归上游。两条原因：
 
 fork 负载类型的机制缺口写进 MR 描述或 issue，由维护者拿到上游产卡。内容产出（补 case、补词条、扩错误码家族、从 case 归纳 reference）不产卡；EV 卡只用于高风险授权，见 `skills/evolve-check/SKILL.md` 与 `skills/self-evolve/SKILL.md`。fork 长期无法访问上游、又确实需要本地决策档案时，用与上游不重叠的号段或前缀，并让该目录归 fork 独占——复用 `proposals/ideas/` 的号段会让重号问题原样保留。
 
-**这条规则由声明承载，不靠记性**：fork 在自己的 `sleuth.config.yaml` 里写 `evolution.role: signal-only`，evolve-check 收尾与深度轮都先读它（`scripts/evolve_mode.py`）。不设时缺省 `maintainer`（上游行为）；fork 要显式声明 `signal-only`，否则收尾会按维护者路径处理。`signal-only` 下信号照记、执行记录照落，只把"该走 RSI"的结论改成写进信号记录或 MR 描述。
+**这条规则由声明承载，不靠记性**：fork 在自己的 `sleuth.config.yaml` 里写 `evolution.role: signal-only`，evolve-check 收尾与深度轮都先读它（`scripts/evolve_mode.py`）。不设时缺省 `maintainer`（上游行为）；fork 要显式声明 `signal-only`，否则收尾会按维护者路径处理。`signal-only` 下信号照记、执行记录照落，只把"该走实验"的结论改成写进信号记录或 MR 描述。
 
 ### Skill 自包含边界（SKILL.md 与 docs/ 的引用关系）
 
@@ -233,7 +233,7 @@ python3 scripts/rebuild_generated.py --sync --dry-run
 1. 机器字段保持词法：YAML 枚举字段（`layer`/`status`/`method`/`authorization` 等）不做中文替换——它们是脚本与 CI 的契约；
 2. 人读 prose 首次出现即解码：docs 论证文字、EV 卡 prose 字段、PR body、批审摘要、报告里，代号第一次出现写"含义（代号）"或"代号〔含义〕"，之后才允许裸用；高危字母（E/T/G/EV/Phase，及 A/M/O/P+数字）与落地 Phase 系列裸用即歧义，首次出现必解码；
 3. 审读面优先：批量审 / PR 审读用解码渲染（`scripts/render_review_summary.py --card/--diff/--scan`，词表 `docs/glossary.yaml`），源文件不变——人审读渲染视图，不裸读 diff；渲染出的未登记代号告警即"先登记再使用"的自我约束；
-4. 新增代号先登记，并同时定它的生存范围：`docs/glossary.yaml`（机器数据，唯一权威）里每条带 `scope` 字段——`["*"]` 只给领域语汇（分层 L1–L3、反馈通道 S1–S3、平台与 skill 名）；记账号（roadmap 事项 A/E/M/O/P、治理缺口 G、触发信号 T、落地阶段 Phase）只在各自的计划文档里裸用，机制文档 / PR body / EV 卡 prose 要引用就写中文含义。旧做法要求"在 docs/evolution.md 顶部指代速查表补一行"——那张表已删（它把术语表变成了代号登记处，且把"起新代号"从需要理由变成需要登记）；
+4. 新增代号先登记，并同时定它的生存范围：`docs/glossary.yaml`（机器数据，唯一权威）里每条带 `scope` 字段——`["*"]` 只给领域语汇（分层 L1–L3、反馈通道 S1–S3、平台与 skill 名）；记账号（roadmap 事项 A/E/M/O/P、治理缺口 G、触发信号 T、落地阶段 Phase）只在各自的计划文档里裸用，机制文档 / PR body / EV 卡 prose 要引用就写中文含义。旧做法要求在机制入口页顶部维护指代速查表——那张表已删（它把术语表变成了代号登记处，且把"起新代号"从需要理由变成需要登记）；
 5. 越界用途可查：`python3 scripts/render_review_summary.py --scan docs/ README.md CONTEXT.md`（可传目录）会报三类——未登记代号、越界用途（新人可见面单列并优先清理，其余按文件计数可增量清理）、以及词表冲突。`docs/adr/` 与 `proposals/` 是只追加的档案，豁免越界检查（不追溯改历史）；
 6. 同形冲突登记而不改名：`A1/A2/A3` 同时是设计公理、roadmap 事项与平台代号前缀，`P0` 同时是优先级与（易混的）流程事项族——这类冲突在词表里各自登记、用 `scope` 消歧，不靠改历史编号（改编号会打烂只追加档案里的引用）。新增代号前先查是否已有同形；
 7. 跨文档引用不写裸小节号：引用别处的小节写 `文件名 §N` 或直接写小节标题，不写裸 `§N`（读者不知道是哪篇；且小节号会随文档重排失效——仓库里现存约 100 处这类引用，属历史欠账，见 EV-2026-052 残留）。不硬门化：无"复发 ≥2 次"的证据，不满足检查准入三条件；
@@ -367,7 +367,7 @@ python3 scripts/rebuild_generated.py --check
 
 判据的独立性只有一条标准：改动者不能靠"写文字"通过它。PR 里的命题（success_criteria 达成、无回归、断言全过）多由制造改动的同一过程写成，而 CI 检查的是内部自洽（索引新鲜度、YAML 合法性、模板结构齐全）——因此"CI 绿 + 测试过"对"该不该合"的信息量接近于零，reviewer 会被逼在"开全文"与"直接批"之间二选一（`mechanism/records.md` §3.1 把这一失效形态命名为"橡皮图章"）。
 
-改动侧义务：行为质量改动带 RSI 实验的 measure；高风险 EV 卡只记录授权与回滚。reviewer 侧动作：
+改动侧义务：行为质量改动带受控实验的 measure；高风险 EV 卡只记录授权与回滚。reviewer 侧动作：
 
 ```
 python3 scripts/ev_measure.py <card-id> --run    # 打印判据命令 + 期望，执行并比对
