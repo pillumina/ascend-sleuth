@@ -26,6 +26,7 @@
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -36,9 +37,151 @@ from _cli import main_entry
 OVERFLOW_THRESHOLD = 5   # 阶段二硬约束：候选 ≤5
 DEGRADE_RATE = 0.20      # ADR-0004：候选溢出率 >20% = 恶化
 
-GREP_PATTERN_RE = re.compile(r"grep\s+-[a-zA-Z]*[eE]?\s*['\"]([^'\"]+)['\"]")
-GREP_FIXED_RE = re.compile(r"grep\s+-[a-zA-Z]*F\s*['\"]([^'\"]+)['\"]")
+# 两条真实命令暴露过旧实现的截断：`grep -E "sfa_cp...|'NoneType' object ..."` 里层是单引号、
+# 外层是双引号，`grep -aE "Can't find ..."` 的 `Can't` 里也是单引号。旧正则用 `[^'"]+` 抓引号
+# 内容，遇到内层另一种引号就断，模式被截成 `sfa_cp...|`（右半边空分支，恒真）或 `Can`（过宽），
+# 候选数虚高。切分改走 shell 词法：引号与反斜杠按 shell 规则解码，同时记下这个词有没有被引号
+# 包住——未加引号的裸词（如 `grep -i version`）是取日志的手段，不算判别式；`grep -v` 是排除项，
+# `pgrep` 不是 `grep`，两者都不算。
 EXPECTED_REGEX_PREFIX = "regex:"
+_SHELL_BREAKS = {"|", "||", "&&", ";", "&", ">", ">>", "<", "(", ")"}
+_OPERATORS = ("||", "&&", ">>", "|", "&", ";", "<", ">", "(", ")")
+
+
+def _shell_tokens(cmd):
+    """按 shell 词法切命令，返回 [(词, 是否被引号包住)]；引号不配对时返回 []。
+
+    只做取判别式需要的部分：单双引号、双引号内与未加引号的反斜杠转义、空白与
+    `| ; & < > ( )` 分隔。不做变量展开与命令替换。
+    """
+    tokens = []
+    i, n = 0, len(cmd)
+    unterminated = False
+    while i < n:
+        c = cmd[i]
+        if c.isspace():
+            i += 1
+            continue
+        if c == "#":
+            break
+        op = next((o for o in _OPERATORS if cmd.startswith(o, i)), None)
+        if op:
+            tokens.append((op, False))
+            i += len(op)
+            continue
+        buf, quoted = [], False
+        while i < n:
+            c = cmd[i]
+            if c.isspace():
+                break
+            if next((o for o in _OPERATORS if cmd.startswith(o, i)), None):
+                break
+            if c == "'":
+                quoted = True
+                i += 1
+                end = cmd.find("'", i)
+                if end < 0:
+                    unterminated = True
+                    buf.append(cmd[i:])
+                    i = n
+                    break
+                buf.append(cmd[i:end])
+                i = end + 1
+                continue
+            if c == '"':
+                quoted = True
+                i += 1
+                closed = False
+                while i < n:
+                    ch = cmd[i]
+                    if ch == '"':
+                        i += 1
+                        closed = True
+                        break
+                    if ch == "\\" and i + 1 < n and cmd[i + 1] in '"\\$`\n':
+                        i += 1
+                    buf.append(cmd[i])
+                    i += 1
+                if not closed:
+                    unterminated = True
+                continue
+            if c == "\\" and i + 1 < n:
+                buf.append(cmd[i + 1])
+                i += 2
+                continue
+            buf.append(c)
+            i += 1
+        tokens.append(("".join(buf), quoted))
+    return [] if unterminated else tokens
+
+
+def grep_patterns(cmd):
+    """从命令模板里取被引号包住的 grep 判别式；`-F` 的固定串转义成字面量。
+
+    只取正向、带选项、加了引号的 grep：裸词是取日志的手段，`grep -v` 是排除项，
+    两者都不该参与"这条 case 认什么症状"的候选计数。
+    """
+    tokens = _shell_tokens(cmd)
+    out = []
+    i = 0
+    while i < len(tokens):
+        if os.path.basename(tokens[i][0]) != "grep":
+            i += 1
+            continue
+        j = i + 1
+        inverted = fixed = saw_option = False
+        pattern = None
+        quoted = False
+        while j < len(tokens) and tokens[j][0] not in _SHELL_BREAKS:
+            t, q = tokens[j]
+            if t == "--":
+                saw_option = True
+                if j + 1 < len(tokens) and tokens[j + 1][0] not in _SHELL_BREAKS:
+                    pattern, quoted = tokens[j + 1]
+                    j += 2
+                break
+            if t in ("-e", "--regexp"):
+                saw_option = True
+                if j + 1 < len(tokens):
+                    pattern, quoted = tokens[j + 1]
+                    j += 2
+                break
+            if t in ("-f", "--file"):
+                # 模式来自文件，没有内联判别式；后面的位置参数是待搜文件，不能当模式。
+                saw_option = True
+                pattern = None
+                break
+            if t.startswith("--regexp="):
+                pattern, quoted = t.split("=", 1)[1], q
+                saw_option = True
+                j += 1
+                break
+            if t.startswith("--file="):
+                saw_option = True
+                pattern = None
+                break
+            if t.startswith("--"):
+                inverted = inverted or t == "--invert-match"
+                fixed = fixed or t == "--fixed-strings"
+                saw_option = True
+                j += 1
+                continue
+            if t.startswith("-") and len(t) > 1:
+                inverted = inverted or "v" in t[1:]
+                fixed = fixed or "F" in t[1:]
+                saw_option = True
+                if "f" in t[1:]:
+                    pattern = None
+                    break
+                j += 1
+                continue
+            pattern, quoted = t, q
+            j += 1
+            break
+        if pattern and quoted and saw_option and not inverted:
+            out.append(re.escape(pattern) if fixed else pattern)
+        i = max(j, i + 1)
+    return out
 
 
 def load_yaml(path):
@@ -85,10 +228,7 @@ def patterns_of_case(case):
             continue
         cmd = entry.get("command_template") or entry.get("command") or ""
         if isinstance(cmd, str) and cmd:
-            for m in GREP_FIXED_RE.findall(cmd):
-                out.append(re.escape(m))
-            for m in GREP_PATTERN_RE.findall(cmd):
-                out.append(m)
+            out.extend(grep_patterns(cmd))
         expected = entry.get("expected") or ""
         if isinstance(expected, str) and expected.startswith(EXPECTED_REGEX_PREFIX):
             out.append(expected[len(EXPECTED_REGEX_PREFIX):].strip())
