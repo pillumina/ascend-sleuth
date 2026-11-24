@@ -112,6 +112,18 @@ def load_config(root: Optional[Path] = None, path: Optional[Path] = None) -> Dic
         raise ConfigError("evolution.policy 必须是映射")
     if not isinstance(policy.get("experiment", {}), dict):
         raise ConfigError("evolution.policy.experiment 必须是映射")
+    recipe = (policy.get("experiment") or {}).get("recipe")
+    if recipe:
+        from evolve.recipes import RecipeError, load_recipes
+        try:
+            recipes = load_recipes(root)
+        except RecipeError as exc:
+            raise ConfigError(f"evolution.policy.experiment.recipe: {exc}") from exc
+        if recipe not in recipes:
+            raise ConfigError(
+                f"evolution.policy.experiment.recipe 是 {recipe!r}，"
+                f"不在 {sorted(recipes)} 里"
+            )
     profiles = evolution.get("profiles")
     if not isinstance(profiles, dict):
         raise ConfigError("evolution.profiles 必须是映射")

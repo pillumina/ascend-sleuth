@@ -50,6 +50,7 @@ from .health import cmd_health, register as register_health
 from .judge import (cmd_judge, cmd_judge_calibration, cmd_judge_stats,
                     register as register_judge)
 from .loo import register as register_loo
+from .loop import register as register_loop
 from .pilot import (cmd_pilot_checkpoint, cmd_pilot_collect, cmd_pilot_decide,
                     cmd_pilot_prepare, register as register_pilot)
 from .policy import (cmd_policy_autonomy, cmd_policy_check, cmd_policy_show,
@@ -88,6 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
     register_readback(sub)
     register_judge(sub)
     register_loo(sub)
+    register_loop(sub)
     register_replay(sub)
     register_store(sub)
     register_experiment(sub)

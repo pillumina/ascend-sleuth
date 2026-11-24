@@ -1,6 +1,6 @@
 # 机制状态与代码入口
 
-本文是全库唯一的机制状态表与代码入口表。各篇机制文档不再各留一份状态表与「正文用词 ↔ 代码名」映射表，只留一行指向本文的指针；机制状态变化时改本文，不改各篇。
+本文是全库的机制状态表与代码入口表。各篇机制文档不再各留一份状态表与「正文用词 ↔ 代码名」映射表，只留一行指向本文的指针；机制状态变化时改本文，不改各篇。
 
 状态取值只有四种：**已落地**、**蓝图**（设计保留、触发条件出现才实现）、**已否决**（做过或考虑过，理由记在定义处）、**未建**（设计已写、实现位置为空或不存在）。一条机制只待在一个状态里。
 
@@ -78,6 +78,12 @@
 | regression 预算配置（常规 6 / 全量 30） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 -c "import sys; sys.path.insert(0,'scripts'); from evolve.policy import DEFAULTS; r=DEFAULTS['cost']['runs']; sys.exit(0 if (r['regression_pairs'], r['regression_full_pairs'])==(6,30) else 1)"` |
 | test / regression 通用 stage runner（plan / run / report） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/evolve.py stage --help` |
 | stage agent adapter（dsh / claude / echo / command；外部进程执行诊断的入口） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/agent_adapter.py --help` |
+| 搜索循环层契约与注册表（快照、动作、预算、决策、LoopSpec） | [evaluation.md](evaluation.md) 3.11 | 已落地 | `python3 scripts/evolve.py loop list`；`python3 scripts/evolve.py loop show --loop skillopt` |
+| 搜索算法 recipe 与默认选择（`experiment.recipe`） | [algorithm-recipes.md](../guide/algorithm-recipes.md) | 已落地 | `python3 scripts/evolve.py policy check`；`python3 -m unittest tests.self_evolution.test_recipes` |
+| GEPA、LOO、baseline 迁到搜索循环注册表；Proposal 搜索由 `loops/proposal.py` 驱动 `ProposalEngine.run` | [evaluation.md](evaluation.md) 3.11 | 已落地 | `python3 -m unittest tests.self_evolution.test_loop_contract`；`python3 -m unittest tests.self_evolution.test_proposal_engine` |
+| 多臂比较与顺序链组合实验 | [evaluation.md](evaluation.md) 3.11 | 已落地 | `python3 scripts/evolve.py experiment arms --help`；`python3 -m unittest tests.self_evolution.test_experiment_arms` |
+| SkillOpt 快更新搜索循环 | [evaluation.md](evaluation.md) 3.11 | 已落地 | `python3 scripts/evolve.py loop show --loop skillopt`；`python3 -m unittest tests.self_evolution.test_skillopt` |
+| SkillOpt 慢更新与 meta-skill | [rsi-loop-abstraction.md](../../proposals/rsi-loop-abstraction.md) | 蓝图 | 采样池达到 20 条且快更新对照有效 |
 | stage judge（外部评分 + meta 来源 + 校准） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/evolve.py stage judge --help` |
 | test 门禁（field accept / candidate / 完整证据 / 样本封存） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/evolve.py stage report --help` |
 | judge 元数据与成本入 Conclusion | [evaluation.md](evaluation.md) 3.4 | 已落地 | `grep -n "judge" scripts/evolve/pilot.py` |
@@ -187,6 +193,7 @@
 | 长期任务层与执行记录的关键脚本 | `scripts/log_skill_exec.py`、`verify_exec_log.py`、`tail_exec_log.py`、`exec_log_path.py`、`metrics_snapshot.py`、`build_timeline.py`、`settle_s2_feedback.py`、`s2_calibration.py`、`s2_replay.py`、`verify_proposals.py` |
 | 评估台、arena | `scripts/eval_arena.py` |
 | 样本队列、判定与读数（v1） | `scripts/evolve.py`（`policy` / `sample` / `judge` / `brief`）、`scripts/evolve/`、`sleuth.config.yaml 的 evolution.policy` |
+| 搜索循环、组合实验与决策记录 | `scripts/evolve/loops/`、`scripts/evolve/experiment_spec.py`、`scripts/evolve/experiment_session.py`；CLI `loop`、`experiment arms` |
 | 结论与执行记录（v1） | `.s2-replay/evolve/conclusions.jsonl`、`runs.jsonl` |
 | 判定池 | `.s2-replay/arena/pool-val.yaml`（`role: judgment`） |
 | 回归池 | `.s2-replay/arena/pool-val-absorbed.yaml`（`role: regression`） |
@@ -212,7 +219,7 @@
 
 | 文档 | 管什么 |
 |---|---|
-| 本文 | 全库唯一的机制状态表、未建与空转、代码与文件入口 |
+| 本文 | 全库的机制状态表、未建与空转、代码与文件入口 |
 | [evolution-user-guide.md](../guide/evolution-user-guide.md) | 面向使用者的指令、报告与干预语言 |
 | [design-principles.md](../spec/design-principles.md) | 原则一至原则十一的出处 |
 | [design-theory.md](../spec/design-theory.md) | 理论推导，含注意力预算与常数接受实测重校 |

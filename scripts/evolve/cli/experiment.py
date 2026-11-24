@@ -26,6 +26,7 @@ from ..store import RSIStore
 from ..targets.base import DEFAULT_TARGET
 from ..targets.registry import (get_target, resolve_evaluator, resolve_optimizer,
                                 target_ids)
+from .arms import register as register_arms
 from .common import (CliError, evolve_base, json_object_arg, policy_for,
                      sample_store, yaml_or_json_object)
 
@@ -388,7 +389,7 @@ def cmd_experiment_resolve(args: argparse.Namespace) -> int:
 
 
 def register(subparsers) -> None:
-    experiment = subparsers.add_parser("experiment", help="算法适配器")
+    experiment = subparsers.add_parser("experiment", help="算法适配器、组合实验与门禁")
     experiment_sub = experiment.add_subparsers(dest="experiment_command", required=True)
     exp_list = experiment_sub.add_parser("list", help="列出注册算法与 policy 选择")
     exp_list.add_argument("--root", default=".", help="策略根目录")
@@ -481,3 +482,4 @@ def register(subparsers) -> None:
     exp_propose.add_argument("--draft", default=None,
                              help="agent 写好的 target-specific 草案 JSON；不调用模型")
     exp_propose.set_defaults(func=cmd_experiment_propose)
+    register_arms(experiment_sub)

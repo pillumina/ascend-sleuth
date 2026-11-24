@@ -1,6 +1,6 @@
 # 运行：节奏、预算与内容维护
 
-演进不是一条单独的流水线，而是内容工作收尾时的伴随动作；需要全库观测时，人才显式跑一轮深度轮。本文说清什么时候跑、一轮的边界在哪、每周具体做什么、花多少预算，以及长期任务与视图怎么装配。
+演进是内容工作收尾时的伴随动作；需要全库观测时，人才显式跑一轮深度轮。本文说清什么时候跑、一轮的边界在哪、每周具体做什么、花多少预算，以及长期任务与视图怎么装配。
 
 读者是要跑一轮、排一周的活、定停止条件或改进流程的人。前置是 [evolution-mechanism.md](evolution-mechanism.md)（机制入口）、[records.md](records.md)（记录与卡）、[evaluation.md](evaluation.md)（判定规则）。只想知道系统在做什么的人不必读本文。
 
@@ -8,7 +8,7 @@
 
 ## 1 解决什么问题
 
-自演进会持续运行，还会改自己。没有边界就审计不了，也停不下来。缺的是四样：入口协议、一轮的目标与停止条件、预算、固定的每周动作。本文补这四样。明确不解决：判定怎么算（[evaluation.md](evaluation.md)）、卡要记什么（[records.md](records.md)）、单个 skill 内部的执行规则（各 skill 正文）。
+自演进会持续运行，还会改自己。没有边界就审计不了，也停不下来。入口协议、一轮的目标与停止条件、预算、固定的每周动作是四件必须写清的事。判定怎么算（[evaluation.md](evaluation.md)）、卡要记什么（[records.md](records.md)）、单个 skill 内部的执行规则（各 skill 正文）不在本文。
 
 ## 2 最小可执行模型
 
@@ -109,11 +109,13 @@
 | 跑一次体检 | `python3 scripts/evolution_health.py` |
 | 评审一项改进 | `python3 scripts/ev_measure.py <卡号> --run --record`（PASS 写进卡的 `measure_evidence`；会改 tracked 卡，在 worktree 里跑并随 PR 提交） |
 | 查看算法适配器 | `python3 scripts/evolve.py experiment list`；按 target 解析用 `experiment resolve --target skill` |
+| 查看搜索循环 | `python3 scripts/evolve.py loop list`；`loop show --loop <搜索循环名>` |
+| 跑搜索循环或多臂实验 | `loop init/next/apply/result`；`experiment arms init/next/apply/result` |
 | 看完整 metrics 体检 | `python3 scripts/evolve.py health --json`（只读；`--check` 有 fail 退出 1，broken 退出 2；不带 `--check` 的读数命令仍退出 0，与 `metrics_health.py` 一致） |
 | 记录一个 baseline 提案 | `python3 scripts/evolve.py experiment propose --target skill --component <组件> --summary <一句话>`（只写本地实验记录，不跑模型、不合入） |
 | 查看本地实验记录 | `python3 scripts/evolve.py experiment records --limit 10` |
 | 记录 subagent 对照实验 | 显式进入实验：`experiment request` → `experiment flow` → `experiment show` |
-| agent-native GEPA | 状态机 `scripts/agent_gepa.py`；不接官方 gepa 库，不依赖外部 endpoint |
+| agent-native GEPA | 搜索循环实现 `scripts/evolve/loops/gepa.py`；`scripts/agent_gepa.py` 是旧入口薄包装；不接官方 gepa 库，不依赖外部 endpoint |
 | 增量 trace 归因 | `python3 scripts/evolve.py traces sync`；`traces status` 看 snapshot/状态 |
 | 知识使用效率 | `python3 scripts/evolve.py knowledge-usage evaluate/compare`；只读 usage JSON，不改 case |
 | 真实 pilot 编排 | `pilot prepare/collect`；创建隔离 candidate worktree、写 baseline/candidate 任务清单、收集 trace/输出 |
@@ -133,7 +135,11 @@
 
 trace 归因的幂等状态在 `.s2-replay/evolve/trace-state.json`：键是 `(source_id, trace_id, content_sha256, attribution_schema)`；同内容同 schema 跳过，trace 内容变化或 schema 升级才重算。`snapshot_id` 由当前活跃 trace 集合再哈希，用来判断状态是否对应当前 trace 集。`traces sync` 会把归因组件映射到 `regions.py` 的可变异区；没有匹配就空，不猜。未来 collector 实现 `TraceSource` 并换 `source_id`，不复制归因/状态机。
 
-metrics 的消费分两跳：诊断只写本地 trace；`trace_entry_activity.py --apply` 把现场使用折成 `metrics/entry-activity.d/<周>.yaml` 并更新共享游标，`metrics_snapshot.py --kind live` 在周界组装 `metrics/timeline.d/<期号>.yaml`；groom/PR 提交这些 tracked 源和生成物，原始 trace 与 `metrics/entry-activity.local/` 不上仓。`evolve run/brief` 只读 `metrics/timeline.yaml`、`gates.yaml`、`skill-exec-log.yaml` 和 `entry-activity/<部署>.yaml`，缺文件标 unavailable，不补零，也不把本地明细当中心数据。读 `gates.yaml` 的 `freshness` 判 live/structural 是否过期；过期或不可用会进 `next_actions`，提醒先跑 `trace_entry_activity --apply`/`metrics_snapshot`，不把旧读数当现状。
+metrics 的消费分两跳。诊断只写本地 trace；`trace_entry_activity.py --apply` 把现场使用折成 `metrics/entry-activity.d/<周>.yaml` 并更新共享游标；`metrics_snapshot.py --kind live` 在周界组装 `metrics/timeline.d/<期号>.yaml`。groom/PR 提交这些 tracked 源和生成物，原始 trace 与 `metrics/entry-activity.local/` 不上仓。
+
+`evolve run/brief` 只读 `metrics/timeline.yaml`、`gates.yaml`、`skill-exec-log.yaml` 和 `entry-activity/<部署>.yaml`。缺文件标 unavailable，不补零，也不把本地明细当中心数据。
+
+读 `gates.yaml` 的 `freshness` 判断 live/structural 是否过期。过期或不可用会进 `next_actions`，提醒先跑 `trace_entry_activity --apply` 与 `metrics_snapshot`，不把旧读数当现状。
 
 维护者入口收敛到 `/skill:self-evolve`；skill 先调 `evolve run`，再按 `next_actions` 分支：
 
@@ -306,4 +312,4 @@ S2 校准集的 selection 与 test 分离是规模条件：池子撑不起两半
 ## 7 外部参考
 
 - [NanmiCoder/dsh-agent-teams](https://github.com/NanmiCoder/dsh-agent-teams)：多 agent 协作的运行时与活动面板，提供成员树、任务图、实时状态与历史归档，数据源是 `<workspace>/.agent-teams/<teamId>/`。它只覆盖会话直播里的 agent 执行部分；卡流转、指标与任务总览仍需自建。它属于执行载体，不是自演进工程本身。
-- [SkillOpt](https://github.com/microsoft/SkillOpt)：把优化对象从模型参数换成文本，并保留一份跨轮累积的 meta-skill。策略记忆与它同源，本设计不引入它的代码或运行时。外部工作的完整对照在 [evaluation.md](evaluation.md) 与设计附录 H。
+- [SkillOpt](https://github.com/microsoft/SkillOpt)：把优化对象从模型参数换成文本，并保留一份跨轮累积的 meta-skill。本设计不引入它的代码或运行时；快更新（按批次小改文本）按同一机制在 `scripts/evolve/loops/skillopt.py` 实现，慢更新（跨 epoch 写长期指导）与 meta-skill 未实现。外部工作的完整对照在 [evaluation.md](evaluation.md) 与设计附录 H。

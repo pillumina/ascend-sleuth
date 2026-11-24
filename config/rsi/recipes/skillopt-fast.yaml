@@ -1,0 +1,20 @@
+id: skillopt-fast
+version: 1
+loop: skillopt
+description: 批次分组反思 + 全量验证集比较，严格高于现任才采纳。
+use_when: 有 train/dev 划分，目标是稳定小步提升，且能接受每轮多次目标执行。
+roles:
+  train: train                 # 循环要 train，实验里对应 train 角色
+  dev: dev                     # 循环要 dev，实验里对应 dev 角色
+params:
+  epochs: 2                    # 每个 epoch 遍历一遍 train；调大更稳但更慢
+  batch_size: 4                # 每批样本数；显存/上下文不够时调小
+  reflection_minibatch: 2      # 每次反思分组的样本数；小样本建议 2
+  success_threshold: 0.0       # 高于该分数进成功组，其余进失败组
+  rejected_memory: 5           # 被拒补丁保留条数；0 表示不保留
+  max_steps: null              # 最多跑多少个批次；null 表示按 epochs 跑完
+  seed: 0                      # 打乱与选择的可复现种子
+budget:
+  target_runs: 30              # 目标执行次数；train 与 dev 都计入
+  worker_calls: 12             # 反思与合并调用次数
+source: scripts/evolve/loops/skillopt.py

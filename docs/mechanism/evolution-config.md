@@ -6,7 +6,7 @@
 
 自演进配置只在仓库根 `sleuth.config.yaml`。角色、评估策略、成本 profile、实验记录库、同步模式、流水线声明都从这里进入；流水线预设本身放独立的 `config/rsi/pipelines.yaml`，避免主配置被 stage 组合膨胀。
 
-`sleuth.config.yaml` 是唯一入口：
+`sleuth.config.yaml` 是配置入口：
 
 ```yaml
 schema: sleuth-config-v1
@@ -34,7 +34,7 @@ sync:
   mode: auto                # auto | offline
 ```
 
-`evolution.policy` 是评估策略的唯一入口；`profiles` 只覆盖差异，不再单独维护 `policy-latency.yaml`。
+`evolution.policy` 是评估策略的入口；`profiles` 只覆盖差异，不再单独维护 `policy-latency.yaml`。
 
 ## 2 策略与选项
 
@@ -54,6 +54,10 @@ sync:
 | `cost.max_quality_drop` | ≥0 | 0 | 允许的主指标非劣容差（公式里的 δ） |
 | `autonomy.default` | `observe` / `propose` / `batch_review` / `supervised_auto` / `policy_auto` / `full_auto` | `batch_review` | 审批档位 |
 | `autonomy.auto_merge.enabled` | true/false | false | `supervised_auto` 是否允许自动合并；false 时降为 `batch_review` |
+| `experiment.recipe` | `config/rsi/recipes/` 下的 recipe 名 / 空串 | `""` | 选择算法 recipe；与 `experiment.loop` 二选一 |
+| `experiment.loop` | 已登记搜索循环名 / 空串 | `""` | 专家路径：不用 recipe 时直接指定搜索循环 |
+| `experiment.loops.<loop>.params` | 该循环登记的参数对象 | `{}` | 参数默认；CLI 或 spec 的显式值覆盖 |
+| `experiment.loops.<loop>.budget` | `target_runs` / `worker_calls` / `tokens` | `{}` | 预算默认；CLI 或 spec 的显式值覆盖 |
 
 审批档位与 RFC 的对应：
 
@@ -67,6 +71,17 @@ full_auto        全自动（本期不做）
 ```
 
 配置只写这些名称；不存在旧键读取路径。
+
+例如选择 SkillOpt 快更新：
+
+```yaml
+evolution:
+  policy:
+    experiment:
+      recipe: skillopt-fast
+```
+
+算法与参数在 `config/rsi/recipes/skillopt-fast.yaml`，复制一份改名即可派生新 recipe；怎么选、怎么调参数见 [algorithm-recipes.md](../guide/algorithm-recipes.md)。不用 recipe 时，才用 `experiment.loop` 与 `experiment.loops` 直接指定循环与默认参数。
 
 ### 2.2 流水线预设与消融
 
@@ -97,6 +112,8 @@ pipelines:
 - 每个 stage 点由 `scripts/evolve/stages.py` registry 校验；
 - 用户不写实现 id，只选预设名；内部 policy 由预设解析后注入。
 
+预设只描述六个节点，不描述搜索循环。批次、epoch、候选池与审计由 `scripts/evolve/loops/` 的搜索循环承担，入口是 `python3 scripts/evolve.py loop list`。多臂与顺序链由 `python3 scripts/evolve.py experiment arms` 驱动。配置里不为搜索循环加键，参数写在实验描述文件（spec）的臂里。
+
 ## 3 信号、提案、实验、卡、PR
 
 ![自演进边界](../diagrams/evolution-boundaries.svg)
@@ -121,7 +138,7 @@ flowchart TD
 - **proposal**：一条待验证改动；行为面 proposal 带 `source_signal`、`measure`、`risk`。
 - **experiment**：同一批真实样本上的 baseline/candidate 对照；证据写进 RSIStore。
 - **decision**：accept / reject / insufficient。
-- **PR**：真正落地。
+- **PR**：落地。
 - **EV 卡**：不是实验结果的别名。新流程只在高风险或实验覆盖不到时保留轻量授权记录；历史卡只读。
 
 ### 3.1 谁在什么时候做什么

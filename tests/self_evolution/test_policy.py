@@ -104,6 +104,41 @@ class PolicyLoadTest(unittest.TestCase):
                 with self.assertRaises(PolicyError):
                     load_policy(path)
 
+    def test_loop_defaults_are_validated(self):
+        path = self.write({"experiment": {
+            "loop": "skillopt",
+            "loops": {"skillopt": {
+                "params": {"epochs": 2},
+                "budget": {"target_runs": 30},
+            }},
+        }})
+        policy = load_policy(path)
+        self.assertEqual(policy["experiment"]["loop"], "skillopt")
+        self.assertEqual(policy["experiment"]["loops"]["skillopt"]["params"]["epochs"], 2)
+        bad_cases = [
+            {"experiment": {"loop": "nope"}},
+            {"experiment": {"loops": {"nope": {}}}},
+            {"experiment": {"loops": {"skillopt": {"params": {"nope": 1}}}}},
+            {"experiment": {"loops": {"skillopt": {"budget": {"rounds": 1}}}}},
+            {"experiment": {"loops": {"skillopt": {"params": {"epochs": "x"}}}}},
+            {"experiment": {"loops": {"skillopt": {"budget": {"target_runs": 0}}}}},
+        ]
+        for index, data in enumerate(bad_cases):
+            with self.subTest(data=data):
+                path = self.write(data, f"bad-loop-{index}.yaml")
+                with self.assertRaises(PolicyError):
+                    load_policy(path)
+
+    def test_recipe_selection_and_conflict(self):
+        path = self.write({"experiment": {"recipe": "skillopt-fast"}})
+        policy = load_policy(path)
+        self.assertEqual(policy["experiment"]["recipe"], "skillopt-fast")
+        bad = self.write({"experiment": {
+            "recipe": "skillopt-fast", "loop": "gepa",
+        }}, "bad-recipe.yaml")
+        with self.assertRaises(PolicyError):
+            load_policy(bad)
+
     def test_null_policy_file_means_defaults(self):
         path = self.root / "empty.yaml"
         path.write_text("", encoding="utf-8")

@@ -1,0 +1,11 @@
+id: control
+version: 1
+loop: baseline
+description: 只把 seed 在样本上评一遍，不提案、不选新候选。
+use_when: 需要基线读数，或核对样本与 judge 是否能跑通。
+roles:
+  eval: eval                    # 循环要 eval，实验里对应 eval 角色
+params: {}                      # baseline 没有额外参数
+budget:
+  target_runs: 4               # 样本数；按实际样本调整
+source: scripts/evolve/loops/baseline.py

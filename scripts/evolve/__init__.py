@@ -13,6 +13,11 @@
         领域错误基类；各模块的错误仍按 ValueError / RuntimeError 区分方向。
     targets / algorithms / sources / stages
         各扩展面的静态注册表；一个目标的全部事实在 targets.registry.TARGETS。
+    loops
+        搜索循环层：快照、动作、预算、决策记录、注册表与内置算法；搜索怎么走在这里，
+        节点怎么提怎么判仍在 stages。
+    experiment_spec / experiment_session
+        组合实验：多臂比较、顺序链与主臂读数；不调用模型，动作交给驱动执行。
     evaluations
         评测面注册表（哪个 target 走哪套 scorer/gate）与门禁执行（gates.py 读文件、
         起子进程）。
@@ -24,8 +29,8 @@
     cli
         编排与命令行；scripts/evolve.py 是薄包装。
 
-v1 只实现诊断对象的二元配对判定、样本队列与结论记录。trace 收集器、
-A3 auto-merge、GEPA/SkillOpt 等扩展不在这里。
+v1 只实现诊断对象的二元配对判定、样本队列与结论记录。trace 收集器与
+A3 auto-merge 不在这里；循环与组合实验已由 loops/ 与 experiment_* 承担。
 
 包外依赖只有 ``scripts/`` 下三个共享原语（``_fs`` / ``exec_log_path`` /
 ``sleuth_config``），以 ``scripts/`` 在 sys.path 为前提；入口 ``scripts/evolve.py``
