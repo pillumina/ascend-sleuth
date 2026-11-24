@@ -282,13 +282,27 @@ def main(argv=None):
     parser.add_argument("--root", default=None)
     parser.add_argument("--check", action="store_true")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--pipelines", action="store_true",
+                        help="列出全部流水线预设（名字、说明、stage 组合），JSON 输出")
     args = parser.parse_args(argv)
     try:
         cfg = load_config(Path(args.root) if args.root else None)
         pipeline = pipeline_for(cfg)
+        pipelines_detail = None
+        if args.pipelines:
+            pipelines_detail = [
+                {"name": name, "description": item.get("description") or "",
+                 "stages": pipeline_for(cfg, name)["stages"]}
+                for name, item in (_load_pipeline_sources(cfg).items())
+            ]
+            pipelines_detail.sort(key=lambda item: item["name"])
     except ConfigError as exc:
         print(f"error: {exc}", file=__import__("sys").stderr)
         return 2
+    if args.pipelines:
+        print(json.dumps({"default": pipeline["name"],
+                          "pipelines": pipelines_detail}, ensure_ascii=False, indent=2))
+        return 0
     payload = {
         "source": cfg.get("_source"),
         "role": role(cfg),

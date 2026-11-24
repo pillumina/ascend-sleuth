@@ -159,8 +159,19 @@ def cmd_experiment_request(args: argparse.Namespace) -> int:
         if args.evidence:
             evidence = json.loads(Path(args.evidence).read_text(encoding="utf-8"))
         constraints = json_object_arg(args.constraints, "constraints") or {}
+        failures = None
+        if args.failures_file:
+            failures = json.loads(Path(args.failures_file).read_text(encoding="utf-8"))
+            if not isinstance(failures, list):
+                raise ProposalError("failures file must contain a JSON array")
+        digest = None
+        if args.digest_file:
+            digest = json.loads(Path(args.digest_file).read_text(encoding="utf-8"))
+            if not isinstance(digest, dict):
+                raise ProposalError("digest file must contain a JSON object")
         result = proposal_request(target, args.component, evidence=evidence,
-                                  constraints=constraints)
+                                  constraints=constraints, failures=failures,
+                                  digest=digest)
     except (ProposalError, OSError, ValueError, json.JSONDecodeError, PolicyError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -449,6 +460,10 @@ def register(subparsers) -> None:
     exp_request.add_argument("--target", default=None)
     exp_request.add_argument("--component", required=True)
     exp_request.add_argument("--evidence", default=None, help="JSON 文件")
+    exp_request.add_argument("--failures-file", default=None,
+                             help="JSON 数组：逐样例的 sample_id/expected/actual/feedback（定向批评输入）")
+    exp_request.add_argument("--digest-file", default=None,
+                             help="JSON 对象：data_digest/program_digest（提案上下文摘要）")
     exp_request.add_argument("--constraints", default=None, help="JSON 对象")
     exp_request.add_argument("--policy", default=None)
     exp_request.set_defaults(func=cmd_experiment_request)

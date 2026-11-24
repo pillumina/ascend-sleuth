@@ -51,7 +51,9 @@ def _safe_path(path: str) -> PurePosixPath:
 
 
 def request(target: str, component: str, evidence: Optional[Any] = None,
-            constraints: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+            constraints: Optional[Dict[str, Any]] = None,
+            failures: Optional[List[Dict[str, Any]]] = None,
+            digest: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     if not isinstance(component, str) or not component.strip():
         raise ProposalError("target_component is required")
     spec = get_target(target)
@@ -61,9 +63,26 @@ def request(target: str, component: str, evidence: Optional[Any] = None,
         f"可改变面={spec.change_surface}，区域={component}。\n"
         f"允许改动：{', '.join(spec.allowed_paths)}；禁止：{', '.join(spec.forbidden_paths)}。\n"
         + "\n".join(f"- {rule}" for rule in spec.prompt_rules)
-        + "\n只输出一个 JSON 对象，字段：target_kind、target_component、summary、"
-          "change{files,diff}、expected、risk、rollback、evidence。"
-          "不要读取 test 答案；不要声称已经合入。"
+    )
+    if digest:
+        prompt += (
+            "\n上下文摘要（提案须与现状衔接，不重复已有方向）：\n"
+            + f"- 数据摘要：{digest.get('data_digest', '')}\n"
+            + f"- 候选池摘要：{digest.get('program_digest', '')}"
+        )
+    if failures:
+        prompt += "\n上一轮失败样例（提案须逐条针对这些差异，不做无关改动）："
+        for item in failures:
+            prompt += (
+                f"\n- 样例 {item.get('sample_id', '?')}："
+                f"期望={item.get('expected', '')}；"
+                f"实际={item.get('actual', '')}；"
+                f"反馈={item.get('feedback', '')}"
+            )
+    prompt += (
+        "\n只输出一个 JSON 对象，字段：target_kind、target_component、summary、"
+        "change{files,diff}、expected、risk、rollback、evidence。"
+        "不要读取 test 答案；不要声称已经合入。"
     )
     return {
         "target_kind": target,
@@ -87,6 +106,8 @@ def request(target: str, component: str, evidence: Optional[Any] = None,
         },
         "constraints": dict(constraints or {}),
         "evidence": evidence if evidence is not None else [],
+        "failures": list(failures or []),
+        "digest": dict(digest or {}),
         "prompt": prompt,
     }
 
