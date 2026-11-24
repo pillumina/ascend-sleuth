@@ -23,3 +23,10 @@ pipelines:
     extends: default
     stages:
       select_candidate: select.none
+
+  gepa:
+    description: 反思循环组合：Pareto 候选选择配反思提案，judge 与 gate 同默认；由 evolve-drive skill 驱动。
+    extends: default
+    stages:
+      select_candidate: select.pareto
+      propose: propose.reflection

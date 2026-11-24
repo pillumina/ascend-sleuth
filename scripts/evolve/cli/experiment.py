@@ -430,6 +430,8 @@ def register(subparsers) -> None:
     exp_flow.add_argument("--archive", default=None)
     exp_flow.add_argument("--policy", default=None)
     exp_flow.add_argument("--profile", default=None, help="sleuth.config.yaml 的成本 profile")
+    exp_flow.add_argument("--pipeline", default=None,
+                          help="流水线预设名（config/rsi/pipelines.yaml），优先于全局默认与 profile")
     exp_flow.add_argument("--reuse-index", type=int, default=None)
     exp_flow.set_defaults(func=cmd_experiment_flow)
 

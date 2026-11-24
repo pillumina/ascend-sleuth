@@ -45,6 +45,7 @@ from .experiment import (cmd_experiment_flow, cmd_experiment_gate,
                          cmd_experiment_request, cmd_experiment_resolve,
                          cmd_experiment_search, cmd_experiment_show,
                          register as register_experiment)
+from .gepa import register as register_gepa
 from .health import cmd_health, register as register_health
 from .judge import (cmd_judge, cmd_judge_calibration, cmd_judge_stats,
                     register as register_judge)
@@ -88,6 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
     register_replay(sub)
     register_store(sub)
     register_experiment(sub)
+    register_gepa(sub)
     register_run(sub)
     register_rsi(sub)
     register_pilot(sub)

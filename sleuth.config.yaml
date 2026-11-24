@@ -161,7 +161,8 @@ evolution:
       double_label: 10
 
   profiles:
-    # 具名 profile：只覆盖与默认策略不同的字段。
+    # 具名 profile：只覆盖与默认策略不同的字段（pipeline 也可在 profile 里
+    # 指定，见 config/rsi/pipelines.yaml；预设清单不在这里维护）。
     latency:
       cost:
         # 延迟优先 profile 只改主成本；其余策略沿用默认。

@@ -324,14 +324,26 @@ def _load_raw(raw: Any, source: str) -> Dict[str, Any]:
     return policy
 
 
-def load_config_policy(config: Dict[str, Any], profile: Optional[str] = None) -> Dict[str, Any]:
-    """从 sleuth.config.yaml 的 evolution.policy + profile 读取策略。"""
+def load_config_policy(config: Dict[str, Any], profile: Optional[str] = None,
+                       pipeline: Optional[str] = None) -> Dict[str, Any]:
+    """从 sleuth.config.yaml 的 evolution.policy + profile 读取策略。
+
+    ``pipeline`` 直传预设名（CLI ``--pipeline``），优先级高于全局
+    ``evolution.pipeline``；profile 携带的 ``pipeline`` 键再次之下。
+    """
     import sleuth_config as SC
     try:
         raw = SC.policy_for(config, profile)
-        pipeline = SC.pipeline_for(config)
+        # profile 可携带 pipeline 键选择流水线预设；它只做预设选择，
+        # 不进策略校验（profile 的其余键仍走 policy_for 的深合并）。
+        pipeline_name = pipeline
+        if pipeline_name is None and profile:
+            profile_def = (config.get("evolution") or {}).get("profiles", {}).get(profile) or {}
+            pipeline_name = profile_def.get("pipeline")
+        raw.pop("pipeline", None)
+        exp_pipeline = SC.pipeline_for(config, pipeline_name)
         experiment = raw.setdefault("experiment", {})
-        experiment["stages"] = pipeline["stages"]
+        experiment["stages"] = exp_pipeline["stages"]
     except SC.ConfigError as exc:
         raise PolicyError(str(exc)) from exc
     return _load_raw(raw, str(config.get("_source") or SC.CONFIG_NAME))
