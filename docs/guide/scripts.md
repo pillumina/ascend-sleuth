@@ -53,7 +53,7 @@ argparse/main 与 re-export，旧调用方（含测试的 `mock.patch.object(kb_
 
 ## 5 环境变量
 
-脚本层读这些变量；未登记的变量不要再新增，确有需要先补进这张表并写明用途。
+脚本层读这些变量；未登记的变量不要再新增，确有需要先补进这张表并写明用途。`SLEUTH_DSH_ALLOW_STORED` 与 `DEEPSEEK_API_KEY` 只由 `agent_adapter.py --agent dsh` 读取。这两个变量只在外部进程执行时用，会话内编排不经过这个 adapter。
 
 | 变量 | 用途 | 主要读取处 |
 |---|---|---|
