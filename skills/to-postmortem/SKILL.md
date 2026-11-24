@@ -1,7 +1,9 @@
 ---
 name: to-postmortem
 description: >
-  把一次或多次昇腾问题定位沉淀成知识。输入支持内联粘贴、单个/多个文件路径、或整个目录（批量导入历史案例）。提取症状/命令/root_cause/fix，检测框架给命名空间建议（批量模式一次确认），人确认，输出结构化 YAML 草稿 + postmortem.md，过语义校验和脱敏。无论知识产自哪里（本地 agent session / Kimi 网页对话 / 手工笔记 / wiki 导出），都从这里汇入——这是异构知识来源的统一入口。
+  把一次或多次昇腾问题定位沉淀成 case 草稿：用户说「把这次定位沉淀下来 / 复盘成 case /
+  批量导入历史案例」时用。输入可以是内联粘贴、文件路径、整个目录，来源不限（agent 会话、
+  网页对话、手工笔记、wiki 导出）；产出 postmortems/inbox/ 草稿 + postmortem.md，人确认后待审。
 ---
 
 # To Postmortem
@@ -94,14 +96,14 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
 3. **输出结构化 YAML 草稿 + postmortem.md**：
    - **postmortem 策略**：源是混乱对话/手工笔记 → 写完整 postmortem.md（提炼+结构化）；**源已经是结构化文档**（调查报告/issue/wiki）→ postmortem.md 只写指针（`# 原文见：<source-url/path>`），不重写。YAML case 草稿两种情况都照常产出。
    - 标 `investigation_quality: high | medium | low`——**人的调查质量判断**（五天详查 vs 随手记录），不是来源验证
-   - 标 `verification: {source: <档>, detail: <引用>}`——**这一档决定草稿能不能升格**：自诊断的问题（带 `source_session`）**默认要等来源 trace 闭环**才会被 groom 升格（命中单看 `feedback.outcome: resolved`，无命中单看 `status: resolved`）；没闭环就该如实标 `investigation`，并知道它会被闸门拦下（除非补强外部证据并走 owner 双签）。别为了让草稿过关而抬高档位——档位是外部证据强度，不是主观评价——**来源验证状态**（与 `investigation_quality` 区分：quality=内容判断质量，verification=外部证据强度）。**档位按「来源形态」分，不按 issue 分**——issue 只是外部来源之一，官方案例文档与本地闭环同样是来源：
+   - 标 `verification: {source: <档>, detail: <引用>}`——**这一档决定草稿能不能升格**：自诊断的问题（带 `source_session`）**默认要等来源 trace 结单**才会被 groom 升格（命中单看 `feedback.outcome: resolved`，无命中单看 `status: resolved`）；没结单就该如实标 `investigation`，并知道它会被升格条件拦下（除非补强外部证据并走 owner 双签）。别为了让草稿过关而抬高档位——档位是外部证据强度，不是主观评价——**来源验证状态**（与 `investigation_quality` 区分：quality=内容判断质量，verification=外部证据强度）。**档位按「来源形态」分，不按 issue 分**——issue 只是外部来源之一，官方案例文档与本地收尾同样是来源：
      - `upstream-fix-merged`：来源是上游 issue 且关联 fix PR 已合入（references 含 `pull/<n>` 或确认 merged）——内容被外部验证（根因+修复代码合入），最强档；
      - `upstream-official-doc`：来源是**上游官方发布的案例/指南文档**（如框架仓库 `best_practices/` 下的定位实践、官方 troubleshooting 指南），含完整定位链与验证结论——内容被上游发布验证，但无指向本问题的 fix PR；
      - `upstream-maintainer-confirmed`：上游 issue 维护者确认 resolution 但无 fix PR 引用；
      - `investigation`：本地深度排查/源码分析定位（`source_ref` 佐证），无上游确认；
      - `engineer-report`：工程师现场回报验证过（最强现场证据，rare）。
      `detail` 记 issue/PR 号、文档路径或来源路径。无明确外部验证 → 不填 verification（如实：仅调查级）
-   - **产出报告里写一行闸门预判**（别让草稿静默积压）：来源 session 未闭环且 `verification: investigation` → 明说「本单过不了 groom 的升格闸门；出路三条：等现场闭环 / 补强外部证据 / owner 双签」；已闭环 → 写「可过闸」；强证据档但未闭环 → 写「可过闸，但需 owner 双签」。groom 的闸门口径见 `/skill:knowledge-groom`（自诊断来源默认须闭环）。
+   - **产出报告里写一行升格条件预判**（别让草稿静默积压）：来源 session 未结单且 `verification: investigation` → 明说「本单过不了 groom 的升格条件；出路三条：等结单 / 补强外部证据 / owner 双签」；已结单 → 写「可过」；强证据档但未结单 → 写「可过，但需 owner 双签」。groom 的升格条件见 `/skill:knowledge-groom`（自诊断来源默认须结单）。
    - **来源是上游 issue / PR 时，标 `upstream: [{repo, issue|pr, url}]`**（case 内字段，非注释）——它是外部对照自动查证（`python3 scripts/verify_upstream_outcomes.py`）的唯一分母：有锚点的 case 才靠上游状态自动确认「内容对不对」，没有锚点的客户侧现网问题只能等现场回报。`issue` 与 `pr` 二选一，`url` 写原址让人点开；**只写这条 case 的来源那个**，正文里顺带提到的同族 issue 不算锚点（写多个会让查证对上错的那一个）。它判断不了「现场是否解决」，那只有现场能给。
    - 标 `novelty: new_pattern | variant | covered`（**pre-triage，对比现有 case 判定**）：用**命中 (namespace × category) 的读侧视图** `knowledge/_index/<ns>__<category>.list`（一行一条 case；category 未定回退 `<ns>.list`；已知 namespace 时不读全库总表）按 symptoms/tags 定位候选，再全量读候选 case 本体比对 root_cause/fix——无重叠 → `new_pattern`；同主题不同形态 → `variant`（注明 `variant_of:<case-id>`）；已有 case 覆盖 → `covered`（注明 `covered_by:<case-id>`）。**给出证据**（如"同算子×同网络，增量=升级修复"），groom 复核该标签而非重判
    - 标 `category: interrupt | precision | performance` **三选一，无 other**（按症状判断——interrupt 是 hang/crash/OOM/启动失败、precision 是 NaN/数值发散/输出错误/乱码、performance 是吞吐/延迟）。分不进去 → 由人确认归入最接近的分类，不设 other
@@ -120,7 +122,7 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
 5. **脱敏**：扫描 `Bearer ...`、`sk-...`、`password=`、内网 IP 段 → 替换 `[REDACTED]`。在人确认前，不是事后补救。这是 KB 进私有的第二道防线，第一道是 repo 可见性（见 README）
 6. 人扫一眼确认 root cause 和 fix → done（30 秒内）
 
-## 产出落点
+## 产出位置
 
 **草稿落在哪个 inbox**：先 `python3 scripts/shared_dir.py inbox` 取绝对路径（锚在**主检出**、跨 worktree 共写；写相对 `postmortems/inbox/` 的草稿，转正时在 worktree 里读不到、清 worktree 就丢）。下面是相对仓库根的写法：
 
@@ -131,7 +133,7 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
 
 **同一个问题只沉淀一次**——本 skill **只有新增路径、没有更新模式**，重复调用不会改已有条目：
 
-- 闭环结果不走这里。它通过来源 trace 的 `feedback` 事件流转（`pending` → 现场确认 `resolved`），结算读 trace、不读 inbox 草稿，**所以闭环不需要第二次沉淀、也不需要第二个 PR**。
+- 结单结果不走这里。它通过来源 trace 的 `feedback` 事件流转（`pending` → 现场确认 `resolved`），结算读 trace、不读 inbox 草稿，**所以结单不需要第二次沉淀、也不需要第二个 PR**。
 - 再调一次只会新增草稿，且分诊时被 novelty 判成 `covered_by`（因为知识库已有这条）→ 被当已覆盖处理，属空转。
 - 若后来拿到更强的证据（实测对照、上游 fix PR 等），要改的是**已升格 case 的 `verification` 档位**，直接编辑该文件走知识修改流程——不经过本 skill。
 - 已经重复沉淀了：删掉 inbox 里那份重复草稿即可，别让它进 groom。
@@ -140,9 +142,9 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
 
 **写草稿时的行文**：postmortem 与 case 词条都是给人读、给人审的文本，按 `docs/spec/writing-norms.md` 写（可选论证层，不影响本 skill 执行）；本面的定制条款见该文件 §3 的「case / reference 词条」与「postmortem」两行——症状句要能直接当 grep 判据，`root_cause` / `fix` 只写结论与依据，时间线只放可观察事实。
 
-**结算与提 PR 的粒度（别每次闭环都开 PR）**：诊断现场回报 fix 结果后，trace 里记 `feedback` 事件即可（`feedback.outcome: pending` → 现场确认后置 `resolved`）。**现场回报的结算与入库按周批走一次**——知识整理收尾的结算步骤跑 `settle_trace_feedback.py`，把计数写进条目使用记录，一个知识变更 PR 覆盖当期全部变更。本地连着定位多个问题时，不要每闭环一个就提一个 PR：计数只影响候选排序（排序对时效不敏感），而结算游标是 gitignored 的共享运行时件、不进 git。理由是三条写入点的**git 归属刻意不同**：现场记录含客户信息故不进 git，条目使用记录是学习环的持久知识故必须入库，指标时序是周节奏的人复核汇总故不等每次反馈。
+**结算与提 PR 的粒度（别每次结单都开 PR）**：诊断现场回报 fix 结果后，trace 里记 `feedback` 事件即可（`feedback.outcome: pending` → 现场确认后置 `resolved`）。**现场回报的结算与入库按周批走一次**——知识整理收尾的结算步骤跑 `settle_trace_feedback.py`，把计数写进条目使用记录，一个知识变更 PR 覆盖当期全部变更。本地连着定位多个问题时，不要每结单一个就提一个 PR：计数只影响候选排序（排序对时效不敏感），而结算游标是 gitignored 的共享运行时件、不进 git。理由是三条写入点的**git 归属刻意不同**：现场记录含客户信息故不进 git，条目使用记录是学习环的持久知识故必须入库，指标时序是周节奏的人复核汇总故不等每次反馈。
 
-**回写来源 trace 的沉淀状态（诊断闭环）**：若本次沉淀来源是一个诊断 trace（输入提到 `traces/<session_id>.yaml`，或用户从诊断面板"沉淀此案例"触发），产出草稿落 inbox 后**回写该 trace 的 `sedimented.state: submitted`**（动作发生时写，零推断）——诊断面板据此显示"已提交沉淀待审"，不再重复提示沉淀。转正（`knowledge`/`archived`）由用户在面板/对话确认时更新，本 skill 不写。
+**回写来源 trace 的沉淀状态（诊断收尾）**：若本次沉淀来源是一个诊断 trace（输入提到 `traces/<session_id>.yaml`，或用户从诊断面板"沉淀此案例"触发），产出草稿落 inbox 后**回写该 trace 的 `sedimented.state: submitted`**（动作发生时写，零推断）——诊断面板据此显示"已提交沉淀待审"，不再重复提示沉淀。转正（`knowledge`/`archived`）由用户在面板/对话确认时更新，本 skill 不写。
 
 ## 收尾 evolve-check（伴随演进评估，默认执行）
 
@@ -150,15 +152,12 @@ python -c "import anydoc,sys; print(anydoc.to_markdown(sys.argv[1]))" <file>
 `python3 scripts/log_skill_exec.py --skill to-postmortem --products "<case-id>(submitted),..." --reason "<一句话根因/来源>" --source <来源 skill> --tokens <估算>`
 
 草稿产出、出最终报告前，执行一次伴随演进评估（`read skills/evolve-check/SKILL.md`
-遵循）：对照它的触发条件表看本轮现场——同族沉淀满三条（记信号，**不在这里归纳**）、replay/Tier 3
-暴露覆盖缺口、提取/校验环节有重复手动动作与流程摩擦。**内容动作直接执行、不产卡**：
-补 case 走本流程。**归纳 reference 不在这一步做**——草稿还在 inbox、没升格，
-`to-reference` 的 `sources[].cases` 会引用一个不存在的 id（groom 拒掉那条草稿后更糟）；
+遵循），对照它的触发条件表看本轮现场：replay / Tier 3
+暴露覆盖缺口、提取与校验环节有重复手动动作，命中就记信号。同族归纳缺口由 `knowledge-groom` 每轮扫，不记。
+**归纳 reference 不在这一步做**：草稿还在 inbox、没升格，
+`to-reference` 的 `sources[].cases` 会引用一个不存在的 case id（groom 拒掉那条草稿后更糟）；
 同族信号只写进报告，等升格后由 `knowledge-groom` 的 R8 提炼（那时 case id 已在 `knowledge/`）。
-行为面（triage 分支、skill 步骤、闸门绑定、索引形态）只记录信号，交给后续显式
-`/skill:self-evolve` 分诊；收尾不产 EV 卡、不跑 RSI。
-无信号则报告加一行"evolve-check：无演进信号"。这是流程默认收尾，**不需要用户另说
-"改进系统"**——演进由数据触发，像人学习。产出与流程报告一并给出。
+无信号则报告加一行"evolve-check：无演进信号"。演进评估与流程报告一并给出。
 
 ## 评测集回流（可选）
 

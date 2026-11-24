@@ -31,7 +31,7 @@
   C1) 有没有 dump / 比对结果（msProbe 的哪一类产物）
   C2) 有没有**标杆**（CPU/GPU/另一版本的同等 dump）——没有标杆就说明"只能判一致性、判不了对错"
   C3) 首次异常位置（loss 曲线第几步开始偏、还是从第一个 step 就错）
-  C4) 评价口径（loss 曲线 / 评测集分数 / 逐 token 比对）
+  C4) 评价标准（loss 曲线 / 评测集分数 / 逐 token 比对）
 
 **为什么单独列而不并进上面那张表**：这四行对中断类问题是噪声（问"有没有 profiling"会跑偏），
 而中断那 10 行里的"错误原文"对性能类问题常常拿不到（**没有错误是常态，不是漏问**）。
@@ -148,7 +148,7 @@
 
 **先验查询（本步骤收尾，先于候选加载）**：两半——**键触发**（把证据里能当检索键的东西当场查掉：错误码 `E1xxxx` / `EIxxxx` / `507xxx` / `0x……`、可 grep 的故障签名（`fault kernel_name=`、`event_id`）、具体环境变量名、要核对的版本组合）与**背景层**（平台 / 软件 / 工具事实）。两半都在**候选加载之前**做，两半都留 trace：
 
-- 错误码 → 读 `ascend-error-code-structure` 的 `module_files` 前缀映射定位族文件（`references/errors/<族>.yaml`），族内 grep code 读 meaning / solution（**按码 grep，不整读全族**：最大一族已到 8000+ token，现算见 `python3 scripts/index_read_cost.py` 的先验层一节）。**族文件里查不到这个码时不要就此收场**——`references/errors/_code-gaps.yaml` 是"错误表缺行但库里有事实"的索引：按 code 查一行，`seen_in` 直接指出该码在哪个故障模式词条里有症状→根因→修法（实测有十余个码属于这种：官方表没有行，隔壁表有答案）。也没有 → 才是真的没有，把码写进 `_code-gaps.yaml` 的 `no_home` 段（覆盖缺口要留痕，下次遇到能省一次全库翻找）；
+- 错误码 → 读 `ascend-error-code-structure` 的 `module_files` 前缀映射定位族文件（`references/errors/<族>.yaml`），族内 grep code 读 meaning / solution（**按码 grep，不整读全族**：最大一族已到 8000+ token，现算见 `python3 scripts/index_read_cost.py` 的先验层一节）。**族文件里查不到这个码时不要就此收场**——`references/errors/_code-gaps.yaml` 是"错误表缺行但库里有事实"的索引：按 code 查一行，`seen_in` 直接指出该码在哪个故障模式词条里有症状→根因→修法（实测有十余个码属于这种：官方表没有行，隔壁表有答案）。也没有 → 才是真的没有，把码写进 `_code-gaps.yaml` 的 `no_home` 段（覆盖缺口要记录，下次遇到能省一次全库翻找）；
 - 故障签名 → 按域定位 `references/fault-patterns/<域>.yaml`，域内 grep symptoms 读 cause / fix；
 - 环境变量 → `references/env-vars/<表>.yaml` 内 grep name；
 - 版本组合 → `references/compat-matrices/` 按传导链分层，按要核对的层直接读该层文件：framework 层 `references/compat-matrices/vllm-ascend-torch-npu.yaml` / `references/compat-matrices/verl-npu.yaml`、adapter 层 `references/compat-matrices/torch-npu-cann.yaml`、base 层 `references/compat-matrices/cann-hdk.yaml`（CANN↔驱动/固件，如 `cann: 9.0.1` 一行直接给配套 `hdk` 列表）——**先落本库矩阵，再考虑联网查证**（厂商文档站多为 JS 渲染，正文表格常取不到）；
@@ -248,7 +248,7 @@ trace 记：
 
 1. 读 `references/_procedure-index.yaml`（**选择器**：总条数 + `category → shard + 条数 + 成本`），找本轮 category 那一行，按 `shard` 打开该分片；选择器里若另有 `_cross` 片（不限定类别），任何 category 都要一并打开；用 `title`/`summary` 选**一条**最贴合的流程——**默认一条**（前提与现场证据明确矛盾时可换一条，受"连续失败 ≤2"约束并记冲突理由）。**本 category 无对应分片** → 打开选择器列出的全部分片再选并写明这一点；
 2. 按该行的 `file` 打开词条，读 **`content.flow[]` 全文**（step / action / check / when_to_use）——**摘要行不算加载**：实测只读摘要与不读等效，决定性判据会被截断；
-3. 按流程执行：用每步的 `check` 当判定口径（阈值、分流条件），跳步要说明理由；
+3. 按流程执行：用每步的 `check` 当判定标准（阈值、分流条件），跳步要说明理由；
 4. 某步所需数据不在手上（如流程要看"逐卡计算耗时"而导出里没有）→ **如实记 `gap`**，不臆断分支结论；
 5. 记 trace：`{action: reference_lookup, ref_id, purpose: procedure, outcome: hit|miss}` + `{action: procedure_follow, ref_id, steps_executed, branch_taken, gap, conflict}`（字段见 `diagnosis-trace.md`）。选择器里没有本 category 的流程 → `outcome: miss` 并写明"流程层无此类流程"，**不静默跳过**——静默跳过让"没有可用流程"与"忘了取流程"同形。
 
@@ -259,16 +259,16 @@ trace 记：
 **命中 case 也要允许取流程（判读面缺口）**
 
 上面那条时点规则（"候选未命中才进本步"）是按**定位类**流程定的——重复踩过的坑已经有 case 兜住时，流程确实用不上。
-但有一类流程不是"这是什么问题"，而是"**这个读数该怎么判**"（性能的 Host Bound / 逐级拆解 / 回读口径，
+但有一类流程不是"这是什么问题"，而是"**这个读数该怎么判**"（性能的 Host Bound / 逐级拆解 / 回读标准，
 精度的是否算引入点 / 阈值从哪来）：**case 命中只说明"问题可能是它"，不说明"这次的数据该怎么读"**。
 
-所以补一条例外，代价口径不变（一轮仍只一条）：
+所以补一条例外，代价规则不变（一轮仍只一条）：
 
-- **触发**：Tier 2 已命中候选，但往下走时发现**某个测量值决定了分支、而它的判读口径不在手上**
+- **触发**：Tier 2 已命中候选，但往下走时发现**某个测量值决定了分支、而它的判读标准不在手上**
   （例：命中一条显存泄漏 case，而"泄漏该怎么判" 需要取判读类流程）；
 - **做法**：同上取一条，**优先选 title 带"判读 / 拆解 / 分流 / 口径"的流程**，而不选定位类；
 - **记账**：同样记 `reference_lookup`（purpose: `procedure`）+ `procedure_follow`，并在 `reason` 里写明
-  "命中候选后因判读口径缺口取流程"——这一条同时是这条例外是否真的被用到的观测面；
+  "命中候选后因判读标准缺口取流程"——这一条同时是这条例外是否真的被用到的观测面；
 - **边界**：**不能因此再取第二条**（预算不变）。这一条与定位类流程互斥：本轮已经取过定位类，就不重复取。
 
 
@@ -333,7 +333,7 @@ trace 记 `{action: tier3, keyword: <kw>, files_read: [...]}`——Tier 3 挽救
 - **Tier-2 命中**：常规 postmortem 草稿
 - **Tier-2 未命中但最终解决**：postmortem 含一段 agent 起草的候选 case（初始分数由 `verification` × `investigation_quality` 决定的冷启动先验给出，通常偏低），交 groom 验证。人的角色从“结构化”上移到“验证草案”。
 - **结果反馈：挂账 + 回报指令，不在这里当场追问**：给完 fix 那一刻，工程师还没应用、也没跑验证命令，此时问"解决了吗"只会得到一句"还没试"——这一问把债的产生点当成清偿点。正确顺序是：
-  1. **立刻写**：`feedback: {case: <真实 case id 或占位串 pending-investigation>, outcome: pending}` + `feedback_pending_since: <当天日期>`（顶层字段，口径见 `diagnosis_state.yaml.example` 与 `trace-status.yaml`；**不再写 `feedback_pending`**，那是面板口头沿用的旧说法，脚本读不到）。写账龄是为了让这笔债可排序、可催——没有它，"挂了两周的反馈"与"昨天刚挂的"在面板上一样。
+  1. **立刻写**：`feedback: {case: <真实 case id 或占位串 pending-investigation>, outcome: pending}` + `feedback_pending_since: <当天日期>`（顶层字段，定义见 `diagnosis_state.yaml.example` 与 `trace-status.yaml`；**不再写 `feedback_pending`**，那是面板口头沿用的旧说法，脚本读不到）。写账龄是为了让这笔债可排序、可催——没有它，"挂了两周的反馈"与"昨天刚挂的"在面板上一样。
   2. **对话里给一条可复制的回报指令**，三选一、话术照抄可用：「应用后解决了吗？回我一句就行——`解决` / `没解决` / `部分解决`」。
   3. **有人回来回报时才记**：trace 记 `{action: feedback, case, outcome: resolved|not_resolved|partial}` 并清 `pending`；计数由知识整理收尾的结算步骤（`scripts/settle_trace_feedback.py`）落进条目使用记录，**不写回 case 文件**。not_resolved / partial 自动进入误诊归因（见文末）。
 - **这笔债谁追**：`/skill:resume-diagnosis` 续那一单时问得其所；`/diagnose` **不在新诊断的开屏逐单念**（新问题的第一屏只服务新问题，积压时那是审讯）；面板待办面承载其余（谁欠、哪一单、欠多久），人去清。
@@ -348,4 +348,4 @@ trace 记 `{action: tier3, keyword: <kw>, files_read: [...]}`——Tier 3 挽救
 
 混在一起会让 groom 改一个本来正确的 case——主动污染 KB。trace 是堵这个洞的唯一手段。
 
-**归因的结构化落点**：归因结论记入 trace `{action: attribution, verdict: case_error|execution_error, evidence: <trace 证据摘要>}`——与 SKILL.md 反馈闭环的误诊归因要求一致。该事件是「执行-误诊归因比」指标（metrics.md）与 roadmap E2（router 从 trace 错例演进）、E5（trace 结构挖掘）的数据源。**触发不依赖用户主动报告"这个 case 不对"**——反馈闭环中答复 not_resolved/partial 即自动进入归因（SKILL.md 已内联该步骤）。
+**归因的结构化位置**：归因结论记入 trace `{action: attribution, verdict: case_error|execution_error, evidence: <trace 证据摘要>}`——与 SKILL.md 的反馈记录与误诊归因要求一致。该事件是「执行-误诊归因比」指标（metrics.md）与 roadmap E2（router 从 trace 错例演进）、E5（trace 结构挖掘）的数据源。**触发不依赖用户主动报告"这个 case 不对"**——反馈记录中答复 not_resolved/partial 即自动进入归因（SKILL.md 已内联该步骤）。

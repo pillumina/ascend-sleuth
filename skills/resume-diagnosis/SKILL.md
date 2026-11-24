@@ -1,12 +1,9 @@
 ---
 name: resume-diagnosis
 description: >
-  续接一个被打断的昇腾诊断 session；也用于接手另一台机器打包过来的诊断（交接包）。
-  读活跃的 traces/*.yaml（每个并发诊断一个文件，含 trace），复述上次停在哪一步、排除了哪些
-  case、当前 active case，等人贴回命令输出后继续。
-  也可只查一条已收尾案例的上游状态：跑 verify_upstream_outcomes 并按四种结局各说一句
-  （不续接、不写 trace）。
-  诊断被会议/上下文 compact 打断、或跨机（前一台机器上定位到一半、日志在另一台机器上）继续定位时用。
+  续接被打断的昇腾诊断（开会、上下文 compact 之后「继续上次那个」），或接手另一台机器
+  打包来的交接包；也可只查一条已收尾案例的上游状态（issue / PR 动了没有）。
+  前两种从 traces/ 里的记录恢复现场。
 ---
 
 # Resume Diagnosis
@@ -54,9 +51,9 @@ description: >
 
 状态与结局词表见仓库根的 `trace-status.yaml`（**不是** `feedback_pending` 那个旧说法）。两条轴各管一件事：`status: resolved` 表示**诊断已收尾**（根因定位明确），不表示 fix 生效；fix 行不行只由 `feedback.outcome` 记。命中单在给 fix 时挂 `pending`，这里追问后追加 `feedback` 事件改值——**改的是 outcome，不是给 status 补一句"修好了"**（status 早在收尾时就该落）。
 
-**这份债为什么由续接来清、而不是由新诊断开屏来问**：续接续的正是那一单，问得其所；新问题的第一屏只服务新问题——`/diagnose` 若在开屏逐单追问历史 pending（积压时可能十几单），那是审讯，不是诊断。其他 pending 挂面板待办面（谁欠、哪一单、欠多久），人到那儿清。
+其他 pending 挂面板待办面（谁欠、哪一单、欠多久），人到那儿清；新诊断的开屏不追旧单的反馈。
 
-**续接只清被续那一单，不顺手清算全库**：工程师开局说"继续上次那个"、或面板把某一单推过来时，只处理那一单的 pending。扫到**别的** session 还挂着 pending 时，**一句话带过**（几笔、最早那笔挂了多少天、"面板待办面有『补反馈』入口"），**不在新诊断的开屏逐单念**、也不要求他当场逐笔回报——积压时那是审讯，不是诊断。想看全量债账的人去面板；续接的职责是把手上这一单推完。
+**续接只清被续那一单，不顺手清算全库**：工程师开局说"继续上次那个"、或面板把某一单推过来时，只处理那一单的 pending。扫到**别的** session 还挂着 pending 时**一句话带过**（几笔、最早那笔挂了多少天、"面板待办面有『补反馈』入口"），不要求他当场逐笔回报。
 
 0. **先解析 trace 目录**：`python3 scripts/shared_dir.py traces` 打印的绝对路径就是本会话要读写的 `traces/`（锚在**主检出**、跨 worktree 共读）——下面所有 `traces/…` 读写都以它为准，别写相对 `traces/`。
    解析后**先同步再比漂移**：`kb_drift.py` 会先调 `kb_sync.py` 做一次 fetch（只拉不合——诊断正在进行，不改工作区），再比 `kb_rev..远端分支` 与 `git status -- knowledge/`。
@@ -78,7 +75,7 @@ description: >
    - **复述证据清单**：每个 user 事件的 `content`（摘要）+ `evidence`（内联了什么 / 引用了哪些文件 `files` / 来源 `sources` / 已知缺口 `missing`）
    - **问用户："证据齐全吗？有遗漏吗？"**——跨 agent 时新 agent 只见过摘要，无法判断摘要是否等于原文；`missing` 字段自动列出已知缺口。用户确认齐全 → 继续；用户补充 → 更新该 user 事件的 `evidence` 后再继续
    - **文件证据可读**：`evidence.files` 是相对仓库路径（`traces/evidence/<session_id>/`），同工作区可直接读；读不到 → 问用户要
-4. **续接必写 trace（与 diagnose 同要求，闭环关键）**：确认续接开始后，往 `traces/<session_id>.yaml` 追加一条 `{role: agent, action: resume, harness_session: "$DSH_SESSION_ID", step: <current_step+1>, output: "续接 <session_id>，恢复到 step <N>"}`，**并刷新顶层 `updated_at: <ISO 时间>`**——这是诊断面板"最新活动置顶"的依据（续接 = 该 session 又活跃了）；后续续接中的关键决策同样带 `reason`（与 diagnose 的 trace 要求一致）。`harness_session` 写当前会话号，**顶层 `harness_session` 保持原始值不覆盖**：前者让状态条与跳转知道这一单在哪个会话被接手，后者继续用于成本 / 工具调用归因。续接中更正旧结论或来了新证据时，按三步走：
+4. **续接必写 trace（与 diagnose 同要求，续接关键）**：确认续接开始后，往 `traces/<session_id>.yaml` 追加一条 `{role: agent, action: resume, harness_session: "$DSH_SESSION_ID", step: <current_step+1>, output: "续接 <session_id>，恢复到 step <N>"}`，**并刷新顶层 `updated_at: <ISO 时间>`**——这是诊断面板"最新活动置顶"的依据（续接 = 该 session 又活跃了）；后续续接中的关键决策同样带 `reason`（与 diagnose 的 trace 要求一致）。`harness_session` 写当前会话号，**顶层 `harness_session` 保持原始值不覆盖**：前者让状态条与跳转知道这一单在哪个会话被接手，后者继续用于成本 / 工具调用归因。续接中更正旧结论或来了新证据时，按三步走：
    - **先追加一条 user 事件**：`content` 写摘要，`evidence` 把新证据落进 `traces/evidence/<session_id>/`（铁律与 diagnose 相同，不写指纹）。
    - **再走 content 写入口**改 `summary` 与现场侧 / 日志过程 / 上游查证三段（`incident_timeline` / `failure_process` / `upstream_timeline`）：`python3 scripts/trace_transition.py <session_id> --field content --content-file <json> --by agent --json`。`kind` 取 `fact_corrected` / `conclusion_overturned` / `scope_changed` 等，`reason` 写触发来源；写入口按 id 比对自动生成一条 `revisions`。
    - **最后修订报告**：对应小节、元信息「最后更新」、第 10 节修订记录各改一处；旧结论降级标注，不删。
@@ -109,10 +106,10 @@ resume 只负责**恢复现场**——恢复后继续的是 `/diagnose` 的完�
 - 不要从头重新收集症状——state 文件里都有
 - 如果 `session_id` 和当前不匹配，提示"该问题可能已被其他人接手——是否继续？"（并发检测，脆弱机制，只作提示不硬阻塞）
 - **不要在这份 trace 里记录本 resume 期间发生的流程/设计讨论**（与 diagnose 的"trace 边界"一致——那是自演进信号，走 EV card / 自演进通道，不污染本问题的诊断 trace）。`resume` 事件只承载诊断状态（恢复到哪步、待办什么），不掺流程改进内容
-- 续接中若需源码分析，**用 `scripts/src_fetch.py <repo> --ref <tag> --verify "<签名>"`**（缓存按版本平铺在 `src-code/<org>/<repo>/<tag>/`、缓存根在主检出跨 worktree 共读；`--list-versions` 看本地已有版本，`--list` 看已知仓库与 host；仓不在已知表时用 `--list-orgs`、`--list-org-repos` 找），不自行决定 clone 到哪、不重复拉取。**退出码即契约**：`0` = 该版本已产出并核对通过（带 `--verify` 时签名也命中；stdout 末行 = 路径）；`3/4/5` = 没拿到（tag 名不对 / 拉取失败 / 本地目录核对不通过）；`6` = 拿到了但签名没命中，不能证明是它——非零就别拿本地其他版本的目录去读，也不用 web 搜索代替源码
+- 续接中若需源码分析，按 diagnose「源码分析」一节走 `scripts/src_fetch.py`，退出码契约以那里为准；不自行决定 clone 到哪、不重复拉取
 
 ## 状态文件生命周期
 
-case 标 `resolved`/`escalated` 时**留在 `traces/` 原位**（用 `status` 字段标记闭环，**不挪去 `postmortems/history/`**——诊断面板与 `ascend_trace_status` 都只读 `traces/`，挪走会看不到/打不开）。`traces/` 持有全部诊断记录（进行中 + 已闭环），**判"可续接"看 `status`**：只把 `in_progress`/`feedback_pending` 的当活跃可续接；`resolved`/`escalated` 的只作参考不可续接（不再提示"续接"）。**trace 历史不删**——它是路由准确率、执行保真度等指标的数据源（见 docs/guide/metrics.md）。`postmortems/` 只放知识 postmortem 工件（.md，Tier 3），不是 trace 的归档处（trace 是 gitignored 机密记录）。
+case 标 `resolved`/`escalated` 时**留在 `traces/` 原位**（用 `status` 字段标记结单，**不挪去 `postmortems/history/`**——诊断面板与 `ascend_trace_status` 都只读 `traces/`，挪走会看不到/打不开）。`traces/` 持有全部诊断记录（进行中 + 已结单），**判"可续接"看 `status`**：只把 `in_progress`/`feedback_pending` 的当活跃可续接；`resolved`/`escalated` 的只作参考不可续接（不再提示"续接"）。**trace 历史不删**——它是路由准确率、执行保真度等指标的数据源（见 docs/guide/metrics.md）。`postmortems/` 只放知识 postmortem 工件（.md，Tier 3），不是 trace 的归档处（trace 是 gitignored 机密记录）。
 
-**与诊断面板的闭环**：resume 是 trace 的写入方之一——续接追加 `resume` 事件 + 刷新 `updated_at`，使该 session 在面板"更新 X 前"重置、置顶。面板"继续诊断"按钮 → 复制指令 → 本 skill 触发 → 续接写 trace → 面板刷新可见活动。任一环缺失（如续接不写 trace）闭环断，面板不反映续接。
+**与诊断面板的联动**：resume 是 trace 的写入方之一——续接追加 `resume` 事件 + 刷新 `updated_at`，使该 session 在面板"更新 X 前"重置、置顶。面板"继续诊断"按钮 → 复制指令 → 本 skill 触发 → 续接写 trace → 面板刷新可见活动。任一环缺失（如续接不写 trace）衔接断，面板不反映续接。

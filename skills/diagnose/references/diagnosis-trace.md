@@ -1,6 +1,6 @@
 # Diagnosis Trace（trace 写作细节展开）
 
-`/diagnose` 的 SKILL.md「每步必写 trace」写主干（事件结构/证据落盘铁律/时间戳/trace 边界），这里展开**细节**（词表、外部事实落盘、agent 事件两层、反馈闭环词表）。执行时按需加载。
+`/diagnose` 的 SKILL.md「每步必写 trace」写主干（事件结构/证据落盘铁律/时间戳/trace 边界），这里展开**细节**（词表、外部事实落盘、agent 事件两层、反馈记录词表）。执行时按需加载。
 
 ## KNOWN_ACTIONS 词表（与 `scripts/trace_metrics.py` 一致，新增 action 必须两处同步）
 
@@ -41,7 +41,7 @@ user 事件无 `action`，不参与词表检查。**新增 action 时同步改 `
   | `unknown` | 一时拿不到（`workload_type` 同时为 `unknown`） | 他没回、材料里也没有线索 |
 
   中途证据与他的说法相反时以证据为准：`workload_type_source: evidence`，并在 `reason` 里写明改向的理由与回给他那句话。
-- `branch` 现在是**性质**名（`interrupt` / `precision` / `performance`），不再带 `training_` / `inference_` 前缀——负载类型已经在 `workload_type` 里，分支名再带一次就是两处记同一件事。**分层前写下的历史 trace 保持原样、不改写**（那时的分支 id 是当时口径的真实记录）。
+- `branch` 现在是**性质**名（`interrupt` / `precision` / `performance`），不再带 `training_` / `inference_` 前缀——负载类型已经在 `workload_type` 里，分支名再带一次就是两处记同一件事。**分层前写下的历史 trace 保持原样、不改写**（那时的分支 id 是当时规则的忠实记录）。
 - **字段改过名，读的时候两种都认**：早期 trace 里这两个字段叫 `side` / `side_source`（同一个意思）。新写的 trace 用 `workload_type` / `workload_type_source`；**历史 trace 不回填**——trace 是运行时件，回填等于改写当时的记录。**当前还没有读端**（这一层暂时算不出数），将来接入统计时两个键名都取。
 
 **`workload_type: unknown` 的占比是这一层的体检读数**：它按设计是保底路径（训练与推理都查），占比持续偏高说明步骤 1 那句问话没问出去，而不是"负载类型判不出来"——那时的修法是改流程，不是加词。
@@ -66,7 +66,7 @@ user 事件无 `action`，不参与词表检查。**新增 action 时同步改 `
 - `miss`：查了，但没有相关词条（`reason` 写清按什么键查的、为何无关）——它记的是**知识库的覆盖缺口**；
 - `skipped`：**没有查**（`reason` 必写为什么）。两种常见情形：本触发点不在本轮路径上（如候选全未命中时的 2.5 修复依据那一半）、证据里没有可检索键（框架自定义断言文本、Python traceback、业务日志）。**背景层几乎总能查到词**（平台 / 组件名在证据里），所以它的正常负结果是 `miss` 而不是 `skipped`；只有连平台都判不出时才写 `skipped`。
 
-**为什么要有 `skipped`**：不查不留痕时，"查了没命中"与"根本没查"在数据上完全同形——消费率无法归因，也就分不清该改知识库（覆盖缺口）还是改流程（执行错）。`skipped` 不计入 reference 引用次数（那是"查过"的口径）。
+**为什么要有 `skipped`**：不查不记录时，"查了没命中"与"根本没查"在数据上完全同形——消费率无法归因，也就分不清该改知识库（覆盖缺口）还是改流程（执行错）。`skipped` 不计入 reference 引用次数（那按「查过」计）。
 
 ### `external_lookup` 事件（外部查证；三态）
 
@@ -132,7 +132,7 @@ sediment_candidates:
     ref_id: <ref-id>         # 仅 produced：产出词条的 id，由 to-reference 回写
 ```
 
-判"能不能当 reference"的口径：换个事故、换个客户还成立吗？只对本次个案成立的内容属于 case（走 to-postmortem）。
+判"能不能当 reference"的判定标准：换个事故、换个客户还成立吗？只对本次个案成立的内容属于 case（走 to-postmortem）。
 
 `produced` 只用于 `kind: reference`：to-reference 产出词条后把对应候选从 `proposed`/`drafted` 改成 `produced` 并写 `ref_id`（写入口是 `scripts/trace_transition.py --field candidate`）。它回答"这单产出了哪些词条"，也让面板把"已产出"与"待复核"分开；case 候选的沉淀状态仍由 `sedimented` 那条轴记，不写 `produced`。
 
@@ -212,7 +212,7 @@ case 错 / 执行错判）——让 `component_tally.py` 能聚合出"被跟随�
 
 ### 行文口径（这两个字段同样要守）
 
-**字段齐全不等于读得懂**：面板把顶层 `summary` 与逐事件的 `output`/`reason` 直接摊给读者。共用条目与必须保留的四类原值见同目录 `report-template.md` 的「行文规范」一节——同一 skill 内随 `references/` 一起分发，不依赖 `docs/`；完整判定口径、各面差异与核对配方另见 `docs/spec/writing-norms.md`（可选论证层）。
+**字段齐全不等于读得懂**：面板把顶层 `summary` 与逐事件的 `output`/`reason` 直接摊给读者。共用条目与必须保留的四类原值见同目录 `report-template.md` 的「行文规范」一节——同一 skill 内随 `references/` 一起分发，不依赖 `docs/`；完整判定标准、各面差异与核对配方另见 `docs/spec/writing-norms.md`（可选论证层）。
 
 - **一条只说一件事**，超一个分句就拆行；不把多件事压进 `①②③` 长句——并列掩盖因果，读者读完只知道"有几条"，不知道"哪条导致哪个动作"。
 - **`summary` 装什么**：按五块写，各一小段——现象（含读数）、排除链（排除了哪些候选或方向、为什么）、根因、处置（给了什么 fix 或下一步）、状态（等回报 / 已收尾 / 待更正）。没有的块跳过。面板这块的标签是「本次诊断摘要」，读者按摘要读，所以背景之外必须有结论。
@@ -388,7 +388,7 @@ python3 scripts/trace_transition.py <sid> --field content --content-file /tmp/co
 
 `by` 取 `user` / `agent` / `cli`，由写入口的 `--by` 传：agent 自发改写传 `agent`，脚本与人工命令行传 `cli`；面板当前没有 content 写路径。
 
-**状态转移顺带改摘要也要留修订**：收尾时用 `trace_transition.py --to … --summary …` 改 `summary`，写入口会追加一条 `fact_corrected` 修订（before / after 与 `summary` 的 hash）；与 content 写入口同一份口径。
+**状态转移顺带改摘要也要留修订**：收尾时用 `trace_transition.py --to … --summary …` 改 `summary`，写入口会追加一条 `fact_corrected` 修订（before / after 与 `summary` 的 hash）；与 content 写入口同一套规则。
 
 **手改会被查出来**：写入口给每个被改字段记 `hashes`，`python3 scripts/verify_trace_status.py --all` 重算当前值时与最近一条带该字段的修订比对，不等即绕过；另有一条兜底——内容字段有值、却没有任何修订 hash 时直接报错，首次手写或删掉整段 `revisions` 也跑不掉。`summary` 不在这条兜底里（它还有状态转移这一条合法的写入路径）。
 
@@ -426,7 +426,7 @@ trace 不止当过程记录读，还有第二个用途：换一个探索策略�
 
 用 `python3 scripts/trace_begin.py --slug <日期>-<issue 号>-<短名>` 起顶层 header：`session_id` / `harness_session` /
 `created_at` / `kb_rev` 都是派生值，由脚本填；`$DSH_SESSION_ID` 取不到时它**留空并说明**，不猜。
-之后每步只往 `trace[]` 追加事件（字段口径见本文件其余部分）。
+之后每步只往 `trace[]` 追加事件（字段定义见本文件其余部分）。
 
 ## 顶层 `harness_session`（可选，一次写定）
 
@@ -458,7 +458,7 @@ harness 侧的会话号（DSH 里是 `$DSH_SESSION_ID`）。**用途有两个**�
 
 建 session 时把当时那份 `knowledge/` 的版本写进去——知识基线是诊断读知识库的那一版 commit 坐标（`python3 scripts/kb_rev.py` 的末行 = 检出 HEAD 短 sha），**之后不改**。两个用途：
 
-- **跨机接手**：一单在一台机器上做到一半、换到另一台继续时（更多日志在另一台），接手方要拿这个值比对本机知识库版本。不一致意味着 `excluded_cases` 里的 id 可能不存在、同一条 case 的排序分数不同、甚至那条 case 当时还没沉淀出来——接手方会复现出一套**与上家不同的候选集而不自知**。口径与工具见 `docs/guide/handoff.md`。
+- **跨机接手**：一单在一台机器上做到一半、换到另一台继续时（更多日志在另一台），接手方要拿这个值比对本机知识库版本。不一致意味着 `excluded_cases` 里的 id 可能不存在、同一条 case 的排序分数不同、甚至那条 case 当时还没沉淀出来——接手方会复现出一套**与上家不同的候选集而不自知**。规则与工具见 `docs/guide/handoff.md`。
 - **事后归因**：判"当时为什么没命中"要能回答"当时库里有什么"，只看今天的库会把"库里当时没有"读成"检索没找到"。
 
 拿不到 git（非检出、无 git）就如实写 `unknown`——写 `unknown` 只让版本无法比对，编一个值会让比对给出假结论。
@@ -507,17 +507,17 @@ harness 侧的会话号（DSH 里是 `$DSH_SESSION_ID`）。**用途有两个**�
 当 case 显示，并按它生成"该 case 的 fix 生效了吗"这类指令。要记"转上游 / 上游未修"这类说明，写进
 `summary` 或 `last_action`。
 
-## 反馈闭环词表
+## 反馈记录词表
 
 反馈确认后，顶层 `feedback: {case, outcome, confirmed_at}` 要填——`status=resolved 且 feedback.outcome=resolved` 是该 trace 升格为 fixture（强断言基准）的资格条件（`scripts/replay_trace.py --emit-fixtures` 只看这种）。
 
 **终态的收尾方式（`ending`）由写入口写**：`status` 进入终态时必须同时有 `ending`（`{kind, handed_to, duplicate_of, note}`，取值见 `trace-status.yaml` 的 `ending_kinds:`），并追加一条 `transitions` 事件（从什么到什么、收尾方式、谁、何时、来源）。收尾走 `python3 scripts/trace_transition.py`，不要手改 YAML——手改没有校验、没有事件，`verify_trace_status.py` 事后才能发现。
 
-**无命中 case 的单没有 feedback 可写**：它的闭环只记 `status: resolved`（面板的「已解决」命令就是这么做的）。别为了"留一条"而补占位 `case` 的 feedback 事件——结算侧找不到 case 会把它挂成"待结算"、游标不再前进；升格闸门对这一类读 `status`（见 `scripts/verify_case_draft.py`）。
+**无命中 case 的单没有 feedback 可写**：它的结单只记 `status: resolved`（面板的「已解决」命令就是这么做的）。别为了"留一条"而补占位 `case` 的 feedback 事件——结算侧找不到 case 会把它挂成"待结算"、游标不再前进；升格闸门对这一类读 `status`（见 `scripts/verify_case_draft.py`）。
 
 ## 沉淀状态（`sedimented`，第三条轴）
 
-顶层 `sedimented: {state, case_id, inbox_path}` 记"这单的结论进知识库了没"。它与 `status`（诊断收尾）、`feedback.outcome`（命中 case 的 fix 行不行）不是同一件事，三条轴各有名字，不互相借；但无命中单没有 case 可写 `outcome`，它的闭环落在 `status` 上。
+顶层 `sedimented: {state, case_id, inbox_path}` 记"这单的结论进知识库了没"。它与 `status`（诊断收尾）、`feedback.outcome`（命中 case 的 fix 行不行）不是同一件事，三条轴各有名字，不互相借；但无命中单没有 case 可写 `outcome`，它的结单记在 `status` 上。
 
 字段写法以 `diagnosis_state.yaml.example` 为准（`case_id` / `inbox_path`）；面板读端同时认旧 trace 里的 `caseId`：
 
@@ -525,7 +525,7 @@ harness 侧的会话号（DSH 里是 `$DSH_SESSION_ID`）。**用途有两个**�
 - `knowledge` / `archived`：knowledge-groom 转正后回写，并记 `case_id`；
 - 字段缺失按 `none` 读，不显式写。
 
-取值与写入时机以仓库根 `trace-status.yaml` 的 `sedimented:` 段为准。诊断面板的「待升格」筛选就是 `submitted` 且来源诊断未闭环——这类草稿升格时会被 `scripts/verify_case_draft.py` 的闸门拦下；强外部证据档（上游修复已合入等）可走 owner 双签。
+取值与写入时机以仓库根 `trace-status.yaml` 的 `sedimented:` 段为准。诊断面板的「待升格」筛选就是 `submitted` 且来源诊断未结单——这类草稿升格时会被 `scripts/verify_case_draft.py` 的检查拦下；强外部证据档（上游修复已合入等）可走 owner 双签。
 
 ## 词表同步纪律
 

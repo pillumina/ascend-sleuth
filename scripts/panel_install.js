@@ -12,12 +12,12 @@
 //   node scripts/panel_install.js --check          # 只读：报本包的安装与使能状态（要能定到包名）
 //   node scripts/panel_install.js --sync           # 拉完代码跑这一条：版本一致就按安装方式给结论
 //                                                  # （link 安装只差重启，快照安装不用重装），不一致就换装，
-//                                                  # 换装必须重启；配 --all 才对四个包都生效（单跑只处理面板包）。
+//                                                  # 换装必须重启；配 --all 才对五个包都生效（单跑只处理面板包）。
 //                                                  # link 安装下它比的是同一份磁盘版本，判不出 host 半新旧；
 //                                                  # 真新旧看诊断 tab 顶部的提示；重启后核对工具与 RPC。
 //   node scripts/panel_install.js --remove         # 卸载
 //   node scripts/panel_install.js --spec <spec>    # 换包：绝对路径 / 包名 / git 地址 / tarball
-//   node scripts/panel_install.js --all            # 一次装四个包：面板包 + vllm-kb 接入插件 + 诊断状态条 + 诊断画布
+//   node scripts/panel_install.js --all            # 一次装五个包：面板包 + vllm-kb 接入插件 + 诊断状态条 + 诊断画布 + 实验台
 //   node scripts/panel_install.js --force          # 跳过版本相等判断，强制换装（改了源码忘了 bump 版本时用）
 //   node scripts/panel_install.js --url <base> --token <token>   # 不自动找地址
 //   node scripts/panel_install.js --log <harness.log 路径>

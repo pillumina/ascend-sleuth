@@ -1,6 +1,6 @@
 # 演进信号记录
 
-内容流程收尾的轻量产物。一条信号一个文件，随 PR 提交；由深度轮分诊，不直接产 EV 卡。
+待分诊的观察。一条信号一个文件，随下一次内容 PR 或周批提交；由深度轮分诊，不直接产 EV 卡。
 
 ## 谁写
 
@@ -11,6 +11,15 @@ python3 scripts/evolve_signals.py add --signal T10 --signal-text "自审发现�
   --target skills/evolve-check/SKILL.md --evidence "一句话证据" \
   --trajectory "products/VLLM-ASC-123(submitted)" --suggested "建议动作" --source evolve-check
 ```
+
+## 写什么
+
+信号是待分诊的观察，不是改动的溯源戳。一个 PR 为什么改，写在该 PR body 的「背景与动机」（现象 + 出处），git 历史就是记录，不另要信号文件。
+
+- 只写当前流程或 PR **没做完**的部分；做完的部分不写。
+- 只写没有别的脚本或检测器在记的现象：`knowledge-groom` 每轮扫的（R8 缺口候选）、`metrics_health.py` 判的（容量）、`capacity_health.py` 判的（候选溢出率）、`s2_replay.py --todo` 列的（replay 缺口）不记。self-evolve 第 1 步读 `metrics_health.py`、`capacity_health.py` 与 `s2_replay.py --todo`；R8 由 groom 的 owner 读。
+- 看到时就写（`evolve-check` 收尾、评审会话、诊断会话都算），不从方案倒推。
+- 入库随下一次内容 PR 或周批带上 `proposals/signals/`；修复 PR 不带信号，剩余观察写进它「影响面」的留作后续，由下一次内容 PR 或周批收进队列。`precheck.py` 对 `proposals/signals/` 只做机器自检（`python3 scripts/evolve_signals.py list` 能解析）。
 
 ## 谁读
 

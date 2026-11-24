@@ -1,28 +1,20 @@
 ---
 name: preload-panel
 description: >
-  在 DSH 会话中加载 ascend-sleuth 面板，并处理「装了但 tab 不出现」。先按本机给模型的工具与桌面版
-  自带的东西选装载路：有 cordis_define / cordis_run 在会话内热加载；有 plugin_manager 就装常驻插件
-  包；DSH Desktop 用安装目录自带的 dsh 命令行把 dsh-plugins/dsh-sleuth-panels/ 装进 profile（拿不到
-  地址与 token 时这是主路）；另有 scripts/panel_install.js --all 经 /api 通路一次装面板、vllm-kb、
-  诊断状态条与诊断画布四个包、以及在侧栏「插件」页粘贴路径两条备用路。面板包的界面分三块：会话里一个
-  「诊断」tab、左侧栏一个「Ascend Sleuth」整页（「知识库」「指标」「自演进」）、侧栏页脚一个「诊断记录」入口
-  （列出诊断会话，可按时间或按价值排序，点一行切过去）；另有独立的状态条包，一块：输入框上方的
-  诊断状态条（可单独装卸）；另有独立的诊断画布包，左侧栏一个「诊断画布」图标、主区一整页，离线渲染
-  `traces/`（可单独装卸）。热加载路径没有整页容器、页脚入口、状态条与画布，仍是三个 tab（诊断 / 指标 / 自演进）。
-  日常同步代码后不用调用本 skill（随仓库装的重启 DSH 生效，插件页装的重装后再重启）；只在首次装载或「装了但 tab 不出现」时用。
-  仅 DSH 可用
-  ——依赖 conversation.view / main / sidebar.panellist / sidebar.footer.action / shell.overlay /
-  conversation.input.dock / conversation.input.right 插槽；
-  其他 agent（Claude Code / Codex / pi）无此机制。
+  在 DSH 里首次装载 ascend-sleuth 面板包，或「装了但 tab 不出现」时用：
+  跑一条只读快检，按它报的选路装包、验证、排障。日常同步代码后不用调；agent 直接 read 本文件、不走 skill 工具。
+disable-model-invocation: true
 ---
 
 # Preload Panel
 
-DSH 会话中加载可视化面板、诊断状态条与诊断画布。常驻包把界面分成四处：会话里一个「诊断」tab
+> **本地执行说明**：本 skill 标记 `disable-model-invocation`（只在首次装载或排障时用，日常会话不为它付常驻面）——skill 工具加载会报 "not available for model invocation"，这是预期。用户明确要求装面板或问「tab 怎么不出现」时，agent 直接 `read` 本文件按流程走即可；或用户输入 `/skill:preload-panel` 直接触发。
+
+DSH 会话中加载可视化面板、诊断状态条、诊断画布与实验台。常驻包把界面分成五处：会话里一个「诊断」tab
 （`conversation.view`，读这一单）；全库读数在整页「Ascend Sleuth」（`main` 的 keyed 条目 +
 `sidebar.panellist` 图标，「知识库」「指标」「自演进」三个子页，默认落在
-「知识库」）；另有一个独立的 `dsh-sleuth-copilot` 包，把状态条
+「知识库」）；另有一个独立的 `dsh-rsi-observatory` 包，把「实验台」整页放进侧栏（只读 RSI store）；
+另有一个独立的 `dsh-sleuth-copilot` 包，把状态条
 放在输入框上方（`conversation.input.dock`）、入口放在输入区工具条（`conversation.input.right`）、
 全库动作放在浮层（`shell.overlay`），可单独装卸；另有一个独立的 `dsh-sleuth-canvas` 包，把诊断旅程
 画布放进整页（`main` 的 keyed 条目 + `sidebar.panellist` 图标），可单独装卸。热加载路径没有整页容器、
@@ -44,7 +36,7 @@ DSH 会话中加载可视化面板、诊断状态条与诊断画布。常驻包�
 node scripts/panel_status.js
 ```
 
-它一次报清四件事：DSH_HOME 与当前 profile 名、安装目录里的 dsh 命令行在不在、四个包在 profile 里
+它一次报清四件事：DSH_HOME 与当前 profile 名、安装目录里的 dsh 命令行在不在、五个包在 profile 里
 怎么登记（`dependencies` / `dsh.profile.bundles` / 快照安装（插件页或插件管理器把包复制到
 `.generations/live`）的 `pnpm.overrides` 与 `generationProjection`）、实际加载的版本与仓库版本差在哪。
 
@@ -68,9 +60,9 @@ DSH_HOME 位置、profile 名、命令行是否随包、token 是否落日志、
 **默认装五个包**：面板包 `dsh-sleuth-panels`、`dsh-sleuth-vllm-kb`（设置页左侧栏的「vllm-kb」一栏，
 四个 `vllm_kb_*` 工具默认关）、独立的 `dsh-sleuth-copilot`（输入框上方的诊断状态条与诊断工作台）、
 独立的 `dsh-sleuth-canvas`（左侧栏「诊断画布」整页，离线渲染 `traces/`）、独立的
-`dsh-rsi-observatory`（侧栏「实验台」整页，只读 RSI store）。路由三对后四个包各再跑一次
-`add`；路由五在插件页粘贴四次；路由四用 `--all` 一次装齐；路由二用 `install_bundle` 装四次。四个包
-分开登记：装面板不会带上另外三个。状态条与诊断画布都是独立包，卸掉它们不影响面板。
+`dsh-rsi-observatory`（侧栏「实验台」整页，只读 RSI store）。路由三对其余四个包各再跑一次
+`add`；路由五在插件页粘贴五次；路由四用 `--all` 一次装齐；路由二用 `install_bundle` 装五次。五个包
+分开登记：装面板不会带上另外四个。状态条与诊断画布都是独立包，卸掉它们不影响面板。
 
 桌面版落在第一行，原因有两条：发行版把插件管理器那条模型工具标成 `disabled: true`
 （`@deepseek-ai/dsh-base/cordis.patch.yml`、`@deepseek-ai/dsh-web-app/cordis.patch.yml` 各一处），
@@ -92,7 +84,7 @@ stderr（面板包冒烟会打 `RPC 路由已注册`），以退出码为准；�
 
 **位置以第 0 步快检为准**。它给出实际路径；没有就说明这个发行版没带命令行，转路由四（日志里有
 带 token 的地址时）或路由五。不要把 `%LOCALAPPDATA%` 当唯一位置：安装时可以选盘符，快检会从
-运行中的程序反查安装目录，再兜底默认位置。
+运行中的程序反查安装目录，再退到默认位置。
 
 1. **装**（`<profile>` 与 `<dsh>` 都用快检报的值，别写死）：
 
@@ -104,8 +96,9 @@ stderr（面板包冒烟会打 `RPC 路由已注册`），以退出码为准；�
    <dsh> plugin --profile <profile> add "<仓库绝对路径>/dsh-plugins/dsh-rsi-observatory"
    ```
 
-   四条都要跑：第一条装面板，第二条装 vllm-kb（设置页左侧栏那一栏），第三条装诊断状态条
-   （输入框上方的交互层），第四条装诊断画布（左侧栏图标 + 主区整页）。
+   五条都要跑：第一条装面板，第二条装 vllm-kb（设置页左侧栏那一栏），第三条装诊断状态条
+   （输入框上方的交互层），第四条装诊断画布（左侧栏图标 + 主区整页），第五条装实验台
+   （侧栏「实验台」整页，只读 RSI store）。
    命令做三件事：在 profile 目录跑包管理器、把依赖写成 `link:<仓库路径>`、把包名加进
    `dsh.profile.bundles`。最后一项决定启动时加载它——只写了依赖没进 bundles，等于没装。
    输出里的 `Already up to date` 只说明包管理器没搬文件，装没装看下一行的 `dependencies:`。
@@ -142,9 +135,9 @@ stderr（面板包冒烟会打 `RPC 路由已注册`），以退出码为准；�
 
 ## 路由四：HTTP 脚本安装（日志地址可用时）
 
-1. **装**：`node scripts/panel_install.js --all`。四个包各自判版本：与仓库一致就按安装方式说明要不要
+1. **装**：`node scripts/panel_install.js --all`。五个包各自判版本：与仓库一致就按安装方式说明要不要
    重启，不一致才换装（换装后要重启，见「更新已装的面板」）；只想装其中一个时用 `--spec <包目录>`。
-2. **核对**：`node scripts/panel_install.js --all --check`，四个包的版本号都应与仓库里的一致。
+2. **核对**：`node scripts/panel_install.js --all --check`，五个包的版本号都应与仓库里的一致。
 
 `node scripts/panel_install.js` 走的是界面同一条通路：先 `GET <base>/?token=<token>` 换会话 cookie，
 再 `POST <base>/api/pluginManager/<方法>`，信封是
@@ -154,9 +147,9 @@ stderr（面板包冒烟会打 `RPC 路由已注册`），以退出码为准；�
 版本一致时再调 `setBundleEnabled(name, true)`；spec 不是本地路径时读不到包名，脚本以退出码 1 收场。
 
 - `--check` 只查状态，只对能定到包名的目标给判断（定不到包名或目标没装都退 1）。
-- `--sync` 在版本一致时按安装方式给结论；配 `--all` 才对四个包都生效，单跑只处理面板包。
+- `--sync` 在版本一致时按安装方式给结论；配 `--all` 才对五个包都生效，单跑只处理面板包。
 - `--remove` 卸载；`--spec <spec>` 换目标（包名、Git 地址、tarball 或本地绝对路径）；
-  `--all` 处理面板包、vllm-kb 接入插件、诊断状态条与诊断画布四个包；`--force` 跳过版本判断强制换装。
+  `--all` 处理面板包、vllm-kb 接入插件、诊断状态条、诊断画布与实验台五个包；`--force` 跳过版本判断强制换装。
 - 地址与 token 的取法同 `panel_rpc_probe.js`：先扫日志里的 `dsh web: …/?token=…` 行，取不到再传
   `--url` / `--token` / `--log`。
 - 退出码：0 = 操作完成（`application` 可能是 `restart-required`，要重启才加载新版本）｜2 = 拿不到
@@ -175,8 +168,8 @@ stderr（面板包冒烟会打 `RPC 路由已注册`），以退出码为准；�
 
 1. 让用户在侧栏「插件」页的添加入口粘贴 `<仓库绝对路径>/dsh-plugins/dsh-sleuth-panels`，
    再用同一条路径把 `<仓库绝对路径>/dsh-plugins/dsh-sleuth-vllm-kb` 与
-   `<仓库绝对路径>/dsh-plugins/dsh-sleuth-copilot` 与 `<仓库绝对路径>/dsh-plugins/dsh-sleuth-canvas`
-   各粘一次。
+   `<仓库绝对路径>/dsh-plugins/dsh-sleuth-copilot`、`<仓库绝对路径>/dsh-plugins/dsh-sleuth-canvas`
+   与 `<仓库绝对路径>/dsh-plugins/dsh-rsi-observatory` 各粘一次。
    该入口接受包名、Git 地址、压缩包或本地绝对路径。粘的是这个包目录，不是面板源目录
    `dsh-plugins/ascend-panel/`——后者没有 `package.json`，入口会拒。
 2. **读结果**：界面不给模型可读的 `application` / `warnings`，改读 profile 的 `package.json`
@@ -323,7 +316,7 @@ node scripts/verify_panel_desktop.js --profile <profile>
 再重启。桌面版插件页装过的包会在 profile 的 `pnpm.overrides` 里留一条指向 `.generations/live` 的
 覆盖，实际加载的是那一份快照；这类包继续走插件页更新，路由三的 link 不会替换它。
 
-`node scripts/panel_install.js --all --sync` 只对快照安装有意义：四个包各自比版本，不一致就换装，
+`node scripts/panel_install.js --all --sync` 只对快照安装有意义：五个包各自比版本，不一致就换装，
 换装后要重启。link 安装下它比的是同一份磁盘版本，判不出 host 半新旧；结论按安装方式给。
 `--all` 决定处理哪几个包；不加时只处理面板包。
 
@@ -392,7 +385,7 @@ version 与 `lib/client.js` 的 `PLUGIN_VERSION` 一起改，再按原路重装�
 
 `dsh-plugins/dsh-sleuth-vllm-kb` 不是面板。它给设置页加左侧栏一项「vllm-kb」（配端点、启停、测
 连通），并注册四个 `vllm_kb_*` 工具。它默认随面板一起装（路由三的第二条 `add`、路由四的 `--all`、
-路由五的第二次粘贴；诊断状态条是第三条 `add` / 第三次粘贴，诊断画布是第四条 `add` / 第四次粘贴）；
+路由五的第二次粘贴；诊断状态条是第三条 `add` / 第三次粘贴，诊断画布是第四条 `add` / 第四次粘贴，实验台是第五条 `add` / 第五次粘贴）；
 只有要单独补装时才用下面这两条：
 
 ```
@@ -527,7 +520,7 @@ DSH Desktop（官方与社区发行版）主要用路由三/四/五；这一节�
    `lib/index.js`、`lib/client.js`。两个 `lib/` 文件是生成物：面板源码改了就跑
    `node scripts/build_panel_bundle.js`，用 `node scripts/build_panel_bundle.js --check` 核对产物与
    源文件一致，`node scripts/check_panel_bundle.js` 做一次可加载性冒烟（路由、端点、工具、一个 tab +
-   整页 + 侧栏图标三个注册面、样式标签、卸载），并核对三处名字对齐（`package.json` / `cordis.patch.yml` / 产物 export）。
+   整页 + 侧栏图标三个注册面、样式标签、卸载），并核对三处名字一致（`package.json` / `cordis.patch.yml` / 产物 export）。
    **不要手改 `lib/`**。同一条命令还会判本机 DSH 走哪条装载路，并核对常驻包依赖的五个外部契约
    （`webServer` 的 prefix 路由声明、`connection.requestRejection`、client 沙箱的 `styles.insert`、
    页面产物格式 `__ModuleLoader__.load`、shell 的 `resolve` + `execute`）还在不在——**装之前跑它**。
@@ -536,8 +529,8 @@ DSH Desktop（官方与社区发行版）主要用路由三/四/五；这一节�
    诊断画布的产物用 `node dsh-plugins/dsh-sleuth-canvas/build.mjs --check` 核对，与上面这条命令无关。
 
 2. **装**：`plugin_manager install_bundle(target: <仓库绝对路径>/dsh-plugins/dsh-sleuth-panels)`；
-   对 `<仓库绝对路径>/dsh-plugins/dsh-sleuth-vllm-kb`、`.../dsh-sleuth-copilot` 与
-   `.../dsh-sleuth-canvas` 各再装一次。
+   对 `<仓库绝对路径>/dsh-plugins/dsh-sleuth-vllm-kb`、`.../dsh-sleuth-copilot`、
+   `.../dsh-sleuth-canvas` 与 `.../dsh-rsi-observatory` 各再装一次。
 
 3. **读安装结果**（`application` 与 `warnings` 决定是否已生效，不要拿日志或进程列表代替）：
    - `applied` → 已生效。

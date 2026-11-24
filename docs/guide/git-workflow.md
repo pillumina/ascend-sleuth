@@ -392,11 +392,11 @@ python3 scripts/ev_measure.py --audit            # 全库盘点：可复现 / �
 
 | 改动面 | 模式与档 | 上限 |
 |---|---|---|
-| `scripts/**`、`dsh-plugins/**`、`.github/workflows/**`、`metrics/gates.yaml`、`eval/**`、`tests/**`、`proposals/**`、`triage-tree*`、`docs/guide/git-workflow.md`、`docs/spec/**`、`docs/mechanism/**` | 判断性预核，脚本/机制档 | 1 轮对抗 + 1 轮回应；最多 5 条；正文 ≤ 6000 字符 |
+| `scripts/**`、`dsh-plugins/**`、`.github/workflows/**`、`metrics/gates.yaml`、`eval/**`、`tests/**`、`proposals/**`（`proposals/signals/` 除外，见机器自检行）、`triage-tree*`、`docs/guide/git-workflow.md`、`docs/spec/**`、`docs/mechanism/**` | 判断性预核，脚本/机制档 | 1 轮对抗 + 1 轮回应；最多 5 条；正文 ≤ 6000 字符 |
 | `knowledge/**`、`references/**` | 判断性预核，内容档 | 1 轮；最多 3 条；正文 ≤ 3000 字符 |
 | `docs/**`（除上一行）、`skills/**`、五类 PR 模板、`README.md`、`CLAUDE.md`、`AGENTS.md`、`CONTEXT.md` | 判断性预核，文档档 | 1 轮；最多 3 条；正文 ≤ 3000 字符 |
 | 带 `kb/high-risk` 标签 | 按脚本/机制档 | 同第 1 行 |
-| `metrics/timeline.d/`、`metrics/entry-activity.d/`、`assets/`、`sleuth.config.yaml`、`.gitignore` | 机器自检，不派会话 | 只跑该面的 `--check` |
+| `metrics/timeline.d/`、`metrics/entry-activity.d/`、`assets/`、`proposals/signals/`、`sleuth.config.yaml`、`.gitignore` | 机器自检，不派会话 | 只跑该面的 `--check` |
 | 其余路径（含 `.github/CODEOWNERS`、根目录未列出的文件） | 按脚本/机制档兜底 | 同第 1 行 |
 
 一个 PR 同时碰到多档时按最高一档做。路径判不准时按脚本/机制档做（`precheck.py` 的默认）。
