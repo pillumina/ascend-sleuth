@@ -77,7 +77,7 @@
 | 确定性 benchmark（工具/检索类） | [evaluation.md](evaluation.md) 3.5 | 已落地 | `python3 scripts/evolve.py benchmark --help` |
 | regression 预算配置（常规 6 / 全量 30） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 -c "import sys; sys.path.insert(0,'scripts'); from evolve.policy import DEFAULTS; r=DEFAULTS['cost']['runs']; sys.exit(0 if (r['regression_pairs'], r['regression_full_pairs'])==(6,30) else 1)"` |
 | test / regression 通用 stage runner（plan / run / report） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/evolve.py stage --help` |
-| stage agent adapter（dsh / claude / echo / command） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/agent_adapter.py --help` |
+| stage agent adapter（dsh / claude / echo / command；外部进程执行诊断的入口） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/agent_adapter.py --help` |
 | stage judge（外部评分 + meta 来源 + 校准） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/evolve.py stage judge --help` |
 | test 门禁（field accept / candidate / 完整证据 / 样本封存） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/evolve.py stage report --help` |
 | judge 元数据与成本入 Conclusion | [evaluation.md](evaluation.md) 3.4 | 已落地 | `grep -n "judge" scripts/evolve/pilot.py` |

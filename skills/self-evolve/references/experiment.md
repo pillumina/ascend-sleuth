@@ -34,7 +34,7 @@ task subagents → judge subagents
   → gate → experiment record
 ```
 
-DSH Desktop 的提案/实验由会话内 subagent 编排，不走 `agent_adapter --agent dsh`；Claude/Codex 只有在 CLI 是标准做法时才走外部命令，结果仍写回 ProposalPort/RSIStore。具体算法实现、state 命令和可选组合看机制文档与 `rsi plan` 的 `stages`；需要跨进程状态机时用对应 CLI 的 `--help`，不要把某个算法写成固定模式。
+DSH Desktop 的提案/实验由会话内 subagent 编排，不走 `agent_adapter --agent dsh`；Claude/Codex 只有在 CLI 是标准做法时才走外部命令，结果仍写回 ProposalPort/RSIStore。需要无人值守（CI、服务器）时用 `experiment flow --runner-command` 接外部 agent。参考适配器（adapter）是 `python3 scripts/agent_adapter.py --agent dsh`：它的 `dsh` 分支要 `DEEPSEEK_API_KEY`，或设 `SLEUTH_DSH_ALLOW_STORED=1` 复用已存凭据。具体算法实现、state 命令和可选组合看机制文档与 `rsi plan` 的 `stages`；需要跨进程状态机时用对应 CLI 的 `--help`，不要把某个算法写成固定模式。
 
 结果至少写 `target_kind`、`target_component`、`algorithm`、`algorithm_version`、`execution`、`decision`、`samples`、baseline/candidate 分数；subagent 模式写 `execution=subagent`、`eval_profile_id=subagent_judge`、`eval_ready=false`。同时保存实际 `stages`。
 
