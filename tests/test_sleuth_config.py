@@ -88,6 +88,52 @@ class SleuthConfigTest(unittest.TestCase):
             self.assertEqual(policy["experiment"]["stages"]["propose"], "propose.none")
             self.assertEqual(policy["experiment"]["stages"]["judge"], "judge.subagent")
 
+    def test_profile_pipeline_selects_preset_without_changing_default(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "config" / "rsi").mkdir(parents=True)
+            (root / "config" / "rsi" / "pipelines.yaml").write_text(yaml.safe_dump({
+                "pipelines": {
+                    "default": {"stages": {
+                        "attribute": "attribute.trace_rule",
+                        "select_region": "select.region_hardcount",
+                        "select_candidate": "select.best",
+                        "propose": "propose.agent",
+                        "judge": "judge.subagent",
+                        "gate": "gate.paired",
+                    }},
+                    "gepa": {"extends": "default",
+                             "stages": {"select_candidate": "select.pareto",
+                                        "propose": "propose.reflection"}},
+                },
+            }), encoding="utf-8")
+            (root / "sleuth.config.yaml").write_text(yaml.safe_dump({
+                "schema": SC.SCHEMA,
+                "evolution": {
+                    "role": "maintainer",
+                    "pipeline": "default",
+                    "pipeline_config": ["config/rsi/pipelines.yaml"],
+                    "profiles": {"gepa": {"pipeline": "gepa"}},
+                },
+            }), encoding="utf-8")
+            cfg = SC.load_config(root)
+            # 全局默认不变
+            self.assertEqual(
+                load_config_policy(cfg)["experiment"]["stages"]["propose"],
+                "propose.agent")
+            # CLI --pipeline 直传预设名
+            direct = load_config_policy(cfg, pipeline="gepa")
+            self.assertEqual(direct["experiment"]["stages"]["propose"],
+                             "propose.reflection")
+            self.assertEqual(direct["experiment"]["stages"]["select_candidate"],
+                             "select.pareto")
+            # profile 携带 pipeline 键（可选通路，预设清单不在本文件维护）
+            gepa_policy = load_config_policy(cfg, profile="gepa")
+            self.assertEqual(gepa_policy["experiment"]["stages"]["propose"],
+                             "propose.reflection")
+            # pipeline 键不进策略体
+            self.assertNotIn("pipeline", gepa_policy)
+
     def test_config_file_wins_over_nothing(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

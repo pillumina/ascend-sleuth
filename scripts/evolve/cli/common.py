@@ -100,7 +100,8 @@ def policy_for(args: argparse.Namespace) -> Dict[str, Any]:
     root = Path(getattr(args, "root", None) or Path.cwd())
     try:
         config = SC.load_config(root)
-        return load_config_policy(config, getattr(args, "profile", None))
+        return load_config_policy(config, getattr(args, "profile", None),
+                                  getattr(args, "pipeline", None))
     except SC.ConfigError as exc:
         raise PolicyError(str(exc)) from exc
 
