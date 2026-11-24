@@ -70,7 +70,7 @@ python3 scripts/evolve_intake.py record \
   --source <上游 skill>
 ```
 
-- 结果写 `proposals/signals/`，同内容自动累加 `occurrences`。
+- 结果写主检出的 `proposals/signals/`（不要加进本 PR；周批用 `sweep` 收进它的 PR），同内容自动累加 `occurrences`。
 - 不写预测，不写未跑过的验证。
 - `trajectory` 必须能回放；没有出处不写信号。
 - `off` 下不落盘，只写跳过记录。

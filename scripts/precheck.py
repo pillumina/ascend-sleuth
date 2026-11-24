@@ -164,7 +164,7 @@ def classify(paths, labels=()):
 
     # 信号文件混在任何档位里都要能解析：提示放在分档之后，不只在纯 signals 时发出。
     if any(p.startswith("proposals/signals/") for p in paths):
-        checks.append("python3 scripts/evolve_signals.py list  # 信号文件能解析即可")
+        checks.append("python3 scripts/evolve_signals.py --local list  # 信号文件能解析即可")
 
     return {
         "mode": mode,

@@ -9,7 +9,7 @@
 ```text
 内容流程完成
   → evolve-check 扫一遍现场
-  → 有信号写 proposals/signals/
+  → 有信号写主检出的 proposals/signals/
   → 报告一行“信号 N 条 / 无信号”
   → 结束
 ```
@@ -31,7 +31,7 @@
 
 1. 读部署角色；
 2. 对照触发条件扫本轮现场；
-3. 把信号写进 `proposals/signals/`。
+3. 把信号写进主检出的 `proposals/signals/`（周批收进 PR）。
 
 信号是观察，不是方案：
 

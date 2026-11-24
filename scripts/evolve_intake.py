@@ -71,13 +71,24 @@ def validate(root: Path, target: str, evidence: str, trajectory) -> list:
     return errors
 
 
-def soft_warnings(root: Path, trajectory) -> list:
-    """路徑样但解析不到的出处只提示，不拒收（制品 id 与 trace 锚本来就不是文件）。"""
+def soft_warnings(root: Path, trajectory, target: str = "") -> list:
+    """可疑但不拒收的两类：路径样却解析不到的出处、裸名 target 拼错。
+
+    制品 id 与 trace 锚本来就不是文件；裸名组件（如 `skills`）可能真是目录，所以只提示。
+    """
+    root = Path(root)
     out = []
     for t in trajectory or []:
         s = str(t).split("#")[0]
-        if "/" in s and re.search(r"\.[A-Za-z0-9]{1,6}$", s) and not (Path(root) / s).exists():
-            out.append(s)
+        if "/" in s and re.search(r"\.[A-Za-z0-9]{1,6}$", s) and not (root / s).exists():
+            out.append(f"出处解析不到（按制品 id 处理）：{s}")
+    tgt = (target or "").strip()
+    if tgt and "/" not in tgt and ":" not in tgt:
+        stems = [root / tgt, root / "skills" / tgt]
+        stems += [d / f"{tgt}{ext}" for d in (root, root / "scripts", root / "skills")
+                  for ext in (".py", ".md", ".yaml")]
+        if not any(s.exists() for s in stems):
+            out.append(f"target_component 是裸名「{tgt}」，仓库里找不到同名目录或脚本；拼写错也会照收，请确认")
     return out
 
 
@@ -129,9 +140,9 @@ def main(argv=None):
         print(f"✗ {e}", file=sys.stderr)
         return 2
 
-    warns = soft_warnings(root, args.trajectory)
+    warns = soft_warnings(root, args.trajectory, args.target)
     for w in warns:
-        print(f"! 出处解析不到（按制品 id 处理）：{w}", file=sys.stderr)
+        print(f"! {w}", file=sys.stderr)
 
     role = res["role"]
     if role == "off":

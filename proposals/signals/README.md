@@ -1,6 +1,6 @@
 # 演进信号记录
 
-待分诊的观察。一条信号一个文件，随下一次内容 PR 或周批提交；由深度轮分诊，不直接产 EV 卡。
+待分诊的观察。一条信号一个文件，写在主检出，由周批收进它的 PR；由深度轮分诊，不直接产 EV 卡。
 
 ## 谁写
 
@@ -19,7 +19,11 @@ python3 scripts/evolve_signals.py add --signal T10 --signal-text "自审发现�
 - 只写当前流程或 PR **没做完**的部分；做完的部分不写。
 - 只写没有别的脚本或检测器在记的现象：`knowledge-groom` 每轮扫的（R8 缺口候选）、`metrics_health.py` 判的（容量）、`capacity_health.py` 判的（候选溢出率）、`s2_replay.py --todo` 列的（replay 缺口）不记。self-evolve 第 1 步读 `metrics_health.py`、`capacity_health.py` 与 `s2_replay.py --todo`；R8 由 groom 的 owner 读。
 - 看到时就写（`evolve-check` 收尾、评审会话、诊断会话都算），不从方案倒推。
-- 入库随下一次内容 PR 或周批带上 `proposals/signals/`；修复 PR 不带信号，剩余观察写进它「影响面」的留作后续，由下一次内容 PR 或周批收进队列。`precheck.py` 对 `proposals/signals/` 只做机器自检（`python3 scripts/evolve_signals.py list` 能解析）。
+- 入库：信号写在**主检出**（`signals_dir` 锚到同一克隆的共享侧；没有 git 时退回当前检出），周批用 `sweep` 收进 PR。修复 PR 与内容 PR 都不带信号；剩余观察写进它们「影响面」的留作后续。`precheck.py` 对 `proposals/signals/` 只做机器自检（`python3 scripts/evolve_signals.py --local list` 能解析；`--local` 读当前检出，主检出那份可能已被 sweep 归档）。
+
+## 谁收
+
+周批：`python3 scripts/evolve_signals.py sweep --into .` 把主检出里未入库的文件复制进本轮检出，**原件移进 `.swept/`**（gitignored，PR 被丢弃时可手工取回），随周批 PR 提交，变更摘要写「本轮带上 N 条信号」。`pending` 子命令列未入库清单。
 
 ## 谁读
 
