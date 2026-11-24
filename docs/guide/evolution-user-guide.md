@@ -102,6 +102,18 @@ python3 scripts/evolve.py experiment show --proposal <id>
 - stage 组合由 `evolution.pipeline` 预设决定，不手工改 stage；
 - 实验记录写 RSIStore，不写进 PR 数据。
 
+搜索循环与多臂组合实验走另一条入口：
+
+```bash
+python3 scripts/evolve.py loop list
+python3 scripts/evolve.py loop init --loop <搜索循环名> --state <state.json> --config <配置.yaml>
+python3 scripts/evolve.py experiment arms init --spec <spec.yaml> --state <state.json>
+```
+
+搜索循环负责批次、epoch、候选池与审计；预设只决定六个节点。多臂结果只并列读数；合入仍按上节的配对门判一次。执行细节在 `evolve-drive` skill。
+
+默认算法用 `sleuth.config.yaml` 的 `evolution.policy.experiment.recipe` 选，参数在 `config/rsi/recipes/<名>.yaml` 里改；复制一份改名即可派生新 recipe。怎么选、怎么调参见 [algorithm-recipes.md](algorithm-recipes.md)。
+
 ## 5 EV 卡只用于高风险
 
 EV 卡不是行为改动的默认前置，也不是实验结果的别名。它只用于：

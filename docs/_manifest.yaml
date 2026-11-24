@@ -79,9 +79,6 @@ docs:
   - path: docs/mechanism/evolution-config.md
     layer: mechanism
     purpose: 自演进配置的唯一入口：sleuth.config.yaml 的角色、policy、profile、store、sync、pipeline 组合与信号/实验/EV 边界
-  - path: docs/mechanism/experiment-acceptance.md
-    layer: mechanism
-    purpose: 实验真实数据验收记录：样本、候选、A/B gate、full flow、store 缺口与插件验证结论
   - path: docs/mechanism/evolution-mechanism.md
     layer: mechanism
     purpose: "机制技术入口：目标、三条环路、一轮演进、角色、人工介入等级、八篇文档地图"
@@ -110,6 +107,9 @@ docs:
   - path: docs/guide/evolution-user-guide.md
     layer: guide
     purpose: 使用者侧：能说什么、一句话后发生什么、怎么读进度
+  - path: docs/guide/algorithm-recipes.md
+    layer: guide
+    purpose: 搜索算法 recipe：怎么选、怎么调参数、怎么复制新增，以及参数注释所在处
   - path: docs/guide/eval.md
     layer: guide
     purpose: 改 skill 前后跑什么（门禁分级）、对照集封存与已冻结的判据
@@ -179,7 +179,7 @@ skills:
     scope: 维护与演进
   - name: evolve-drive
     scope: 维护与演进
-    note: 自演进实验循环驱动器，需能起 subagent 的会话
+    note: 搜索循环与组合实验驱动器，需能起 subagent 的会话
   - name: evolve-check
     scope: 维护与演进
     note: 内部协议，由内容流程收尾自动转接，不单独调用

@@ -7,7 +7,9 @@
 #   digest（数据/候选池摘要）与 failures（逐样例定向批评）是提案命令的
 #   可选输入（experiment request --digest-file / --failures-file），
 #   任何预设都可叠加，不在这里逐预设声明。
-# - 留一效用审计不走流水线，用 evolve loo 命令组直接驱动（见 evolve-drive skill）。
+# - 搜索循环（批次、epoch、候选池、审计）不走流水线：GEPA、LOO、SkillOpt 由
+#   evolve loop 驱动，多臂与顺序链由 evolve experiment arms 驱动。
+#   预设只决定六个节点，不描述搜索循环。
 pipelines:
   default:
     description: 六个环节全开：规则归因、区域选择、best 候选、agent 提案、subagent judge、paired gate。

@@ -37,6 +37,19 @@ class SleuthConfigTest(unittest.TestCase):
             self.assertEqual(load_config_policy(cfg)["decision"]["alpha"], 0.05)
             self.assertEqual(load_config_policy(cfg, "latency")["cost"]["primary_dimension"], "time")
 
+    def test_unknown_recipe_rejected(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "sleuth.config.yaml").write_text(yaml.safe_dump({
+                "schema": SC.SCHEMA,
+                "evolution": {
+                    "role": "maintainer",
+                    "policy": {"experiment": {"recipe": "nope"}},
+                },
+            }), encoding="utf-8")
+            with self.assertRaises(SC.ConfigError):
+                SC.load_config(root)
+
     def test_autonomy_professional_names_map_to_rfc_levels(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)

@@ -1,0 +1,16 @@
+id: gepa-default
+version: 1
+loop: gepa
+description: 候选池 + 反思变异 + Pareto 选择，按目标执行预算停。
+use_when: 只有一组评估样本，想先跑通候选池搜索；不要求 train/dev 划分。
+roles:
+  eval: eval                    # 循环要 eval，实验里对应 eval 角色
+params:
+  population: 4                # 候选池上限；小池子建议 2-4
+  min_score: 0.0               # 低于等于该分数的样本进入失败反思
+  seed: 0                      # 打乱与选择的可复现种子
+  select_stage: select.pareto  # 候选选择节点
+  propose_stage: propose.agent # 提案节点；定向批评改 propose.critique
+budget:
+  target_runs: 12              # 目标执行次数；每个候选 × 样本都会消耗
+source: scripts/evolve/loops/gepa.py

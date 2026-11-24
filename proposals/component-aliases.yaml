@@ -26,7 +26,6 @@ aliases:
   docs/git-workflow.md: docs/guide/git-workflow.md
   docs/handoff.md: docs/guide/handoff.md
   docs/issue-ingest-pipeline.md: docs/guide/issue-ingest-pipeline.md
-  docs/mechanism/rsi-acceptance.md: docs/mechanism/experiment-acceptance.md
   docs/mechanism/rsi-mechanism.md: docs/mechanism/evolution-mechanism.md
   docs/metrics.md: docs/guide/metrics.md
   docs/reference-ingest-pipeline.md: docs/guide/reference-ingest-pipeline.md

@@ -60,13 +60,15 @@ groom 只在一个**抓取后解析出的提交**上比对；不 pull、不 merg
 3. 建快照目录：有稀疏清单时用 `git worktree add --no-checkout --detach` 加 `git sparse-checkout` 三步展开；没有清单时退回整树 worktree。`git worktree` 或稀疏三步失败时，用 `git archive [<清单>]` 展开；archive 没有 `.git`，永远不满足复用条件，每次都会重铺。
 4. 在快照里跑 `scripts/build_index.py --check`；不通过就重建，再校验一次。索引状态写进 meta：`verified`、`rebuilt`、`unavailable`。
 
-**快照物化的是索引的输入集，不是整棵树。** 默认清单是 `knowledge`（case 本体）、`scripts`（生成器与它的 import 链）、`metrics`（`metrics/entry-activity/` 决定每行的 `score`）。三项都是实测出来的最小依赖：去掉 `metrics` 后生成器不报错，但分数退回先验值、索引与仓库那份不再逐字节相同。`references/` 当前不在清单里：生成索引不需要它，但 `build_index.py --check` 的「先验 id 唯一性」一段会因目录缺失而静默跳过。
+快照只物化索引的输入集，不物化整棵树。默认清单是 `knowledge`（case 本体）、`scripts`（生成器与它的 import 链）、`metrics`（`metrics/entry-activity/` 决定每行的 `score`）。三项都是实测出来的最小依赖：去掉 `metrics` 后生成器不报错，但分数退回先验值、索引与仓库那份不再逐字节相同。`references/` 当前不在清单里：生成索引不需要它，但 `build_index.py --check` 的「先验 id 唯一性」一段会因目录缺失而静默跳过。
 
 清单里在该提交不存在的路径会被跳过；缺了哪几项记在 meta 的 `checkout.missing` 里，`knowledge` 缺失直接失败。稀疏模式有一条固有规则：仓库根目录下的文件总是被包含，快照因此仍有约 1 MB 的根文件；清单外的目录则不落盘。复用前除了比 `HEAD` 与工作区改动，还要比对检出范围，否则稀疏下「没检出」与「没改」长得一样，范围会悄悄漂移。
 
 复用前核对三件事：`HEAD` 必须等于目标提交；检出范围必须与当前期望一致；除 `knowledge/_index*` 之外不能有任何已跟踪或未跟踪改动。源 Case 被改过的快照不复用，整棵重建。
 
-**用完即删，但按草稿删**：PR 合入后先跑 `groom_close_draft.py`，再跑 `groom_cleanup.py --pr-body-file <body> --post-merge --base <merge>^1 --head <merge>`。清理先核对来源标记与本地评估是同一次评估（`assessment_id`、内容哈希、人决定），执行阶段持目录级清理锁；对得上的评估文件直接删除，快照只在「没有任何现存评估再引用该提交、且不是 30 分钟内刚建的那份」时才删。读不出评估视为引用未知、不删快照；非终态决定与 `approval_stale` 一律保留。单条失败只保留该项并继续；非预期异常折成 `internal-error`，退出 2。
+收尾清理按草稿删。PR 合入后先跑 `groom_close_draft.py`，再跑 `groom_cleanup.py --pr-body-file <body> --post-merge --base <merge>^1 --head <merge>`。清理先核对来源标记与本地评估是同一次评估（`assessment_id`、内容哈希、人决定），执行阶段持目录级清理锁；对得上的评估文件直接删除，快照只在「没有任何现存评估再引用该提交、且不是 30 分钟内刚建的那份」时才删。
+
+读不出评估视为引用未知、不删快照；非终态决定与 `approval_stale` 一律保留。单条失败只保留该项并继续；非预期异常折成 `internal-error`，退出 2。
 
 顺带清两类可弃中间件：`.groom/runs/` 下超过 1 天的工作单目录，以及「对应评估文件已不存在且超过 7 天」的残留锁。清理不碰 `latest.json`（上一次比的是哪个提交的唯一记录），且必须放在收尾而不是开头，`groom_record` 还要用这份检出。
 
@@ -106,7 +108,11 @@ groom 只在一个**抓取后解析出的提交**上比对；不 pull、不 merg
 
 `assessment_id` 是以下输入的哈希：快照提交、草稿 key、草稿内容指纹、每个候选的规范化内容指纹、结果文件的字节哈希、复核文件的字节哈希。结果 JSON 必须回显 `work_order_id`、`snapshot_commit`、`draft_sha256`、`candidate_ids`；`groom_record.py` 重新计算并对照当前草稿与快照。任一不符即 `promotion_gate.blocked_reason = binding-mismatch`，不采用结果。
 
-规范化内容只保留与判断和安全有关的字段：category、tags、symptoms、root_cause、fix、compat、platforms、severity、fix_side_effects、fix_type、quickly_check、diagnosis、verification。字符串逐字保留，包括首尾空白、命令引号内空格、正则与换行；`tags`、`platforms`、`fix_side_effects` 这类集合列表排序，其余列表保序——尤其 `diagnosis` 的步骤顺序、每步的 `fix_on_mismatch` 与 `rollback` 变了会导致 `content-mismatch`。升格时改 id、文件名、title 不会误伤。
+规范化内容保留与判断、安全有关的字段：category、tags、symptoms、root_cause、fix、compat、platforms、severity、fix_side_effects、fix_type、quickly_check、diagnosis、verification。
+
+字符串逐字保留，包括首尾空白、命令引号内空格、正则与换行。`tags`、`platforms`、`fix_side_effects` 这类集合列表排序，其余列表保序；`diagnosis` 的步骤顺序、每步的 `fix_on_mismatch` 与 `rollback` 变了会导致 `content-mismatch`。
+
+升格时改 id、文件名、title 不会误伤。
 
 人的批准也绑定到 `assessment_id` 与 `content_binding.sha256`。评估重跑后身份变化，旧批准保留在 `human_decision_history`，但 `human_decision_valid` 变为 false，`promotion_gate` 标 `approval-stale`；`--pr-marker` 不会把它写成有效授权。
 
@@ -158,7 +164,9 @@ history: [...]
 
 ### 3.7 收尾、撤销与合入后
 
-终态决定之后还有两件事必须落地，由 `groom_close_draft.py` 一次做完；它是本地收尾动作，不进 CI。有 PR 的草稿，这两件事放在 PR 合入之后：合入前跑收尾会把「待合入」提前写成「已升格」，PR 被拒时人的决定与评估证据也已经被清理。脚本读 PR 记录，同 key 的 PR 不是 merged 时拒绝执行；确实要提前收尾时用 `--allow-open-pr`。没有 PR 的部署仍在评估写盘后直接收尾。
+终态决定之后还有两件事，由 `groom_close_draft.py` 一次做完。它是本地收尾动作，不进 CI。有 PR 的草稿，这两件事放在 PR 合入之后：合入前跑收尾会把「待合入」提前写成「已升格」，PR 被拒时人的决定与评估证据也已经被清理。
+
+脚本读 PR 记录，同 key 的 PR 不是 merged 时拒绝执行；确实要提前收尾时用 `--allow-open-pr`。没有 PR 的部署仍在评估写盘后直接收尾。
 
 这两件事以前只写在 skill 的一句中文指令里：把来源记录的 `sedimented` 从 `submitted` 改成 `knowledge` 或 `archived`，把已处理的草稿移出 inbox。漏做都不报错——面板的沉淀漏斗停在「已提交待升格」，草稿下一轮又按「没有评估文件先补跑比对」被评一遍。脚本先取写盘证据（case 或 postmortem 文件是否已就位）、再写状态：
 
@@ -170,9 +178,18 @@ history: [...]
 
 几条边界：写状态走 `trace_transition.py`（按 `trace-status.yaml` 校验状态词表）；草稿移进 `postmortems/inbox/.done/`，移动不删除、移回即复活；外部来源没有记录时只出队、不回写；记录文件不存在时只出队并记 `trace-missing`；`reject` 与 `defer` 不是终态，不动记录、不出队。`reject` 没有对应的 `sedimented` 状态——草稿确实提交过、没有转正，改回 `none` 等于抹掉事实。
 
-为什么不做成 PR 检查：`traces/` 与 `postmortems/inbox/` 是不进 git 的运行时件，PR 与 CI 的检出里没有它们，标记也不带会话号。塞进 `groom_recheck.py` 只能读到空目录，检查会退化成永远通过。这道检查只能落在本地，靠收尾顺序保证：先 `groom_recheck`，开 PR，合入后跑本步，最后 `groom_cleanup --post-merge`。`--post-merge` 跳过过期判定，合入后无法再对旧基线重跑 groom。
+不放进 PR 检查的原因：`traces/` 与 `postmortems/inbox/` 是不进 git 的运行时件，PR 与 CI 的检出里没有它们，标记也不带会话号。放进 `groom_recheck.py` 只能读到空目录，检查会退化成永远通过。
 
-撤销一次不成立的沉淀用 `scripts/sediment_undo.py --draft-key <key> [--apply]`，默认只打印计划。它做四件事：把还在 inbox、PR 记录不存在或已关闭的草稿移进 `postmortems/inbox/.undone/`；删掉它的评估状态文件；把来源记录的 `sedimented` 改回 `none`（记录缺失或外部来源时跳过）；清掉记录里那条已关闭的 PR 条目。诊断状态不动：撤销还原 case 的沉淀状态，已收尾的单仍是收尾状态。它和 `reject`、`defer` 不是一回事：那两个是「认真看过但不采纳」，草稿与评估状态留在队列里；撤销是这份草稿本身被撤回，重新沉淀会从头开始。
+这道检查只能落在本地，靠收尾顺序保证：先 `groom_recheck`，开 PR，合入后跑本步，最后 `groom_cleanup --post-merge`。`--post-merge` 跳过过期判定，合入后无法再对旧基线重跑 groom。
+
+撤销一次不成立的沉淀用 `scripts/sediment_undo.py --draft-key <key> [--apply]`，默认只打印计划。它做四件事：
+
+- 把还在 inbox、PR 记录不存在或已关闭的草稿移进 `postmortems/inbox/.undone/`；
+- 删掉它的评估状态文件；
+- 把来源记录的 `sedimented` 改回 `none`（记录缺失或外部来源时跳过）；
+- 清掉记录里那条已关闭的 PR 条目。
+
+诊断状态不动：撤销还原 case 的沉淀状态，已收尾的单仍是收尾状态。`reject` 与 `defer` 是「认真看过但不采纳」，草稿与评估状态留在队列里；撤销是这份草稿本身被撤回，重新沉淀会从头开始。
 
 合入后由主干 job 重建索引（`build_index.py` 的覆盖检查必须通过）；没有该 job 的部署按既有纪律在 main 上重建。`groom_recheck.py --post-merge` 可以在本地跑同一道覆盖检查。收尾与清理也在这一步：先 `groom_close_draft.py` 出队并回写记录，再对每份 PR 用合入提交与它的第一个父提交跑 `groom_cleanup.py --post-merge`。
 

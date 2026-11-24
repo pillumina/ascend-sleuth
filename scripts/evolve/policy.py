@@ -78,6 +78,9 @@ DEFAULTS: Dict[str, Any] = {
     "experiment": {
         "target": DEFAULT_TARGET,
         "algorithm": "baseline",
+        "recipe": "",
+        "loop": "",
+        "loops": {},
         "stages": dict(DEFAULT_STAGES),
         "budget": {},
         "seed": 0,
@@ -85,7 +88,8 @@ DEFAULTS: Dict[str, Any] = {
 }
 
 # 自由形态映射：键由部署决定，值仍逐项校验。
-_FREE_FORM = {"autonomy.overrides", "samples.strata", "experiment.budget"}
+_FREE_FORM = {"autonomy.overrides", "samples.strata", "experiment.budget",
+             "experiment.loops"}
 
 
 class PolicyError(EvolveError, ValueError):
@@ -294,6 +298,61 @@ def validate_policy(policy: Dict[str, Any]) -> None:
         if not isinstance(experiment.get("budget"), dict):
             errors.append("experiment.budget must be an object")
         _validate_int(experiment.get("seed"), "experiment.seed", errors, minimum=0)
+        recipe = experiment.get("recipe", "")
+        if not isinstance(recipe, str):
+            errors.append("experiment.recipe must be a string")
+        loop = experiment.get("loop", "")
+        if not isinstance(loop, str):
+            errors.append("experiment.loop must be a string")
+        if isinstance(recipe, str) and recipe and isinstance(loop, str) and loop:
+            errors.append("experiment.recipe and experiment.loop are mutually exclusive")
+        elif loop:
+            try:
+                from .loops import get_loop
+                get_loop(loop)
+            except ValueError as exc:
+                errors.append(f"experiment.loop: {exc}")
+        loops = experiment.get("loops", {})
+        if not isinstance(loops, dict):
+            errors.append("experiment.loops must be an object")
+        else:
+            from .loops import get_loop, param_errors
+            from .loops.budget import BUDGET_KINDS
+            for name, conf in loops.items():
+                try:
+                    spec = get_loop(str(name))
+                except ValueError as exc:
+                    errors.append(f"experiment.loops.{name}: {exc}")
+                    continue
+                if not isinstance(conf, dict):
+                    errors.append(f"experiment.loops.{name} must be an object")
+                    continue
+                unknown = set(conf) - {"params", "budget"}
+                if unknown:
+                    errors.append(
+                        f"experiment.loops.{name} has unknown keys: {sorted(unknown)}"
+                    )
+                params = conf.get("params", {})
+                if not isinstance(params, dict):
+                    errors.append(f"experiment.loops.{name}.params must be an object")
+                else:
+                    for error in param_errors(spec, params):
+                        errors.append(f"experiment.loops.{name}.params: {error}")
+                budget = conf.get("budget", {})
+                if not isinstance(budget, dict):
+                    errors.append(f"experiment.loops.{name}.budget must be an object")
+                else:
+                    for key, value in budget.items():
+                        if key not in BUDGET_KINDS:
+                            errors.append(
+                                f"experiment.loops.{name}.budget.{key} is not a budget kind"
+                            )
+                        elif value is not None and (
+                            not isinstance(value, int) or isinstance(value, bool) or value < 1
+                        ):
+                            errors.append(
+                                f"experiment.loops.{name}.budget.{key} must be a positive integer or null"
+                            )
 
     rubrics = policy.get("rubrics")
     if not isinstance(rubrics, dict):

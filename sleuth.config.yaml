@@ -143,6 +143,14 @@ evolution:
       target: skill
       # 候选生成算法；baseline 表示对照/基线。
       algorithm: baseline
+      # 搜索算法 recipe；名字 = config/rsi/recipes/ 下的文件名（不含 .yaml）。
+      # 复制一份改名即可新增；id 可省略，保留旧 id 会报错。
+      # 参数与说明写在该文件里；留空表示不用 recipe。
+      recipe: ""
+      # 高级：不用 recipe 时直接指定搜索循环；与 recipe 二选一。
+      loop: ""
+      # 每个搜索循环的默认 params 与 budget；未显式给时合并进 loop/spec。
+      loops: {}
       # stages 由 evolution.pipeline 的预设提供；这里不再覆盖。
       # 实验预算覆盖；{} 表示使用上面的 samples/cost 默认。
       budget: {}

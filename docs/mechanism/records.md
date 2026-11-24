@@ -10,11 +10,11 @@
 
 ## 1 解决什么问题
 
-行为质量改动要能事后复核，缺的是三样东西：一个实验提案说不清改哪、现状是什么、怎么算改完；一次实验没有能复现的版本坐标；一条结论没有可追加的判断记录。
+行为质量改动要能事后复核，需要三样记录：一个说清改哪、现状是什么、怎么算改完的实验提案；一次实验的版本坐标；一条可追加的判断记录。
 
 signal 补观察来源；实验提案补执行前契约；样本补评估输入；执行与结论补判定数据与理由；版本补复现坐标。高风险 EV 卡只补授权与历史，不是普通改动的默认记录。
 
-明确不解决：结论怎么判（在 [evaluation.md](evaluation.md)）、什么节奏跑（在 [operations.md](operations.md)）、现场有效性（只认工程师回报）。
+本文不解决：结论怎么判（在 [evaluation.md](evaluation.md)）、什么节奏跑（在 [operations.md](operations.md)）、现场有效性（只认工程师回报）。
 
 ## 2 最小可执行模型
 
@@ -66,7 +66,7 @@ measure_evidence: []             # 只追加：每次 ev_measure --run --record 
 
 另一组是审计链：`source_signals[].trajectory` 记问题在哪一段记录里，`decisions` 记谁在何时依据哪份证据判断什么。高风险 EV 卡只在授权时创建，不是普通改动的默认对象。
 
-四条完整性规则：
+五条完整性规则：
 
 1. 普通 signal 不产卡；只有高风险授权或历史归档才创建 EV 卡。行为质量改动走实验，不要求卡。
 2. 终态卡必须有判断记录。`validated`、`rejected`、`superseded` 的卡，`decisions` 里必须有对应结论与所依据的评估数据；缺了是审计缺口。
@@ -76,7 +76,9 @@ measure_evidence: []             # 只追加：每次 ev_measure --run --record 
 
 终态是 agent 依据合入前可得的验证做出的判断。现场有效性（工程师回报）在合入后的观察窗里结算，结果作为追加记录写回卡，不改变卡状态。
 
-必填字段清单以 `scripts/verify_proposals.py` 的 `REQUIRED` 为唯一事实源（`grep -n "^REQUIRED" scripts/verify_proposals.py`）。`target_component`、`predicted_effect.measure` 与 `measure_evidence` 各有生效日检查，日期只写在脚本的 `TARGET_CUTOVER`、`MEASURE_CUTOVER`、`MEASURE_EVIDENCE_CUTOVER` 常量里，本文不重复。存量卡豁免强制要求；预测口径缺口由 `ev_measure.py --audit` 报出，新卡的实测证据缺口由 `verify_proposals.py --check` 报出，不静默跳过。
+必填字段清单以 `scripts/verify_proposals.py` 的 `REQUIRED` 为准（`grep -n "^REQUIRED" scripts/verify_proposals.py`）。`target_component`、`predicted_effect.measure` 与 `measure_evidence` 各有生效日检查，日期只写在脚本的 `TARGET_CUTOVER`、`MEASURE_CUTOVER`、`MEASURE_EVIDENCE_CUTOVER` 常量里，本文不重复。
+
+存量卡豁免强制要求；预测口径缺口由 `ev_measure.py --audit` 报出，新卡的实测证据缺口由 `verify_proposals.py --check` 报出，不静默跳过。
 
 脱敏：卡进 git 时只含聚合值与证据引用（记录路径加事件索引、issue 号加段落号），不含现场原文。原文留在本地 `traces/evidence/`；跨机器或对外分享时证据降级为摘要，并在卡上标注缺失的部分。
 
@@ -152,6 +154,8 @@ conclusion:
 
 失败与补丁是中间产物，不落长期记录。审查结论只追加，不就地改写；要改判就重跑一次评估、写一条新结论，旧结论留在记录里并标作废原因。
 
+搜索循环内的接受与拒绝不是结论。它们记在决策记录里，字段是 `run / loop / kind / step / candidate / parent / score / baseline / accepted / reason`。决策记录只追加，供复盘与面板读数；合入仍以配对检验的结论为准。
+
 ### 3.4 版本
 
 版本是执行与结论的共同坐标，六个字段缺一不可：
@@ -182,6 +186,7 @@ conclusion:
 | 评估台影响记录 | `.s2-replay/arena/impact.yaml` | 否 | `eval_arena.py --gate` |
 | 内容流程执行记录 | `metrics/skill-exec-log.yaml` | 否 | `log_skill_exec.py` |
 | 结论与执行记录（v1） | `.s2-replay/evolve/conclusions.jsonl`、`runs.jsonl` | 否 | `evolve.py judge --record`；`evolve.py pilot decide` |
+| 搜索循环决策记录 | `<state>.decisions.jsonl` 或 spec 指定的路径 | 否 | `loop` / `experiment arms` 的循环 |
 | 条目使用记录与本期读数（源） | `metrics/entry-activity.d/<周>.yaml`、`metrics/timeline.d/<期号>.yaml` | 是 | 汇总、结算与组装脚本 |
 | 记录生成物 | `metrics/entry-activity/<部署>.yaml`、`metrics/timeline.yaml` | 是，但不手改 | 主干 job 或本地重建 |
 | 会话与任务状态 | `proposals/sessions/`、`proposals/tasks/` | 否 | 会话脚本 |

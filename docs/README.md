@@ -51,7 +51,6 @@
 *你要改演进/评测/编排机制本身时——日常只读 docs/mechanism/evolution-mechanism.md 一篇，论证层在 docs/mechanism/*
 
 - [evolution-config.md](../docs/mechanism/evolution-config.md) — 自演进配置的唯一入口：sleuth.config.yaml 的角色、policy、profile、store、sync、pipeline 组合与信号/实验/EV 边界
-- [experiment-acceptance.md](../docs/mechanism/experiment-acceptance.md) — 实验真实数据验收记录：样本、候选、A/B gate、full flow、store 缺口与插件验证结论
 - [evolution-mechanism.md](../docs/mechanism/evolution-mechanism.md) — 机制技术入口：目标、三条环路、一轮演进、角色、人工介入等级、八篇文档地图
 - [evaluation.md](../docs/mechanism/evaluation.md) — 评估对象与评估集、rubric、配对判定、成本、版本，以及评估台（arena）的池与结论
 - [records.md](../docs/mechanism/records.md) — 记录与数据契约：改进项卡 schema、样本、执行、结论、接口、存储归属、版本坐标
@@ -65,6 +64,7 @@
 *你要搭新部署、装环境（Windows skills 使能）、跑评测、看指标、走 git 门控、或做导入时*
 
 - [evolution-user-guide.md](../docs/guide/evolution-user-guide.md) — 使用者侧：能说什么、一句话后发生什么、怎么读进度
+- [algorithm-recipes.md](../docs/guide/algorithm-recipes.md) — 搜索算法 recipe：怎么选、怎么调参数、怎么复制新增，以及参数注释所在处
 - [eval.md](../docs/guide/eval.md) — 改 skill 前后跑什么（门禁分级）、对照集封存与已冻结的判据
 - [metrics.md](../docs/guide/metrics.md) — 指标口径与周批流程（数字以 metrics/timeline.yaml 为准）
 - [git-workflow.md](../docs/guide/git-workflow.md) — 审核、门控、合入与多人协作的落地（含评审把手）

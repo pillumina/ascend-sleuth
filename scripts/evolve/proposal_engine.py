@@ -213,71 +213,34 @@ class ProposalEngine:
             max_evaluations: Optional[int] = None,
             max_tokens: Optional[int] = None,
             policy: Optional[Any] = None) -> Dict[str, Any]:
-        """闭环：proposer -> validate -> evaluate -> select -> reflect -> proposer。"""
-        if not samples or len(set(samples)) != len(samples):
-            raise ProposalError("samples must be unique and non-empty")
-        if max_rounds < 1 or population < 1:
-            raise ProposalError("max_rounds and population must be positive")
-        if max_evaluations is not None and max_evaluations < 1:
-            raise ProposalError("max_evaluations must be positive")
-        if max_tokens is not None and max_tokens < 1:
-            raise ProposalError("max_tokens must be positive")
-        policy = policy or ParetoPolicy()
-        rounds = 0
-        stop_reason = "rounds"
-        while rounds < max_rounds and len(self.proposals) < population:
-            if max_evaluations is not None and self.evaluations >= max_evaluations:
-                stop_reason = "evaluation_budget"
+        """闭环：proposer -> validate -> evaluate -> select -> reflect -> proposer。
+
+        同步兼容入口；真正的状态机在 ``loops.proposal.ProposalLoop``。保留这个
+        方法是为了旧调用方与测试不改，新代码应走动作协议。
+        """
+        from .loops.proposal import ProposalLoop
+
+        loop = ProposalLoop(
+            self, samples, max_rounds=max_rounds, population=population,
+            max_evaluations=max_evaluations, max_tokens=max_tokens,
+            policy=policy or ParetoPolicy(),
+        )
+        while True:
+            action = loop.next_action()
+            if action.get("kind") == "stop":
                 break
-            if max_tokens is not None and self.tokens >= max_tokens:
-                stop_reason = "token_budget"
-                break
-            parent = policy.choose(self.proposals, samples, self.reflected)
-            if parent is None:
-                # 首次：用 seed（无父）生成；之后没有可反思候选就停。
-                if self.proposals:
-                    stop_reason = "no_parent"
-                    break
-                drafts = proposer(None, [], 0)
+            if action.get("kind") == "reflect":
+                parent = loop.parent_proposal()
+                drafts = proposer(parent, action["failures"], action["round"])
+                loop.apply(action, {"drafts": drafts})
+                continue
+            proposal = loop.proposal(str(action["proposal_id"]))
+            result = evaluator(proposal, samples)
+            if len(result) == 3:
+                scores, feedback, tokens = result
             else:
-                self.reflected.append(parent.id)
-                drafts = proposer(parent, self.failures(parent, samples), rounds + 1)
-            added = 0
-            for draft in drafts:
-                proposal = self.add(draft, parent=parent.id if parent else None)
-                if proposal.status == "evaluated":
-                    continue
-                if proposal.status == "invalid":
-                    continue
-                result = evaluator(proposal, samples)
-                if len(result) == 3:
-                    scores, feedback, tokens = result
-                else:
-                    scores, feedback = result
-                    tokens = None
-                self.evaluate(proposal, scores, feedback, tokens=tokens)
-                added += 1
-                if max_evaluations is not None and self.evaluations >= max_evaluations:
-                    stop_reason = "evaluation_budget"
-                    break
-                if max_tokens is not None and self.tokens >= max_tokens:
-                    stop_reason = "token_budget"
-                    break
-            rounds += 1
-            if stop_reason in ("evaluation_budget", "token_budget"):
-                break
-            if added == 0:
-                stop_reason = "no_valid"
-                break
-        if stop_reason not in ("evaluation_budget", "token_budget") and len(self.proposals) >= population:
-            stop_reason = "population"
-        selected = policy.choose(self.proposals, samples, [])
-        return {
-            "rounds": rounds,
-            "proposals": len(self.proposals),
-            "selected": selected.to_dict() if selected else None,
-            "stop_reason": stop_reason,
-            "evaluations": self.evaluations,
-            "tokens": self.tokens,
-            "archive": str(self.archive.path),
-        }
+                scores, feedback = result
+                tokens = None
+            loop.apply(action, {"scores": scores, "feedback": feedback,
+                                "tokens": tokens})
+        return loop.result()
