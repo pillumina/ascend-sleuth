@@ -54,11 +54,11 @@ flowchart LR
 
 一轮演进先把信号归类并排优先级（下文简称分诊），再决定走哪条路：
 
-1. 收尾记录。内容流程收尾时，`evolve-check` 只对照信号表写 `proposals/signals/`；没有信号只留一行记录。不产卡、不跑 RSI。
+1. 收尾记录。内容流程收尾时，`evolve-check` 只对照信号表写 `proposals/signals/`；没有信号只留一行记录。不产卡、不跑实验。
 2. 深度归类与候选。用户显式发起 `self-evolve` 后，聚合信号并归入五类：确定性 bug、内容缺口、行为质量、高风险授权、观察。这一步只做归类、排优先级和候选输出，不执行实验，不写结论，不产卡。
-3. 确定性 bug。能复现、有确定 oracle 的，写最小回归测试并直接进 PR；不走 RSI。
-4. 内容缺口。交给内容 skill（case / reference / ingest），不走 RSI。
-5. 行为质量。用户选中候选后，显式进入 RSI：proposal → 真实样本 experiment → decision。没有真实样本、runner、judge 不进入。
+3. 确定性 bug。能复现、有确定 oracle 的，写最小回归测试并直接进 PR；不走实验。
+4. 内容缺口。交给内容 skill（case / reference / ingest），不走实验。
+5. 行为质量。用户选中候选后，显式进入实验：proposal → 真实样本 experiment → decision。没有真实样本、runner、judge 不进入。
 6. 高风险授权。规范文档、评估协议、权限、自动合并边界等改动，用轻量 EV 卡记录授权与回滚；卡不替代实验，也不替代 PR。卡标 `validated` 前必须跑一次 `ev_measure --run --record`，PASS 写进卡的 `measure_evidence`；没跑的卡只能算待办。
 7. 合入。接受的改动进 PR，由人审合入；reject / insufficient 保留结论，不补仪式记录。没有 field 样本、外部 trace 或 `impact.yaml` 时，回归冒烟可以跑，质量判定停在小池并记 `insufficient`；数据缺口记 `unknown`，不盖住已能动作的违反。
 
@@ -82,7 +82,7 @@ flowchart LR
 
 | 用户 | 做什么 | 不做什么 |
 |---|---|---|
-| 诊断 / 沉淀工程师 | 用 diagnose 定位问题；把确认的结论沉淀成 case / reference；通过 trace 回报现场结果 | 不需要跑 `self-evolve` 或 experiment；不需要理解 RSI 记录 |
+| 诊断 / 沉淀工程师 | 用 diagnose 定位问题；把确认的结论沉淀成 case / reference；通过 trace 回报现场结果 | 不需要跑 `self-evolve` 或 experiment；不需要理解实验记录 |
 | 演进维护者 | 显式发起 `self-evolve`，从候选里选一条；对行为质量跑 experiment、读 conclusion；审 PR 与高风险授权 | 不替工程师做诊断或沉淀；不自动改知识内容 |
 
 部署 owner 只维护 `sleuth.config.yaml` 与同步模式，不参与每次判定，不算日常使用者。
@@ -120,7 +120,7 @@ flowchart LR
 | 执行器 | 准备诊断回放、跑诊断、收集结果、成本与轨迹 | 不能看评估集的答案；不能写结论 |
 | 评分器 | 按答案或 rubric 给诊断、case、reference、trace 打分 | 不能改知识库；不能写结论 |
 | 归因器 | 在反馈集上指出失败步骤与原文行 | 不能看评估集答案；不能决定留不留 |
-| 改动起草 | 根据信号写 RSI proposal、检查命令、回退路径 | 不能看评估集答案；不能决定留不留 |
+| 改动起草 | 根据信号写实验提案、检查命令、回退路径 | 不能看评估集答案；不能决定留不留 |
 | 评估器 | 比较基线与候选，给出结论 | 不能改内容；不能决定合入 |
 | 周读数 | 汇总评估记录与指标，给出本周动作 | 不能写评估记录 |
 | 维护者 | 标答案、定协议与策略、决定合入、处理高风险 | 不替 agent 跑实验 |
@@ -160,7 +160,7 @@ flowchart LR
 |---|---|---|
 | 本文 | 目标、三条环路、一轮演进、角色、人工介入、文档地图 | 第一次读，或只想知道机制长什么样 |
 | [evaluation.md](evaluation.md) | 评估对象、评估集、rubric、判定、成本、版本、评估台 | 要改判据、扩样本、改 rubric，或查一次判定怎么出来 |
-| [records.md](records.md) | 信号、RSI 实验、结论、高风险 EV 授权、存储与版本 | 要改字段或 schema、写记录，或查某条数据进不进 git |
+| [records.md](records.md) | 信号、受控实验、结论、高风险 EV 授权、存储与版本 | 要改字段或 schema、写记录，或查某条数据进不进 git |
 | [operations.md](operations.md) | 运行模式、每周流程、预算、采样、内容维护、失败处理 | 要跑一轮、排一周的活、定停止条件 |
 | [status.md](status.md) | 机制状态表、未建与空转、代码与文件入口 | 要查某条机制落地没有、代码在哪 |
 | [diagnosis-observability.md](diagnosis-observability.md) | 一次诊断记什么、怎么汇总上仓、面板 | 要改 trace 字段、汇总脚本或面板 |
@@ -171,7 +171,7 @@ flowchart LR
 
 | 旧路径 | 现在读 |
 |---|---|
-| `pipeline.md` | [rsi-mechanism.md](rsi-mechanism.md)、[evaluation.md](evaluation.md)、[records.md](records.md)、[operations.md](operations.md) |
+| `pipeline.md` | [evolution-mechanism.md](evolution-mechanism.md)、[evaluation.md](evaluation.md)、[records.md](records.md)、[operations.md](operations.md) |
 | `execution.md` | [records.md](records.md)、[evaluation.md](evaluation.md) |
 | `orchestration.md` | [operations.md](operations.md) |
 | `run.md` | [operations.md](operations.md)、[records.md](records.md) |

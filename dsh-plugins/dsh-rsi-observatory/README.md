@@ -1,6 +1,6 @@
-# RSI 实验台（dsh-rsi-observatory）
+# 实验台（dsh-rsi-observatory）
 
-DSH 插件：左侧栏一个「实验台」图标，主区一整页，只读查看 RSI 的实验、提案与判定历史。
+DSH 插件：左侧栏一个「实验台」图标，主区一整页，只读查看受控实验、提案与判定历史。
 
 - **只读**：不写仓库、不联网、不改实验记录。
 - **数据只来自 RSIStore**：host 经 shell 跑 `scripts/rsi_observatory.py`，脚本只用
@@ -18,7 +18,7 @@ DSH 插件：左侧栏一个「实验台」图标，主区一整页，只读查�
 | 事件 | `history()` 的事件流，按 kind 过滤，点开看原始 `data`（长字符串按 4KB 截断） |
 
 阶段是**派生视图**：`attribute` / `select_region` / `select_candidate` / `propose` / `execute` /
-`judge` / `gate`，只有 store 事件里能找到对应字段的才标「有记录」，其余标「无记录」。RSI 事件没有
+`judge` / `gate`，只有 store 事件里能找到对应字段的才标「有记录」，其余标「无记录」。实验事件没有
 逐阶段时间，所以这里不画时间线。
 
 ## 数据与失败路径
@@ -89,7 +89,7 @@ python3 scripts/rsi_observatory.py list --json
 
 ## 已知限制
 
-- 目前 RSI 写侧只有 `experiment` 事件（`record_experiment`），没有独立的 `proposal` / `decision` /
+- 目前实验写侧只有 `experiment` 事件（`record_experiment`），没有独立的 `proposal` / `decision` /
   `rollout` 事件；所以「提案」列表只包含**已经进入实验**的提案，未跑的提案不可见。
 - 逐样本成绩不在 store 事件里：`rollout` 只有样本编号与 arms 计数，`experiment` 只有均分与配对
   b/c/n。页面因此只列样本编号，不做改前/改后对比表。

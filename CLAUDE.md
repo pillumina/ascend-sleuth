@@ -20,9 +20,9 @@ This is a **knowledge/skills repo** — there is no build, no lint, no test suit
 |------|---------|-----------|------|
 | **诊断闭环** | 每次问题（分钟级） | `diagnose`（被打断则 `resume-diagnosis`） | 修复建议 + `traces/<session>.yaml` |
 | **沉淀闭环** | 定位结束 / 定期批量 | `to-postmortem`、`to-reference`、`issue-ingest` | `postmortems/inbox/` 草稿 → groom 升格为 case / reference |
-| **演进闭环** | 内容流程收尾 / 全库体检轮 | `evolve-check`（只记信号）、`self-evolve`（只分诊） | signal → 分诊 → 确定性修复 / 内容 / 显式 RSI / 高风险 EV 授权 → PR |
+| **演进闭环** | 内容流程收尾 / 全库体检轮 | `evolve-check`（只记信号）、`self-evolve`（只分诊） | signal → 分诊 → 确定性修复 / 内容 / 显式实验 / 高风险 EV 授权 → PR |
 
-三者共用一条链：前两个产生数据，演进读数据改机制，改完回落。**机制地图、权威归属（每件事由哪篇文档说了算）与周度 runbook 在 `docs/mechanism/rsi-mechanism.md`——那是自演进元机制的唯一技术入口**。
+三者共用一条链：前两个产生数据，演进读数据改机制，改完回落。**机制地图、权威归属（每件事由哪篇文档说了算）与周度 runbook 在 `docs/mechanism/evolution-mechanism.md`——那是自演进元机制的唯一技术入口**。
 
 ### 两套传递机制（决定内容该放哪）
 
@@ -88,7 +88,7 @@ skill 的名单、分组与"谁用得上"**不在此处维护**：由 `docs/_man
 
 每个 diagnose 步骤往 `traces/<session_id>.yaml` 追加一条 `{role, ...}`。误诊归因靠它区分**case 错**（改知识 YAML）与**执行错**（改 skill 正文）；没有 trace 就无法归因，硬改可能弄坏本来正确的 case。
 
-关键字段：`summary`（收尾整合的问题背景段，面板展开直接显示）、user 事件 `content` + `evidence`（`inline` / `files` / `sources` / `missing`——跨 agent 与会话自包含的关键，大文件落 `traces/evidence/<session_id>/`）、agent 事件 `output`（给用户）+ `reason`（决策依据）、`created_at` / `updated_at`（面板按后者排序）、`resume` 事件。**完整 schema、证据落盘铁律与行文口径**见 `skills/diagnose/references/diagnosis-trace.md`（与 `report-template.md`）。
+关键字段：`summary`（收尾整合的问题背景段，面板展开直接显示）、user 事件 `content` + `evidence`（`inline` / `files` / `sources` / `missing`——跨 agent 与会话自包含的关键，大文件落 `traces/evidence/<session_id>/`）、agent 事件 `output`（给用户）+ `reason`（决策依据）、`created_at` / `updated_at`（面板按后者排序）、`resume` 事件。**完整 schema、证据落盘铁律与行文要求**见 `skills/diagnose/references/diagnosis-trace.md`（与 `report-template.md`）。
 
 ### Eval
 
@@ -96,7 +96,7 @@ Golden-case 回归套件在 `eval/golden/`：公开仓只放构造示例，真�
 
 - **门禁分级（改哪里测哪里，不机械全量）**与判据强度：`docs/guide/eval.md`。
 - **封存对照集** `eval/holdout.yaml` 按内容哈希钉住（`scripts/holdout.py --check`，CI `holdout-integrity`）：改内容或删除即红，合法改需维护者 `--reseal` 且 PR 带 `holdout-change` 标签。**强度注意**：哈希是硬门，但"谁有权 reseal"在 CODEOWNERS 落实前是半硬（有写权限者仍可打标签），别读成"已有人把关"。
-- **评审把手**：RSI 实验的 measure 给“一条命令 + 期望”；高风险 EV 卡只记录授权/决策，不替代 RSI 或 PR。`python3 scripts/ev_measure.py <卡号> --run` 对历史卡仍只证明效果，不证明价值。
+- **评审把手**：受控实验的 measure 给“一条命令 + 期望”；高风险 EV 卡只记录授权/决策，不替代实验或 PR。`python3 scripts/ev_measure.py <卡号> --run` 对历史卡仍只证明效果，不证明价值。
 
 ## Multi-agent collaboration (worktree 约束)
 
@@ -125,7 +125,7 @@ Golden-case 回归套件在 `eval/golden/`：公开仓只放构造示例，真�
 - **生成物归主干（并发提交不再冲突）**：索引、路由聚合、reference 索引、timeline、条目使用记录都由**合入后的主干 job** 重建并提交（`.github/workflows/rebuild-generated.yml`，核心 `scripts/rebuild_generated.py`）。PR 只交源文件；`generated-guard`（生成物守卫）挡手改生成物；门是覆盖检查（能从源产出齐全生成物），不是逐字节相同。生成物里不写数字（条数/容量/日期现算）仍是前提。**没有合入后重建流水线的部署**：没有这个 job 就不会自动重建；要么保留旧纪律（PR 带生成物 + 本地跑 `rebuild_generated.py --check`），要么在 main 上跑 `rebuild_generated.py --sync`（拉取、重建、提交、推送一条命令）。不重建的后果是新 case 不进索引、新路由词不生效，不是只慢一步。部署形态与两种纪律见 `docs/guide/git-workflow.md`。Retrieval is deliberately lexical/structural — no vector RAG (see `docs/adr/0002`).
 - **Git gating:** KB changes land via PR — triage labels (`kb/new-pattern|variant|covered`), `kb/high-risk` dual sign-off, CODEOWNERS-based review (see `docs/guide/git-workflow.md`; `CODEOWNERS.example` is a placeholder until owners are named). Deployable centralized or as a framework fork — knowledge dirs never merge from upstream.
 - **Skill self-containment (CI-enforced):** skill files (`skills/**`) must not reference ADR numbers (`ADR-\d{4}`), dates (`20\d\d-\d\d`), or EV card numbers (`EV-\d{4}-\d{3}`) — ADRs get revised/absorbed; a number anchor makes skill behavior look externally defined; dates read as facts; card numbers rot. Behavior rules must be inline; traceability belongs to git/PR/card history.
-- **RSI 实验的预测必须可复现 (CI-enforced):** 行为质量改动在 RSI proposal/experiment 的 `measure` 里带一条命令 + 期望（`expect_exit` / `expect_stdout` 至少一项），或如实声明不可度量。高风险 EV 卡只记录授权与历史，不替代 RSI 结论。
+- **受控实验的预测必须可复现 (CI-enforced):** 行为质量改动在实验提案/experiment 的 `measure` 里带一条命令 + 期望（`expect_exit` / `expect_stdout` 至少一项），或如实声明不可度量。高风险 EV 卡只记录授权与历史，不替代实验结论。
 - **Check-admission criterion (what deserves CI):** only rules that are ①mechanically checkable, ②have deterministic consequences, ③proven recurrent (failed ≥2×) go into CI. Judgmental norms stay as execution instructions + review spot-checks — never fake-hardened (原则六).
 - **测试跨平台**：`tests/` 下的新增与修改按 `docs/spec/test-portability.md` 判定（显式 UTF-8、路径断言归一、字节级夹具、平台专有 API 跳过、外网用例默认 skip）；对应的静态检查与 Windows 单测已进 CI，判定强度与覆盖边界以那篇 §5 为准。
 - **提交前必跑**：逐条命令以 `.github/workflows/kb-checks.yml` 与 `pr-template.yml` 为准（**不在本文件抄一份**——抄了会腐烂且不报错）。另有更重的端到端演练 `python3 scripts/rehearse_evolve_loop.py`：它在临时副本里真跑一遍闭环、并逐条复跑 CI 命令；**但它自己不进 CI，也不能替代上面逐条 `--check`**。`verify_exec_log.py` 不进 CI（exec-log 是运行时件）。

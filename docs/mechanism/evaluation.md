@@ -2,7 +2,7 @@
 
 评估要回答一件事：一次改动是否让诊断、沉淀或提炼变好了，凭什么这么说。答案是同一批样本上的改前、改后对照，加上一条能复现的命令。
 
-读者是要改判据、扩样本、改 rubric，或要查一次判定怎么出来的人。前置是 [rsi-mechanism.md](rsi-mechanism.md)（机制入口）与 [records.md](records.md)（样本、执行、结论的字段）。只想知道系统整体在做什么的人不必读本文。
+读者是要改判据、扩样本、改 rubric，或要查一次判定怎么出来的人。前置是 [evolution-mechanism.md](evolution-mechanism.md)（机制入口）与 [records.md](records.md)（样本、执行、结论的字段）。只想知道系统整体在做什么的人不必读本文。
 
 范围：评估对象、评估集的构建与分层、rubric、判定、成本、版本，以及评估台（`scripts/eval_arena.py`）的池与结论。不含记录的存储与接口（[records.md](records.md)）、运行节奏（[operations.md](operations.md)）、诊断侧的字段（[diagnosis-observability.md](diagnosis-observability.md)）。
 
@@ -258,7 +258,7 @@ $$
 
 缺数据不是失败：没有 field 样本、外部 trace 或 `impact.yaml` 时，回归冒烟可以跑，质量判定停在小池并记 `insufficient`；体检器把数据缺口记 `unknown`，不盖住已经能动作的违反。反过来，低样本量也不能用 `exploratory` 提升成 `accept`。
 
-接受是评估结果，合入由授权等级决定（[rsi-mechanism.md](rsi-mechanism.md)）。效率类改动把主指标换成成本指标：主指标变好、质量非劣、G 通过即接受。
+接受是评估结果，合入由授权等级决定（[evolution-mechanism.md](evolution-mechanism.md)）。效率类改动把主指标换成成本指标：主指标变好、质量非劣、G 通过即接受。
 
 v1 已能按策略直接判一次二元配对：`python3 scripts/evolve.py judge --b <候选独家命中> --c <基线独家命中> --n <配对样本数>`，可选带成本；阈值读 `sleuth.config.yaml 的 evolution.policy`，加 `--record` 时结论追加进 `.s2-replay/evolve/conclusions.jsonl`。
 
@@ -310,17 +310,17 @@ issue 回放未命中有三种解释：路由错、缺 case、内容错。它只
 
 `--self-test` 用合成样本复现三种结论，CI 跑它（`kb-checks` 的 `arena-gate-rule`）；判据写坏、只会判 `accept` 时 CI 就红。
 
-### 3.8 算法适配器与 RSI stage
+### 3.8 算法适配器与实验 stage
 
 实验记录有两种来源：`baseline` 是对照臂，只记录 seed/包络，不产生候选；agent 可以用 `experiment propose --draft <json>` 为任意 target 提交结构化提案（target、改动、预期、风险、回滚），由 target 的评估器决定后续验证。`--draft` 只做结构校验，不代表 target-specific 改动一定可执行。
 
-RSI 存储层分三层：`store.models` 定义事件模型，`store.ports.Backend` 定义 append/read 端口，`store.local` / `store.memory` 是默认与测试实现，`store.service.RSIStore` 只依赖端口。默认本地 `.s2-replay/evolve/rsi-events.jsonl`；路径与后端在 `sleuth.config.yaml` 的 `evolution.store`，或用 `SLEUTH_RSI_STORE_BACKEND`、`SLEUTH_RSI_STORE_PATH` 覆盖。新增远端后端只需实现 `Backend` 并注册，不改 flow/renderer。`store verify` 检查事件 id、proposal/experiment 关联、结论/rollout 孤儿、时区和 trace 是否存在；真实数据当前报 6 条 experiment 无 conclusion、10 条 decision 和 54 条 rollout 孤儿、18 条 trace 缺失。`.s2-replay/evolve/rsi-events.jsonl` 是权威追加流，一条 experiment 事件内嵌 proposal、conclusion、experiment 与 rollout 摘要；conclusions/experiments/proposals 保留为投影，按 experiment_id 或 proposal_id 可查 history。`experiment show` 同时返回 history。
+实验存储层分三层：`store.models` 定义事件模型，`store.ports.Backend` 定义 append/read 端口，`store.local` / `store.memory` 是默认与测试实现，`store.service.RSIStore` 只依赖端口。默认本地 `.s2-replay/evolve/rsi-events.jsonl`；路径与后端在 `sleuth.config.yaml` 的 `evolution.store`，或用 `SLEUTH_RSI_STORE_BACKEND`、`SLEUTH_RSI_STORE_PATH` 覆盖。新增远端后端只需实现 `Backend` 并注册，不改 flow/renderer。`store verify` 检查事件 id、proposal/experiment 关联、结论/rollout 孤儿、时区和 trace 是否存在；真实数据当前报 6 条 experiment 无 conclusion、10 条 decision 和 54 条 rollout 孤儿、18 条 trace 缺失。`.s2-replay/evolve/rsi-events.jsonl` 是权威追加流，一条 experiment 事件内嵌 proposal、conclusion、experiment 与 rollout 摘要；conclusions/experiments/proposals 保留为投影，按 experiment_id 或 proposal_id 可查 history。`experiment show` 同时返回 history。
 
 `agent_adapter --agent dsh` 只指 dsh CLI headless，不是 DSH Desktop；Desktop 本身是 agent，提案/实验应在会话内用 subagent 编排，不需要启动 Desktop 子进程。Claude/Codex 只有在 CLI 是标准做法时才走外部命令；它们的提案仍写回同一个 ProposalPort/RSIStore。
 
 提案引擎在 `scripts/evolve/proposal_engine.py`：`Proposal` 统一表示 target、artifact、分数、反馈与来源；`ProposalEngine` 负责校验、评分、候选池、搜索策略和归档；`ProposalArchive` 写 `.s2-replay/evolve/proposals.jsonl`。策略有 `best`、`pareto`、`gepa`；GEPA 是 `GepaPolicy`（Pareto）+ 反思 proposer 的组合，不是引擎本身。`ProposalEngine` 的选择层直接复用 `selectors`，旧的 `agent_gepa.py` 状态机只是 skill 兼容 adapter，不再有第二套 Pareto 选择。`experiment search --scenario` 用已产出的候选做校验、评分、策略选择和归档；真实生成仍由 agent 走 `experiment request` → `--draft`。真实 pilot 轨迹可以用 `python3 scripts/validate_rsi_replay.py --pilot <pilot-dir>` 重放；两个真实 pilot 可以用 `python3 scripts/validate_rsi_gepa.py --pilot A --pilot B` 跑一次 GEPA 选择报告；`validate_rsi_full_flow.py --pilot --sample [--exploratory]` 用真实候选轨迹走完整 flow：copy 到临时目录，重跑 collect/decide，输出每个 stage 的 evidence/partial/fail、agent heuristic 可用性和 GEPA 候选池缺口。`experiment flow --card EV-YYYY-NNN` 可把行为面实验绑定到 EV 卡；内容面实验不产卡。`experiment flow --exploratory` 是明确标注的降级验收：允许 usage 约束 insufficient，但结论只能记 `insufficient` 或 `reject`，不得把 `exploratory` 提升成 `accept`；judge 未校准（`calibration.passed` 不为 true）时也不能 accept；`--dry-run` 只准备 candidate/pilot tasks 和隔离 worktree，不跑 runner/judge；`experiment flow` 把带 `candidate` 的提案接进 pilot：prepare → 外部 runner → judge → gate → archive；没有 candidate 的提案会被拒绝。candidate apply 前做 target-specific 结构检查：knowledge YAML 必须可解析且有 id，tooling `.py` 必须可编译，harness 的 Python/YAML/JSON 必须可解析，scheduler.yaml 还必须带 scheduler 键；坏内容不会写入工作区。`brief` 现在也读 proposals archive 和 experiments，并在事件流有数据时优先用事件流，显示 events/提案数/实验数和最后一条状态。flow 判定时把提案编号写进 Conclusion（`proposal` 字段），`readback --proposal <id>` 可以先按提案回读判定；投影没有时回退到 experiment/decision 事件。`--measure` 只接受带 card 的结论，避免把 None 传给 ev_measure。DSH adapter 在启动 headless 前检查 `DEEPSEEK_API_KEY`；没有 key 时直接报错，可用 `SLEUTH_DSH_ALLOW_STORED=1` 放行已存凭据。flow 与 pilot 在缺 trace/out、`collect.complete=false` 时拒绝进入判定；pilot 的 accept 还要求 `n >= samples.field_eval`，小池只能 `insufficient`；knowledge/source usage 目标还要求对应 usage 约束为 accept，insufficient 不再放行。flow 读取 judge 时要求 `meta.agent`、每个样本两侧 0/1 分数，并把 judge meta/文件哈希写入实验记录。flow 与 pilot.collect 都拒绝 `adapter_fallback` trace，adapter 没写真实 trace 时不能进 judge。flow 在非 accept 判定时回滚 candidate worktree，并把 `rolled_back` 写进 Proposal；accept 保留工作区供审。flow 还会写一条 ExperimentStore 记录，带 `proposal`、baseline/candidate 均分、paired 证据，以及 proposal/conclusion 快照；knowledge/source usage target 会从 pilot.collect 的 usage 记录生成 `knowledge_usage`/`source_usage` 证据；`experiment records` 能看到 proposal 编号；`experiment gate --target skill` 已委托 `eval_arena.py --gate`（baseline/candidate stats、component、alpha），不再报“no gate wired”；`experiment show --proposal <id>` 把 proposal、conclusion、experiment 三份记录合成一个 JSON 视图；`store history --proposal/--experiment` 直接查事件历史；proposal/conclusion 文件缺失时回退到 experiment 行里的快照。knowledge/source usage 这类 target 仍要求自己的 usage 证据，缺证据的 accept 会被 validator 拒绝。
 
-`propose.agent` 是**提案节点的一种实现**，不是整条 RSI 算法。它按 target 的 ProposalPort 生成结构化草案：先跑 `experiment request --target <t> --component <region>` 拿提示、允许路径与输出 schema，再由 agent 写 draft；`baseline` 只作对照臂，不提案。GEPA 是 `select.pareto + propose.agent` 的节点组合，`select`、`judge`、`gate` 各自还有独立实现；不要把“启发式 agent 提案”等同于“GEPA 或整条自演进管线”。
+`propose.agent` 是**提案节点的一种实现**，不是整条实验算法。它按 target 的 ProposalPort 生成结构化草案：先跑 `experiment request --target <t> --component <region>` 拿提示、允许路径与输出 schema，再由 agent 写 draft；`baseline` 只作对照臂，不提案。GEPA 是 `select.pareto + propose.agent` 的节点组合，`select`、`judge`、`gate` 各自还有独立实现；不要把“启发式 agent 提案”等同于“GEPA 或整条自演进管线”。
 
 自演进实验按六个节点固定算法：`attribute`、`select_region`、`select_candidate`、`propose`、`judge`、`gate`。当前注册：`attribute.trace_rule`/`attribute.agent`、`select.region_hardcount`/`select.region_agent`、`select.none`/`select.best`/`select.pareto`、`propose.none`/`propose.agent`/`propose.reflection`（兼容别名）、`judge.subagent`、`gate.paired`。默认 agent heuristic 是 `select_candidate.best` + `propose.agent`；GEPA 是 `select_candidate.pareto` + `propose.agent` 的组合。归因/选 region 先规则，规则不确定才让 agent 补证据；agent 不能把推断写成 hard，也不做最终 gate。`policy.experiment.stages` 是可覆盖的默认组合；实验记录保存解析后的 stages，禁止把算法写错节点。
 

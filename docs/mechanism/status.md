@@ -20,7 +20,7 @@
 | 知识层分级 `authorization` 取 auto / review / dual | [records.md](records.md) 3.1、[operations.md](operations.md) 3.2 | 已落地 | `grep -h "^authorization:" proposals/ideas/*.yaml \| sort \| uniq -c` |
 | `predicted_effect.measure` 强制 | [records.md](records.md) 3.1 | 已落地 | `grep -n "MEASURE_CUTOVER" scripts/verify_proposals.py` |
 | `validated` 必须有 PASS 的卡内实测证据 | [records.md](records.md) 3.1 | 已落地 | `grep -n "MEASURE_EVIDENCE_CUTOVER" scripts/verify_proposals.py`；`python3 scripts/ev_measure.py --audit` |
-| 判断面：内容看产出物与 PR、行为质量看 RSI 结论、高风险看 EV 卡 | [rsi-mechanism.md](rsi-mechanism.md) 3.2、[records.md](records.md) 2 | 已落地 | `grep -n "行为质量" docs/mechanism/rsi-mechanism.md`；`grep -n "高风险" docs/mechanism/rsi-mechanism.md` |
+| 判断面：内容看产出物与 PR、行为质量看实验结论、高风险看 EV 卡 | [evolution-mechanism.md](evolution-mechanism.md) 3.2、[records.md](records.md) 2 | 已落地 | `grep -n "行为质量" docs/mechanism/evolution-mechanism.md`；`grep -n "高风险" docs/mechanism/evolution-mechanism.md` |
 | `target_component` 生效日检查 | [records.md](records.md) 3.1 | 已落地 | `grep -n "TARGET_CUTOVER" scripts/verify_proposals.py` |
 | 评审把手与判定三态（符合、被证伪、无法判定；声明不可度量是合法退化） | [records.md](records.md) 3.1 | 已落地 | `python3 scripts/ev_measure.py --audit` 盘全库缺口与存量豁免 |
 | 改进项影响视图 `--impact` 与替换链字段 | [records.md](records.md) 3.1 | 已落地 | `python3 scripts/ev_proposal.py --impact`；`grep -n "supersedes:" examples/sample-idea.yaml` |
@@ -111,10 +111,10 @@
 | 回滚率、采纳率等机制健康指标进 timeline | [operations.md](operations.md) 5.2 | 蓝图 | 自演进执行流程试点满一轮 |
 | agent 供给清单固化为执行清单 | [records.md](records.md) 5.2 | 蓝图 | 执行记录积累一批之后 |
 | arena 外部验证卡占比下限 1/3 | [evaluation.md](evaluation.md) 5.3 | 已否决 | 实测不可达，且原判据把动作文案排除出分子却留在分母里；改为 `external_verification_stall` |
-| 全库体检的自动发起 | [rsi-mechanism.md](rsi-mechanism.md) 3.4 | 已否决 | 系统不知道业务上现在该关心什么；重新放开要先有不依赖人的触发源 |
-| 由 agent 单独决定结构性改动 | [rsi-mechanism.md](rsi-mechanism.md) 3.4 | 已否决 | 影响面无法局部验证，走两人双签 |
-| 系统改自己的评分规则与指标定义 | [rsi-mechanism.md](rsi-mechanism.md) 3.4 | 已否决 | 自己改评分标准，验证就不再是外部约束 |
-| 退休从没被选中的罕见条目 | [rsi-mechanism.md](rsi-mechanism.md) 3.2 | 已否决 | 过早退休会删掉正确的罕见知识 |
+| 全库体检的自动发起 | [evolution-mechanism.md](evolution-mechanism.md) 3.4 | 已否决 | 系统不知道业务上现在该关心什么；重新放开要先有不依赖人的触发源 |
+| 由 agent 单独决定结构性改动 | [evolution-mechanism.md](evolution-mechanism.md) 3.4 | 已否决 | 影响面无法局部验证，走两人双签 |
+| 系统改自己的评分规则与指标定义 | [evolution-mechanism.md](evolution-mechanism.md) 3.4 | 已否决 | 自己改评分标准，验证就不再是外部约束 |
+| 退休从没被选中的罕见条目 | [evolution-mechanism.md](evolution-mechanism.md) 3.2 | 已否决 | 过早退休会删掉正确的罕见知识 |
 | 旧的 `estimated_cost` 字段 | [records.md](records.md) 5.3 | 已否决 | 没有 token 记账时它不产生实际约束，已由 `actual_cost` 取代 |
 | 用 token 换质量 | [operations.md](operations.md) 5.3 | 已否决 | 把成本转移到没有预算科目的地方，违反原则九 |
 | 靠无限扩池消化候选 | [operations.md](operations.md) 5.3 | 已否决 | 积压率高说明产卡速度超过消化能力，动作是下调信号权重 |
@@ -166,7 +166,7 @@
 | 演练 | `scripts/rehearse_evolve_loop.py` |
 | 先筛摘要再读正文 | 两阶段加载，Tier 2 索引分片 |
 | 归因事件 | trace 顶层的 `attribution` 事件，`scripts/component_tally.py` 按需聚合 |
-| 五类演化动作 | [rsi-mechanism.md](rsi-mechanism.md) 3.2 的排序分数校准、知识注入、误诊归因、结构演化、退休与复活 |
+| 五类演化动作 | [evolution-mechanism.md](evolution-mechanism.md) 3.2 的排序分数校准、知识注入、误诊归因、结构演化、退休与复活 |
 | 卡 schema 必填字段与两道生效日检查 | `scripts/verify_proposals.py` 的 `REQUIRED`、`TARGET_CUTOVER`、`MEASURE_CUTOVER` |
 | 评审把手 | `scripts/ev_measure.py`（`--run` / `--audit`） |
 | issue 回放与现场反馈的结算 | `scripts/settle_s2_feedback.py`（groom 步骤 3.5b）；`scripts/settle_trace_feedback.py` |
@@ -208,7 +208,7 @@
 
 ## 4 相邻文档分工
 
-八篇机制文档各自管什么、什么时候读，见 [rsi-mechanism.md](rsi-mechanism.md) 第 4 节。本表只列相邻面：
+八篇机制文档各自管什么、什么时候读，见 [evolution-mechanism.md](evolution-mechanism.md) 第 4 节。本表只列相邻面：
 
 | 文档 | 管什么 |
 |---|---|

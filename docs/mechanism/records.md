@@ -1,18 +1,18 @@
 # 记录与数据契约
 
-记录分四类：signal、RSI 实验（样本 / 执行 / 结论）、高风险 EV 授权、版本坐标。普通确定性修复与内容改动不强制四件套；只有行为质量实验需要完整 RSI 记录。
+记录分四类：signal、受控实验（样本 / 执行 / 结论）、高风险 EV 授权、版本坐标。普通确定性修复与内容改动不强制四件套；只有行为质量实验需要完整实验记录。
 
-读者是要改字段或 schema、写记录、查某条数据进不进 git 的人。前置是 [rsi-mechanism.md](rsi-mechanism.md)（机制入口）与 [evaluation.md](evaluation.md)（样本怎么选、结论怎么判）。只跑流程、不碰数据的人不必读本文。
+读者是要改字段或 schema、写记录、查某条数据进不进 git 的人。前置是 [evolution-mechanism.md](evolution-mechanism.md)（机制入口）与 [evaluation.md](evaluation.md)（样本怎么选、结论怎么判）。只跑流程、不碰数据的人不必读本文。
 
-范围：signal、RSI 实验、高风险 EV 授权、接口、存储归属、版本坐标、代码入口。不含评估集与判定的规则（[evaluation.md](evaluation.md)）、运行节奏（[operations.md](operations.md)）、诊断侧字段（[diagnosis-observability.md](diagnosis-observability.md)）。
+范围：signal、受控实验、高风险 EV 授权、接口、存储归属、版本坐标、代码入口。不含评估集与判定的规则（[evaluation.md](evaluation.md)）、运行节奏（[operations.md](operations.md)）、诊断侧字段（[diagnosis-observability.md](diagnosis-observability.md)）。
 
 本文不写会过期的数字。卡片张数与状态分布用 `python3 scripts/ev_measure.py --audit` 现算；库内条数用 `python3 scripts/index_counts.py`。
 
 ## 1 解决什么问题
 
-行为质量改动要能事后复核，缺的是三样东西：一个 RSI proposal 说不清改哪、现状是什么、怎么算改完；一次实验没有能复现的版本坐标；一条结论没有可追加的判断记录。
+行为质量改动要能事后复核，缺的是三样东西：一个实验提案说不清改哪、现状是什么、怎么算改完；一次实验没有能复现的版本坐标；一条结论没有可追加的判断记录。
 
-signal 补观察来源；RSI proposal 补执行前契约；样本补评估输入；执行与结论补判定数据与理由；版本补复现坐标。高风险 EV 卡只补授权与历史，不是普通改动的默认记录。
+signal 补观察来源；实验提案补执行前契约；样本补评估输入；执行与结论补判定数据与理由；版本补复现坐标。高风险 EV 卡只补授权与历史，不是普通改动的默认记录。
 
 明确不解决：结论怎么判（在 [evaluation.md](evaluation.md)）、什么节奏跑（在 [operations.md](operations.md)）、现场有效性（只认工程师回报）。
 
@@ -20,10 +20,10 @@ signal 补观察来源；RSI proposal 补执行前契约；样本补评估输入
 
 按改动性质写：
 
-- 确定性 bug：最小回归测试 + PR；不产生 EV 卡或 RSI 记录。
+- 确定性 bug：最小回归测试 + PR；不产生 EV 卡或实验记录。
 - 内容缺口：内容记录（case / reference / ingest 的来源与验证）。
-- 行为质量：signal → RSI proposal → 一个或多个样本 → 执行 → 结论。
-- 高风险授权：轻量 EV 卡，记录授权、回滚与历史；不替代 RSI 或 PR。
+- 行为质量：signal → 实验提案 → 一个或多个样本 → 执行 → 结论。
+- 高风险授权：轻量 EV 卡，记录授权、回滚与历史；不替代实验或 PR。
 
 存储只分两种归属：资产进 git，运行时件留本地。判据是「这份数据是否逐轮变化」：proposal 契约、结论与授权是资产；逐轮进度、token 记录、池文件是运行时件。
 
@@ -68,7 +68,7 @@ measure_evidence: []             # 只追加：每次 ev_measure --run --record 
 
 四条完整性规则：
 
-1. 普通 signal 不产卡；只有高风险授权或历史归档才创建 EV 卡。行为质量改动走 RSI，不要求卡。
+1. 普通 signal 不产卡；只有高风险授权或历史归档才创建 EV 卡。行为质量改动走实验，不要求卡。
 2. 终态卡必须有判断记录。`validated`、`rejected`、`superseded` 的卡，`decisions` 里必须有对应结论与所依据的评估数据；缺了是审计缺口。
 3. `validated` 后 `actual_cost` 必填。没有实际成本记录的卡不可审计。
 4. `supersedes` 与 `superseded_by` 构成替换链；同一时刻每个 `target_component` 至多一张 `validated` 卡。

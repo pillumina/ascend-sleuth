@@ -63,7 +63,7 @@ argparse/main 与 re-export，旧调用方（含测试的 `mock.patch.object(kb_
 | `SLEUTH_DSH_BIN` | DSH CLI 路径（默认取 PATH 或安装目录） | `agent_adapter.py`、`judge_adapter.py` |
 | `SLEUTH_DSH_ALLOW_STORED` | 允许用已存凭据跑 headless | `agent_adapter.py` |
 | `DEEPSEEK_API_KEY` | headless 认证 | `agent_adapter.py` |
-| `SLEUTH_RSI_STORE_BACKEND` / `SLEUTH_RSI_STORE_PATH` | RSI 事件存储后端与路径覆盖 | `evolve/store/config.py` |
+| `SLEUTH_RSI_STORE_BACKEND` / `SLEUTH_RSI_STORE_PATH` | 实验事件存储后端与路径覆盖 | `evolve/store/config.py` |
 | `ASCEND_SLEUTH_DEPLOYMENT` | 部署标识（指标/条目使用记录分组） | `entry_activity.py` |
 | `DSH_HOME` / `XDG_DATA_HOME` / `APPDATA` | DSH 会话与平台数据目录 | `harness_usage.py`、`trace_entry_activity.py` |
 

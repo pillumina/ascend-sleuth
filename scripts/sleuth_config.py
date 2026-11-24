@@ -2,7 +2,7 @@
 """单一部署配置（sleuth.config.yaml）的读取与校验。
 
 新用户只维护仓库根的 sleuth.config.yaml：部署角色、自演进策略、成本 profile、
-RSI store 与同步模式都在这一份文件里。没有旧文件 fallback；
+实验记录库与同步模式都在这一份文件里。没有旧文件 fallback；
 没有 sleuth.config.yaml 时使用内置默认值。
 """
 

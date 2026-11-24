@@ -1,4 +1,4 @@
-"""``store`` 命令组：RSI 统一存储的查询、校验与迁移。"""
+"""``store`` 命令组：实验统一存储的查询、校验与迁移。"""
 
 import argparse
 import json
@@ -61,7 +61,7 @@ def cmd_store_migrate(args: argparse.Namespace) -> int:
 
 
 def register(subparsers) -> None:
-    store = subparsers.add_parser("store", help="RSI 统一存储")
+    store = subparsers.add_parser("store", help="实验统一存储")
     store_sub = store.add_subparsers(dest="store_command", required=True)
     store_migrate = store_sub.add_parser("migrate", help="把旧 JSONL 迁移到 rsi-events")
     store_migrate.add_argument("--root", default=None, help="本地根目录（默认锚主检出）")

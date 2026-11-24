@@ -93,7 +93,7 @@ resume 只负责**恢复现场**——恢复后继续的是 `/diagnose` 的完�
 - **经验证后给 fix**：对照已提供信息验证 diagnosis checks，缺就问；`fix_on_mismatch` 带 rollback。
 - **版本软匹配**：compat 不符只降排序分数，不硬排除。
 - **证据落盘铁律**：用户证据完整落 `traces/evidence/<session_id>/`，不写摘要/指纹；每次写 trace 刷新顶层 `updated_at`。
-- **深度排查**：Tier 3 / 源码分析一律走 `scripts/src_fetch.py`（复用、不自行 clone）。
+- **深度排查**：postmortem 层（Tier 3）用 grep；源码分析走 `scripts/src_fetch.py`（复用、不自行 clone）。
 - **误诊归因**：反馈 not_resolved/partial → 读 trace 判 case_error/execution_error。
 - **连续失败 ≤2**：两次未解决转人工，不连续试第三个。
 - **trace 边界**：续接后同样别把流程/设计讨论写进本 trace（走 `_evnote.md`）。

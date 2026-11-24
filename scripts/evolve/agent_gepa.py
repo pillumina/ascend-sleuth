@@ -61,7 +61,7 @@ class Candidate:
 
 
 class AgentRsiSession:
-    """RSI 状态机：propose/select stage 可替换；GEPA 是默认组合。"""
+    """实验状态机：propose/select stage 可替换；GEPA 是默认组合。"""
 
     def __init__(self, seed_skill: str, samples: List[str],
                  max_metric_calls: int = 12, population: int = 4,

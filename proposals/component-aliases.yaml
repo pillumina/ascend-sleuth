@@ -22,14 +22,17 @@ aliases:
   docs/evolution-pipeline.md: docs/mechanism/pipeline.md
   docs/evolution-run.md: docs/mechanism/run.md
   docs/evolution-user-guide.md: docs/guide/evolution-user-guide.md
+  docs/evolution.md: docs/mechanism/evolution-mechanism.md
   docs/git-workflow.md: docs/guide/git-workflow.md
   docs/handoff.md: docs/guide/handoff.md
   docs/issue-ingest-pipeline.md: docs/guide/issue-ingest-pipeline.md
+  docs/mechanism/rsi-acceptance.md: docs/mechanism/experiment-acceptance.md
+  docs/mechanism/rsi-mechanism.md: docs/mechanism/evolution-mechanism.md
   docs/metrics.md: docs/guide/metrics.md
   docs/reference-ingest-pipeline.md: docs/guide/reference-ingest-pipeline.md
   docs/roadmap.md: docs/plan/roadmap.md
   docs/rollout-assessment.md: docs/plan/rollout-assessment.md
-  docs/rsi-mechanism.md: docs/mechanism/rsi-mechanism.md
+  docs/rsi-mechanism.md: docs/mechanism/evolution-mechanism.md
   docs/windows-setup.md: docs/guide/windows-setup.md
   docs/writing-norms.md: docs/spec/writing-norms.md
 version: 1

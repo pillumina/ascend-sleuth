@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""rsi_observatory.py —— RSI 实验台的只读数据桥。
+"""rsi_observatory.py —— 实验台的只读数据桥。
 
-面板（``dsh-plugins/dsh-rsi-observatory``）不读 JSONL，也不解析 RSI 事件：它经 shell 调本脚本，
+面板（``dsh-plugins/dsh-rsi-observatory``）不读 JSONL，也不解析实验事件：它经 shell 调本脚本，
 本脚本只用 ``evolve.store`` 的 ``open_store()`` / ``read()`` / ``history()`` 取证，输出一份归一化
 的 JSON。换后端（``sleuth.config.yaml 的 ``evolution.store`` / ``SLEUTH_RSI_STORE_*``）时面板不用改。
 
@@ -459,7 +459,7 @@ def command_detail(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="RSI 实验台只读数据桥")
+    parser = argparse.ArgumentParser(description="实验台只读数据桥")
     sub = parser.add_subparsers(dest="command", required=True)
 
     def common(target: argparse.ArgumentParser) -> None:

@@ -1,4 +1,4 @@
-// dsh-rsi-observatory —— 浏览器半：RSI 实验台整页
+// dsh-rsi-observatory —— 浏览器半：实验台整页
 //
 // 席位：main 的 keyed 条目 rsi-observatory（整页）+ sidebar.panellist（左侧图标「实验台」）。
 // 只读：全部数据来自 host 的 rsi-list / rsi-detail 两条 RPC；本文件不读文件、不解析 JSONL、
@@ -16,7 +16,7 @@ window.__ModuleLoader__.load({
     const CHANNEL = '/rsi-observatory'
     const PLUGIN_VERSION = '0.8.0'
     const PANEL_ID = 'rsi-observatory'
-    const PANEL_LABEL = '自演进实验'
+    const PANEL_LABEL = '实验台'
 
     const TABS = [
       { id: 'overview', label: '实验概览' },
@@ -54,7 +54,7 @@ window.__ModuleLoader__.load({
     const COPY = {
       loading: '正在读取实验记录…',
       emptyTitle: '还没有实验记录',
-      emptyBody: '实验记录库里还没有数据。跑一次自演进实验后回到这里刷新。',
+      emptyBody: '实验记录库里还没有数据。跑一次实验后回到这里刷新。',
       emptySource: '数据源',
       retry: '重试',
       refresh: '刷新',
@@ -718,8 +718,8 @@ window.__ModuleLoader__.load({
         return h('div', { class: 'rsi-page' }, h('div', { class: 'rsi-inner' },
           h('header', { class: 'rsi-head' },
             h('div', null,
-              h('h1', { class: 'rsi-title' }, '自演进实验'),
-              h('p', { class: 'rsi-sub' }, 'Ascend Sleuth · 自演进实验记录', ' · ', PLUGIN_VERSION),
+              h('h1', { class: 'rsi-title' }, '实验台'),
+              h('p', { class: 'rsi-sub' }, 'Ascend Sleuth · 受控实验记录', ' · ', PLUGIN_VERSION),
             ),
           ),
           h(ErrorState, { message: error, onRefresh: refresh }),
@@ -743,7 +743,7 @@ window.__ModuleLoader__.load({
         h('header', { class: 'rsi-head' },
           h('div', null,
             h('h1', { class: 'rsi-title' }, '实验台'),
-            h('p', { class: 'rsi-sub' }, 'Ascend Sleuth · RSI 实验记录', ' · ', PLUGIN_VERSION),
+            h('p', { class: 'rsi-sub' }, 'Ascend Sleuth · 受控实验记录', ' · ', PLUGIN_VERSION),
           ),
           h('div', { class: 'rsi-head-actions' },
             h(SourceBar, { source: source, generatedAt: list && list.generatedAt }),

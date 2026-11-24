@@ -8,7 +8,7 @@
 
     调用方（任何 skill）→ evolve_intake record <观察载荷>
                               │ 读 sleuth.config.yaml 的 evolution.role
-                              ├─ maintainer  → 写信号记录，上游分诊后走 RSI
+                              ├─ maintainer  → 写信号记录，上游分诊后走实验
                               ├─ signal-only → 写 proposals/signals/<部署>-<哈希>.yaml
                               └─ off         → 不落盘，只打印一行
 
@@ -20,7 +20,7 @@
 ## 记录层能保证什么、不能保证什么
 
 能：证据不空、组件与出处可解析、同一信号去重计数。这些是确定性的，脚本可以判。
-不能：这条信号值不值得升级成 RSI 候选——那要读组件、读候选队列、读指标，是上游分诊层的事。
+不能：这条信号值不值得升级成受控实验候选——那要读组件、读候选队列、读指标，是上游分诊层的事。
 
 ## 用法
 
@@ -97,7 +97,7 @@ def record(root: Path, *, signal: str, signal_text: str, target: str, evidence: 
            trajectory, suggested: str = "", source: str = "evolve-check",
            session: str = "") -> dict:
     role, role_source = EM.read_role(root)
-    # 目标态：maintainer 与 signal-only 都先把观察落成信号；是否提升为 RSI 由分诊决定。
+    # 目标态：maintainer 与 signal-only 都先把观察落成信号；是否提升为实验由分诊决定。
     errors = validate(root, target, evidence, trajectory)
     if errors:
         raise ValueError("；".join(errors))

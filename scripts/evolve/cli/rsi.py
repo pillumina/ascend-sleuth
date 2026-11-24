@@ -86,7 +86,7 @@ def cmd_rsi_status(args: argparse.Namespace) -> int:
 
 
 def register(subparsers) -> None:
-    rsi = subparsers.add_parser("rsi", help="RSI 多源归因与实验计划")
+    rsi = subparsers.add_parser("rsi", help="实验多源归因与实验计划")
     rsi_sub = rsi.add_subparsers(dest="rsi_command", required=True)
     rsi_plan = rsi_sub.add_parser("plan", help="trace/metrics/replay -> 实验计划")
     rsi_plan.add_argument("--root", default=None)
@@ -103,6 +103,6 @@ def register(subparsers) -> None:
     rsi_select.add_argument("--state", required=True)
     rsi_select.add_argument("--file", required=True)
     rsi_select.set_defaults(func=cmd_rsi_select)
-    rsi_status = rsi_sub.add_parser("status", help="读取已保存的 RSI 计划")
+    rsi_status = rsi_sub.add_parser("status", help="读取已保存的实验计划")
     rsi_status.add_argument("--state", required=True)
     rsi_status.set_defaults(func=cmd_rsi_status)

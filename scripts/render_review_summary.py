@@ -162,9 +162,9 @@ def unknown_tokens(text, gl):
 
 
 # 越界用途的严重度：新人/维护者第一眼就会读到的文件，越界代价最高。
-# 清单跟着「新人第一眼读哪篇」走——自演进元机制的唯一技术入口在 docs/mechanism/rsi-mechanism.md，
-# 所以它在册；docs/evolution.md 已降为一页指路（无 prose），不再单列。
-NEWCOMER_FACING = {"README.md", "CONTEXT.md", "docs/mechanism/rsi-mechanism.md"}
+# 清单跟着「新人第一眼读哪篇」走——自演进元机制的唯一技术入口在 docs/mechanism/evolution-mechanism.md，
+# 所以它在册；旧的机制入口页已删（内容并入 evolution-mechanism.md），不再单列。
+NEWCOMER_FACING = {"README.md", "CONTEXT.md", "docs/mechanism/evolution-mechanism.md"}
 # 越界检查的豁免面：
 #   - proposals/ ：**只追加的审计档案**（EV 卡记的是当时的决策与 roadmap 事项引用），
 #     按今天的范围规则去改历史卡等于篡改审计链；
@@ -382,7 +382,7 @@ def cmd_scan(paths, root):
             print(f"  ⚠ {rel}（新人可见面，优先清理）: {' '.join(toks)}")
     else:
         # 检查面从 NEWCOMER_FACING 派生，不手写第二份——手写的镜像会漂移（这里原先是硬编码的
-        # "README / CONTEXT / docs/evolution.md"，改了集合却不改这行，输出就会撒谎）。
+        # "README / CONTEXT / 机制入口页"，改了集合却不改这行，输出就会撒谎）。
         print(f"  ✓ 新人可见面干净（检查面：{' / '.join(sorted(NEWCOMER_FACING))}）")
     if rest:
         total = sum(len(v) for v in rest.values())

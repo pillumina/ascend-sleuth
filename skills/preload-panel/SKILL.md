@@ -13,7 +13,7 @@ disable-model-invocation: true
 DSH 会话中加载可视化面板、诊断状态条、诊断画布与实验台。常驻包把界面分成五处：会话里一个「诊断」tab
 （`conversation.view`，读这一单）；全库读数在整页「Ascend Sleuth」（`main` 的 keyed 条目 +
 `sidebar.panellist` 图标，「知识库」「指标」「自演进」三个子页，默认落在
-「知识库」）；另有一个独立的 `dsh-rsi-observatory` 包，把「实验台」整页放进侧栏（只读 RSI store）；
+「知识库」）；另有一个独立的 `dsh-rsi-observatory` 包，把「实验台」整页放进侧栏（只读实验记录库）；
 另有一个独立的 `dsh-sleuth-copilot` 包，把状态条
 放在输入框上方（`conversation.input.dock`）、入口放在输入区工具条（`conversation.input.right`）、
 全库动作放在浮层（`shell.overlay`），可单独装卸；另有一个独立的 `dsh-sleuth-canvas` 包，把诊断旅程
@@ -60,7 +60,7 @@ DSH_HOME 位置、profile 名、命令行是否随包、token 是否落日志、
 **默认装五个包**：面板包 `dsh-sleuth-panels`、`dsh-sleuth-vllm-kb`（设置页左侧栏的「vllm-kb」一栏，
 四个 `vllm_kb_*` 工具默认关）、独立的 `dsh-sleuth-copilot`（输入框上方的诊断状态条与诊断工作台）、
 独立的 `dsh-sleuth-canvas`（左侧栏「诊断画布」整页，离线渲染 `traces/`）、独立的
-`dsh-rsi-observatory`（侧栏「实验台」整页，只读 RSI store）。路由三对其余四个包各再跑一次
+`dsh-rsi-observatory`（侧栏「实验台」整页，只读实验记录库）。路由三对其余四个包各再跑一次
 `add`；路由五在插件页粘贴五次；路由四用 `--all` 一次装齐；路由二用 `install_bundle` 装五次。五个包
 分开登记：装面板不会带上另外四个。状态条与诊断画布都是独立包，卸掉它们不影响面板。
 
@@ -98,7 +98,7 @@ stderr（面板包冒烟会打 `RPC 路由已注册`），以退出码为准；�
 
    五条都要跑：第一条装面板，第二条装 vllm-kb（设置页左侧栏那一栏），第三条装诊断状态条
    （输入框上方的交互层），第四条装诊断画布（左侧栏图标 + 主区整页），第五条装实验台
-   （侧栏「实验台」整页，只读 RSI store）。
+   （侧栏「实验台」整页，只读实验记录库）。
    命令做三件事：在 profile 目录跑包管理器、把依赖写成 `link:<仓库路径>`、把包名加进
    `dsh.profile.bundles`。最后一项决定启动时加载它——只写了依赖没进 bundles，等于没装。
    输出里的 `Already up to date` 只说明包管理器没搬文件，装没装看下一行的 `dependencies:`。

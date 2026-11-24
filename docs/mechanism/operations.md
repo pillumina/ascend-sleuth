@@ -2,7 +2,7 @@
 
 演进不是一条单独的流水线，而是内容工作收尾时的伴随动作；需要全库观测时，人才显式跑一轮深度轮。本文说清什么时候跑、一轮的边界在哪、每周具体做什么、花多少预算，以及长期任务与视图怎么装配。
 
-读者是要跑一轮、排一周的活、定停止条件或改进流程的人。前置是 [rsi-mechanism.md](rsi-mechanism.md)（机制入口）、[records.md](records.md)（记录与卡）、[evaluation.md](evaluation.md)（判定规则）。只想知道系统在做什么的人不必读本文。
+读者是要跑一轮、排一周的活、定停止条件或改进流程的人。前置是 [evolution-mechanism.md](evolution-mechanism.md)（机制入口）、[records.md](records.md)（记录与卡）、[evaluation.md](evaluation.md)（判定规则）。只想知道系统在做什么的人不必读本文。
 
 范围：触发入口、运行模式与授权、一轮的边界与停止、每周流程、采样、内容维护、长期任务、工程形态。不含评估与判定规则（[evaluation.md](evaluation.md)）、记录字段（[records.md](records.md)）、groom 的内部协议（[agent-groom.md](agent-groom.md)）。
 
@@ -35,9 +35,9 @@
 | 每周批审收尾的检查 | 系统自动 | 知识库的覆盖缺口与结构问题 |
 | 深度轮（全库观测） | 人显式要求 | 跨轮聚合：归因聚类、容量、重跑未做的条目、指标漂移 |
 
-内容流程收尾只执行 `evolve-check`，它只记录信号，不产 EV 卡、不跑 RSI、不跑验证门。只有用户显式发起深度全库体检时，才走 `/skill:self-evolve`；深度轮只归类候选，不自动执行 RSI。
+内容流程收尾只执行 `evolve-check`，它只记录信号，不产 EV 卡、不跑实验、不跑验证门。只有用户显式发起深度全库体检时，才走 `/skill:self-evolve`；深度轮只归类候选，不自动执行实验。
 
-部署可以声明演进角色：`sleuth.config.yaml` 的 `evolution.role`，读端 `scripts/evolve_mode.py`。`maintainer` 先落信号，行为质量进 RSI、内容缺口进 ingest，不自动产 EV 卡；`signal-only` 只落信号、不跑实验；`off` 只留一条跳过记录。只做内容沉淀的下游部署用 `signal-only`：本地卡号会与上游号段重号，冲突无法机械解决。
+部署可以声明演进角色：`sleuth.config.yaml` 的 `evolution.role`，读端 `scripts/evolve_mode.py`。`maintainer` 先落信号，行为质量进实验、内容缺口进 ingest，不自动产 EV 卡；`signal-only` 只落信号、不跑实验；`off` 只留一条跳过记录。只做内容沉淀的下游部署用 `signal-only`：本地卡号会与上游号段重号，冲突无法机械解决。
 
 ### 3.2 运行模式、授权与停止
 
@@ -48,7 +48,7 @@
 | `default`（默认） | 自动跑，关键改动攒批给我审 | `auto` 只在 `auto_merge.enabled=true` 时自动合入，当前为 false，按 `review` 批审；`review` 与 `dual` 攒批 | 轮末或批边界，提一个批 PR |
 | `hands-off` | 我信这个 scope 的判断，全自动跑，做完给我 PR 审 | 三个级别都按预授权连续执行，事中不打断 | 目标完成或批边界，提一个批 PR |
 
-不指定时按 `default`。`hands-off` 需要明确要求，并且有三条硬前提：每个行为改动有 signal/RSI 证据（高风险另有授权卡）；每个改动独立 commit、可以逐条 revert；验证先于合入。
+不指定时按 `default`。`hands-off` 需要明确要求，并且有三条硬前提：每个行为改动有 signal/实验证据（高风险另有授权卡）；每个改动独立 commit、可以逐条 revert；验证先于合入。
 
 运行模式决定一轮里人审什么时候发生；授权级别决定这次改动要不要签字；人工介入等级（默认第 2 档）决定谁有权合入、人多久看一次结果。三者不是一回事。
 
@@ -112,14 +112,14 @@
 | 看完整 metrics 体检 | `python3 scripts/evolve.py health --json`（只读；`--check` 有 fail 退出 1，broken 退出 2；不带 `--check` 的读数命令仍退出 0，与 `metrics_health.py` 一致） |
 | 记录一个 baseline 提案 | `python3 scripts/evolve.py experiment propose --target skill --component <组件> --summary <一句话>`（只写本地实验记录，不跑模型、不合入） |
 | 查看本地实验记录 | `python3 scripts/evolve.py experiment records --limit 10` |
-| 记录 subagent 对照实验 | 显式进入 RSI：`experiment request` → `experiment flow` → `experiment show` |
+| 记录 subagent 对照实验 | 显式进入实验：`experiment request` → `experiment flow` → `experiment show` |
 | agent-native GEPA | 状态机 `scripts/agent_gepa.py`；不接官方 gepa 库，不依赖外部 endpoint |
 | 增量 trace 归因 | `python3 scripts/evolve.py traces sync`；`traces status` 看 snapshot/状态 |
 | 知识使用效率 | `python3 scripts/evolve.py knowledge-usage evaluate/compare`；只读 usage JSON，不改 case |
 | 真实 pilot 编排 | `pilot prepare/collect`；创建隔离 candidate worktree、写 baseline/candidate 任务清单、收集 trace/输出 |
 | candidate apply | `candidate validate/apply/rollback/diff`；在隔离 git worktree 应用单个 skill region Patch，不改主检出 |
 | 源码访问效率 | `python3 scripts/evolve.py source-usage from-trace/evaluate/compare`；只读 trace/usage，不下载源码 |
-| RSI 多源计划 | `python3 scripts/evolve.py rsi plan`（trace/metrics/replay → 归因/region/实验 spec）；`--replay .s2-replay` 读 issue 回放结果失败；`rsi status` 读回；agent 回写用 `rsi attribute/select --state <plan> --file <json>` |
+| 实验多源计划 | `python3 scripts/evolve.py rsi plan`（trace/metrics/replay → 归因/region/实验 spec）；`--replay .s2-replay` 读 issue 回放结果失败；`rsi status` 读回；agent 回写用 `rsi attribute/select --state <plan> --file <json>` |
 | holdout 隔离 | issue/issue 回放导入与手工 sample 新建/复核/升格都按 `eval/holdout.yaml` 的 issue 号拒绝；不把封存样本吸进候选池 |
 | 全库观测轮 | `/skill:self-evolve` |
 
@@ -261,7 +261,7 @@ S2 校准集的 selection 与 test 分离是规模条件：池子撑不起两半
 
 ### 5.1 已落地
 
-- 三个入口：`skills/evolve-check/SKILL.md`（只记信号）、`skills/self-evolve/SKILL.md`（归类与候选）、`skills/knowledge-groom/SKILL.md`（每周批审）；重型 RSI 只由显式选择候选后进入。
+- 三个入口：`skills/evolve-check/SKILL.md`（只记信号）、`skills/self-evolve/SKILL.md`（归类与候选）、`skills/knowledge-groom/SKILL.md`（每周批审）；重型实验只由显式选择候选后进入。
 - 部署级演进角色：`sleuth.config.yaml` 的 `evolution.role` 与 `scripts/evolve_mode.py`。
 - 积压水位、合入点回写与单一分子实现：`scripts/ev_proposal.py --waterline`、`--mark-merged --from-prs`。
 - 内容流程执行记录与聚合进 timeline。

@@ -142,7 +142,7 @@ entries:
     family: 治理缺口
     scope: ["docs/plan/roadmap.md", "docs/mechanism/operations.md"]
     meaning: 治理缺口：系统改自己的 skill，防自我确认偏差
-    see: mechanism/rsi-mechanism.md §3.4
+    see: mechanism/evolution-mechanism.md §3.4
   - token: G5
     short: 治理缺口：无全局上下文
     family: 治理缺口

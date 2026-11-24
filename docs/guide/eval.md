@@ -81,8 +81,8 @@
   [--expected <面>.expected.yaml]`：退出 0=无回归（top3 一致或 expected case 仍在 top-3），
   非 0=回归/缺结果（逐 fixture 报告）；expected.yaml 可选映射 {fixture: expected_case}；
 ③子集选择——golden 按影响面挑 fixture，不默认全量；
-④行为质量改动进 RSI proposal——写清所属面、measure 与所选门禁（附 gate_diff 输出路径）；
-  高风险授权另用 EV 卡记录，不替代 RSI 结论。
+④行为质量改动进实验提案——写清所属面、measure 与所选门禁（附 gate_diff 输出路径）；
+  高风险授权另用 EV 卡记录，不替代实验结论。
 
 ### 2 跑改前基线、实施改动、跑改后侧并对照（v1 手动）
 

@@ -2,7 +2,7 @@
 name: doc-standards
 description: >
   写或改给人读的文档之前定结构与骨架：docs/ 各层、README、定位报告、case/reference 词条、
-  EV 卡、postmortem、PR body、skill 正文。用户要写新文档、重写一篇结构散掉的文档、
+  演进卡（EV 卡）、postmortem、PR body、skill 正文。用户要写新文档、重写一篇结构散掉的文档、
   或问「这篇文档该怎么组织 / 该有哪些节」时使用。
 ---
 
