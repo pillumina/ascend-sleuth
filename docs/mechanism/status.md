@@ -10,19 +10,19 @@
 
 | 机制 | 定义在哪 | 现状 | 确认方式 |
 |---|---|---|---|
-| 内容流程收尾的伴随演进 | [operations.md](operations.md) 3.1 | 已落地 | `ls skills/evolve-check/SKILL.md` |
+| 内容流程收尾的伴随演进 | [operations.md](operations.md) 3.1 | 已落地 | `python3 scripts/status_check.py --skill evolve-check` |
 | 部署级演进角色 `evolution.role` | [operations.md](operations.md) 3.1 | 已落地 | `python3 scripts/evolve_mode.py` |
-| 全库体检轮 | [operations.md](operations.md) 3.1 | 已落地 | `ls skills/self-evolve/SKILL.md` |
-| 每周批审 | [operations.md](operations.md) 3.3 | 已落地 | `ls skills/knowledge-groom/SKILL.md` |
+| 全库体检轮 | [operations.md](operations.md) 3.1 | 已落地 | `python3 scripts/status_check.py --skill self-evolve` |
+| 每周批审 | [operations.md](operations.md) 3.3 | 已落地 | `python3 scripts/status_check.py --skill knowledge-groom` |
 | 信号记录（下游部署的收尾交接） | [signals/README.md](../../proposals/signals/README.md) | 已落地 | `python3 scripts/evolve_signals.py list` |
 | 演进记录入口 `evolve_intake` 与信号生命周期 | [evolve-check/SKILL.md](../../skills/evolve-check/SKILL.md) 第 3 步 | 已落地 | `python3 scripts/evolve_intake.py record --help` |
 | 改进项的过程档案、状态机与卡 schema 校验（含 `status_lag`，与面板同一判断） | [records.md](records.md) 3.1 | 已落地 | `python3 scripts/verify_proposals.py --check`；`grep -n "状态滞后" scripts/verify_proposals.py` |
 | 知识层分级 `authorization` 取 auto / review / dual | [records.md](records.md) 3.1、[operations.md](operations.md) 3.2 | 已落地 | `grep -h "^authorization:" proposals/ideas/*.yaml \| sort \| uniq -c` |
 | `predicted_effect.measure` 强制 | [records.md](records.md) 3.1 | 已落地 | `grep -n "MEASURE_CUTOVER" scripts/verify_proposals.py` |
-| `validated` 必须有 PASS 的卡内实测证据 | [records.md](records.md) 3.1 | 已落地 | `grep -n "MEASURE_EVIDENCE_CUTOVER" scripts/verify_proposals.py`；`python3 scripts/ev_measure.py <卡号> --run --record` |
+| `validated` 必须有 PASS 的卡内实测证据 | [records.md](records.md) 3.1 | 已落地 | `grep -n "MEASURE_EVIDENCE_CUTOVER" scripts/verify_proposals.py`；`python3 scripts/ev_measure.py --audit` |
 | 判断面：内容看产出物与 PR、行为质量看 RSI 结论、高风险看 EV 卡 | [rsi-mechanism.md](rsi-mechanism.md) 3.2、[records.md](records.md) 2 | 已落地 | `grep -n "行为质量" docs/mechanism/rsi-mechanism.md`；`grep -n "高风险" docs/mechanism/rsi-mechanism.md` |
 | `target_component` 生效日检查 | [records.md](records.md) 3.1 | 已落地 | `grep -n "TARGET_CUTOVER" scripts/verify_proposals.py` |
-| 评审把手与判定三态（符合、被证伪、无法判定；声明不可度量是合法退化） | [records.md](records.md) 3.1 | 已落地 | `python3 scripts/ev_measure.py --run --record`；`--audit` 盘全库缺口与存量豁免 |
+| 评审把手与判定三态（符合、被证伪、无法判定；声明不可度量是合法退化） | [records.md](records.md) 3.1 | 已落地 | `python3 scripts/ev_measure.py --audit` 盘全库缺口与存量豁免 |
 | 改进项影响视图 `--impact` 与替换链字段 | [records.md](records.md) 3.1 | 已落地 | `python3 scripts/ev_proposal.py --impact`；`grep -n "supersedes:" examples/sample-idea.yaml` |
 | 卡的成本侧字段 `actual_cost` | [records.md](records.md) 3.1 | 已落地 | `grep -n "actual_cost" docs/mechanism/records.md` |
 | 积压量水位、上限判据与超限停产 | [operations.md](operations.md) 3.2 | 已落地 | `python3 scripts/ev_proposal.py --waterline`；`grep -n "backlog_over" proposals/gates.yaml` |
@@ -39,7 +39,7 @@
 | arena `--self-test` 进 CI | [evaluation.md](evaluation.md) 3.7 | 已落地 | `grep -n "arena-gate-rule" .github/workflows/kb-checks.yml` |
 | 复用判据 `pool_reuse_uncontrolled` | [evaluation.md](evaluation.md) 3.7 | 已落地 | `grep -n "pool_reuse_uncontrolled" proposals/gates.yaml` |
 | arena 池按吸收状态分流 | [evaluation.md](evaluation.md) 3.7 | 已落地 | `grep -n "role.*regression\|absorbed" scripts/eval_arena.py` |
-| 吸收状态在本池范围内运行期重判 | [evaluation.md](evaluation.md) 3.7 | 已落地 | `python3 scripts/eval_arena.py --pool .s2-replay/arena/pool-val.yaml` |
+| 吸收状态在本池范围内运行期重判 | [evaluation.md](evaluation.md) 3.7 | 已落地 | `python3 scripts/eval_arena.py --self-test` |
 | `held_out` 在 `--stats` 与 `--gate` 生效 | [evaluation.md](evaluation.md) 3.7 | 已落地 | `grep -n "held_out" scripts/eval_arena.py` |
 | 非诊断样本剔出命中率分母与配对 | [evaluation.md](evaluation.md) 3.7 | 已落地 | `grep -n "non_diagnostic" scripts/eval_arena.py scripts/s2_replay.py` |
 | 无回归范围写进影响记录（`arena-pool-only`） | [evaluation.md](evaluation.md) 3.7 | 已落地 | `grep -n "no_regression_scope" scripts/eval_arena.py` |
@@ -47,15 +47,15 @@
 | 选样的机械判据：流程与文档类前缀硬拒，弱信号默认不收 | [evaluation.md](evaluation.md) 3.7 | 已落地 | `grep -n "include-weak" scripts/s2_calibration.py` |
 | 统一执行记录：schema、脚本、收尾接入与聚合 | [records.md](records.md) 3.7 | 已落地 | `python3 scripts/verify_exec_log.py`；`grep -rl "log_skill_exec" skills/`；`grep -n "evolve_check_runs" scripts/metrics_snapshot.py` |
 | issue 回放结算 `validation_record` | [operations.md](operations.md) 3.4 | 已落地 | `grep -n "validation_record" scripts/settle_s2_feedback.py` |
-| 现场置信只由现场回报写入 | [operations.md](operations.md) 3.4 | 已落地 | `ls scripts/settle_trace_feedback.py` |
+| 现场置信只由现场回报写入 | [operations.md](operations.md) 3.4 | 已落地 | `python3 scripts/settle_trace_feedback.py --help` |
 | 条目使用记录 | [diagnosis-observability.md](diagnosis-observability.md) 3.3 | 已落地 | `python3 scripts/verify_entry_activity.py` |
 | 工具分布 | [diagnosis-observability.md](diagnosis-observability.md) 3.3 | 已落地 | `grep -n '"tool": ("calls"' scripts/entry_activity.py` |
 | 诊断详情的四层时间线与追加式修订 | [diagnosis-observability.md](diagnosis-observability.md) 3.1 | 已落地 | `python3 scripts/verify_trace_status.py --all` |
 | 诊断续接的漂移检查与读侧版本坐标记录 | [diagnosis-trace.md](../../skills/diagnose/references/diagnosis-trace.md) 的 `kb_rev` 与「顶层知识库同步字段」 | 已落地 | `python3 scripts/kb_drift.py --session <id>`；`python3 scripts/kb_sync.py --show` |
 | 归因事件字段 `component` | [diagnosis-trace.md](../../skills/diagnose/references/diagnosis-trace.md) | 已落地 | `grep -n "attribution" skills/diagnose/references/diagnosis-trace.md` |
 | groom 终态决定的收尾：记录回写 + 草稿出队 | [agent-groom.md](agent-groom.md) 3.7 | 已落地 | `python3 scripts/groom_close_draft.py --help` |
-| 面板先例 `dsh-plugins/ascend-panel` | [operations.md](operations.md) 3.6 | 已落地 | `ls dsh-plugins/ascend-panel` |
-| 任务状态目录 | [operations.md](operations.md) 3.6 | 已落地 | `ls -d proposals/tasks` |
+| 面板先例 `dsh-plugins/ascend-panel` | [operations.md](operations.md) 3.6 | 已落地 | `node scripts/build_panel_bundle.js --check` |
+| 任务状态目录 | [operations.md](operations.md) 3.6 | 已落地 | `python3 scripts/shared_dir.py proposals-tasks` |
 | 交互型 replay 机制、工具 v1、规格入库与路线图条目 | [ixn-replay.md](ixn-replay.md) 2、5 | 已落地 | `python3 scripts/ixn_replay.py --help`；`ls eval/ixn-arena/` |
 | 交互面验收接线（交互与追问面改动走对口样本） | [ixn-replay.md](ixn-replay.md) 8 | 已落地 | `grep -n 'ixn' docs/guide/eval.md` |
 | arena 判定池的 expected 标注与基线回放 | [evaluation.md](evaluation.md) 5.2 | 蓝图 | 继续扩样本；基线已出、逐条向量见 `python3 scripts/eval_arena.py --stats` |
@@ -75,7 +75,7 @@
 | pilot 成本预算与 futility 早停 | [evaluation.md](evaluation.md) 3.5 | 已落地 | `python3 scripts/evolve.py pilot checkpoint --help` |
 | baseline trace 复用（只跑 candidate） | [evaluation.md](evaluation.md) 3.5 | 已落地 | `python3 scripts/evolve.py pilot prepare --help` |
 | 确定性 benchmark（工具/检索类） | [evaluation.md](evaluation.md) 3.5 | 已落地 | `python3 scripts/evolve.py benchmark --help` |
-| regression 预算配置（常规 6 / 全量 30） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/evolve.py stage plan --stage regression --limit 1` |
+| regression 预算配置（常规 6 / 全量 30） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 -c "import sys; sys.path.insert(0,'scripts'); from evolve.policy import DEFAULTS; r=DEFAULTS['cost']['runs']; sys.exit(0 if (r['regression_pairs'], r['regression_full_pairs'])==(6,30) else 1)"` |
 | test / regression 通用 stage runner（plan / run / report） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/evolve.py stage --help` |
 | stage agent adapter（dsh / claude / echo / command） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/agent_adapter.py --help` |
 | stage judge（外部评分 + meta 来源 + 校准） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/evolve.py stage judge --help` |
@@ -84,7 +84,7 @@
 | regression 子集（`--where key=value`） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/evolve.py stage plan --help` |
 | 按卡回读 + measure | [evaluation.md](evaluation.md) 3.5 | 已落地 | `python3 scripts/evolve.py readback --help` |
 | 样本队列操作进行中状态 | [evaluation.md](evaluation.md) 3.4 | 已落地 | `grep -n "sampleQueueBusy" dsh-plugins/ev-panel/panel-client.js` |
-| 模型与 token 采集：trace header + DSH 会话记录 | [records.md](records.md) 3.2 | 已落地 | `python3 scripts/trace_begin.py --print-only`；`grep -n "read_session" scripts/evolve/pilot.py` |
+| 模型与 token 采集：trace header + DSH 会话记录 | [records.md](records.md) 3.2 | 已落地 | `python3 scripts/trace_begin.py --selftest`；`grep -n "read_session" scripts/evolve/pilot.py` |
 | pilot 样本注册进本地队列 | [evaluation.md](evaluation.md) 3.9 | 已落地 | `python3 scripts/evolve.py sample import-pilot --help` |
 | 已闭环 case 回流样本（trace / postmortem，完整性与跨集查重） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `python3 scripts/evolve.py sample new --from trace --help`；`python3 scripts/evolve.py sample status --help` |
 | 样本队列复核动作（通过 / 退回 / 升 core，失败在队列内显示） | [evaluation.md](evaluation.md) 3.4 | 已落地 | `grep -n "ev-sample-action" dsh-plugins/ev-panel/panel-host.js` |

@@ -310,7 +310,7 @@ DSH 会话里的一个独立交互层插件。它把诊断的状态、下一步�
 ## 数据与写入链路
 
 ```
-浏览器半（lib/client.js）
+浏览器半（client-src/*.js，生成物 lib/client.js）
   ├─ copilot-state      → Host 半 → lib/copilot_state.py → scripts/_trace_state.py（状态判据）
   ├─ copilot-sediment   → Host 半 → lib/sediment_state.py → scripts/groom_status.py / groom_common.py
   ├─ copilot-pr-target  → Host 半 → scripts/pr_status.py → scripts/platforms/*
@@ -383,7 +383,7 @@ python3 scripts/bench_sediment_queue.py --drafts 300        # 沉淀队列取数
 
 ## 版本维护
 
-`package.json` 的 `version` 与 `lib/client.js` 的 `PLUGIN_VERSION` 一起改；页面版本串来自后者。
+`package.json` 的 `version` 与 `client-src/00-preamble.js` 的 `PLUGIN_VERSION` 一起改，再跑 `node build.mjs` 更新 `lib/client.js`；页面版本串来自后者。
 快照安装按版本号判新旧，不递增不会换装。
 
 ## 与既有面板的关系

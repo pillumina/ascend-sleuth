@@ -1365,3 +1365,10 @@ class CliTest(RepoCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ModuleAliasTest(unittest.TestCase):
+    def test_library_module_shares_the_public_namespace(self):
+        import _kb_sync as lib
+        import kb_sync
+        self.assertIs(kb_sync, lib)

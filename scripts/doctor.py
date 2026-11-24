@@ -451,16 +451,18 @@ def check_kb_sync(root: Path):
     从 `.local/kb-sync-state.json` 读——它决定下一次开单会不会直接跳过联网。
     """
     try:
-        import kb_sync
+        # settings 的解析在 `_settings`；同步状态的读写与渲染在 `_kb_sync`。
+        import _kb_sync
+        import _settings
     except Exception as exc:  # noqa: BLE001 - 体检器把缺依赖折成一行原因
         return {"id": "kb-sync", "label": "知识库同步", "kind": "data", "state": DEGRADE,
                 "detail": f"读不出同步配置（{type(exc).__name__}: {exc}）",
                 "fix": "python3 scripts/kb_sync.py --show"}
     try:
-        mode = kb_sync.deployment_sync_mode(root)
-        settings, config, problem = kb_sync.load_settings(root)
+        mode = _kb_sync.deployment_sync_mode(root)
+        settings, config, problem = _settings.load_settings(root)
         config_sync = settings.get("sync") or {}
-        state = kb_sync.load_state(root)
+        state = _kb_sync.load_state(root)
     except Exception as exc:  # noqa: BLE001
         return {"id": "kb-sync", "label": "知识库同步", "kind": "data", "state": DEGRADE,
                 "detail": f"读不出同步配置（{type(exc).__name__}: {exc}）",
@@ -481,7 +483,7 @@ def check_kb_sync(root: Path):
     remote_ref = f"{remote}/{branch}"
     identity = settings.get("identity") or {}
     try:
-        snap = kb_sync.local_snapshot(root, remote, branch, identity=identity)
+        snap = _kb_sync.local_snapshot(root, remote, branch, identity=identity)
     except Exception as exc:  # noqa: BLE001
         return {"id": "kb-sync", "label": "知识库同步", "kind": "data", "state": DEGRADE,
                 "detail": f"读不出本机 {remote_ref}（{type(exc).__name__}: {exc}）",
@@ -517,7 +519,7 @@ def check_kb_sync(root: Path):
     last_reason = str(state.get("reason") or "")
     if last_reason:
         attempted = str(state.get("attempted_at") or "")
-        detail += f"；上次 fetch 失败：{kb_sync.fetch_reason_text(last_reason)}"
+        detail += f"；上次 fetch 失败：{_kb_sync.fetch_reason_text(last_reason)}"
         if attempted:
             detail += f"（{attempted}）"
         degraded = True

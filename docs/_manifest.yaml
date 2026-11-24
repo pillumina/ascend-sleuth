@@ -122,6 +122,9 @@ docs:
   - path: docs/guide/git-workflow.md
     layer: guide
     purpose: 审核、门控、合入与多人协作的落地（含评审把手）
+  - path: docs/guide/scripts.md
+    layer: guide
+    purpose: 脚本层：入口与库的区分、共享模块、命令/路径约定、环境变量与加脚本检查单
   - path: docs/guide/knowledge-acquisition.md
     layer: guide
     purpose: 知识获取的三种起步形态、稀疏拉取白名单，以及部署形态与目录归属的入口

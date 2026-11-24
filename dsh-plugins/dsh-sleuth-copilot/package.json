@@ -20,6 +20,10 @@
     "README.md",
     "DESIGN.md"
   ],
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node build.mjs --check"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

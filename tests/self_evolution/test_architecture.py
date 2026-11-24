@@ -19,7 +19,9 @@ PURE_MODULES = (
     "errors.py",
 )
 ALL_MODULES = [path.name for path in sorted(PACKAGE.glob("*.py"))]
-IO_MODULES = ("samples.py", "records.py", "policy.py", "cli.py", "inputs.py")
+# 拆包后的所有模块（含子包）；依赖方向与网络/模型禁用的扫描面用它。
+ALL_PACKAGE_FILES = sorted(PACKAGE.rglob("*.py"))
+IO_MODULES = ("samples.py", "records.py", "policy.py", "cli/__init__.py", "inputs.py")
 ADAPTER_MODULES = [
     path.name for path in sorted(ADAPTERS_DIR.glob("*.py"))
 ]
@@ -36,8 +38,8 @@ ADAPTER_LEGACY_MAP = {
 # 读代码发现。
 ALLOWED_SCRIPT_PRIMITIVES = {
     "_fs": {"samples.py", "rsi.py", "trace_state.py", "adapters/issues.py"},
-    "exec_log_path": {"cli.py", "trace_source.py", "adapters/metrics.py"},
-    "sleuth_config": {"cli.py", "policy.py", "store/config.py"},
+    "exec_log_path": {"cli/common.py", "trace_source.py", "adapters/metrics.py"},
+    "sleuth_config": {"cli/common.py", "cli/policy.py", "policy.py", "store/config.py"},
 }
 
 FORBIDDEN = (
@@ -94,9 +96,10 @@ class PackageLayoutTest(unittest.TestCase):
         required = {
             "__init__.py", "contracts.py", "object_types.py", "metrics.py",
             "statistics.py", "decision.py", "pools.py", "policy.py",
-            "samples.py", "records.py", "runner.py", "cli.py",
+            "samples.py", "records.py", "runner.py",
         }
         self.assertEqual(required - set(ALL_MODULES), set())
+        self.assertTrue((PACKAGE / "cli" / "__init__.py").exists())
         self.assertEqual(
             {"__init__.py", "s2.py", "arena.py", "replay.py",
              "health.py", "issues.py"} - set(ADAPTER_MODULES),
@@ -184,7 +187,7 @@ class ExternalDependencyTest(unittest.TestCase):
 class ImportBoundaryTest(unittest.TestCase):
     def test_non_cli_modules_do_not_import_cli_adapters_or_old_scripts(self):
         for name in ALL_MODULES:
-            if name in ("cli.py", "__init__.py"):
+            if name == "__init__.py":
                 continue
             modules = imported_modules(PACKAGE / name)
             for forbidden in FORBIDDEN:
@@ -195,7 +198,7 @@ class ImportBoundaryTest(unittest.TestCase):
                 )
 
     def test_no_network_or_model_dependency(self):
-        for path in [PACKAGE / name for name in ALL_MODULES] + [ROOT / "scripts" / "evolve.py"]:
+        for path in ALL_PACKAGE_FILES + [ROOT / "scripts" / "evolve.py"]:
             for module in imported_modules(path):
                 root = module.split(".")[0]
                 self.assertNotIn(root, NETWORK_OR_MODEL, f"{path.name} imports {module}")
@@ -209,7 +212,7 @@ class ImportBoundaryTest(unittest.TestCase):
 
     def test_core_modules_do_not_import_adapters(self):
         for name in ALL_MODULES:
-            if name in ("cli.py", "__init__.py"):
+            if name == "__init__.py":
                 continue
             modules = imported_modules(PACKAGE / name)
             self.assertFalse(
@@ -234,7 +237,7 @@ class PurityTest(unittest.TestCase):
     def test_pure_core_does_not_print(self):
         for name in ALL_MODULES:
             tree = ast.parse((PACKAGE / name).read_text(encoding="utf-8"))
-            if name in ("cli.py", "cli_usage.py"):
+            if name == "cli_usage.py":
                 continue
             self.assertEqual(calls_to(tree, "print"), [], f"{name} must not print")
 
