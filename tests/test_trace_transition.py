@@ -55,6 +55,23 @@ def args(**kw):
     return argparse.Namespace(**defaults)
 
 
+class StopReasonVocabTest(unittest.TestCase):
+    """写侧词表：trace-status.yaml 必须收下 diagnose skill 文档的七个取值。"""
+
+    VALUES = ("resolved_confirmed", "halted_ask_user", "budget_exhausted",
+              "escalated_tier3", "abandoned", "closed_by_user", "unknown")
+
+    def test_writer_accepts_all_documented_values(self):
+        vocab = st.load_vocab(ROOT)
+        for value in self.VALUES:
+            tt.check_enums({}, vocab, args(stop_reason=value))
+
+    def test_vocab_matches_metrics_list(self):
+        from trace_metrics import KNOWN_STOP_REASONS  # noqa: E402
+        vocab = st.load_vocab(ROOT)
+        self.assertEqual(set(vocab["stopReasons"]), set(KNOWN_STOP_REASONS))
+
+
 class _TraceCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -88,6 +105,12 @@ class WriterTest(_TraceCase):
         self.assertIsNone(doc["transitions"][0]["prev_ending"])
         # 块标量里的假状态不能被改
         self.assertEqual(doc["note_block"].strip(), "status: resolved   # 块标量里的假状态")
+
+    def test_close_with_explicit_stop_reason_writes_it(self):
+        self.make()
+        tt.apply_transition(ROOT, self.traces, "s1",
+                            args(to="resolved", stop_reason="resolved_confirmed"))
+        self.assertEqual(self.load()["stop_reason"], "resolved_confirmed")
 
     def test_escalated_requires_handed_to(self):
         self.make()

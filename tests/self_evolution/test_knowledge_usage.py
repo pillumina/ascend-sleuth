@@ -1,6 +1,9 @@
 """知识使用指标与门禁：效率不降、准确率不降才 accept。"""
 
+import json
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -68,6 +71,40 @@ class KnowledgeUsageTest(unittest.TestCase):
             out = from_trace({"session_id": "s1", "harness_session": "abc",
                               "tokens_start": 200, "trace": []})
         self.assertEqual(out["tokens"], 100)
+
+    def test_from_trace_uses_windowed_session_log_tokens(self):
+        # 会话累计会被诊断收尾之后的活污染；有 created_at/ended_at 时按日志窗口算。
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            log_dir = root / "sessions" / "ws" / "session-demo"
+            log_dir.mkdir(parents=True)
+            events = [
+                {"type": "assistant/message", "time": 1000,
+                 "data": {"turn": 1, "step": 1,
+                          "usage": {"inputTokens": 10, "cacheReadTokens": 20,
+                                    "cacheWriteTokens": 0, "outputTokens": 5}}},
+                {"type": "assistant/message", "time": 3000,
+                 "data": {"turn": 1, "step": 2,
+                          "usage": {"inputTokens": 1, "cacheReadTokens": 2,
+                                    "cacheWriteTokens": 0, "outputTokens": 3}}},
+                {"type": "assistant/message", "time": 9000,
+                 "data": {"turn": 2, "step": 1,
+                          "usage": {"inputTokens": 100, "cacheReadTokens": 200,
+                                    "cacheWriteTokens": 0, "outputTokens": 300}}},
+            ]
+            (log_dir / "session.v4.jsonl.zstd").write_text(
+                "\n".join(json.dumps(item) for item in events), encoding="utf-8")
+            trace = {
+                "session_id": "s1", "harness_session": "session-demo",
+                "created_at": "1970-01-01T00:00:02+00:00",   # 2000ms：窗口左边界
+                "ended_at": "1970-01-01T00:00:05+00:00",     # 5000ms：窗口右边界
+                "tokens_start": 0,
+                "trace": [],
+            }
+            with patch.dict(os.environ, {"DSH_HOME": str(root)}):
+                out = from_trace(trace)
+        # 只有 time=3000 落在窗口内：1+2+0+3
+        self.assertEqual(out["tokens"], 6)
 
     def test_from_trace_marks_wrong_final_case(self):
         trace = {"session_id": "s2", "trace": [{"action": "hit", "case": "C-1", "step": 2}]}

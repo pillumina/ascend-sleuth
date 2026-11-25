@@ -130,11 +130,26 @@ def harness_homes() -> list[Path]:
     return out
 
 
+def _session_aliases(sid: str) -> list[str]:
+    """会话目录的两种写法：裸 uuid 与 `session-<uuid>`。
+
+    实测同一台机器的 `~/.dsh/sessions/<工作区>/` 下两种目录名并存（旧会话裸名、
+    新会话带前缀）；只按 trace 里那一种找，另一半会话的成本与工具分布会整段缺席。
+    """
+    prefixed = sid.startswith("session-")
+    base = sid[len("session-"):] if prefixed else sid
+    if not base or "/" in base or "\\" in base or ".." in base:
+        return []
+    # 先试原样，再试另一种写法：同号两种目录并存时按调用方给的形式优先。
+    return (["session-" + base, base] if prefixed else [base, "session-" + base])
+
+
 def find_session_log(sid: str, sessions_root: Path | list[Path] | None = None):
     """会话 id → 会话日志路径；找不到返回 (None, 原因)。
 
     `sessions_root` 可以是单个根（测试用）或一组根；不传就按 `harness_homes()` 逐个找，
     取第一个真有这一单的——面板调子进程时环境里常常没有 `DSH_HOME`。
+    会话目录的两种写法（裸 uuid / `session-<uuid>`）都试。
     """
     if sessions_root is None:
         roots = [h / "sessions" for h in harness_homes()]
@@ -153,14 +168,15 @@ def find_session_log(sid: str, sessions_root: Path | list[Path] | None = None):
             tried.append(f"{root}（读不了）")
             continue
         for ws in workspaces:
-            d = ws / sid
-            if not d.is_dir():
-                continue
-            found = []
-            for pat in HARNESS_LOG_PATTERNS:
-                found += [p for p in d.glob(pat) if p.is_file()]
-            if found:
-                return max(found, key=lambda p: p.stat().st_mtime), None
+            for name in _session_aliases(sid):
+                d = ws / name
+                if not d.is_dir():
+                    continue
+                found = []
+                for pat in HARNESS_LOG_PATTERNS:
+                    found += [p for p in d.glob(pat) if p.is_file()]
+                if found:
+                    return max(found, key=lambda p: p.stat().st_mtime), None
         tried.append(str(root))
     return None, "试过这些会话日志根都没有 " + sid + "：" + "；".join(tried)
 

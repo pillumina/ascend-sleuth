@@ -203,7 +203,7 @@ reference 由流程里的**缺口**触发（**不是第四检索层**：不参�
 
 - **随手写三样，否则读数恒空**：每条 agent 事件带 `ts`（epoch 毫秒，`python3 -c 'import time;print(round(time.time()*1000))'`；**每一步至少第一条**），步骤 6 写顶层 `ended_at`（ISO 8601），建 session 时写顶层 `harness_session`（DSH 里是 `$DSH_SESSION_ID`）。没有 `ts` 就切不出每步窗口（每步成本那一格空）；单次耗时用 `created_at` → `ended_at`，没写 `ended_at` 就退到 `updated_at` 并在面板上标明。
 
-  单次 token 由 `trace_begin.py` 写入的 `tokens_start`（建单时会话累计）与会话累计的差值算；没写 `tokens_start` 的历史单退回会话累计。同一段对话里做过两单时，只有这个差值能把两单分开。模型名由 `trace_begin.py` 从 `harness_session` 对应的 DSH 会话记录写进顶层 `model`；取不到就留空，不猜。
+  单次 token 优先按 `created_at` → `ended_at` 的会话日志窗口算（与面板同一口径）；缺 `ended_at` 时窗口右边界退到 `updated_at`；切不出窗口才退回 `tokens_start`（建单时会话累计）与会话累计的差值（没写 `tokens_start` 的历史单退回累计）。所以步骤 6 必须写 `ended_at`，否则诊断收尾之后的活会混进这一单。同一段对话里做过两单时，窗口（或差值）是分开两单的依据。模型名由 `trace_begin.py` 从 `harness_session` 对应的 DSH 会话记录写进顶层 `model`；取不到就留空，不猜。
 
   Claude Code / Codex 等没有 DSH 会话库的 agent：建单时显式传 `--harness-session`、`--model`、`--tokens-start`，收尾用 `python3 scripts/trace_usage.py --trace <trace> --tokens <本次总数>` 写顶层 `tokens`。不传就按历史单的回退规则，读数为空，不影响命中与工具计数。
 - **收尾核对顶层 `harness_session`**（脚本兜住 header，这条兜住「漏跑脚本」；漏写不会当场报错，只会一路错到面板上）：跑 `ascend_trace_status` 时，本单那一行后面带 `⚠缺会话号` 就是漏了——当场补，别等人从面板上发现。补的时候要的是 `$DSH_SESSION_ID`，不是本单的 `session_id`（后者是诊断自己起的名字）：

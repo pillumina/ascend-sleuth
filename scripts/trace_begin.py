@@ -46,7 +46,9 @@ try:
 except Exception:  # 最小环境缺 PyYAML 等依赖时，同步降级但不挡建单
     kb_sync = None
 from exec_log_path import resolve_traces  # noqa: E402  （运行时件锚主检出，同 shared_dir.py）
-from evolve.harness_usage import model_of, tokens_of  # noqa: E402  （模型名与 token 只从 DSH 会话记录读）
+from evolve.harness_usage import (  # noqa: E402  （模型名与 token 只从 DSH 会话记录读）
+    model_of, normalize_session_id, tokens_of,
+)
 from _cli import main_entry
 
 SLUG_RE = re.compile(r"^\d{4}-\d{2}-\d{2}-[A-Za-z0-9._-]+$")
@@ -63,9 +65,11 @@ def harness_session_of(env=None) -> tuple[str, str]:
     raw = (env.get("DSH_SESSION_ID") or "").strip()
     if not raw:
         return "", "环境里没有 $DSH_SESSION_ID（非 DSH 环境，或这个变量没传进来）——留空，别手填猜的值"
-    if not raw.startswith("session-"):
-        return "", "环境变量 $DSH_SESSION_ID 不是会话号（应为 session-<uuid>），拿到的是 " + raw + "——留空"
-    return raw, ""
+    session = normalize_session_id(raw)
+    if not session:
+        return "", ("环境变量 $DSH_SESSION_ID 不是会话号（应为 session-<uuid> 或裸 uuid），拿到的是 "
+                    + raw + "——留空")
+    return session, ""
 
 
 def kb_rev_of(root: Path) -> tuple[str, bool | None]:
@@ -254,7 +258,7 @@ def build_header(*, slug: str, harness_session: str, created_at: str, kb_rev: st
         "session_id: " + q(slug),
         "harness_session: " + q(harness_session) + ("" if harness_session else "   # 缺！建会话时取 $DSH_SESSION_ID；取不到就留空"),
         "model: " + q(model) + ("" if model else "   # 取不到模型名就留空，不猜"),
-        "tokens_start: " + (str(tokens_start) if isinstance(tokens_start, int) and not isinstance(tokens_start, bool) else "null") + "   # 建单时会话累计；收尾按差值算单次 token",
+        "tokens_start: " + (str(tokens_start) if isinstance(tokens_start, int) and not isinstance(tokens_start, bool) else "null") + "   # 建单时会话累计；窗口切不出时按差值算单次 token",
         "status: in_progress",
         "current_step: 0",
         "summary: " + q(summary),
@@ -319,7 +323,10 @@ def main() -> int:
     root = Path(args.repo).resolve()
     session, why = harness_session_of()
     if args.harness_session:
-        session, why = args.harness_session, "由 --harness-session 显式指定"
+        explicit = args.harness_session.strip()
+        # 裸 uuid 也归一到带前缀：面板与补链脚本按 `session-<uuid>` 认。
+        session = normalize_session_id(explicit) or explicit
+        why = "由 --harness-session 显式指定"
     if args.tokens_start is not None and args.tokens_start < 0:
         print("--tokens-start 不能为负数", file=sys.stderr)
         return 2
@@ -398,7 +405,7 @@ def main() -> int:
 
 
 def selftest() -> int:
-    """四条用例：有会话号 / 没会话号 / 不覆盖已存在 / --print-only 不落盘。"""
+    """五条用例：有会话号 / 裸 uuid / 没会话号 / 不覆盖已存在 / --print-only 不落盘。"""
     ok = True
     with tempfile.TemporaryDirectory() as td:
         root = Path(td)
@@ -408,6 +415,11 @@ def selftest() -> int:
         sid, why1 = harness_session_of({"DSH_SESSION_ID": "session-abc"})
         ok &= (sid == "session-abc" and why1 == "")
         print("ok 有会话号 → " + sid if sid == "session-abc" else "FAIL 有会话号")
+
+        bare = "d4ff3b1c-2f7a-4c1e-9a55-0b8f6d2e7c13"
+        sid3, why3 = harness_session_of({"DSH_SESSION_ID": bare})
+        ok &= (sid3 == "session-" + bare and why3 == "")
+        print("ok 裸 uuid 归一 → " + sid3 if sid3 == "session-" + bare else "FAIL 裸 uuid")
 
         sid2, why2 = harness_session_of({})
         ok &= (sid2 == "" and "DSH_SESSION_ID" in why2)
