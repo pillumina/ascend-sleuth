@@ -558,10 +558,9 @@ class PrStateTest(SedimentCase):
         self.assertEqual(row["state"], "pr_merged")
         self.assertEqual(row["stage"], "已合入 · 待收尾")
         self.assertEqual(row["next"]["kind"], "close")
-        self.assertIn("groom_close_draft.py --draft-key 2026-10-20-draft-a --apply", payload["prompts"]["close"])
-        self.assertIn("groom_cleanup", payload["prompts"]["close"])
-        self.assertIn("groom_close_draft.py --all --apply", payload["prompts"]["closeDetail"])
-        self.assertIn("groom_cleanup.py --pr-body-file", payload["prompts"]["closeDetail"])
+        self.assertIn("groom_close_after_merge.py", payload["prompts"]["close"])
+        self.assertIn("--merge", payload["prompts"]["close"])
+        self.assertIn("groom_close_after_merge.py", payload["prompts"]["closeDetail"])
         self.assertEqual(payload["primary"]["kind"], "close")
         self.assertEqual(payload["counts"]["prMerged"], 1)
 
@@ -585,7 +584,9 @@ class PrStateTest(SedimentCase):
         self.assertEqual(row["state"], "done")
         self.assertEqual(row["stage"], "已升格")
         self.assertEqual(row["source"]["mismatch"], "draft_left_behind")
-        self.assertIn("groom_close_draft.py --draft-key 2026-10-20-draft-a --apply", row["writeback"])
+        self.assertIn("groom_close_after_merge.py", row["writeback"])
+        self.assertIn("groom_close_draft.py --draft-key 2026-10-20-draft-a --no-pr --apply",
+                      row["writeback"])
         self.assertEqual(row["next"]["kind"], "none")
         self.assertEqual(row["promotion"]["caseId"], "CASE-A")
         self.assertEqual(row["promotion"]["casePath"],

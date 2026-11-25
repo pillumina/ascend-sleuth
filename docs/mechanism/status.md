@@ -53,7 +53,8 @@
 | 诊断详情的四层时间线与追加式修订 | [diagnosis-observability.md](diagnosis-observability.md) 3.1 | 已落地 | `python3 scripts/verify_trace_status.py --all` |
 | 诊断续接的漂移检查与读侧版本坐标记录 | [diagnosis-trace.md](../../skills/diagnose/references/diagnosis-trace.md) 的 `kb_rev` 与「顶层知识库同步字段」 | 已落地 | `python3 scripts/kb_drift.py --session <id>`；`python3 scripts/kb_sync.py --show` |
 | 归因事件字段 `component` | [diagnosis-trace.md](../../skills/diagnose/references/diagnosis-trace.md) | 已落地 | `grep -n "attribution" skills/diagnose/references/diagnosis-trace.md` |
-| groom 终态决定的收尾：记录回写 + 草稿出队 | [agent-groom.md](agent-groom.md) 3.7 | 已落地 | `python3 scripts/groom_close_draft.py --help` |
+| groom 终态决定的收尾：记录回写 + 草稿出队 | [agent-groom.md](agent-groom.md) 3.7 | 已落地 | `python3 scripts/groom_close_after_merge.py --help`；`python3 scripts/groom_close_draft.py --help` |
+| 合入后自动收尾的后台轮次 | [agent-groom.md](agent-groom.md) 3.7 | 已落地 | `python3 scripts/groom_sweep.py --help`；`node dsh-plugins/dsh-sleuth-autoclose/test/host-smoke.mjs` |
 | 面板先例 `dsh-plugins/ascend-panel` | [operations.md](operations.md) 3.6 | 已落地 | `node scripts/build_panel_bundle.js --check` |
 | 任务状态目录 | [operations.md](operations.md) 3.6 | 已落地 | `python3 scripts/shared_dir.py proposals-tasks` |
 | 交互型 replay 机制、工具 v1、规格入库与路线图条目 | [ixn-replay.md](ixn-replay.md) 2、5 | 已落地 | `python3 scripts/ixn_replay.py --help`；`ls eval/ixn-arena/` |

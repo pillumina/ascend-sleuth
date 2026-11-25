@@ -35,7 +35,7 @@ python3 scripts/groom_candidates.py --snapshot <snapshot.json> --all --out <work
 python3 scripts/groom_record.py --snapshot <snapshot.json> --work-orders <work-orders.json> --results-dir <results/>
 ```
 
-产物是 `postmortems/inbox/.groom/assessments/<key>.yaml` 一份本地评估状态。人用 `groom_status.py` 看一屏，用 `groom_decide.py` 写决定；提 PR 时把 `groom_record.py --pr-marker` 的输出贴进 body。终态决定写盘、PR 合入后跑 `python3 scripts/groom_close_draft.py --all --apply`，回写来源记录的沉淀状态并把草稿移出队列。没有 PR 的部署仍在评估写盘后直接收尾。
+产物是 `postmortems/inbox/.groom/assessments/<key>.yaml` 一份本地评估状态。人用 `groom_status.py` 看一屏，用 `groom_decide.py` 写决定；提 PR 时把 `groom_record.py --pr-marker` 的输出贴进 body。终态决定写盘、PR 合入后跑 `python3 scripts/groom_close_after_merge.py --pr-body-file <body> --merge <merge> --apply`，核对证据、回写来源记录的沉淀状态、把草稿移出队列并清理。没有 PR 的部署在评估写盘后跑 `groom_close_draft.py --no-pr --apply`。
 
 三个概念贯穿全文：
 
@@ -66,11 +66,13 @@ groom 只在一个**抓取后解析出的提交**上比对；不 pull、不 merg
 
 复用前核对三件事：`HEAD` 必须等于目标提交；检出范围必须与当前期望一致；除 `knowledge/_index*` 之外不能有任何已跟踪或未跟踪改动。源 Case 被改过的快照不复用，整棵重建。
 
-收尾清理按草稿删。PR 合入后先跑 `groom_close_draft.py`，再跑 `groom_cleanup.py --pr-body-file <body> --post-merge --base <merge>^1 --head <merge>`。清理先核对来源标记与本地评估是同一次评估（`assessment_id`、内容哈希、人决定），执行阶段持目录级清理锁；对得上的评估文件直接删除，快照只在「没有任何现存评估再引用该提交、且不是 30 分钟内刚建的那份」时才删。
+收尾清理按草稿删。PR 合入后跑 `groom_close_after_merge.py --pr-body-file <body> --merge <merge>`（默认只打印计划，`--apply` 才写）。它先确认这份提交在基准分支上：`git merge-base --is-ancestor <merge> <基准 ref>`。基准取本机提 PR 的目标，取不到退到 `main`、`master`；两者都没有就拒绝，用 `--base-ref <ref>` 指定或先 `git fetch`。`--allow-unmerged` 显式跳过这一步，等于不核对合入状态。
+
+通过后它核对 PR body 里那段来源标记（marker）与本地评估是同一次评估（`assessment_id`、内容哈希、人决定），再从合入提交读产物并比对内容。之后写 trace、把草稿移进 `.done/`，最后调用 `groom_cleanup.py --post-merge` 清理。清理阶段持目录级清理锁；对得上的评估文件直接删除，快照只在「没有任何现存评估再引用该提交、且不是 30 分钟内刚建的那份」时才删。
 
 读不出评估视为引用未知、不删快照；非终态决定与 `approval_stale` 一律保留。单条失败只保留该项并继续；非预期异常折成 `internal-error`，退出 2。
 
-顺带清两类可弃中间件：`.groom/runs/` 下超过 1 天的工作单目录，以及「对应评估文件已不存在且超过 7 天」的残留锁。清理不碰 `latest.json`（上一次比的是哪个提交的唯一记录），且必须放在收尾而不是开头，`groom_record` 还要用这份检出。
+顺带清可弃中间件：`.groom/runs/` 下超过 1 天的目录与文件（可重生成，1 天是为了避开在途 run）；`.groom/` 下的 `*.tmp` 与 `.groom/tmp/` 内容超过 1 天（写盘或旧轮次残留）；没有任何评估或工作单引用、且超过 1 天的无主快照；「对应评估文件已不存在且超过 7 天」的残留锁，以及评估记录已归档到 `.done/<key>/` 的残留锁（归档后锁不可能再被持有，立即清）。有评估文件的锁一律保留，`.guard.lock` 不清，`latest.json` 指向的快照不删。
 
 `sedimented` 描述知识沉淀到哪一步，清理状态描述本地产物还能不能删；两者相关但不等同。`fresh` 表示抓取成功，`authoritative` 表示 fresh 且索引可用；两者分开记录，因为「抓到了但索引坏了」和「没抓到」的处置不同。
 
@@ -164,23 +166,33 @@ history: [...]
 
 ### 3.7 收尾、撤销与合入后
 
-终态决定之后还有两件事，由 `groom_close_draft.py` 一次做完。它是本地收尾动作，不进 CI。有 PR 的草稿，这两件事放在 PR 合入之后：合入前跑收尾会把「待合入」提前写成「已升格」，PR 被拒时人的决定与评估证据也已经被清理。
+PR 合入后由 `groom_close_after_merge.py` 一次完成合入状态核对、证据核对、trace 回写、草稿出队与清理。提 PR 时不移草稿、不删评估记录，trace 停在 `submitted`。
 
-脚本读 PR 记录，同 key 的 PR 不是 merged 时拒绝执行；确实要提前收尾时用 `--allow-open-pr`。没有 PR 的部署仍在评估写盘后直接收尾。
+```bash
+MERGE=$(gh pr view <n> --json mergeCommit --jq .mergeCommit.oid)   # GitHub
+git fetch <remote> <base>                                          # 本地没 fetch 时先补
+python3 scripts/groom_close_after_merge.py --pr-body-file <pr-body.md> --merge "$MERGE" --apply
+```
 
-这两件事以前只写在 skill 的一句中文指令里：把来源记录的 `sedimented` 从 `submitted` 改成 `knowledge` 或 `archived`，把已处理的草稿移出 inbox。漏做都不报错——面板的沉淀漏斗停在「已提交待升格」，草稿下一轮又按「没有评估文件先补跑比对」被评一遍。脚本先取写盘证据（case 或 postmortem 文件是否已就位）、再写状态：
+它先确认这份提交在基准分支上（`git merge-base --is-ancestor`），再核对 PR body 里的来源标记（marker）与本地评估（评估 id、内容指纹、人决定），最后从合入提交读取产物并比对内容。通过后才写 trace（`knowledge` / `archived`）、把草稿移进 `.done/`、写成功 close-log，最后调用 `groom_cleanup.py --post-merge`。任一步证据不足都保留待收尾，不写状态。
 
-| 决定 | 写盘证据（不满足就拦下） | `sedimented` | `case_id` |
-|---|---|---|---|
-| `covered`（含 agent 判 `duplicate`） | postmortem 已在 `postmortems/<季>/`（Tier 3） | `archived` | 覆盖它的 case |
-| `new_pattern` | 对应 case 已在 `knowledge/` | `knowledge` | 升格后的 case（改过 id 用 `--case-id`） |
-| `variant` | 合并后的 case 已在 `knowledge/` | `knowledge` | 被并入的 case |
+| 决定 | 核对内容 | 成功后写入 |
+|---|---|---|
+| `covered`（含 agent 判 `duplicate`） | 转正后的 postmortem 在合入提交里存在；全文哈希写进 close-log 的 `content_sha256` 备查 | `archived` + 覆盖它的 case |
+| `new_pattern` | 从提交产物的 `cases:` 按最终 id 取单条，`canonical_content_sha` 与标记一致 | `knowledge` + 最终 case id（改过 id 用 `--case-id`） |
+| `variant` | 同 `new_pattern`，内容是修改后的 case | `knowledge` + 被并入的 case |
 
-几条边界：写状态走 `trace_transition.py`（按 `trace-status.yaml` 校验状态词表）；草稿移进 `postmortems/inbox/.done/`，移动不删除、移回即复活；外部来源没有记录时只出队、不回写；记录文件不存在时只出队并记 `trace-missing`；`reject` 与 `defer` 不是终态，不动记录、不出队。`reject` 没有对应的 `sedimented` 状态——草稿确实提交过、没有转正，改回 `none` 等于抹掉事实。
+`covered` 只核对「文件在合入提交里」，不比全文哈希：转正后的 postmortem 是在 PR 里新写的，评估阶段没有它的指纹可比。它的全文哈希与路径随收尾写进 close-log（`content_sha256`、`target_path`），供事后与合入内容对账。
+
+没有 PR 的本地沉淀部署走 `groom_close_draft.py --no-pr --apply`。记录是 `merged` 的草稿默认也被它拦下；确实要按本地证据收尾时加 `--allow-close-merged`，那一步跳过合入提交的内容核对。两条旁路的收尾都在 close-log 里记 `mode`（`no-pr` / `merged-local`，正常收尾是 `after-merge`）。
+
+后台轮次由 `groom_sweep.py` 跑：按 PR 记录挑出已合入的项，查一遍平台状态，逐项调用上面的收尾入口，结果写 `.groom/sweep-log.jsonl`。触发它的是 autoclose 插件的定时器（默认 24 小时、开关默认关）或 groom 开场。面板的「自动收尾」页读 PR 记录、`sweep-log`、`cleanup-log` 与插件状态，不自己算。
+
+几条边界：写状态走 `trace_transition.py`（按 `trace-status.yaml` 校验状态词表）；草稿移进 `postmortems/inbox/.done/`，移动不删除、移回即复活；外部来源没有记录时只出队、不回写；记录文件不存在时只出队并记 `trace-missing`；`reject` 与 `defer` 不是终态，不动记录、不出队。`reject` 没有对应的 `sedimented` 状态——草稿确实提交过、没有转正，改回 `none` 等于抹掉事实。开场收尾与 Copilot 查到 merged 后的收尾走同一入口，`--allow-open-pr` 已废弃。
 
 不放进 PR 检查的原因：`traces/` 与 `postmortems/inbox/` 是不进 git 的运行时件，PR 与 CI 的检出里没有它们，标记也不带会话号。放进 `groom_recheck.py` 只能读到空目录，检查会退化成永远通过。
 
-这道检查只能落在本地，靠收尾顺序保证：先 `groom_recheck`，开 PR，合入后跑本步，最后 `groom_cleanup --post-merge`。`--post-merge` 跳过过期判定，合入后无法再对旧基线重跑 groom。
+这道检查只能落在本地，靠收尾顺序保证：先 `groom_recheck`，开 PR，合入后跑本步（它内含 `groom_cleanup.py --post-merge`）。`--post-merge` 跳过过期判定，合入后无法再对旧基线重跑 groom。
 
 撤销一次不成立的沉淀用 `scripts/sediment_undo.py --draft-key <key> [--apply]`，默认只打印计划。它做四件事：
 
@@ -191,7 +203,7 @@ history: [...]
 
 诊断状态不动：撤销还原 case 的沉淀状态，已收尾的单仍是收尾状态。`reject` 与 `defer` 是「认真看过但不采纳」，草稿与评估状态留在队列里；撤销是这份草稿本身被撤回，重新沉淀会从头开始。
 
-合入后由主干 job 重建索引（`build_index.py` 的覆盖检查必须通过）；没有该 job 的部署按既有纪律在 main 上重建。`groom_recheck.py --post-merge` 可以在本地跑同一道覆盖检查。收尾与清理也在这一步：先 `groom_close_draft.py` 出队并回写记录，再对每份 PR 用合入提交与它的第一个父提交跑 `groom_cleanup.py --post-merge`。
+合入后由主干 job 重建索引（`build_index.py` 的覆盖检查必须通过）；没有该 job 的部署按既有纪律在 main 上重建。`groom_recheck.py --post-merge` 可以在本地跑同一道覆盖检查。收尾与清理也在这一步：对每份 PR 用合入提交跑 `groom_close_after_merge.py`，它出队并回写记录后调 `groom_cleanup.py --post-merge` 清理。
 
 ## 4 边界与失败模式
 
@@ -244,7 +256,9 @@ history: [...]
 | `scripts/groom_decide.py` | 写人决定 |
 | `scripts/groom_status.py` | 状态与新鲜度 |
 | `scripts/groom_recheck.py` | PR 合入前复核 |
-| `scripts/groom_close_draft.py` | 终态决定的收尾：记录回写加草稿出队 |
+| `scripts/groom_close_after_merge.py` | PR 合入后的统一收尾：核对证据、回写记录、草稿出队，再调清理 |
+| `scripts/groom_close_draft.py` | 单步收尾：记录回写加草稿出队（无 PR 的本地沉淀部署） |
+| `scripts/groom_sweep.py` | 后台轮次：查合入、取证、调收尾入口，写 sweep-log |
 | `scripts/groom_cleanup.py` | 合入后的快照与评估文件清理 |
 | `scripts/sediment_undo.py` | 撤销一次不成立的沉淀（支持批量） |
 | `scripts/groom_common.py` | 草稿发现、状态读写、git 工具 |

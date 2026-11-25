@@ -77,6 +77,50 @@ def check(pr):
     return {"state": _state_of(payload), "detail": str(payload.get("url") or "")}
 
 
+def fetch(pr):
+    """取收尾所需证据：状态、body、合入提交、base/head。失败返回 ok=False + detail。
+
+    只在自动收尾里调用；与 check() 分开，避免「只查状态」的调用多拉一份 body。
+    """
+    repo = str((pr or {}).get("repo") or "")
+    number = str((pr or {}).get("number") or "")
+    if not repo or not number:
+        return {"ok": False, "detail": "缺 repo 或 number"}
+    try:
+        proc = subprocess.run(
+            ["gh", "pr", "view", number, "--repo", repo,
+             "--json", "state,mergedAt,url,body,mergeCommit,baseRefName,headRefOid"],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=TIMEOUT_S,
+        )
+    except FileNotFoundError:
+        return {"ok": False, "detail": "找不到 gh 命令"}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "detail": f"gh 取证超时（{TIMEOUT_S}s）"}
+    except OSError as exc:
+        return {"ok": False, "detail": f"gh 启动失败：{exc}"}
+    if proc.returncode != 0:
+        detail = (proc.stderr or proc.stdout or "").strip()
+        return {"ok": False, "detail": detail[:500] or f"gh 退出码 {proc.returncode}"}
+    try:
+        payload = json.loads(proc.stdout or "{}")
+    except ValueError as exc:
+        return {"ok": False, "detail": f"gh 输出不是 JSON：{exc}"}
+    if not isinstance(payload, dict):
+        return {"ok": False, "detail": "gh 输出顶层不是对象"}
+    merge = payload.get("mergeCommit")
+    merge_sha = str((merge or {}).get("oid") or "") if isinstance(merge, dict) else str(merge or "")
+    return {
+        "ok": True,
+        "state": _state_of(payload),
+        "url": str(payload.get("url") or ""),
+        "body": str(payload.get("body") or ""),
+        "merge_commit": merge_sha,
+        "base": str(payload.get("baseRefName") or ""),
+        "head": str(payload.get("headRefOid") or ""),
+    }
+
+
 def create_hint(target):
     """给提 PR 指令用的命令模板；标签按目标配置追加，没配就不加。"""
     target = target or {}

@@ -153,7 +153,7 @@
    只要 PR 没合入，就该有一行可看。`.done/` 的标题、close-log 的决定、PR 记录里的 PR 三者合并成一行，
    合并只在 `sediment_state.py` 做。
 2. **出队等合入。** 合入前收尾会先删掉人的决定与评估证据，PR 被拒时只能重评；trace 也会提前写
-   `knowledge`。`groom_close_draft.py` 在 PR 不是 merged（含 open / unknown / closed）时拒绝执行，`--allow-open-pr` 才越过。
+   `knowledge`。合入后的收尾走 `groom_close_after_merge.py`；`groom_close_draft.py` 只处理没有 PR 的本地沉淀部署（要显式 `--no-pr`），没有「提前收尾」的开关。
 3. **查合入就地做。** 一次查询是记录写动作，不是对话动作。批次条「查全部合入状态」跑
    `pr_status.py --check-all`；详情里的「查合入状态」跑单条，同一个动作只留一个入口。
    批次条的主操作跟当前筛选：切到「待合入」时主按钮换成查合入（只剩已合入行时换成收尾），
