@@ -19,6 +19,7 @@ LLM 有非确定性，所以断言的是"top-3 命中"而不是"必须第一"。
 | 目录 / 文件 | 是什么 | 谁在跑 |
 |---|---|---|
 | [golden/](golden/) | 回归夹具：固定输入（症状、框架、日志片段）+ 期望输出（namespace、case、fix 关键内容）。构造示例与真实投影两类 | 改 skill 前后各跑一遍 replay，见 [docs/guide/eval.md](../docs/guide/eval.md) |
+| [ask/](ask/) | /ask 快问快答的分层评测集：答案键、角色、两轮追问策略与评分规则 | 人工四步子 agent 流程，见 [ask/README.md](ask/README.md) |
 | [s2/](s2/) | S2 校准集：ground truth 是 issue 实际的 resolution（PR 号），由 [s2_calibration.py](../scripts/s2_calibration.py) 生成；`vllm-ascend-cross.yaml` 放 cross-validation 样本 | 检索与内容正确性的校准，见 [docs/mechanism/evaluation.md](../docs/mechanism/evaluation.md) |
 | [flow/](flow/) | 流程类先验知识的评测池：ground truth 是对应 case 的 root_cause，用来判"加载哪条流程、加载多深" | 池内口径与命令见 [flow/README.md](flow/README.md) |
 | [ixn-arena/](ixn-arena/) | 交互型 replay 的样本规格（追问召回、决定性字段是否在链、是否过早结论） | [ixn_replay.py](../scripts/ixn_replay.py)，设计见 [docs/mechanism/ixn-replay.md](../docs/mechanism/ixn-replay.md) |

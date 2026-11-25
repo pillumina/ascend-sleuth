@@ -59,6 +59,20 @@ cases:
     - "多卡经通信传播时回溯到首个产生异常的 rank"
     - "命令 msprobe overflow_check -i <dump>/stepN -o <输出目录>，产物 anomaly_analyze_*.json"
 
+- id: L1-04
+  layer: L1
+  role: adjacent
+  question_class: fact
+  question: "NPU 网口的 MAC 地址怎么查？"
+  turn2_style: followup
+  turn2_focus: 要命令落点与语法版本：-i 填什么、输出看哪一行、950 写法怎么变
+  turn2_seed: "我这是 950，直接照这个命令敲吗？-i 后面的 0 是 NPU 编号还是 device ID？"
+  judge_context: 对象词题。正确态是命中 hccn-tool-network-diagnosis；命令 hccn_tool -i 0 -mac -g，-i 是 npu-smi info -l 查到的逻辑 ID；950 起 -g/-s/-t 前置，旧写法报参数错误。把 host 网口 ip link 当唯一答案、或编 950 的 MAC 命令记 must_not。
+  core_must_include:
+    - "命中 hccn-tool-network-diagnosis：计算节点按 device 逻辑 ID 跑 hccn_tool -i 0 -mac -g，输出 mac addr: ..."
+    - "`-i` 是 NPU 逻辑 ID，用 npu-smi info -l 查；950 起是 -g/-s/-t 前置语法，旧写法报参数错误"
+    - "作用域 cross × hccl"
+
 - id: L2-01
   layer: L2
   role: expert

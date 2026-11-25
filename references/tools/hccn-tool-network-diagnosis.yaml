@@ -1,8 +1,13 @@
 id: hccn-tool-network-diagnosis
 type: tool
-title: hccn_tool（网口链路闪断 / device IP / ROCE 与 HCCS 连通性 / TLS 状态与证书）
-summary: hccn_tool 网口诊断：链路闪断、device IP、ROCE 与 HCCS 侧查询命令与判据。
+title: hccn_tool 查 MAC 地址（网口链路闪断 / device IP / ROCE 与 HCCS 连通性 / TLS 状态与证书）
+summary: hccn_tool 网口诊断：查 MAC 地址、链路闪断、device IP、ROCE 与 HCCS 侧查询命令与判据。
 sources:
+- type: official-doc
+  url: https://support.huawei.com/enterprise/zh/doc/EDOC1100348871/af5585a9
+  version: Atlas A2 23.0.x HCCN Tool 接口参考：查询 RoCE 网卡 MAC 地址接口（hccn_tool [-i %d] -mac -g）
+  fetched_at: 2026-11-25
+  verification: cross-checked-source
 - type: official-doc
   url: https://gitcode.com/cann/hccl/tree/master/docs/zh/user_guide/fault_diagnosis
   version: hccl master（commit 8cbf54d3，2026-09-15 抓取）：error_cqe_report_EI0013 / tls_info_config_inconsistent_EI0016 / link_timeout_EI0006 / ip_family_check_inconsistent_EI0001 / topo_detect_timeout_EI0015 各篇的 hccn_tool 用法
@@ -40,6 +45,7 @@ content:
   output_meaning:
   - -link_stat -g：网口 up/down 计数与 link change records 时间点（如 link down count 与 LINK DOWN 时间），用于把网口闪断时间与集合通信报错时间对齐——ERROR CQE（EI0013）的典型根因
   - -ip -g / -vnic -g / -ip -inet6 -g：分别列出 NIC IP、VNIC IP 与 IPv6 地址；报错信息里的 src_ip/dest_ip 要先确认属于哪一类再决定怎么 ping
+  - -mac -g：查 RoCE 网口的 MAC 地址（输出 `mac addr: ...`）；`-i` 指定 device 逻辑 ID
   - -ping -g address <dest_ip>：ROCE ping（对端是 NIC IP）；-hccs_ping -g address <dest_ip>：HCCS ping（对端是 VNIC IP）——建链超时（EI0006）里判定两端是否真的连通
   - -tls -g：逐个 device 输出 tls switch[0]（0 关闭 / 1 开启）、告警天数阈值与 pub cert/ca1/ca2 证书的 issuer 与有效期；-tls -s enable <0|1>：设置 TLS 开关
   - -optical -g：光模块是否在位（grep present）；-lldp -g：与交换机的 LLDP 邻居是否连通——端口 down（EI0009）时的三段式排查
@@ -58,6 +64,9 @@ content:
   - name: 查 NIC / VNIC / IPv6 地址
     cmd: for n in {0..15}; do hccn_tool -i $n -ip -g ;done（VNIC 用 -vnic -g，IPv6 用 -ip -inet6 -g）
     when: 把报错里的 src_ip/dest_ip 对应到具体 device 与地址类型
+  - name: 查 MAC 地址
+    cmd: hccn_tool -i 0 -mac -g
+    when: 需要确认 NPU 网口 MAC 地址（交换机端口绑定、LLDP 邻居核对、与 ifconfig 结果对照）
   - name: 按 IP 类型做连通性 ping
     cmd: hccn_tool -i <node> -ping -g address <dest_ip>（ROCE）；hccn_tool -i <node> -hccs_ping -g address <dest_ip>（HCCS）
     when: 建链超时（EI0006）双方互等、需判定链路是否连通
@@ -82,4 +91,4 @@ content:
   - name: 查光模块与交换机连通
     cmd: for i in {0..7}; do hccn_tool -i $i -optical -g; done | grep present；for i in {0..7}; do hccn_tool -i $i -lldp -g; done
     when: EI0009 端口 down，逐层排除光模块未在位与交换机未连通
-  details: 用 hccn_tool 检查 device 侧网络链路健康与 TLS 一致性的一套命令。**旧版写法**（模式开关在尾）：`-link_stat -g` 查网口 up/down 次数与闪断时间点（ERROR CQE 的常见根因）、`-ip -g`/`-vnic -g`/`-ip -inet6 -g` 查 NIC/VNIC/IPv6 地址、`-ping -g address <ip>` 与 `-hccs_ping -g address <ip>` 按 IP 类型做 ROCE 或 HCCS ping、`-tls -g`/`-tls -s enable <0|1>` 查改 TLS 开关与证书（EI0016）、`-optical -g`/`-lldp -g` 查光模块在位与交换机连通（EI0009 端口 down 排查）。**Ascend 950 起为新的三段式语法**：`hccn_tool -g|-s|-t <命令> -i <dev> -u <unit> -p <port>`（**模式开关前置**），命令面扩展到链路历史与建链历史、端口统计/误码/FEC/SerDes/信用与带宽、UB 连通与 UB ping、queue/context 资源、配置恢复与 TLS 证书管理——详见 content 的 950 命令族。
+  details: 用 hccn_tool 检查 device 侧网络链路健康与 TLS 一致性的一套命令。**旧版写法**（模式开关在尾）：`-link_stat -g` 查网口 up/down 次数与闪断时间点（ERROR CQE 的常见根因）、`-ip -g`/`-vnic -g`/`-ip -inet6 -g` 查 NIC/VNIC/IPv6 地址、`-mac -g` 查 RoCE 网口 MAC 地址、`-ping -g address <ip>` 与 `-hccs_ping -g address <ip>` 按 IP 类型做 ROCE 或 HCCS ping、`-tls -g`/`-tls -s enable <0|1>` 查改 TLS 开关与证书（EI0016）、`-optical -g`/`-lldp -g` 查光模块在位与交换机连通（EI0009 端口 down 排查）。**Ascend 950 起为新的三段式语法**：`hccn_tool -g|-s|-t <命令> -i <dev> -u <unit> -p <port>`（**模式开关前置**），命令面扩展到链路历史与建链历史、端口统计/误码/FEC/SerDes/信用与带宽、UB 连通与 UB ping、queue/context 资源、配置恢复与 TLS 证书管理——详见 content 的 950 命令族。
