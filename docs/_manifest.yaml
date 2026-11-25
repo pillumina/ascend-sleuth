@@ -153,7 +153,7 @@ docs:
 skills:
   - name: ask
     scope: 日常问答
-    note: 一句话能问完的问题直接答（码、变量值、某类怎么定位、术语、库里有吗），症状定位转 diagnose
+    note: 一句话能问完的问题直接答（码、变量值、MAC/SN 这类对象词、某类怎么定位、术语、库里有吗），症状定位转 diagnose
   - name: diagnose
     scope: 日常诊断
   - name: resume-diagnosis

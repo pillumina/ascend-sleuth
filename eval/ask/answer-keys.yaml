@@ -1,4 +1,4 @@
-# /ask 答案键：10 题，按层划分 L1 事实 3 / L2 流程 3 / L3 现象 2 / L4 术语 2。
+# /ask 答案键：11 题，按层划分 L1 事实 4 / L2 流程 3 / L3 现象 2 / L4 术语 2。
 # 每题字段：id / layer / role / question_class / question / expected_ref_ids / must_include / must_not / first_action / known_gap
 # 角色只记在评测侧，不进题面；题面是用户原话，跨轮不改。
 # ref-id 指 references/methodologies/<ref-id>.yaml 或 references/<type>/<ref-id>.yaml，均可直接打开核对。
@@ -61,6 +61,23 @@
     - "把 loss 首次出现 NaN 的训练 step 当成首个溢出点"
     - "对 MindSpore 的 dump 用这个工具"
   first_action: "msprobe overflow_check -i <dump目录>/step0 -o ./overflow_out"
+  known_gap: false
+
+- id: L1-04
+  layer: L1
+  role: adjacent
+  question_class: fact
+  question: "NPU 网口的 MAC 地址怎么查？"
+  expected_ref_ids:
+    - hccn-tool-network-diagnosis
+  must_include:
+    - "命中 hccn-tool-network-diagnosis：在计算节点按 device 逻辑 ID 跑 `hccn_tool -i 0 -mac -g`，输出 `mac addr: ...`"
+    - "`-i` 是 NPU 逻辑 ID，用 `npu-smi info -l` 查；950 起工具是 `-g/-s/-t` 前置语法，照抄旧写法会报参数错误"
+    - "作用域 cross × hccl；出处 hccn-tool-network-diagnosis 与 last_verified"
+  must_not:
+    - "编一个库内不存在的 MAC 查询命令或参数"
+    - "把 host 网口的 `ip link` 当成 device 侧 MAC 的唯一答案，不说明它与 hccn_tool 的关系"
+  first_action: "hccn_tool -i 0 -mac -g"
   known_gap: false
 
 - id: L2-01
