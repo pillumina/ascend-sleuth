@@ -244,19 +244,27 @@ function cliFromInstallDir(dir) {
   return null
 }
 
+// PowerShell 冷启动首次探测实测 7–8.5 s，原来的 10 s 上限会被截断：安装目录判成没有命令行，
+// 于是退到 PATH 上那份 dsh——版本与模块闭包都可能和桌面版不一致。放宽到 30 s 留够冷启动余量。
+const WINDOWS_PROBE_TIMEOUT_MS = 30000
+
+// 返回 dirs 与探测结果：探测超时或失败时，调用方要能说明"为什么退到 PATH"，不能只写来源。
 function windowsInstallDirs() {
   const dirs = []
   const probe = spawnSync('powershell.exe', [
     '-NoProfile', '-NonInteractive', '-Command',
     "$p = Get-Process | Where-Object { $_.Path -and ($_.ProcessName -like '*DeepSeek*' -or $_.ProcessName -like '*DSH*') } | Select-Object -First 1 -ExpandProperty Path; if ($p) { $p }",
-  ], { encoding: 'utf8', timeout: 10000, windowsHide: true })
+  ], { encoding: 'utf8', timeout: WINDOWS_PROBE_TIMEOUT_MS, windowsHide: true })
+  let probeError = null
+  if (probe.error) probeError = probe.error.code || 'spawn error'
+  else if (probe.status !== 0) probeError = 'exit ' + probe.status
   const exe = (probe.stdout || '').trim().split(/\r?\n/)[0]
   if (exe && fs.existsSync(exe)) dirs.push(path.dirname(exe))
   if (process.env.LOCALAPPDATA) dirs.push(path.join(process.env.LOCALAPPDATA, 'Programs', 'DeepSeek Harness'))
   for (const base of [process.env.ProgramFiles, process.env['ProgramFiles(x86)']]) {
     if (base) dirs.push(path.join(base, 'DeepSeek Harness'))
   }
-  return unique(dirs)
+  return { dirs: unique(dirs), probeError }
 }
 
 // 官方与社区发行版的应用名不同，且可能装到 ~/Applications；扫名字含 dsh / deepseek 的 .app，
@@ -322,22 +330,30 @@ function resolveDshCli(explicit) {
   }
   // 安装目录优先于 PATH：桌面版必须用它自己那份 CLI（模块闭包与安装处一致）；机器上另装了
   // 独立 dsh 时，PATH 上那份的闭包可能与桌面 profile 不匹配。没有安装目录 CLI 才落到 PATH。
-  const dirs = process.platform === 'win32' ? windowsInstallDirs() : process.platform === 'darwin' ? macAppDirs() : []
+  let dirs = []
+  let installProbe = null
+  if (process.platform === 'win32') {
+    const found = windowsInstallDirs()
+    dirs = found.dirs
+    installProbe = found.probeError
+  } else if (process.platform === 'darwin') {
+    dirs = macAppDirs()
+  }
   for (const dir of dirs) {
     const candidate = cliFromInstallDir(dir)
     tried.push(path.join(dir, cliRelativeDir(), process.platform === 'win32' ? 'dsh.cmd' : 'dsh'))
     if (candidate !== null) {
       const cli = normalizeCliFile(candidate, '安装目录')
-      if (cli !== null) return Object.assign(cli, { tried })
+      if (cli !== null) return Object.assign(cli, { tried, installProbe })
     }
   }
   const onPath = fromPathEnv()
   tried.push('PATH 上的 dsh')
   if (onPath !== null) {
     const cli = normalizeCliFile(onPath, 'PATH')
-    if (cli !== null) return Object.assign(cli, { tried })
+    if (cli !== null) return Object.assign(cli, { tried, installProbe })
   }
-  return { command: null, prefixArgs: [], label: null, source: null, tried }
+  return { command: null, prefixArgs: [], label: null, source: null, tried, installProbe }
 }
 
 // Windows 的 dsh.cmd 是批处理 shim：不经 shell 直接 spawn 会 ENOENT。
