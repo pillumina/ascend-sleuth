@@ -43,6 +43,20 @@ function ok(value, label) {
   if (!value) throw new Error(label || '断言失败')
 }
 
+// 只钉这次修的那一类：必填标记必须以字段名数组出现在 object 上，不能留在字段自己的节点里。
+// ctx.tools.register 收的完整子集比这条检查宽，也比它严（这条检查不复制那份判据——复制一份会
+// 在安装版改规则时静默漂移，真出子集问题仍由注册时报错暴露）。
+function assertRequiredOnlyOnObjects(schema, path) {
+  ok(schema !== null && typeof schema === 'object' && !Array.isArray(schema), `${path} 应是 schema 对象`)
+  if (Object.hasOwn(schema, 'required')) {
+    ok(schema.type === 'object', `${path}.required 只能出现在 object 上（这里 type 是 ${String(schema.type)}）`)
+    ok(Array.isArray(schema.required) && schema.required.every((key) => typeof key === 'string'), `${path}.required 应是字段名数组`)
+  }
+  for (const [key, child] of Object.entries(schema.properties || {})) assertRequiredOnlyOnObjects(child, `${path}.properties.${key}`)
+  if (schema.items !== undefined) assertRequiredOnlyOnObjects(schema.items, `${path}.items`)
+  for (const [index, branch] of (schema.oneOf || []).entries()) assertRequiredOnlyOnObjects(branch, `${path}.oneOf[${index}]`)
+}
+
 console.log('[0] 插件入口接线（index.js：顶层动态 import + dsh-tools 回退）')
 // index.js 曾静态 import '@deepseek-ai/dsh-tools'：包被 link 装进 profile 时从仓库真实路径解析，
 // 到不了 DSH 安装处的 node_modules，整个插件树加载失败（实测报错 Cannot find package）。
@@ -61,6 +75,29 @@ check('无 dsh-tools 可解析时回退 defineTool 注册三个工具（tools �
   await entry.apply({ tools: { register: (tool) => tools.push(tool) } }, { mode: 'tools' })
   eq(tools.map((tool) => tool.name).join(','), 'vllm_kb_code,vllm_kb_fix,vllm_kb_doc')
   ok(tools.every((tool) => typeof tool.execute === 'function' && tool.output && tool.output.schema), '每个工具都应带 execute 与 output.schema')
+  return true
+})
+// 回退实现曾把 DSL（`ok: { type: 'boolean', required: true }`）原样当 JSON Schema 交给注册：
+// 必填标记留在 boolean 字段上，注册时报 unsupported JSON schema: schema.properties.ok.required
+// is not supported on type "boolean"，vllm-kb-tools 条目不激活。参数根当时也没有 type: 'object'。
+check('回退路径交出的参数与输出把 required 放在 object 上（tools 与 ocr 两种模式）', async () => {
+  const entry = await import(new URL('../dsh-plugins/dsh-sleuth-vllm-kb/index.js', import.meta.url).href)
+  const expected = {
+    tools: { vllm_kb_code: ['query'], vllm_kb_fix: ['target'], vllm_kb_doc: [] },
+    ocr: { vllm_kb_ocr: ['path'] },
+  }
+  for (const mode of Object.keys(expected)) {
+    const tools = []
+    await entry.apply({ tools: { register: (tool) => tools.push(tool) } }, { mode })
+    eq(tools.map((tool) => tool.name).join(','), Object.keys(expected[mode]).join(','), `${mode} 模式注册的工具`)
+    for (const tool of tools) {
+      assertRequiredOnlyOnObjects(tool.output.schema, `${tool.name}.output.schema`)
+      eq(tool.output.schema.required, ['ok'], `${tool.name}.output.schema.required`)
+      eq(tool.parameters.type, 'object', `${tool.name}.parameters.type`)
+      eq(tool.parameters.required || [], expected[mode][tool.name], `${tool.name}.parameters.required`)
+      assertRequiredOnlyOnObjects(tool.parameters, `${tool.name}.parameters`)
+    }
+  }
   return true
 })
 

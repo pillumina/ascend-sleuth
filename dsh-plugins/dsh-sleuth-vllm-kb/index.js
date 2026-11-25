@@ -25,6 +25,13 @@ import {
 // 静态 import 失败会让整个 host 半 import 不进来——插件树加载失败，设置页那一栏与四个工具全没注册
 // （实测：`failed to import: Cannot find package @deepseek-ai/dsh-tools`）。
 // 所以先试着拿真品，拿不到就用下面的最小实现接管（与 dsh-sleuth-panels 的产物同一做法）。
+//
+// 最小实现里必须自己把 defineTool 的参数 DSL（`{ 字段: schema, required: true }`）编成原始
+// JSON Schema：真品 defineTool 会做这一步，只把编好的结果交出去。兜底实现若原样把
+// `parameters` 交出去，模型侧收到的参数表缺 `type: 'object'`；若原样把 `output.schema`
+// 交出去，`required: true` 会留在 boolean 字段上，ctx.tools.register 校验时抛
+// `unsupported JSON schema: schema.properties.ok.required is not supported on type
+// "boolean"`，整个 vllm-kb-tools 条目就不激活（实测）。
 let defineTool
 try {
   defineTool = (await import('@deepseek-ai/dsh-tools')).defineTool
@@ -32,10 +39,34 @@ try {
   defineTool = (options) => ({
     name: options.name,
     description: options.description,
-    parameters: options.parameters,
-    output: { schema: options.output.schema, render: options.output.render },
+    parameters: { type: 'object', ...compileProperties(options.parameters) },
+    output: { schema: compileSchema(options.output.schema), render: options.output.render },
     execute: options.execute,
   })
+}
+
+// 隐式参数对象：`{ 字段: schema, required: true }` → `{ type: 'object', properties, required: [...] }`。
+// 与 dsh-tools 的 parameterSchemaSpecToJsonSchema 同形：只收必填字段名，不写 additionalProperties。
+function compileProperties(spec = {}) {
+  const properties = {}
+  const required = []
+  for (const [key, value] of Object.entries(spec)) {
+    const { required: isRequired, ...schema } = value
+    if (isRequired === true) required.push(key)
+    properties[key] = compileSchema(schema)
+  }
+  return required.length > 0 ? { properties, required } : { properties }
+}
+
+// 输出 schema：逐层搬 properties/items，把必填字段名收到所属 object 的 required 数组上。
+function compileSchema(node) {
+  if (node.type === 'array') return { ...node, items: compileSchema(node.items) }
+  if (node.type !== 'object') return node
+  return {
+    type: 'object',
+    additionalProperties: node.additionalProperties === true,
+    ...compileProperties(node.properties),
+  }
 }
 
 export const name = 'kb-evidence'
