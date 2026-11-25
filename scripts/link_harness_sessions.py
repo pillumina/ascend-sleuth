@@ -2,7 +2,8 @@
 """link_harness_sessions.py —— 给缺 `harness_session` 的历史轨迹补上 harness 会话号。
 
 **为什么需要它**：轨迹里的 `session_id` 是**诊断自己起的名字**（形如
-`<日期>-<issue 号>-<短名>`），不是 DSH 的会话号——DSH 的会话号是 `session-<uuid>`。
+`<日期>-<issue 号>-<短名>`），不是 DSH 的会话号——DSH 的会话号是 `session-<uuid>`
+（入口也接受裸 uuid，写进轨迹前归一成带前缀）。
 两套号之间唯一的桥是顶层可选字段 `harness_session`（口径见
 `skills/diagnose/references/diagnosis-trace.md`）。早期轨迹没写这个字段，于是"从轨迹跳到
 那次会话"这件事做不成：面板只能说"这单没记会话号"。
@@ -54,6 +55,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from exec_log_path import resolve_traces  # noqa: E402  （typo-safe：运行时件锚主检出）
+from evolve.harness_usage import normalize_session_id  # noqa: E402  （会话号两种写法归一）
 from trace_entry_activity import (  # noqa: E402  （同目录复用，不复制一份会话日志口径）
     HARNESS_LOG_PATTERNS,
     harness_homes,
@@ -275,9 +277,11 @@ def main() -> int:
 
     # 已知会话号时不必扫日志：写侧漏写的那一单当场就能补（扫日志要几十秒，还得名字在日志里）。
     if args.session_id:
-        sid = args.session_id.strip()
-        if not sid.startswith('session-'):
-            print('--session-id 需要 DSH 会话号（形如 session-<uuid>），拿到的是：' + sid, file=sys.stderr)
+        raw = args.session_id.strip()
+        sid = normalize_session_id(raw)
+        if not sid:
+            print('--session-id 需要 DSH 会话号（session-<uuid> 或裸 uuid），拿到的是：'
+                  + raw, file=sys.stderr)
             return 2
         written = 0
         for p, _text in targets:

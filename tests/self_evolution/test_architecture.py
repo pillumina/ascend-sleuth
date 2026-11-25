@@ -40,6 +40,9 @@ ALLOWED_SCRIPT_PRIMITIVES = {
     "_fs": {"samples.py", "rsi.py", "trace_state.py", "adapters/issues.py"},
     "exec_log_path": {"cli/common.py", "trace_source.py", "adapters/metrics.py"},
     "sleuth_config": {"cli/common.py", "cli/policy.py", "policy.py", "store/config.py"},
+    # 按时间窗读会话日志（token 成本）：与面板的 trace_entry_activity 共用一套窗口口径，
+    # 不在 evolve 里复制第二份日志解析。函数内惰性 import，不拖慢其它入口。
+    "trace_entry_activity": {"knowledge_usage.py"},
 }
 
 FORBIDDEN = (

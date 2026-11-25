@@ -142,10 +142,17 @@ axes:
   - { field: outcome,    writer: scripts/trace_transition.py --field outcome,    stage: PR2 }
   - { field: sedimented, writer: scripts/trace_transition.py --field sedimented, stage: PR1 }
 
-# `stop_reason` 的其余取值仍在 `scripts/trace_metrics.py`（停止点统计的唯一判据）；
-# 本段只登记面板新增的那一个，两处必须同步（见 trace_metrics.py:107-110）。
+# `stop_reason` 的写侧词表：`trace_transition.py` 按这份校验（面板与命令行共用）。
+# 统计侧的清单在 `scripts/trace_metrics.py` 的 `KNOWN_STOP_REASONS`，两处必须同步；
+# `tests/test_trace_transition.py` 有一条对照测试，改一处漏另一处会红。
 stop_reasons:
-  - { value: closed_by_user, label: 用户在面板收尾 }
+  - { value: resolved_confirmed, label: 工程师确认修复生效 }
+  - { value: halted_ask_user,    label: 按流程停下等人回报 }
+  - { value: budget_exhausted,   label: 上下文或预算到线 }
+  - { value: escalated_tier3,    label: 转深度排查后仍无结论 }
+  - { value: abandoned,          label: 主动放弃 }
+  - { value: closed_by_user,     label: 用户在面板收尾 }
+  - { value: unknown,            label: 当时确实拿不到原因 }
 
 # 严重级三档（与 docs/spec/case-schema.md 同口径；面板输入位从这份读）
 severity:

@@ -303,6 +303,25 @@ class SessionLogDiscoveryTest(unittest.TestCase):
             self.assertIsNone(why)
             self.assertEqual(path.parent, d, "第二个候选根里有这一单，也要找得到")
 
+    def test_finds_bare_and_prefixed_session_dirs(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "sessions"
+            bare = root / "ws" / "41b83c2c-a23d-46c0-91d0-ef717f5d3611"
+            prefixed = root / "ws" / "session-79ddff11-219d-4fa7-a68f-76144ebacdca"
+            bare.mkdir(parents=True)
+            prefixed.mkdir(parents=True)
+            (bare / "session.v4.jsonl.zstd").write_text("x", encoding="utf-8")
+            (prefixed / "session.v4.jsonl.zstd").write_text("x", encoding="utf-8")
+            # 带前缀的 id 要找到裸目录，裸 id 要找到带前缀目录。
+            path, why = tea.find_session_log("session-41b83c2c-a23d-46c0-91d0-ef717f5d3611",
+                                             [root])
+            self.assertIsNone(why)
+            self.assertEqual(path.parent, bare)
+            path, why = tea.find_session_log("79ddff11-219d-4fa7-a68f-76144ebacdca", [root])
+            self.assertIsNone(why)
+            self.assertEqual(path.parent, prefixed)
+
     def test_miss_lists_the_roots_it_tried(self):
         import tempfile
         with tempfile.TemporaryDirectory() as tmp:

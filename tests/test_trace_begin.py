@@ -43,10 +43,18 @@ class HarnessSessionTest(unittest.TestCase):
         self.assertIn("DSH_SESSION_ID", why)
 
     def test_wrong_shape_is_not_taken(self):
-        # 不是 session-<uuid> 的值一律不收：猜一个号会把账单与面板记号挂到别的会话上
+        # 不是会话号的值一律不收：猜一个号会把账单与面板记号挂到别的会话上
         sid, why = trace_begin.harness_session_of({"DSH_SESSION_ID": "2026-10-30-welink"})
         self.assertEqual(sid, "")
         self.assertIn("session-", why)
+
+    def test_bare_uuid_is_normalized_to_prefixed(self):
+        # 有的入口传裸 uuid；会话记录文件名也有裸 uuid 一种，写进 trace 前统一成带前缀，
+        # 面板与补链脚本才挂得上。
+        bare = "d4ff3b1c-2f7a-4c1e-9a55-0b8f6d2e7c13"
+        sid, why = trace_begin.harness_session_of({"DSH_SESSION_ID": bare})
+        self.assertEqual(sid, "session-" + bare)
+        self.assertEqual(why, "")
 
 
 class HeaderTest(unittest.TestCase):

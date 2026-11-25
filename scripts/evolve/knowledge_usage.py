@@ -55,8 +55,56 @@ def validate_record(record: Any) -> Dict[str, Any]:
     }
 
 
+def _epoch_ms(value: Any) -> Optional[int]:
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp() * 1000)
+        except ValueError:
+            return None
+    return None
+
+
+def _windowed_tokens(document: Dict[str, Any]) -> Optional[int]:
+    """按 `created_at` → `ended_at` 切会话日志；切不出窗口返回 None。
+
+    为什么不用会话累计：日志是整段会话的账，诊断收尾后同一会话里的复核、
+    写报告等都会算进这一单。窗口读数与面板同一口径（`trace_entry_activity`）。
+    """
+    session = document.get("harness_session")
+    if not isinstance(session, str) or not session.strip():
+        return None
+    lo = _epoch_ms(document.get("created_at"))
+    hi = _epoch_ms(document.get("ended_at")) or _epoch_ms(document.get("updated_at"))
+    if lo is None or hi is None or hi <= lo:
+        return None
+    try:
+        import trace_entry_activity as tea
+    except Exception:  # 只拷了 evolve 包的部署：退回会话累计
+        return None
+    try:
+        path, _why = tea.find_session_log(session)
+        if path is None:
+            return None
+        log, _why = tea.read_session_log(path)
+        if not log:
+            return None
+        window = tea.window_cost(document, log)
+    except Exception:  # 日志读不了/格式变了：退回会话累计，不让读数整条消失
+        return None
+    if not window:
+        return None
+    totals = window.get("tokens") or {}
+    total = sum(int(totals.get(key) or 0)
+                for key in ("uncached", "cache_read", "cache_write", "out"))
+    return total if total > 0 else None
+
+
 def _tokens_from_doc(document: Dict[str, Any]) -> Optional[int]:
-    """trace 显式写了就用；没写就按 harness_session 读 DSH 会话累计。"""
+    """trace 显式写了就用；没写就按 created_at→ended_at 的会话日志窗口；再退回会话累计。"""
     value = document.get("tokens")
     if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
         return value
@@ -70,6 +118,9 @@ def _tokens_from_doc(document: Dict[str, Any]) -> Optional[int]:
             return sum(items)
     session = document.get("harness_session")
     if isinstance(session, str) and session:
+        windowed = _windowed_tokens(document)
+        if windowed is not None:
+            return windowed
         usage = read_session(session)
         if usage and usage.get("tokens") is not None:
             total = usage["tokens"]

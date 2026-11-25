@@ -32,8 +32,10 @@
 v1 只实现诊断对象的二元配对判定、样本队列与结论记录。trace 收集器与
 A3 auto-merge 不在这里；循环与组合实验已由 loops/ 与 experiment_* 承担。
 
-包外依赖只有 ``scripts/`` 下三个共享原语（``_fs`` / ``exec_log_path`` /
-``sleuth_config``），以 ``scripts/`` 在 sys.path 为前提；入口 ``scripts/evolve.py``
+包外依赖只有 ``scripts/`` 下四个共享原语（``_fs`` / ``exec_log_path`` /
+``sleuth_config`` / ``trace_entry_activity``，最后一个只在
+``knowledge_usage.py`` 里惰性 import，用于按窗口读会话日志），以 ``scripts/`` 在
+sys.path 为前提；入口 ``scripts/evolve.py``
 已保证这一点，新增这类依赖要在 ``tests/self_evolution/test_architecture.py`` 的
 ``ALLOWED_SCRIPT_PRIMITIVES`` 登记，否则架构测试报红。
 """
