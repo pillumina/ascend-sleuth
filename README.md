@@ -7,14 +7,14 @@
 
 <h1 align="center">昇腾 NPU 训练与推理故障诊断知识库</h1>
 
+<p align="center"><strong>Ascend Sleuth</strong> · Diagnostic knowledge base for Huawei Ascend NPU</p>
+
 <p align="center">
   <a href="https://www.hiascend.com/"><img alt="platform: Ascend NPU" src="https://img.shields.io/badge/platform-Ascend%20NPU-CC0000?logo=huawei&logoColor=white"></a>
   <a href="https://agentskills.io/"><img alt="Agent Skills compliant" src="https://img.shields.io/badge/Agent%20Skills-compliant-8B5CF6.svg"></a>
   <a href="https://opensource.org/licenses/MIT"><img alt="License: MIT" src="https://img.shields.io/badge/License-MIT-yellow.svg"></a>
   <a href="https://pillumina.github.io/ascend-sleuth/"><img alt="Landing page" src="https://img.shields.io/badge/landing%20page-online-FF6B5B"></a>
 </p>
-
-**Ascend Sleuth** is a diagnostic knowledge base for Huawei Ascend NPU training and inference. It routes by symptom, verifies candidate cases with prior knowledge and source analysis, and turns each diagnosis into new knowledge.
 
 训练或推理在昇腾 NPU 上中断、精度异常、性能退化时，把日志与版本信息交给 agent。它按症状路由，查先验知识（官方文档与已沉淀事实）框定方向，再加载候选 case 逐条验证。未命中时继续深度排查，可按版本拉源码分析。输出定位结论与修复方案。
 
