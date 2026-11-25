@@ -89,6 +89,16 @@ function describePackage(status) {
   return lines
 }
 
+// 选路看来源：来源是 PATH 时单独写一行说明为什么退过去，别只把来源留在括号里。
+// installProbe 只在 Windows 有值：非空表示安装目录探测超时或失败。
+function cliFallbackNote(cli) {
+  if (cli === null || cli.source !== 'PATH') return null
+  if (cli.installProbe) {
+    return '安装目录探测未完成（' + cli.installProbe + '），已退到 PATH；先确认 PATH 上的 dsh 能管这个 profile'
+  }
+  return '安装目录里没有命令行，已退到 PATH；先确认 PATH 上的 dsh 能管这个 profile'
+}
+
 function main(argv) {
   const args = parseArgs(argv)
   if (args.help === true) {
@@ -163,6 +173,8 @@ function main(argv) {
   const routeThree = cli.command !== null
   if (routeThree) {
     out.push('dsh 命令行 ' + cli.label + '（来源：' + cli.source + '）')
+    const fallback = cliFallbackNote(cli)
+    if (fallback !== null) out.push('          ' + fallback)
   } else {
     out.push('dsh 命令行 未找到（试过：' + cli.tried.join('、') + '）')
     out.push('          → 路由三走不了')
@@ -284,6 +296,11 @@ function selftest() {
     judge('人读输出：说明路由四不能用于本实例', /路由四不能用于本实例/.test(text))
     const routeLine = text.split('\n').find((line) => /→ 路由四(不能用于本实例|不可用)/.test(line)) || ''
     judge('人读输出：取不到地址的下一步与有没有命令行一致', !text.includes('路由三走不了') || routeLine.includes('用路由五'))
+
+    // 退到 PATH 时单独一行说原因，不把来源只留在括号里。
+    judge('选路：安装目录探测失败时单独一行说未完成', /安装目录探测未完成/.test(cliFallbackNote({ source: 'PATH', installProbe: 'ETIMEDOUT' }) || ''))
+    judge('选路：安装目录没有命令行时单独一行说原因', /安装目录里没有命令行/.test(cliFallbackNote({ source: 'PATH' }) || ''))
+    judge('选路：来源是安装目录时没有退路提示', cliFallbackNote({ source: '安装目录', installProbe: null }) === null)
   } finally {
     fs.rmSync(base, { recursive: true, force: true })
   }

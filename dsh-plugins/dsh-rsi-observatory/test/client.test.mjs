@@ -99,7 +99,7 @@ test('模块形态与两个注册面', () => {
   assert.ok(side, '应注册侧栏图标')
   assert.equal(side.entry.id, 'rsi-observatory')
   assert.equal(side.entry.order, 50)
-  assert.equal(side.entry.label, '自演进实验')
+  assert.equal(side.entry.label, '实验台')
   dispose()
 })
 

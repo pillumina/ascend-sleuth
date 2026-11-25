@@ -26,7 +26,8 @@ DSH 会话中加载可视化面板、诊断状态条、诊断画布与实验台�
 命令行走路由三；命令行不在、
 日志里有带 token 的地址走路由四；都没有走路由五。其余形态的细节见文末附录。先跑第 0 步的现状检查
 判本机走哪条。
-除热加载外，装完都要**重启宿主进程**：host 半的接口路由在进程启动时装载，刷新页面只换浏览器那一半。
+装完要不要重启看装载结果：`application` 为 `applied` 时 host 半已经在跑，刷新页面即可；为
+`restart-required` 时才重启宿主进程。命令行不回显这个值，判法见路由三的验证。
 
 ## 第 0 步：判本机走哪条路
 
@@ -112,7 +113,8 @@ stderr（面板包冒烟会打 `RPC 路由已注册`），以退出码为准；�
 2. **读结果**：profile 的 `package.json` 两处都在才算登记完成——`dependencies` 里一条
    `dsh-sleuth-panels: link:<仓库路径>`，`dsh.profile.bundles` 里一项 `dsh-sleuth-panels`。
    界面「插件」页显示已安装不能当证据：它读的是登记，不是加载结果。第 0 步的快检已经报过这两处，
-   装完再跑一次即可。
+   装完再跑一次即可。复核时记下读的时间：同一 profile 可能有别的会话在装包，隔几分钟再读到的
+   登记可能已经变了。
 
 3. **profile 受保护的部分**：发行版把 `desktop` 这个名字留给 Electron 应用，`--dump-config` 无条件
    拒绝它（报 `error: profile "desktop" is managed exclusively by the Electron application`）。
@@ -122,18 +124,20 @@ stderr（面板包冒烟会打 `RPC 路由已注册`），以退出码为准；�
 
 4. **验证**：按这个顺序，有结论就停。重启指完全退出 DSH Desktop 进程，关窗口不算。
 
-   1. 先重启一次。装、换版本、补登记都要；host 半只在进程启动时装载，刷新页面换不到它。
-   2. 重启后：工具在，说明 host 半加载了这次的面板包；刷新页面，诊断 tab 在且版本串等于包版本，
+   1. 先判要不要重启。插件页装的看 `application`：`applied` 跳过重启，`restart-required` 重启一次。
+      命令行装的不回显这个值。装完对刚装的包的前缀发不带 cookie 的 POST（如 `/sleuth-copilot`）：
+      401 已在跑，405 没加载，重启一次。
+   2. 加载后：工具在，说明 host 半加载了这次的面板包；刷新页面，诊断 tab 在且版本串等于包版本，
       安装完成。版本串是构建时注入 `lib/client.js` 的 `PANEL_VERSION`，与包版本是否一致由
       `node scripts/build_panel_bundle.js --check` 判定。装诊断画布的话看侧栏有没有「诊断画布」图标，
       页面右下脚注的版本串等于 `dsh-plugins/dsh-sleuth-canvas/package.json` 的版本。
-   3. 重启后工具不在 → host 半没加载，读「装上了但 tab 不出现」，重点查包能不能加载。
+   3. 工具不在 → host 半没加载，读「装上了但 tab 不出现」，重点查包能不能加载。
    4. 要定位是哪一半没加载，跑 `node scripts/verify_panel_desktop.js --profile <profile>`
       （见「无 token 时的验证」）。
 
    工具在只说明进程里有某份面板 host 半（可能是上一版，也可能是热加载装的那份），不证明是这次装的
    版本；版本串是 host 从已加载的包里发给浏览器的产物版本，只说明浏览器半，浏览器缓存会让它旧，
-   有客户端热重载（HMR）的开发部署也可能让它先变。host 半换了没有，以重启后的工具与 RPC 为准。
+   有客户端热重载（HMR）的开发部署也可能让它先变。host 半换了没有，以工具与 RPC 为准。
 
 ## 路由四：HTTP 脚本安装（日志地址可用时）
 
@@ -248,7 +252,7 @@ jsonl 路径。错误码随 pnpm 版本变，node 系是 `ERR_PNPM_NO_OFFLINE_ME
 3. **host 半挂没挂的旁证**：面板包看会话工具列表里的 `ascend_trace_status`（由 host 半注册）；
    状态条包看 `/sleuth-copilot` 前缀路由（POST 一条会得到 401 或 405，401 说明路由在、只是没带
    cookie）。都没有就先查第 1、2 步。工具或路由在也不等于这次装的包已加载（可能是上一版）；
-   版本串只看浏览器半，host 半在重启后再看工具与 RPC。状态条没有模型侧工具，别用工具清单判它。
+   版本串只看浏览器半，host 半以工具与 RPC 为准。状态条没有模型侧工具，别用工具清单判它。
 4. **只有浏览器那一半没换**：tab 在、版本串是旧的 → 刷新页面；仍旧就关浏览器缓存
    （DevTools 勾 Disable cache）。
 5. **接口 401 或 405**：405 = 路由没注册（host 半没加载）；401 = 请求没带会话 cookie，
