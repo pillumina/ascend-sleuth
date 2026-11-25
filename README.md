@@ -7,6 +7,8 @@
 
 <h1 align="center">昇腾 NPU 训练与推理故障诊断知识库</h1>
 
+<p align="center"><strong>Ascend Sleuth</strong> · Diagnostic knowledge base for Huawei Ascend NPU</p>
+
 <p align="center">
   <a href="https://www.hiascend.com/"><img alt="platform: Ascend NPU" src="https://img.shields.io/badge/platform-Ascend%20NPU-CC0000?logo=huawei&logoColor=white"></a>
   <a href="https://agentskills.io/"><img alt="Agent Skills compliant" src="https://img.shields.io/badge/Agent%20Skills-compliant-8B5CF6.svg"></a>
