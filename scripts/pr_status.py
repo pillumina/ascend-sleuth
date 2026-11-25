@@ -42,8 +42,8 @@
 #   python3 scripts/pr_status.py --root <repo> --list-targets
 #   python3 scripts/pr_status.py --root <repo> --set-target --remote origin --base main
 #   python3 scripts/pr_status.py --root <repo> --set-identity --remote team
-#   python3 scripts/pr_status.py --root <repo> --set --draft <key> --platform gitcode \
-#       --repo owner/repo --number 418 --url <url> [--remote origin]
+#   python3 scripts/pr_status.py --root <repo> --set --draft <key> --url <url> [--remote origin]
+#       （平台、仓库、编号从链接解析；显式给 --platform / --repo / --number 时以给出的为准）
 #   python3 scripts/pr_status.py --root <repo> --mark --draft <key> --state merged
 #   python3 scripts/pr_status.py --root <repo> --forget --draft <key>
 #   python3 scripts/pr_status.py --root <repo> --check --draft <key>

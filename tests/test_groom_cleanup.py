@@ -3,6 +3,7 @@
 import contextlib
 import json
 import os
+import shutil
 import sys
 import tempfile
 import time
@@ -87,6 +88,79 @@ class CleanupTest(unittest.TestCase):
         return wt, meta
 
     # —— fail-closed ——
+    def test_snapshot_referenced_by_other_assessment_is_skipped(self):
+        _sidecar(self.inbox, "draft-a", self.commit)
+        _sidecar(self.inbox, "draft-b", self.commit)
+        self._make_snapshot()
+        report = self._run([_marker("draft-a", self.commit)])
+        reasons = [s.get("reason") for s in report["skipped_snapshots"]]
+        self.assertIn("仍被其他评估引用", reasons)
+        self.assertFalse(report["complete"])
+
+    def test_second_round_marks_sidecar_already_deleted(self):
+        _sidecar(self.inbox, "draft-a", self.commit)
+        marker = _marker("draft-a", self.commit)
+        first = self._run([marker])
+        self.assertIn("draft-a", first["deleted"]["assessments"])
+        second = self._run([marker])
+        self.assertIn("draft-a", second["already_deleted"]["assessments"])
+        self.assertNotIn("draft-a", second["deleted"]["kept"])
+
+    def test_old_record_with_other_assessment_id_is_not_already_deleted(self):
+        _sidecar(self.inbox, "draft-a", self.commit, assessment_id="OLD")
+        self._run([_marker("draft-a", self.commit, assessment_id="OLD")])
+        report = self._run([_marker("draft-a", self.commit,
+                                    assessment_id="NEW", content_sha="OTHER")])
+        self.assertNotIn("draft-a", report["already_deleted"]["assessments"])
+        self.assertIn("draft-a", report["deleted"]["kept"])
+
+    def test_snapshot_on_other_branch_is_found_and_removed(self):
+        _sidecar(self.inbox, "draft-a", self.commit)
+        short = short_sha(self.commit)
+        wt = self.snap_dir / f"develop-{short}"
+        (wt / "knowledge").mkdir(parents=True, exist_ok=True)
+        (wt / "knowledge" / "x.yaml").write_text("x", encoding="utf-8")
+        (self.snap_dir / f"develop-{short}.json").write_text("{}", encoding="utf-8")
+        calls = []
+
+        def _fake(repo, snapshot_dir=None, commit=None, branch="main"):
+            calls.append(branch)
+            return {"ok": True, "worktree_removed": True, "meta_removed": True}
+
+        report = self._run([_marker("draft-a", self.commit)],
+                           cleanup_snapshot_fn=_fake)
+        self.assertIn("develop", calls)
+        self.assertEqual(report["deleted"]["snapshot_records"][0]["branch"], "develop")
+
+    def test_all_branch_snapshots_are_removed(self):
+        _sidecar(self.inbox, "draft-a", self.commit)
+        short = short_sha(self.commit)
+        for branch in ("main", "develop"):
+            wt = self.snap_dir / f"{branch}-{short}"
+            (wt / "knowledge").mkdir(parents=True, exist_ok=True)
+            (wt / "knowledge" / "x.yaml").write_text("x", encoding="utf-8")
+            (self.snap_dir / f"{branch}-{short}.json").write_text("{}", encoding="utf-8")
+        calls = []
+
+        def _fake(repo, snapshot_dir=None, commit=None, branch="main"):
+            calls.append(branch)
+            return {"ok": True, "worktree_removed": True, "meta_removed": True}
+
+        report = self._run([_marker("draft-a", self.commit)], cleanup_snapshot_fn=_fake)
+        self.assertEqual(sorted(calls), ["develop", "main"])
+        self.assertEqual(len(report["deleted"]["snapshot_records"]), 2)
+
+    def test_partial_cleanup_can_resume_after_reference_removed(self):
+        _sidecar(self.inbox, "draft-a", self.commit)
+        b = _sidecar(self.inbox, "draft-b", self.commit)
+        self._make_snapshot()
+        first = self._run([_marker("draft-a", self.commit)])
+        self.assertTrue(first["skipped_snapshots"])
+        b.unlink()
+        second = self._run([_marker("draft-a", self.commit)])
+        self.assertTrue(second["complete"], second)
+        self.assertFalse((self.snap_dir / f"main-{short_sha(self.commit)}").exists())
+
     def test_blocking_recheck_deletes_nothing(self):
         sidecar = _sidecar(self.inbox, "draft-a", self.commit)
         report = cleanup("body", self.repo, "origin/main", "HEAD", apply=True, check_fn=_check_fail)
@@ -362,6 +436,145 @@ class CleanupTest(unittest.TestCase):
         report = self._run([_marker("draft-a", self.commit)], cleanup_snapshot_fn=_fail)
         self.assertFalse(report["ok"])
         self.assertEqual(report["deleted"]["snapshots"], [])
+
+    # —— 新增：工作单文件、临时文件、无主快照、归档残锁 ——
+    def test_runs_file_cleaned_when_old(self):
+        runs = self.inbox / ".groom" / "runs"
+        runs.mkdir(parents=True, exist_ok=True)
+        old = runs / "stale.tmp"
+        old.write_text("x", encoding="utf-8")
+        stamp = time.time() - 2 * 86400
+        os.utime(old, (stamp, stamp))
+        _sidecar(self.inbox, "draft-a", self.commit)
+        report = self._run([_marker("draft-a", self.commit)])
+        self.assertFalse(old.exists())
+        self.assertIn("stale.tmp", report["deleted"]["runs"])
+
+    def test_temp_files_cleaned_only_when_old(self):
+        tmp_dir = self.inbox / ".groom" / "tmp"
+        tmp_dir.mkdir(parents=True, exist_ok=True)
+        old = tmp_dir / "old.tmp"
+        old.write_text("x", encoding="utf-8")
+        fresh = tmp_dir / "fresh.tmp"
+        fresh.write_text("x", encoding="utf-8")
+        stamp = time.time() - 2 * 86400
+        os.utime(old, (stamp, stamp))
+        _sidecar(self.inbox, "draft-a", self.commit)
+        report = self._run([_marker("draft-a", self.commit)])
+        self.assertFalse(old.exists())
+        self.assertTrue(fresh.exists())
+        self.assertTrue(any("old.tmp" in p for p in report["deleted"]["temp_files"]))
+
+    def test_orphan_snapshot_cleaned(self):
+        (self.repo / "knowledge" / "x.yaml").write_text("x", encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-qm", "second")
+        other = git(self.repo, "rev-parse", "HEAD").stdout.strip()
+        wt = self.snap_dir / f"main-{short_sha(other)}"
+        wt.mkdir(parents=True, exist_ok=True)
+        meta = self.snap_dir / f"main-{short_sha(other)}.json"
+        meta.write_text(json.dumps({"commit": other}), encoding="utf-8")
+        stamp = time.time() - 2 * 86400
+        os.utime(wt, (stamp, stamp))
+        calls = []
+
+        def _fake(repo, snapshot_dir=None, commit=None, branch="main"):
+            calls.append(commit)
+            path = Path(snapshot_dir) / f"{branch.replace('/', '_')}-{short_sha(commit)}"
+            if path.exists():
+                shutil.rmtree(path)
+            return {"ok": True, "worktree_removed": True}
+
+        _sidecar(self.inbox, "draft-a", self.commit)
+        report = self._run([_marker("draft-a", self.commit)], cleanup_snapshot_fn=_fake)
+        self.assertEqual(calls, [other])
+        self.assertIn(short_sha(other), report["deleted"]["orphan_snapshots"])
+
+    def test_orphan_snapshot_on_other_branch_uses_actual_branch(self):
+        (self.repo / "knowledge" / "x.yaml").write_text("x", encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-qm", "second")
+        other = git(self.repo, "rev-parse", "HEAD").stdout.strip()
+        wt = self.snap_dir / f"develop-{short_sha(other)}"
+        wt.mkdir(parents=True, exist_ok=True)
+        meta = self.snap_dir / f"develop-{short_sha(other)}.json"
+        meta.write_text(json.dumps({"commit": other, "branch": "develop"}), encoding="utf-8")
+        stamp = time.time() - 2 * 86400
+        os.utime(wt, (stamp, stamp))
+        branches = []
+
+        def _fake(repo, snapshot_dir=None, commit=None, branch="main"):
+            branches.append(branch)
+            path = Path(snapshot_dir) / f"{branch.replace('/', '_')}-{short_sha(commit)}"
+            if path.exists():
+                shutil.rmtree(path)
+            return {"ok": True, "worktree_removed": True}
+
+        _sidecar(self.inbox, "draft-a", self.commit)
+        report = self._run([_marker("draft-a", self.commit)], cleanup_snapshot_fn=_fake)
+        self.assertEqual(branches, ["develop"],
+                         "无主快照要按自身分支删，不能拿本轮 branch 去猜")
+        self.assertFalse(wt.exists())
+        self.assertIn(short_sha(other), report["deleted"]["orphan_snapshots"])
+
+    def test_orphan_snapshot_still_there_is_not_reported_deleted(self):
+        (self.repo / "knowledge" / "x.yaml").write_text("x", encoding="utf-8")
+        git(self.repo, "add", "-A")
+        git(self.repo, "commit", "-qm", "second")
+        other = git(self.repo, "rev-parse", "HEAD").stdout.strip()
+        wt = self.snap_dir / f"main-{short_sha(other)}"
+        wt.mkdir(parents=True, exist_ok=True)
+        meta = self.snap_dir / f"main-{short_sha(other)}.json"
+        meta.write_text(json.dumps({"commit": other}), encoding="utf-8")
+        stamp = time.time() - 2 * 86400
+        os.utime(wt, (stamp, stamp))
+        _sidecar(self.inbox, "draft-a", self.commit)
+        report = self._run([_marker("draft-a", self.commit)],
+                           cleanup_snapshot_fn=lambda *a, **k: {"ok": True, "worktree_removed": True})
+        self.assertTrue(wt.exists())
+        self.assertFalse(report["ok"])
+        self.assertNotIn(short_sha(other), report["deleted"]["orphan_snapshots"])
+        codes = [f["code"] for f in report["findings"]]
+        self.assertIn("orphan-snapshot-still-there", codes)
+
+    def test_orphan_snapshot_kept_when_referenced(self):
+        wt = self.snap_dir / f"main-{short_sha(self.commit)}"
+        wt.mkdir(parents=True, exist_ok=True)
+        meta = self.snap_dir / f"main-{short_sha(self.commit)}.json"
+        meta.write_text(json.dumps({"commit": self.commit}), encoding="utf-8")
+        stamp = time.time() - 2 * 86400
+        os.utime(wt, (stamp, stamp))
+        _sidecar(self.inbox, "draft-a", self.commit)
+        _sidecar(self.inbox, "draft-b", self.commit)
+        report = self._run([_marker("draft-a", self.commit)],
+                           cleanup_snapshot_fn=lambda *a, **k: {"ok": True})
+        self.assertEqual(report["deleted"]["orphan_snapshots"], [])
+
+    def test_archived_lock_cleaned_immediately(self):
+        done = self.inbox / ".done" / "draft-a"
+        done.mkdir(parents=True, exist_ok=True)
+        (done / "assessment.yaml").write_text("cases: []\n", encoding="utf-8")
+        lock = self._make_lock(f"{sanitize_key('draft-a')}.yaml.lock", 0.01)
+        _sidecar(self.inbox, "draft-a", self.commit)
+        assessment_path(self.inbox, "draft-a").unlink()
+        report = self._run([_marker("draft-a", self.commit)])
+        self.assertFalse(lock.exists())
+
+    def test_orphan_snapshot_skipped_when_work_order_unreadable(self):
+        runs = self.inbox / ".groom" / "runs" / "run-x"
+        runs.mkdir(parents=True)
+        (runs / "work-orders.json").write_text("not json", encoding="utf-8")
+        wt = self.snap_dir / f"main-{short_sha(self.commit)}"
+        wt.mkdir(parents=True, exist_ok=True)
+        (self.snap_dir / f"main-{short_sha(self.commit)}.json").write_text(
+            json.dumps({"commit": self.commit}), encoding="utf-8")
+        _sidecar(self.inbox, "draft-a", self.commit)
+        report = self._run([_marker("draft-a", self.commit)],
+                           cleanup_snapshot_fn=lambda *a, **k: {"ok": True})
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["deleted"]["orphan_snapshots"], [])
+        codes = [f["code"] for f in report["findings"]]
+        self.assertIn("orphan-snapshot-scan-skipped", codes)
 
     # —— 日志 ——
     def test_cleanup_log_is_jsonl_with_decision_details(self):

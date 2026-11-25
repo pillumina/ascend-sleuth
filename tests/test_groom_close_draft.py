@@ -105,7 +105,8 @@ class CloseDraftTest(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
 
     def close(self, *args):
-        return run_py(self.repo, "scripts/groom_close_draft.py", *args)
+        # 这些用例是本地沉淀部署：记录没有 PR，按新语义要显式 --no-pr。
+        return run_py(self.repo, "scripts/groom_close_draft.py", "--no-pr", *args)
 
     def trace_doc(self, sid=None):
         return yaml.safe_load((self.repo / "traces" / f"{sid or self.sid}.yaml")
@@ -274,7 +275,8 @@ class CloseDraftTest(unittest.TestCase):
         self.assertIn("PR 还没合入（unknown）", p.stdout)
         self.assertTrue((self.inbox / f"{key}.case.yaml").exists())
 
-    def test_allow_open_pr_lets_close_through(self):
+    def test_allow_open_pr_is_rejected(self):
+        """旧旁路已废弃：合入前不收尾，参数保留但报错。"""
         key = self.make_draft()
         self.assess(key, "new_pattern")
         self.decide(key, "new_pattern")
@@ -288,8 +290,53 @@ class CloseDraftTest(unittest.TestCase):
         pr_status.save_ledger(self.repo, ledger)
 
         p = self.close("--draft-key", key, "--apply", "--allow-open-pr")
-        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+        self.assertIn("--allow-open-pr 已不支持", p.stderr)
+        self.assertTrue((self.inbox / f"{key}.case.yaml").exists())
+        self.assertEqual(self.trace_doc()["sedimented"]["state"], "submitted")
+
+    def test_missing_record_blocks_without_no_pr(self):
+        """无 PR 记录的本地沉淀部署要显式 --no-pr：默认拦下，不把漏登记当成没有 PR。"""
+        key = self.make_draft()
+        self.assess(key, "new_pattern")
+        self.decide(key, "new_pattern")
+        write_case(self.repo, "knowledge/inference/vllm-ascend/interrupt/DRAFT-A.yaml",
+                   cid="DRAFT-A", title="HCCL timeout", symptoms=("HCCL timeout",),
+                   root_cause="link failure", fix="restore link", tags=("hccl",))
+
+        p = run_py(self.repo, "scripts/groom_close_draft.py", "--draft-key", key, "--apply")
+        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+        self.assertIn("--no-pr", p.stdout)
+        self.assertTrue((self.inbox / f"{key}.case.yaml").exists())
+        self.assertEqual(self.trace_doc()["sedimented"]["state"], "submitted")
+
+    def test_merged_record_goes_through_after_merge_entry(self):
+        """记录是 merged 时本脚本默认拦下（要核对合入提交内容），显式跳过才收尾。"""
+        key = self.make_draft()
+        self.assess(key, "new_pattern")
+        self.decide(key, "new_pattern")
+        write_case(self.repo, "knowledge/inference/vllm-ascend/interrupt/DRAFT-A.yaml",
+                   cid="DRAFT-A", title="HCCL timeout", symptoms=("HCCL timeout",),
+                   root_cause="link failure", fix="restore link", tags=("hccl",))
+        ledger = pr_status.empty_ledger()
+        ledger["prs"][key] = {"platform": "github", "repo": "owner/repo", "number": 7,
+                              "url": "https://github.com/owner/repo/pull/7", "state": "merged",
+                              "merge_commit": "0" * 40,
+                              "source": "ledger", "created_at": "2026-11-04T10:00:00+08:00"}
+        pr_status.save_ledger(self.repo, ledger)
+
+        p = run_py(self.repo, "scripts/groom_close_draft.py", "--draft-key", key, "--apply")
+        self.assertEqual(p.returncode, 2, p.stdout + p.stderr)
+        self.assertIn("groom_close_after_merge.py", p.stdout)
+        self.assertTrue((self.inbox / f"{key}.case.yaml").exists())
+        self.assertEqual(self.trace_doc()["sedimented"]["state"], "submitted")
+
+        p2 = run_py(self.repo, "scripts/groom_close_draft.py", "--draft-key", key,
+                    "--allow-close-merged", "--apply")
+        self.assertEqual(p2.returncode, 0, p2.stdout + p2.stderr)
         self.assertFalse((self.inbox / f"{key}.case.yaml").exists())
+        log = (self.inbox / ".groom" / "close-log.jsonl").read_text(encoding="utf-8").splitlines()
+        self.assertEqual(json.loads(log[-1])["mode"], "merged-local")
 
     def test_mixed_closed_and_active_keys_continue(self):
         key = self.make_draft("draft-a")

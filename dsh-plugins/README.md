@@ -33,6 +33,7 @@
 | 面板包外部契约 | 已安装 DSH 的五条接缝：`webServer.register(route)` 含 prefix、`connection.requestRejection`、client 沙箱的 `styles.insert`、页面产物格式 `__ModuleLoader__.load`、shell 的 `resolve` + `execute` | 同上（末段 DSH 探针；`--selftest-dsh` 自测） |
 | 诊断状态条（独立包） | `dsh-sleuth-copilot` 的浏览器半源码是 `client-src/*.js`（`build.mjs` 拼成 `lib/client.js`），host 半是 `lib/index.js`；席位是 `conversation.input.dock`、`conversation.input.right`、`shell.overlay`；只读 `traces/`、`postmortems/inbox/` 与 `.groom` 评估状态；状态修改仅在用户表单确认后走 `scripts/trace_transition.py`；查合入与提 PR 目标写本地 `.groom/pr-state.json`（走 `scripts/pr_status.py`，带 CAS）；知识库提醒检查只走 `scripts/kb_sync.py --check`（只 fetch、不受「自动检查更新」开关拦；默认以完全权限运行、工作区根指主检出，面板可关掉改跟部署默认档），开关与间隔在知识库页设置，去重记录写主检出 `.local/kb-sync-notify.json`；提 PR / 收尾只生成 prompt | `node dsh-plugins/dsh-sleuth-copilot/test/render-smoke.mjs`（浏览器半逻辑）、`node dsh-plugins/dsh-sleuth-copilot/test/host-smoke.mjs`（真实取数与临时副本写入）；真机渲染仍要人看 |
 | 诊断画布（独立包） | `dsh-sleuth-canvas`：`client-src/*.js` 由 `build.mjs` 拼成生成物 `lib/client.js`，host 半是 `host/index.js`（ESM）；注册 `main` key `sleuth-canvas` + `sidebar.panellist` 同 id（order 40）；只读 `traces/`，不联网、不写仓库 | `node dsh-plugins/dsh-sleuth-canvas/build.mjs --check`、`node dsh-plugins/dsh-sleuth-canvas/test/{host,engine,ui,artifact}.test.mjs`；真机渲染仍要人看 |
+| 自动收尾插件（独立包，随面板装） | `dsh-sleuth-autoclose` 只调 `scripts/groom_sweep.py`，不自己判断合入、不写 trace、不改知识；配置、运行状态与轮次日志在主检出的 `.groom/`（`autoclose-config.json`、`autoclose-state.json`、`sweep-log.jsonl`）；默认关，开关在面板「自动收尾」页，连续失败 3 次自动暂停，首轮只出预览 | `node dsh-plugins/dsh-sleuth-autoclose/test/host-smoke.mjs`、`node dsh-plugins/dsh-sleuth-panels/test/autoclose-failure-smoke.mjs` |
 
 **结果复用窗口**（两个面板同一条约定）：面板取数要起 Python 子进程，而切走 tab 再切回会重新挂载
 组件、重新发起同一条 RPC，所以结果按短窗口复用（切回不必等进程）。三条约束一起成立才算守住：
@@ -100,6 +101,8 @@ B、C、D 三条路用的是同一个插件管理器，差别只在谁去调它�
 
 **默认装五个包**：面板包、vllm-kb 接入插件、诊断状态条、诊断画布。`panel_install.js --all` 与
 `skills/preload-panel` 的常驻安装路都按五个包走；五个包分开登记，装面板不会带上另外三个。
+
+面板包 `dsh-sleuth-panels` 依赖 `dsh-sleuth-autoclose`；装面板会同时启用自动收尾。面板页的开关只启停后台任务，不需要单独安装或卸载 autoclose。
 
 常驻包的两个产物由 `node scripts/build_panel_bundle.js` 把面板源码原文嵌进适配层生成，
 不要手改；源文件改了要重跑生成器。适配层补的是动态沙箱当年自带、常驻包没有的五项：
