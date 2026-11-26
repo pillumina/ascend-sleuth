@@ -22,6 +22,7 @@ status: active
 last_verified: 2026-10-19
 
 content:
+  capability: image-to-text   # 对应 trace 的 external_lookup.capability
   tool_name: vllm_kb_ocr（vllm-kb 接入插件的截图转文字工具；把本地图片 base64 后 POST /ocr）
   invocation: "工具参数 path（必填）：图片在本机的绝对路径。必须先落到文件，工具不做剪贴板与粘贴接收。"
   output_meaning: >-

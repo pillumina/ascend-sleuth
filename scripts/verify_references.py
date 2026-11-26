@@ -414,6 +414,71 @@ def check_error_gap_views(root: Path, errors: list):
     return errors
 
 
+def check_external_capabilities(refs_dir: Path, types_doc: dict, errors: list) -> list:
+    """外部服务类工具的能力枚举必须在 `_types.yaml` 登记，且与工具词条一一对上。
+
+    两头都要查：未登记的能力会让 trace 的 `external_lookup.capability` 出现词表外取值
+    （统计漏类）；登记了却没有词条声明它，等于给了一个取不到的枚举（静默空转）；
+    一个能力被两个工具声明，读数分不清是谁。三种都在这里报。
+    """
+    caps = types_doc.get("external_capabilities")
+    if not isinstance(caps, list) or not caps or any(
+            not isinstance(c, str) or not c.strip() for c in caps):
+        errors.append(
+            "references/_types.yaml 的 external_capabilities 必须是非空字符串列表"
+            "（trace 的 external_lookup.capability 的唯一枚举）"
+        )
+        return errors
+    declared = {}
+    tools_dir = refs_dir / "tools"
+    for path in sorted(tools_dir.rglob("*.yaml")) if tools_dir.exists() else []:
+        if not (is_entry_file(path) or is_archived_entry(path)):
+            continue
+        doc = load_yaml(path)
+        if not isinstance(doc, dict):
+            continue
+        content = doc.get("content") if isinstance(doc.get("content"), dict) else {}
+        cap = content.get("capability")
+        if cap is None:
+            continue
+        if cap not in caps:
+            errors.append(
+                f"{path.relative_to(refs_dir)}: content.capability '{cap}' 未在 "
+                f"references/_types.yaml 的 external_capabilities 登记"
+            )
+            continue
+        # active 与 deprecated 都算属主：工具退役后枚举要留着，否则历史 trace 的
+        # capability 会变成词表外取值（trace 是长期件，不回填）。
+        if doc.get("status") in ("active", "deprecated"):
+            declared.setdefault(str(cap), []).append(str(doc.get("id")))
+    if len(set(caps)) != len(caps):
+        errors.append("external_capabilities 有重复取值——能力名必须唯一")
+    for cap in caps:
+        owners = declared.get(cap) or []
+        if not owners:
+            errors.append(
+                f"能力 '{cap}' 已在 external_capabilities 登记，但没有 active 或 deprecated "
+                f"工具词条声明它——枚举与词条两处必须对得上（加词条或删枚举）"
+            )
+        elif len(owners) > 1:
+            errors.append(
+                f"能力 '{cap}' 被多个工具词条声明（{', '.join(owners)}）——"
+                f"一个能力只对应一个工具，否则 external_lookup 的读数分不清是谁"
+            )
+    return errors
+
+
+def is_archived_entry(path: Path) -> bool:
+    """`_archive/` 下的已退役词条（除 `_archive` 本身外，路径里不得有别的下划线目录）。
+
+    它们不算"现役词条"（不进 id 集、不参与闸门绑定），但仍是枚举的属主：
+    工具退役后能力名要留着，否则历史 trace 的 capability 会变成词表外取值。
+    """
+    parts = path.parts[:-1]
+    return ("_archive" in parts
+            and all(part == "_archive" or not part.startswith("_") for part in parts))
+
+
 def check_tool_binding_coverage(root: Path, errors: list):
     """**覆盖环**：每条声明了 category 的 active tool 词条，必须被某个诊断闸门绑定。
 
@@ -441,7 +506,9 @@ def check_tool_binding_coverage(root: Path, errors: list):
                     bound.update(br.get("refs") or [])
             bound.update(gate.get("caveat_refs") or [])
             bound.update(gate.get("refs") or [])
-    for path in sorted((refs_dir / "tools").glob("*.yaml")) if (refs_dir / "tools").exists() else []:
+    for path in sorted((refs_dir / "tools").rglob("*.yaml")) if (refs_dir / "tools").exists() else []:
+        if not is_entry_file(path):
+            continue
         doc = load_yaml(path)
         if not isinstance(doc, dict) or doc.get("status") != "active":
             continue
@@ -765,6 +832,7 @@ def main():
     # 3) skill 负载类型绑定：采集闸门表里的 ref-id 必须存在且 active；category 取值合法
     legal_cats = legal_categories(root)
     errors = list(case_errors) + check_skill_ref_bindings(root, ref_ids, active_ids, legal_cats)
+    errors = check_external_capabilities(refs_dir, types_doc, errors)
     # 3a) reference 的 case 来源必须已升格（id 在 knowledge/）：出处指空是静默失效，
     #     旧校验只数条数不查存在性，挡不住"引用了 inbox 草稿"。
     errors = check_reference_case_sources(root, errors)

@@ -83,13 +83,21 @@ KNOWN_OUTCOMES = {"hit", "miss", "skipped"}
 # source_analysis 的验证结果（--verify 的三种收尾）：hit/miss 是跑了；skipped 是没跑。
 KNOWN_VERIFY = {"hit", "miss", "skipped"}
 
-# external_lookup 的 capability 固定词表（与 skills/diagnose/references/diagnosis-trace.md 一致）：
-#   versioned-code  按版本或镜像定位源码（vllm_kb_code）
-#   upstream-fix    修复链、要给「已修复 / 升级即可」的依据（vllm_kb_fix）
-#   manual-doc      手册原文（vllm_kb_doc）
-#   image-to-text   截图转文字（vllm_kb_ocr）
-# 词表外取值 → 分布统计会漏掉这一类，此处确定性检出。
-KNOWN_CAPABILITIES = {"versioned-code", "upstream-fix", "manual-doc", "image-to-text"}
+# external_lookup 的 capability 枚举：**登记在 references/_types.yaml 的
+# external_capabilities**（工具词条用 content.capability 声明自己属于哪一种），
+# 这里从那份数据读，不在代码里维护第二份。读不到 = 配置缺失：返回空集，于是任何
+# capability 都会被判成词表外取值，显式报出来而不是静默放过。
+def _load_external_capabilities():
+    path = Path(__file__).resolve().parents[1] / "references" / "_types.yaml"
+    try:
+        doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return set()
+    vals = doc.get("external_capabilities")
+    return {str(v) for v in vals} if isinstance(vals, list) else set()
+
+
+KNOWN_CAPABILITIES = _load_external_capabilities()
 
 # 顶层 external_evidence（会话级，一次写定）：工具在不在。
 # on = 有工具；off = 没装或工具行关着。开了但服务挂了仍写 on，那是事件级 skipped。

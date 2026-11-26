@@ -22,12 +22,15 @@ status: active
 last_verified: 2026-10-19
 
 content:
+  capability: versioned-code   # 对应 trace 的 external_lookup.capability
   tool_name: vllm_kb_code（vllm-kb 接入插件的源码定位工具；打 vllm-kb 的 POST /code/search）
   invocation: >-
-    工具参数：query（必填，代码特征/符号名/报错字面量）、version（部署版本，如 0.23.0）、
+    工具参数：query（必填，代码特征/符号名/报错字面量）、version（部署版本，**带 v 前缀**，如 v0.23.0；不带会 404「版本未预存」，返回里附可用版本列表）、
     repo（命名空间前缀，img:<镜像 tag> 或 fork:<模型>@<sha>）、in_file（限定文件）、
     per_version（一次列各版本命中）、kind（填 msg 时按报错字面量索引查定义处）。
     典型用法：判断某个修复进没进版本用 per_version；镜像现场用 repo=img:<tag>；只记得报错原文用 kind=msg。
+    kind=msg 必须给报错原文的**完整字面量**（与源码 raise 语句逐字一致，含大小写与标点）；宽松子串不命中，
+    先裁掉前缀与上下文再查，否则会把「查不到」误读成「这个报错不在源码里」。
   output_meaning: >-
     返回命中文件与行号，per_version 时按版本分组列出；kind=msg 时给出报错字面量所在的文件与行。
     输出是接口返回的 JSON（命中按版本列出），带端点名称与耗时；超过 8000 字符会截断并标记。命中是代码事实，但前提是端点对应的那一套代码

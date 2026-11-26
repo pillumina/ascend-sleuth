@@ -9,6 +9,17 @@
 #   flow  = 嵌套流程（content.flow[].step/action/check，独立词条）
 #   table = 列表数据集（一个族一个文件，族内共享表级元信息与验证）
 
+# 外部服务类工具的能力枚举：trace 的 `external_lookup.capability` 只允许这些值；
+# 由 scripts/verify_references.py 校验（工具词条的 content.capability 必须在此登记，
+# 每个登记值至少有一个 active 或 deprecated 工具词条声明它；工具退役时保留枚举，
+# 否则历史 trace 的 capability 会变成词表外取值）。新增外部能力 = 这里 + 工具词条 + 闸门；
+# 面板的中文标签表另有一份（缺省回退显示原值，不丢数据）。
+external_capabilities:
+  - versioned-code
+  - upstream-fix
+  - manual-doc
+  - image-to-text
+
 types:
   error-code:
     kind: table
@@ -32,7 +43,7 @@ types:
     kind: fact
     description: 工具 / 命令的使用方法与输出解读（如 npu-smi info 字段含义）；组织单元=诊断用途面——一个用途面一个文件，同用途面的子命令/子工具嵌套在 content.commands（如 ascend-stack-view 收 py-spy+gdb、ascend-log-levels 收环境变量+msnpureport+slog.conf）
     schema_required: [tool_name, invocation]
-    schema_optional: [output_meaning, pitfalls, commands]
+    schema_optional: [output_meaning, pitfalls, commands, capability]
 
   platform-fact:
     kind: fact

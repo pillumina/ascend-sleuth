@@ -72,12 +72,7 @@ user 事件无 `action`，不参与词表检查。**新增 action 时同步改 `
 
 外部查证（工具由 DSH 插件提供，端点在 `~/.dsh/sleuth-kb.json`）每调一次记一条，字段 `{action, capability, outcome, reason, endpoint?}`：
 
-| `capability` | 何时用 |
-|---|---|
-| `versioned-code` | 步骤 5 按版本或镜像定位源码（`vllm_kb_code`） |
-| `upstream-fix` | 步骤 5 查修复链、要给「已修复 / 升级即可」的依据（`vllm_kb_fix`） |
-| `manual-doc` | 需要手册原文而不是一句话结论（`vllm_kb_doc`） |
-| `image-to-text` | 步骤 1 工程师给的是截图（`vllm_kb_ocr`） |
+`capability` 的取值由工具词条声明（`references/tools/vllm-kb-*.yaml` 的 `content.capability`），枚举登记在 `references/_types.yaml` 的 `external_capabilities`；两处由 `verify_references.py` 校验。只记能力名，不记服务名与端点。
 
 `outcome` 三态与 `reference_lookup` 同一套词表：
 

@@ -87,6 +87,7 @@ status: active | pending-review | deprecated | draft   # 新产出即 active（P
 - **工具词条的覆盖环**（反方向的那一半）：每条声明了 category 的 active `tool` 词条**必须被某个闸门绑定**——tool 不进候选路由、背景层也不按工具名收窄到具体命令，**闸门是它进诊断上下文的唯一入口**，未绑定等于永不加载且无任何信号。实测 38 条 tool 里 24 条未绑定（含取调用栈、看日志配置、多机网络诊断）。
 - **互链不悬挂**：`related_references` 必须指向存在的词条 id（实测 6 处悬挂 + 5 处指向已归档的 deprecated 词条——链接不报错，只是点不动）。
 - **错误码缺口的两个视图一致**：族文件里的 `content.code_gaps`（节选）必须都在 `_code-gaps.yaml`（生成的记录文件）里。
+- **外部能力枚举与工具词条一一对应**：`_types.yaml` 的 `external_capabilities` 是 trace `external_lookup.capability` 的唯一枚举；工具词条的 `content.capability` 必须已登记，每个登记值至少有一个 active 或 deprecated 词条声明（工具退役时保留枚举，否则历史 trace 变违规），且不能有两个词条声明同一能力；枚举取值不得重复。`trace_metrics.py` 从这份数据读能力表，不在代码里维护第二份。
 
 **超长 `summary` 的处理动作（本仓约定）**：把原摘要正文整体迁进 `content.details`（块标量，逐字保留），
 `summary` 换成一句 ≤160 字符的路由句——**迁移不是删除**，读全文时看到的内容与迁移前逐字相同。

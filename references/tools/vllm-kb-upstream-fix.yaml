@@ -22,6 +22,7 @@ status: active
 last_verified: 2026-10-19
 
 content:
+  capability: upstream-fix   # 对应 trace 的 external_lookup.capability
   tool_name: vllm_kb_fix（vllm-kb 接入插件的修复链工具；打 GET /graph/chain，target 里的 repo#编号 会转成 source_id）
   invocation: "工具参数 target（必填），格式 <仓库>#<编号>，如 vllm-ascend#8938。"
   output_meaning: >-
@@ -30,6 +31,7 @@ content:
   pitfalls:
     - 这是社区声称的链路，属线索级。上游有 PR、issue 已 closed，都不等于你的部署里有这个修复——PR 可能只进主干未 backport，镜像与 fork 不能按版本号推断。
     - 给「已修复 / 升级即可」结论前必须做落地实证：从 PR 取修复特征行，再用 vllm_kb_code（或本地源码）在部署那份代码里确认它在。核不到就写未修复或无法判定。
+    - "`fixes` 恒空、`released` 恒 false 不代表未修复：修复链图数据可能还没构建；这时的正确写法是「图里没有修复链」，不是「上游没修」。"
     - 服务不可达时返回 ok:false；记 skipped、回原路径，本单不再重试。
     - release tag 推断只对官方 tag 快照成立；镜像与 fork 必须换成在镜像代码里查。
   commands:

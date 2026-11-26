@@ -22,6 +22,7 @@ status: active
 last_verified: 2026-10-19
 
 content:
+  capability: manual-doc   # 对应 trace 的 external_lookup.capability
   tool_name: vllm_kb_doc（vllm-kb 接入插件的手册工具；打 POST /tags/match 与 GET /doc/{id}）
   invocation: >-
     工具参数 query（问题描述，返回可能相关的手册篇目）或 doc_id（手册编号，整篇读取）。
