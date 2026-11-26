@@ -87,12 +87,15 @@
     function stepsText(extra) {
       const current = Number(extra && extra.currentStep) || 0
       const max = Number(extra && extra.maxSteps) || 6
+      // 超过诊断流程的步数（续接、报告修订会把步号继续往上记）：分母不再表示进度，只报步号。
+      if (current > max) return tr('stepsOver', { n: current })
       return tr('steps', { n: current > 0 ? current : '—', m: max })
     }
 
     function stepsShort(extra) {
       const current = Number(extra && extra.currentStep) || 0
       const max = Number(extra && extra.maxSteps) || 6
+      if (current > max) return tr('stepsOver', { n: current })
       return tr('stepsShort', { n: current > 0 ? current : '—', m: max })
     }
 
