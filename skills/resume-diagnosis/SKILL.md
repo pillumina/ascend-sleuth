@@ -31,7 +31,7 @@ description: >
 2. 按结局说一句话，四种结局分开讲：
    - `上游确认`（issue 关闭为 completed / PR 已合入 / 旧 issue 由提交关闭）：内容被上游证实了。
      **这不等于你的部署已有这个修复**——要升级建议就先做落地实证（`skills/diagnose` 步骤 5 与
-     `skills/diagnose/references/diagnosis-procedure.md` 的「上游修复的落地实证」）。写回 `validation_record` 再加
+     `skills/diagnose/references/steps/5-deep-dive.md` 的「上游修复的落地实证」）。写回 `validation_record` 再加
      `--apply`；写回是知识库改动，走 PR。
    - `上游否定`且案例声明修复已合入（脚本把这条印成 `[矛盾]`，退出码 1）：停，交人判——是改锚点
      （指向修复 PR）还是改案例结论。dry-run 下脚本只把它列进「本次将写回」的计划，`--apply`

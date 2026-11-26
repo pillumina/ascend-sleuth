@@ -34,7 +34,7 @@ content:
     就是现场部署的代码——镜像与 fork 必须显式带 repo。
   pitfalls:
     - 端点绑定的是某个部署版本。报告里要写明这条证据来自哪个端点（工具返回里有名称），否则读者会把它当成自己那套部署的结论。
-    - 命中不等于修复生效：同文件同名主题的相邻命中不构成证据，必须落在修复特征行上（见 skills/diagnose/references/diagnosis-procedure.md 的「上游修复的落地实证」）。
+    - 命中不等于修复生效：同文件同名主题的相邻命中不构成证据，必须落在修复特征行上（见 skills/diagnose/references/steps/5-deep-dive.md 的「上游修复的落地实证」）。
     - 服务不可达时工具返回 ok:false、reason 写 unreachable 或 http-5xx；这时记 outcome: skipped 并回原路径（gh search 与 src_fetch.py），本单不再重试。
     - 输出截断到 8000 字符。看不到目标片段就缩小范围（加 in_file 或换成更短的特征串），不要重复整查。
     - repo 前缀写错会退化成查官方版本，结果看着很像但不适用于镜像现场；拿不准就先查它列出的镜像清单。
