@@ -8,6 +8,8 @@
 import sys
 import tempfile
 import unittest
+
+import yaml
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -114,6 +116,34 @@ class AttributionVocabularyTest(unittest.TestCase):
         agg = ct.aggregate(entries)
         self.assertEqual(agg["skill:diagnose"]["trace_mis"], 1)
         self.assertEqual(agg["skill:diagnose"]["s2_candidate"], 0)
+
+    def test_fix_basis_counts_as_prior_not_execution(self):
+        entries = [
+            {"source": "trace", "trace": "t2.yaml", "component": "reference:torch-npu-cann",
+             "attribution_scope": "fix_basis", "verdict": "case_error"},
+            {"source": "trace", "trace": "t2.yaml", "component": "reference:torch-npu-cann",
+             "attribution_scope": "procedure", "verdict": "execution_error"},
+        ]
+        agg = ct.aggregate(entries)
+        self.assertEqual(agg["reference:torch-npu-cann"]["prior_basis"], 1)
+        self.assertEqual(agg["reference:torch-npu-cann"]["trace_mis"], 1)
+
+    def test_scan_carries_fix_basis_scope(self):
+        # 生产路径：scan_traces 少带一个键，prior_basis 就恒为 0（上一轮 verdict 的同一类缺陷）
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "traces").mkdir()
+            (root / "traces" / "t.yaml").write_text(yaml.safe_dump({
+                "session_id": "t",
+                "trace": [{"role": "agent", "action": "attribution",
+                           "attribution_scope": "fix_basis", "verdict": "case_error",
+                           "component": "reference:ref-r", "evidence": "fix 未解决"}],
+            }, allow_unicode=True), encoding="utf-8")
+            entries = ct.scan_traces(root)
+            self.assertEqual(entries[0].get("attribution_scope"), "fix_basis")
+            agg = ct.aggregate(entries)
+            self.assertEqual(agg["reference:ref-r"]["prior_basis"], 1)
+            self.assertEqual(agg["reference:ref-r"]["trace_mis"], 0)
 
 
 if __name__ == "__main__":

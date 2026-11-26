@@ -203,6 +203,20 @@ class ComputeMetricsTest(_Computed):
 
 
 class SliceComputeTest(_Computed):
+    def test_fix_basis_not_counted_in_attribution_ratio(self):
+        states = [{
+            "session_id": "s", "status": "resolved",
+            "trace": [
+                {"role": "agent", "action": "attribution", "verdict": "case_error", "component": "case:x"},
+                {"role": "agent", "action": "attribution", "verdict": "execution_error", "component": "skill:diagnose"},
+                {"role": "agent", "action": "attribution", "attribution_scope": "fix_basis",
+                 "verdict": "case_error", "component": "reference:ref-r"},
+            ],
+        }]
+        m, detail = TM._compute_metrics(states, {})
+        self.assertEqual(m["attribution_ratio"], {"case_error": 1, "execution_error": 1})
+        self.assertEqual(detail["fix_basis_attribs"], 1)
+
     def test_kb_baseline_counts_groups_and_merge_rate(self):
         """kb_behind 三组各算解决数；merge 分母只算有该字段的单。"""
         self.assertEqual(self.kb, {

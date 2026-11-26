@@ -1,7 +1,7 @@
 /* eslint-disable */
 // 生成物 —— 勿手改。由 `node scripts/build_panel_bundle.js` 从下列源文件拼出：
 //   dsh-plugins/ascend-panel/panel-client.js  (sha256:e4ebca267f65)
-//   dsh-plugins/ev-panel/panel-client.js  (sha256:cff735e45f4a)
+//   dsh-plugins/ev-panel/panel-client.js  (sha256:1605da12d89b)
 //   dsh-plugins/sleuth-console/console-client.js  (sha256:c744cc8b9fcf)
 // 校验：`node scripts/build_panel_bundle.js --check`。
 //
@@ -5611,7 +5611,7 @@ body[data-ds-dark-theme] .sleu{--c-blue:#7db3fc;--c-green:#5cd68f;--c-purple:#b3
       id: 'ev-panel',
       build(host, styles) {
         return (function () {
-// ---- dsh-plugins/ev-panel/panel-client.js (sha256:cff735e45f4a) 原文开始 ----
+// ---- dsh-plugins/ev-panel/panel-client.js (sha256:1605da12d89b) 原文开始 ----
 // ev-panel client —— 自演进看板（conversation.view 第三个 tab「自演进」）
 // 数据经 host.call('ev-board-load') 从 scripts/ev_board_data.py 汇总；
 // 单卡全文经 host.call('ev-idea-detail') 点开时才拉（列表页只带摘要）。
@@ -6546,7 +6546,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
     // 全 0 行是「有归因事件、无硬归因」，铺成表格会被读成有信号——
     // 与 panel_render_check 用同一判据（有非零计数才算有信号）决定占不占位。
     function TallySection({ tally, s2Attrib }) {
-      const tallyRows = (tally || []).filter(c => (c.trace_mis || 0) > 0 || (c.s2_candidate || 0) > 0)
+      const tallyRows = (tally || []).filter(c => (c.trace_mis || 0) > 0 || (c.prior_basis || 0) > 0 || (c.s2_candidate || 0) > 0)
       const hasTally = tallyRows.length > 0
       const hasS2 = s2Attrib && s2Attrib.length
       if (!hasTally && !hasS2) {
@@ -6561,6 +6561,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
           tallyRows.map(c => React.createElement('div', { key: c.id, className: 'ev-krow', style: { borderBottom: '1px dashed var(--bd)' } },
             React.createElement('span', { className: 'k', style: { fontFamily: mono, color: 'var(--tx)' } }, c.id),
             React.createElement('span', { className: 'v', style: { color: 'var(--c-red)', fontWeight: 700 } }, 'mis=' + (c.trace_mis || 0)),
+            (c.prior_basis || 0) > 0 ? React.createElement('span', { className: 'k', style: { color: 'var(--c-amber, #b45309)' } }, '先验=' + c.prior_basis) : null,
             React.createElement('span', { className: 'k', style: { marginLeft: 'auto' } }, (c.traces || c.source_traces || []).length + ' 来源'),
           ))) : null,
         hasS2 ? React.createElement('div', null,

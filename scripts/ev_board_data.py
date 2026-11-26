@@ -850,7 +850,7 @@ def collect_tally(root):
     agg = component_tally.aggregate(entries)
     return [
         {"id": comp, **v, "traces": sorted(v["traces"])}
-        for comp, v in sorted(agg.items(), key=lambda x: -(x[1]["trace_mis"] + x[1]["s2_candidate"]))
+        for comp, v in sorted(agg.items(), key=lambda x: -(x[1]["trace_mis"] + x[1]["prior_basis"] + x[1]["s2_candidate"]))
     ]
 
 

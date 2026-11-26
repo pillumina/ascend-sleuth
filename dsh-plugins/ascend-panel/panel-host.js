@@ -1864,6 +1864,9 @@ return {
           // 排除多少条、被排除的是哪些"。三个字段在 trace 里各写各的，读数不是一个量。
           considered: eventList(t && t.considered_candidates),
           excluded: eventList(t && t.excluded_cases),
+          // 被先验事实否决的候选（run_check.candidate）：不写 excluded_cases 是为了不混进 case 记账，
+          // 这里单独带出，面板/画布才能显示"哪个候选被哪条事实挡住"。
+          candidate: eventStr(t && t.candidate, 80),
           // 同批并发的分组标记（同一个值 = 同时展开的那几个动作）。各步那一块要按它分组。
           parallelGroup: eventStr(t && t.parallel_group, 60),
           refs: eventList(t && (t.ref_ids !== undefined ? t.ref_ids : t.ref_id)),

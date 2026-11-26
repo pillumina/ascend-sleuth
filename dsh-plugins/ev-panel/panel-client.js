@@ -932,7 +932,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
     // 全 0 行是「有归因事件、无硬归因」，铺成表格会被读成有信号——
     // 与 panel_render_check 用同一判据（有非零计数才算有信号）决定占不占位。
     function TallySection({ tally, s2Attrib }) {
-      const tallyRows = (tally || []).filter(c => (c.trace_mis || 0) > 0 || (c.s2_candidate || 0) > 0)
+      const tallyRows = (tally || []).filter(c => (c.trace_mis || 0) > 0 || (c.prior_basis || 0) > 0 || (c.s2_candidate || 0) > 0)
       const hasTally = tallyRows.length > 0
       const hasS2 = s2Attrib && s2Attrib.length
       if (!hasTally && !hasS2) {
@@ -947,6 +947,7 @@ body[data-ds-dark-theme] .ev-btn.on{background:var(--br);border-color:var(--br);
           tallyRows.map(c => React.createElement('div', { key: c.id, className: 'ev-krow', style: { borderBottom: '1px dashed var(--bd)' } },
             React.createElement('span', { className: 'k', style: { fontFamily: mono, color: 'var(--tx)' } }, c.id),
             React.createElement('span', { className: 'v', style: { color: 'var(--c-red)', fontWeight: 700 } }, 'mis=' + (c.trace_mis || 0)),
+            (c.prior_basis || 0) > 0 ? React.createElement('span', { className: 'k', style: { color: 'var(--c-amber, #b45309)' } }, '先验=' + c.prior_basis) : null,
             React.createElement('span', { className: 'k', style: { marginLeft: 'auto' } }, (c.traces || c.source_traces || []).length + ' 来源'),
           ))) : null,
         hasS2 ? React.createElement('div', null,

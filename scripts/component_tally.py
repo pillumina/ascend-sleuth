@@ -56,6 +56,9 @@ def scan_traces(root: Path):
                     # `verdict`——于是"硬归因"这条腿从来没有数据（实测：4 条 attribution 事件、
                     # 0 条含 verdict → 合计恒为「硬 0」）。两种写法都收，映射见 is_hard()。
                     "attribution_kind": ev.get("attribution_kind"),
+                    # 先验依据失败与流程失败分开计数（见 aggregate 的 prior_basis）：
+                    # 少了这个键，fix_basis 会落进「其他」，读数看起来像没归因。
+                    "attribution_scope": ev.get("attribution_scope"),
                     "component": ev.get("component"),
                     "evidence": str(ev.get("evidence", ""))[:120],
                 })
@@ -99,12 +102,16 @@ def is_hard(e):
 def aggregate(entries):
     """按 component 聚合（含来源拆分与硬/候选标注）。"""
     from collections import defaultdict
-    by_comp = defaultdict(lambda: {"trace_mis": 0, "s2_candidate": 0, "traces": set()})
+    by_comp = defaultdict(lambda: {"trace_mis": 0, "prior_basis": 0, "s2_candidate": 0, "traces": set()})
     for e in entries:
         comp = e.get("component") or "(未归因)"
         agg = by_comp[comp]
         if is_hard(e):
             agg["trace_mis"] += 1
+            agg["traces"].add(e["trace"])
+        elif e.get("attribution_scope") == "fix_basis":
+            # 先验依据失败：与执行错分开计数，避免污染执行-误诊归因比（口径见 diagnosis-trace.md）。
+            agg["prior_basis"] += 1
             agg["traces"].add(e["trace"])
         elif e["source"] == "s2-replay":
             agg["s2_candidate"] += 1
@@ -131,23 +138,27 @@ def main():
             "entries": entries,
             "components": [
                 {"component": k, **v, "traces": sorted(v["traces"])}
-                for k, v in sorted(agg.items(), key=lambda x: -(x[1]["trace_mis"] + x[1]["s2_candidate"]))
+                for k, v in sorted(agg.items(), key=lambda x: -(x[1]["trace_mis"] + x[1]["prior_basis"] + x[1]["s2_candidate"]))
             ],
         }, ensure_ascii=False, indent=2))
         return
 
     print("component_tally: 按需聚合报告（数据源：trace attribution 硬归因 + s2 路由 miss 候选）\n")
-    for comp, data in sorted(agg.items(), key=lambda x: -(x[1]["trace_mis"] + x[1]["s2_candidate"])):
-        tag = "硬归因(S1)" if data["trace_mis"] else "候选(S2)"
-        print(f"  {comp}: {tag} mis={data['trace_mis']} 候选={data['s2_candidate']}")
+    for comp, data in sorted(agg.items(), key=lambda x: -(x[1]["trace_mis"] + x[1]["prior_basis"] + x[1]["s2_candidate"])):
+        tag = "硬归因(S1)" if data["trace_mis"] else ("先验依据" if data["prior_basis"] else "候选(S2)")
+        print(f"  {comp}: {tag} mis={data['trace_mis']} 先验={data['prior_basis']} 候选={data['s2_candidate']}")
         print(f"     来源: {', '.join(sorted(data['traces'])[:5])}{'…' if len(data['traces']) > 5 else ''}")
     hard = sum(1 for e in entries if is_hard(e))
+    prior = sum(1 for e in entries if e.get("attribution_scope") == "fix_basis")
     cand = sum(1 for e in entries if e["source"] == "s2-replay")
-    other = len(entries) - hard - cand
+    other = len(entries) - hard - prior - cand
     # 口径自洽：合计必须等于三项之和（此前"合计 4 条（硬 0 / 候选 0）"里那 4 条既不硬也不候选，
     # 读数自相矛盾——读者无法判断"没有归因"和"归因都不算数"）。
     tail = f" / 其他 {other}" if other else ""
-    print(f"\n  合计: {len(entries)} 条归因（硬 {hard} / 候选 {cand}{tail}）")
+    print(f"\n  合计: {len(entries)} 条归因（硬 {hard} / 先验 {prior} / 候选 {cand}{tail}）")
+    if prior:
+        print("  注: 「先验」= fix 依据的词条被判定不成立（attribution_scope: fix_basis）——"
+              "它指向先验词条修订，不进执行-误诊归因比")
     if other:
         print("  注: 「其他」= 归因事件存在但不属硬归因（如 attribution_kind 为 improvement/design、"
               "或组件不可指认）——它们不指向组件修复，不计入失败簇")
