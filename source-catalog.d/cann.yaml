@@ -29,9 +29,10 @@ repos:
     why: aclnn transformer 类算子
     # 不设 all_of：MC2 分发/聚合算子（MoeDistributeDispatchV3 这类）的报错常只用 op 类名，
     # 签名里没有 aclnn——卡 all_of 会对这类签名确定性判零（实测：--find 得零候选、exit 3，
-    # 而同一仓指名 --ref 一次就能取回）。改成 any_of 逐词命中，词覆盖两条路径。
+    # 而同一仓指名 --ref 一次就能取回）。any_of 收族词（moe/mc2/alltoall）不收泛词
+    # （dispatch/combine）：泛词会让「task dispatch failed」这类无关签名误判成唯一候选。
     discover:
-      any_of: [attention, flash, increment, paged, rotary, moe, dispatch, combine, mc2, alltoall]
+      any_of: [attention, flash, increment, paged, rotary, moe, mc2, alltoall]
       primary: [flashattention, pagedattention]
 
   - repo: cann/ops-math

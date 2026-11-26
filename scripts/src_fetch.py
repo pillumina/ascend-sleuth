@@ -150,8 +150,10 @@ def classify_fetch_failure(output: str) -> str:
     if any(k in e for k in ("could not resolve host", "connection", "timed out",
                             "unable to access", "ssl", "network")):
         return "网络：源不可达或连接中断——私网/内网仓用 --url 给可达地址"
-    if any(k in e for k in ("authentication", "permission denied", "403", "401", "credential")):
+    if any(k in e for k in ("authentication", "403", "401", "credential")):
         return "凭据：该地址需要认证——确认凭据或改用有权限的镜像地址"
+    if "permission denied" in e:
+        return "本地权限：目录/文件权限不足（不是镜像凭据问题）——检查缓存目录与本机账号的写权限"
     return "其他：成因看 stderr 列出的报错原文"
 
 
