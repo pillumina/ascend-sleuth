@@ -140,9 +140,13 @@ def load(path: Path) -> dict:
 
 def add(root: Path, *, signal: str, target: str, evidence: str, trajectory,
         suggested: str = "", source: str = "evolve-check", session: str = "",
-        signal_text: str = "") -> dict:
-    """写一条信号；同一 (signal, target, evidence) 重复出现只累加次数。"""
-    d = signals_dir(root)
+        signal_text: str = "", local: bool = False) -> dict:
+    """写一条信号；同一 (signal, target, evidence) 重复出现只累加次数。
+
+    `local` 语义与 collect/find 相同：默认锚主检出（PR 里校验、周批 sweep 都读那份），
+    `--local` 写当前检出（夹具测试用，见 tests/test_evolve_signals.py）。
+    """
+    d = signals_dir(root, local)
     d.mkdir(parents=True, exist_ok=True)
     dep = deployment_of(root)
     sid = signal_id(signal, target, evidence)

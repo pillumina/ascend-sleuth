@@ -30,7 +30,8 @@
     0  已在本地产出该 ref 的树**并通过核对**（stdout 最后一行 = 绝对路径）
     2  用法/参数问题（未知仓库且无 --url、--prune 缺 --ref、--prune 目标不存在…）
     3  ref 解析不了：源可达但找不到该 tag/分支（**附可用 tag 示例**——多半是 tag 名不同或版本说错）
-    4  拉取失败：候选源都不可达/克隆失败，或拉到的提交与 ref 不符（网络、私网、凭据）
+    4  拉取失败：候选源都不可达/克隆失败，或拉到的提交与 ref 不符（失败成因归类打印：
+       环境限制/网络/凭据/其他——「环境限制」如 Windows 超长路径，开 core.longpaths 即可重试）
     5  本地有该版本的目录但**核对不通过**（内容不是该 ref / 被外部改动）→ 确认后 --force 重拉
     6  树已取到，但 `--verify` 的签名没出现在里面：**不能证明**它是该仓该版本 → 别当定位证据
 
@@ -133,6 +134,27 @@ def die(code: int, msg: str, tail: str = "✗ 未取得该版本源码") -> int:
 def norm_repo(repo: str) -> str:
     """规范化仓库标识：去空白、尾部 .git；返回用于查表的键。"""
     return repo.strip().rstrip("/").removesuffix(".git")
+
+
+def classify_fetch_failure(output: str) -> str:
+    """取回失败 → 成因归类（一句话，带修法）；判定依据是 git 的报错原文。
+
+    为什么必须区分：「环境限制」（如 Windows 260 字符路径下 checkout 超长文件名失败，
+    开 `core.longpaths` 即好）与「网络不通」的下一步完全不同，光看"拉取失败"会把
+    "环境能修"误判成"上游拿不到"。判定是关键词匹配，可能归不到类——归不到就如实说"其他"。
+    """
+    e = (output or "").lower()
+    if "filename too long" in e or "unable to create file" in e:
+        return ("环境限制：checkout 创建超长路径文件失败——"
+                "开 `git config --global core.longpaths true` 后重试同一命令")
+    if any(k in e for k in ("could not resolve host", "connection", "timed out",
+                            "unable to access", "ssl", "network")):
+        return "网络：源不可达或连接中断——私网/内网仓用 --url 给可达地址"
+    if any(k in e for k in ("authentication", "403", "401", "credential")):
+        return "凭据：该地址需要认证——确认凭据或改用有权限的镜像地址"
+    if "permission denied" in e:
+        return "本地权限：目录/文件权限不足（不是镜像凭据问题）——检查缓存目录与本机账号的写权限"
+    return "其他：成因看 stderr 列出的报错原文"
 
 
 def lookup(repo: str, catalog=None):
@@ -279,14 +301,6 @@ def resolve_across_candidates(cands, ref: str):
             tried.append((f"{slot.get('owner','')}/{slot.get('repo','')}", url, err))
             print(f"  ✗ 解析不到：{err}")
     return hits, tried
-
-
-def run(cmd, check=False) -> bool:
-    try:
-        subprocess.run(cmd, check=check, stdout=None if check else subprocess.DEVNULL)
-        return True
-    except (subprocess.CalledProcessError, OSError):
-        return False
 
 
 def progress(cmd):
@@ -559,28 +573,37 @@ def cleanup_stale_tmp(repo_dir: Path):
             pass
 
 
-def clone_into(url: str, res: dict, tmp: Path, depth: str) -> bool:
-    """把对应版本浅克隆到 tmp（tmp 必须是不存在的路径）。
+def _capture(cmd) -> tuple[bool, str]:
+    """跑一条命令并收下输出（stdout+stderr 合流）→ (是否成功, 输出原文)。"""
+    p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                       text=True, encoding="utf-8", errors="replace")
+    return p.returncode == 0, p.stdout or ""
+
+
+def clone_into(url: str, res: dict, tmp: Path, depth: str) -> tuple[bool, str]:
+    """把对应版本浅克隆到 tmp（tmp 必须是不存在的路径）→ (是否成功, git 输出原文)。
 
     `-c advice.detachedHead=false`：钉 tag 必然进 detached HEAD，而 git 那段"你在游离头指针上"的建议
     会混进 agent 看到的输出里（trace tool_calls 的噪声），让它看起来像出了岔子——这里去掉。
+    输出原文供失败出口归类成因（classify_fetch_failure）；成功路径不打印它，行为不变。
     """
     quiet = ["git", "-c", "advice.detachedHead=false"]
+    outs: list[str] = []
+
+    def step(cmd) -> bool:
+        progress(cmd)
+        ok, out = _capture(cmd)
+        outs.append(out)
+        return ok
+
     if res["kind"] == "commit":
-        cmd = [*quiet, "clone", "--depth", depth, url, str(tmp)]
-        progress(cmd)
-        if not run(cmd, check=True):
-            return False
-        cmd = ["git", "-C", str(tmp), "fetch", "--depth", depth, "origin", res["name"]]
-        progress(cmd)
-        if not run(cmd, check=True):
-            return False
-        cmd = [*quiet, "-C", str(tmp), "checkout", "--detach", res["name"]]
-        progress(cmd)
-        return run(cmd, check=True)
-    cmd = [*quiet, "clone", "--depth", depth, "--branch", res["name"], url, str(tmp)]
-    progress(cmd)
-    return run(cmd, check=True)
+        if not step([*quiet, "clone", "--depth", depth, url, str(tmp)]):
+            return False, "\n".join(outs)
+        if not step(["git", "-C", str(tmp), "fetch", "--depth", depth, "origin", res["name"]]):
+            return False, "\n".join(outs)
+        return step([*quiet, "-C", str(tmp), "checkout", "--detach", res["name"]]), "\n".join(outs)
+    ok = step([*quiet, "clone", "--depth", depth, "--branch", res["name"], url, str(tmp)])
+    return ok, "\n".join(outs)
 
 
 def install_version(tmp: Path, target: Path, meta: dict):
@@ -1067,10 +1090,17 @@ def main() -> int:
     tmp = repo_dir / f"{TMP_PREFIX}{version_token(resolved)}-{os.getpid()}"
     shutil.rmtree(tmp, ignore_errors=True)
     print(f"拉取 {resolved['name']}（{resolved['kind']}）→ {target}")
-    if not clone_into(url_used, resolved, tmp, args.depth):
+    cloned, clone_out = clone_into(url_used, resolved, tmp, args.depth)
+    if not cloned:
         shutil.rmtree(tmp, ignore_errors=True)
+        tail = [line for line in clone_out.strip().splitlines() if line.strip()][-5:]
+        if tail:
+            print("  git 报错（末 5 行）：", file=sys.stderr)
+            for line in tail:
+                print(f"    {line}", file=sys.stderr)
         return die(EXIT_FETCH_FAILED,
-                   f"拉取失败：{url_used}（ref {resolved['name']}）——网络/私网不可达时用 --url 给可达地址；"
+                   f"拉取失败（成因：{classify_fetch_failure(clone_out)}）：{url_used}"
+                   f"（ref {resolved['name']}）——「拿不到该版本源码」的结论要带上这里的成因；"
                    "注意：本地已有的**其他**版本仍在，但该版本确实没取到")
     head = head_sha(tmp)
     expect = str(resolved["sha"])
