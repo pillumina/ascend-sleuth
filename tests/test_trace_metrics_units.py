@@ -318,5 +318,15 @@ class RenderTest(_Computed):
         self.assertIn("recorded_at:", full)
 
 
+class ExternalCapabilityRegistryTest(unittest.TestCase):
+    """capability 枚举只有一份数据（_types.yaml），代码从那里读，不在两处维护同一份名单。"""
+
+    def test_known_capabilities_match_registry(self):
+        doc = yaml.safe_load((ROOT / "references" / "_types.yaml").read_text(encoding="utf-8"))
+        self.assertEqual(TM.KNOWN_CAPABILITIES, set(doc["external_capabilities"]))
+        self.assertTrue(TM.KNOWN_CAPABILITIES)
+
+
+
 if __name__ == "__main__":
     unittest.main()
