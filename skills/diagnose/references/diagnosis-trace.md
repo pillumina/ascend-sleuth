@@ -48,13 +48,13 @@ user 事件无 `action`，不参与词表检查。**新增 action 时同步改 `
 
 ### `reference_lookup` 事件（五触发点 + 三态）
 
-先验层的五个触发点各记一条，字段 `{action, purpose, outcome, ref_id, platform, output, reason}`：
+先验层的五个触发点各记一条，字段 `{action, purpose, outcome, ref_id, platform, output, reason}`；背景层允许多记一条 `new-evidence` 补查（这一次诊断上限一次，规则见 `steps/4-verify.md`）：
 
 | `purpose` | 触发点（时点） | `ref_id` |
 |---|---|---|
 | `collect` | 数据缺口：采集面（**步骤 3 候选加载后**，精度 / 性能单必留一条） | 采集面词条 id，或 `null` |
 | `signature` | 键触发：证据里的错误码 / 故障签名 / 环境变量名 / 版本组合（步骤 2 收尾，**先于候选加载**） | 命中的族表 / 词条 id |
-| `background` | 背景层：平台 / 软件 / 工具事实（**步骤 2 收尾，与键触发同一时点，先于候选加载**；**与候选是否命中无关**） | 读到的背景词条 id，或 `null` |
+| `background` | 背景层：平台 / 软件 / 工具事实（**步骤 2 收尾，与键触发同一时点，先于候选加载**；**与候选是否命中无关**；验证中出现新检索键时可补查一次） | 读到的背景词条 id，或 `null` |
 | `fix` | 修复依据：候选命中后按 `ref_knowledge.role` 或工具名取修复路径的依据（步骤 3 阶段 2.5） | 读到的词条 id，或 `null` |
 | `procedure` | 方法缺口：候选全未命中后的流程取用（步骤 5，与 `procedure_follow` 成对） | 流程词条 id |
 
@@ -153,12 +153,16 @@ sediment_candidates:
   这是"以证据为准、换一条或转深度排查"的依据；无冲突写 `null`。**记冲突不是记叛逆**：流程被判据推翻是正常结果，
   写下来才能让流程层知道自己哪一步在这个现场不成立。
 
-**流程走完但没解决**：在 `attribution` 事件里带 `component: reference:<ref_id>`（verdict 照旧按
-case 错 / 执行错判）——让 `component_tally.py` 能聚合出"被跟随后仍失败"的流程簇。否则流程层只有加载率、
-没有失败率（加载率是活动度量，加了触发点必然接近 100%），错流程会被稳定注入而无人察觉。
-
 这组字段是"流程是否被真正使用、用得对不对"的唯一数据源——没有它，流程层不可观测（原则八），
 也就无法判断某条流程该留、该改、该摘。
+
+## 误诊归因（`attribution` 事件）
+
+两种被引用的先验各有一条失败通道，用 `attribution_scope` 区分；两者都进 `component_tally.py`，但不混算。
+
+**跟随流程失败（`procedure`）**：流程走完后 fix 没解决 → `component: reference:<ref_id>`，`attribution_scope: procedure`（verdict 照旧按 case 错 / 执行错判）。没有它，流程层只有加载率、没有失败率，错流程会被稳定注入而无人察觉。
+
+**修复依据失败（`fix_basis`）**：命中事件的 `ref_ids` 记支撑这条 fix 的词条 id（`fix` / `background` 两类，没有写空列表）。回报 `not_resolved` / `partial` 时对每个 id 记 `{action: attribution, component: "reference:<id>", attribution_scope: fix_basis, verdict: case_error, evidence}`。它进 `component_tally.py` 的 `prior_basis` 计数，**不进**执行-误诊归因比（那是 `execution_error` 的口径）——先验错与执行错分开统计，才不会互相污染。
 
 ## `user` 事件的 `evidence.quotes`（原件引文回验）
 

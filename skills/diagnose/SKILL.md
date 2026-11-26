@@ -63,6 +63,7 @@ description: >
    **完成判据**：候选 ≤5 且逐条有 `quickly_check` 结论；阶段 2.5 已取依据或记 `skipped` 加理由。
    → **必读** `references/steps/3-cases.md`
 4. **验证 diagnosis checks**：对照已提供信息顺序验证；mismatch 且有 `fix_on_mismatch` → 提示 fix（**先看 severity**）；无 `fix_on_mismatch` → 标 `excluded_cases` 试下一个；版本按软匹配，不硬排除。
+   命中前用已查到的背景事实反证一次修复前提：事实明确排除前提才否决，适用面对不上记 `unknown` 并写进第 0 步核验。`hit` 事件记支撑 fix 的 `ref_ids`。
    **完成判据**：命中进入步骤 6，全部排除进入步骤 5。
    → 读 `references/steps/4-verify.md`
 5. **深度排查（未命中）**：**先取方法流程**（默认一条），并拿步骤 2 的背景先验框定方向；Tier 3 grep `postmortems/`；疑似框架/算子层且 Tier 3 未覆盖走源码分析；都没有 → 诚实说「知识库未覆盖」并建议 `/skill:to-postmortem`。

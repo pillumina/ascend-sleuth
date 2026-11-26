@@ -243,6 +243,8 @@ def _compute_metrics(states: list, by_case: dict):
     # 执行-误诊归因比（metrics.md 定义）：attribution 事件 verdict 分布——case 错 vs 执行错。
     # 归因由 diagnose 在反馈 not_resolved 后读 trace 判定（SKILL 硬要求），此处只统计落点。
     attr = {"case_error": 0, "execution_error": 0}
+    # 先验依据失败（fix_basis）单列：它不进 case/execution 比，但要能看出发生过
+    fix_basis_attribs = 0
     # triage miss 两类（EV-2026-110）——两类同形就没法判断"该不该补词"，这里把它们分开记
     miss_lex, miss_sem, miss_unrec, miss_notriage = [], [], [], []
 
@@ -383,6 +385,11 @@ def _compute_metrics(states: list, by_case: dict):
                         external_outcome_bad.append(f"{st.get('session_id', '?')}: skipped reason={reason!r}")
                 external_calls.append(str(cap) if cap else "?")
             elif a == "attribution":
+                # 先验依据失败（attribution_scope: fix_basis）走 component_tally 的 prior_basis，
+                # 不进执行-误诊归因比：这里比的是 case 错 vs 执行错，先验词条错不是这两类。
+                if t.get("attribution_scope") == "fix_basis":
+                    fix_basis_attribs += 1
+                    continue
                 # 两种键都认：规范写 `verdict`，而生产端实际写的是 `attribution_kind`——
                 # 只读 `verdict` 时这条腿恒为 0（实测 7 条归因事件里 4 条写 attribution_kind、
                 # 3 条两个键都没有），而「0」在读数上与「没有归因问题」同形。
@@ -539,6 +546,7 @@ def _compute_metrics(states: list, by_case: dict):
         "cat_total": cat_total,
         "cat_hit": cat_hit,
         "attr": attr,
+        "fix_basis_attribs": fix_basis_attribs,
         "scores": scores,
         "n_low": n_low,
         "fb": fb,
