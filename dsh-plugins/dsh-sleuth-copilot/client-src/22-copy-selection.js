@@ -215,6 +215,7 @@
       'waitingOn.upstream': 'upstream',
       'waitingOn.ended': 'closed',
       'steps': 'Step {n}/{m}',
+      'stepsOver': 'Step {n}',
       'stepsShort': '{n}/{m}',
       'chip.miss': 'not in knowledge base',
       'chip.excluded': '{n} excluded',

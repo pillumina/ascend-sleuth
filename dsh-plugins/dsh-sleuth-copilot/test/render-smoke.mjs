@@ -780,6 +780,15 @@ function makeState(mode) {
       capabilities: { canWrite: false, reasonCode: 'E_PERM', reason: '当前会话没有写权限' },
     }
   }
+  if (mode === 'overstep') {
+    // 续接与报告修订会把步号记到诊断流程的 6 步之后：分母不再表示进度，进度轨格数不跟着涨。
+    const overRow = makeRow()
+    overRow.extra = Object.assign({}, overRow.extra, { currentStep: 12, maxSteps: 6 })
+    return {
+      ok: true, tracesDir: '/repo/traces', bound: null, recent: [overRow], all: [overRow],
+      counts: { open: 1, pendingFeedback: 1, toSediment: 0 }, vocab: VOCAB, capabilities: CAPS,
+    }
+  }
   if (mode === 'recent') {
     row.extra.sample = { id: '13934', state: 'ready', reasons: [], duplicates: [] }
   }
@@ -1309,6 +1318,41 @@ process.stdout.write('诊断状态条 · 渲染冒烟\n')
   const after = await t.settle()
   const prefs = JSON.parse(storage.get(PREFS_KEY))
   expect('展开后：偏好记住', byClass(after, 'scp-foot').length === 1 && prefs.dockCollapsed === false, JSON.stringify(prefs))
+}
+
+{
+  // 步号超过诊断流程的 6 步（续接、报告修订会继续递增）：只报「第 12 步」，进度轨仍 6 格且已走完。
+  // 收起胶囊与轨道读数走 stepsShort，轨道 aria-label 走 stepsText——两条路各钉一条，改任一条都会红。
+  const t = await mount('overstep', { prefs: { dockCollapsed: true, paletteFilter: 'all', pins: {} } })
+  const view = t.view()
+  expect('超步：收起态不带分母', view.text.includes('第 12 步') && !view.text.includes('12/6'), view.text.slice(0, 240))
+  click(findAriaPrefix(view, '展开状态条'))
+  const after = await t.settle()
+  const ticks = byClass(after, 'scp-tick')
+  expect('超步：进度轨仍是 6 格', ticks.length === 6, String(ticks.length))
+  expect('超步：6 格全按已完成', ticks.every((tick) => tick.props['data-state'] === 'done'),
+    ticks.map((tick) => tick.props['data-state']).join(','))
+  expect('超步：轨道读数不带分母', byClass(after, 'scp-now').length === 1
+    && nodeText(byClass(after, 'scp-now')[0]) === '第 12 步',
+  nodeText(byClass(after, 'scp-now')[0] || {}))
+  const track = byClass(after, 'scp-track')
+  expect('超步：轨道 aria-label 不带分母', track.length === 1 && track[0].props['aria-label'] === '第 12 步',
+    String(track[0] && track[0].props['aria-label']))
+}
+
+{
+  // 诊断流程走满 6 步（6/6）仍给分母、末格是当前步：`>` 写成 `>=` 时这两条会先红。
+  const t = await mount('closed', { prefs: { dockCollapsed: true, paletteFilter: 'all', pins: {} } })
+  const view = t.view()
+  expect('满步：收起态仍是 6/6', view.text.includes('6/6') && !view.text.includes('第 6 步'), view.text.slice(0, 240))
+  click(findAriaPrefix(view, '展开状态条'))
+  const after = await t.settle()
+  const track = byClass(after, 'scp-track')
+  expect('满步：轨道 aria-label 仍是第 6/6 步', track.length === 1 && track[0].props['aria-label'] === '第 6/6 步',
+    String(track[0] && track[0].props['aria-label']))
+  const ticks = byClass(after, 'scp-tick')
+  expect('满步：末格是当前步', ticks.length === 6 && ticks[5].props['data-state'] === 'now',
+    ticks.map((tick) => tick.props['data-state']).join(','))
 }
 
 {

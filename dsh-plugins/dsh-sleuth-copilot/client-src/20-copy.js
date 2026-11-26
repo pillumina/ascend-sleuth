@@ -50,6 +50,7 @@
       'waitingOn.upstream': '等上游',
       'waitingOn.ended': '已收尾',
       'steps': '第 {n}/{m} 步',
+      'stepsOver': '第 {n} 步',
       'stepsShort': '{n}/{m}',
       'chip.miss': '知识库未覆盖',
       'chip.excluded': '已排除 {n} 条',

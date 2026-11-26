@@ -151,6 +151,7 @@ window.__ModuleLoader__.load({
       'waitingOn.upstream': '等上游',
       'waitingOn.ended': '已收尾',
       'steps': '第 {n}/{m} 步',
+      'stepsOver': '第 {n} 步',
       'stepsShort': '{n}/{m}',
       'chip.miss': '知识库未覆盖',
       'chip.excluded': '已排除 {n} 条',
@@ -751,6 +752,7 @@ window.__ModuleLoader__.load({
       'waitingOn.upstream': 'upstream',
       'waitingOn.ended': 'closed',
       'steps': 'Step {n}/{m}',
+      'stepsOver': 'Step {n}',
       'stepsShort': '{n}/{m}',
       'chip.miss': 'not in knowledge base',
       'chip.excluded': '{n} excluded',
@@ -2414,12 +2416,15 @@ body[data-ds-dark-theme] .scp-actions,body[data-ds-dark-theme] .scp-sed-actions,
     function stepsText(extra) {
       const current = Number(extra && extra.currentStep) || 0
       const max = Number(extra && extra.maxSteps) || 6
+      // 超过诊断流程的步数（续接、报告修订会把步号继续往上记）：分母不再表示进度，只报步号。
+      if (current > max) return tr('stepsOver', { n: current })
       return tr('steps', { n: current > 0 ? current : '—', m: max })
     }
 
     function stepsShort(extra) {
       const current = Number(extra && extra.currentStep) || 0
       const max = Number(extra && extra.maxSteps) || 6
+      if (current > max) return tr('stepsOver', { n: current })
       return tr('stepsShort', { n: current > 0 ? current : '—', m: max })
     }
 
