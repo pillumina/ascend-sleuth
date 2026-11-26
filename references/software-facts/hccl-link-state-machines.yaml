@@ -1,0 +1,40 @@
+id: hccl-link-state-machines
+type: software-fact
+title: HCCL 建链的四台状态机（socket / QP / Channel / UB jetty）与 A2/A3 legacy 建链流程
+summary: 通道卡在 CONNECTING 或 qp_status 一直是 0 时看这条：先确认卡在哪台状态机，再看该阶段交换的参数与失败日志。
+
+sources:
+- type: official-doc
+  url: https://gitcode.com/cann/hcomm
+  version: hcomm master commit c7e149d（2026-11-07 提交，2026-11-16 本地核对）：src/base_comm/resources/hccp/rdma_service/rs_inner.h、src/base_comm/inc/endpoint_pair/channel/channel_process_pub.h、include/hcomm_channel.h、src/legacy/ascend910/platform/resource/transport/host/transport_ibverbs.cc、src/legacy/ascend910/platform/common/adapter/adapter_hccp.cc、src/base_comm/resources/endpoint_pairs/channels/host/host_rdma_connection.cc、src/legacy/ascend950/unified_platform/resource/connection/dev_ub_connection.{h,cc}
+  fetched_at: 2026-11-16
+  verification: cross-checked-source
+applies_to:
+  platforms:
+  - A2-910B
+  - A3-910C
+  - A5-950
+  frameworks:
+  - hccl
+  categories:
+  - interrupt
+related_references:
+- ascend-hccl-comm-fault-triage
+- hccl-comm-init-and-link-faults
+- hccl-domain-link-run-phases
+- hccl-transport-and-notify-dataplane
+- hccn-tool-network-diagnosis
+status: active
+last_verified: 2026-11-16
+content:
+  claim: >-
+    建链分两段：换参数（socket）和推状态（QP / Jetty），两边都推完 channel 才 READY。对使用者可见的是 `HcommChannelStatus` 三个取值（include/hcomm_channel.h:150-154）：`HCOMM_CHANNEL_STATUS_READY = 0`（建链完成）、`HCOMM_CHANNEL_STATUS_CONNECTING = 1`（建链进行中，需继续调用本接口推动建链）、`HCOMM_CHANNEL_STATUS_FAILED_INTERNAL = 2`（建链失败）；头文件注释写明「状态值大于等于 HCOMM_CHANNEL_STATUS_FAILED_INTERNAL 均表示建链失败，其中细分状态值仅供调用方辅助定位失败原因，不作为对外契约」。`HcommChannelCreate` 只创建对象、不建链，必须循环调 `HcommChannelGetStatus` 推进到 READY 或失败。
+    RoCE 的 QP（Queue Pair，收发队列对）状态是 IB / RoCE 标准：RESET 刚创建、什么都不能发；INIT 配好本地端口号与 pkey、访问权限，只能收；RTR（Ready To Receive）拿到对端 QPN / PSN、路径 MTU 与 GID 后能收不能发；RTS（Ready To Send）配好发送侧参数后才能发。HCCL 侧不逐态操作，而是把 socket fd 交给 HCCP 的 `HrtRaQpConnectAsync`（adapter_hccp.cc:358）完成握手与推状态，再轮询 `hrtGetRaQpStatus`（:389）等结果。RTR / RTS 的参数两边必须一致，尤其 PSN 与 MTU——不一致的典型现象是能发、对端收不到、一直重传，表现为链路故障，实际是建链参数错。
+    A2/A3 走 legacy transport：`TransportIbverbs::InitQpConnect` 依次交换能力（qp 数、特性）→ `HrtRaQpCreate` 建 QP（每个 RESET）→ 注册 notify 内存 → 构造交换数据 → socket 发收 QPN / PSN / GID / notify 地址 → 解析对端数据 → `ConnectQp`（`HrtRaQpConnectAsync(qp, socketFd)` 后轮询 `hrtGetRaQpStatus` 直到返回 1 或超时）。多 QP 时多一步：用第二个 socket 做「双方都 ready」的同步。
+    socket 层的 `RsConnState`（rs_inner.h:251-266）与 QP 层是两件事：`CONNECTED` 只说明 TCP 通了，还要走 `TAG_SYNC`（客户端已发 tag / 服务端已收到）、`VALID_SYNC`（tag 校验通过）到 `TX_TO_HCCL`（交还上层），这条 socket 才算交给上层用——这就是日志里 `connect ok.` 之后还有 `agentId[...]` 交换的原因。
+  evidence: >-
+    `enum RsConnState` 全部取值：`RS_CONN_STATE_RESET, INIT, BIND, LISTENING, CONNECTED, SSL_BIND_FD, SSL_CONNECTED, TAG_SYNC, VALID_SYNC, TX_TO_HCCL, TIMEOUT, ERR, MAX`（src/base_comm/resources/hccp/rdma_service/rs_inner.h:251-266）。对外状态契约在 include/hcomm_channel.h:144-154（注释「通道建链状态枚举（HcommChannelGetStatus 出参状态码）」「取值为对外契约，已有取值严禁改动；新增状态只允许追加在尾部」）；内部细分枚举 `HcommChannelLinkStatus` 另有 `HCOMM_CHANNEL_STATUS_TIMEOUT = 3`、`HCOMM_CHANNEL_STATUS_RES_LOC_UNAVAIL = 4`（本端资源不足）、`HCOMM_CHANNEL_STATUS_RES_RMT_UNAVAIL = 5`（对端资源不足）（src/base_comm/inc/endpoint_pair/channel/channel_process_pub.h:37-44），并注明与对外枚举「取值一一对应、修改取值须与对外枚举同步（ut_hcomm_c_adpt.cc 已有 static_assert 编译期锁定）」。A2/A3 的建链日志 `linkexp initialization` 在 transport_ibverbs.cc:238、`qp status has ready` 在同文件:877；`In link ibv, waiting for qp status ready...` 与 `[Connect][Qp]get qp status timeout_=[%lld ms]` 在 src/legacy/ascend910/platform/resource/transport/host/transport_ibverbs.cc:891、897。A5 RoCE 路径日志 `CreateCqAndQp` 与 `Set qp qos success` 在 host_rdma_connection.cc:103、111。UB 侧状态机 `MAKE_ENUM(UbConnStatus, INIT, TP_INFO_GETTING, JETTY_CREATING, JETTY_CREATED, JETTY_IMPORTING, JETTY_IMPORT_WAITING, READY, CONN_INVALID)`（dev_ub_connection.h:161-166），`JETTY_IMPORT_WAITING` 在 dev_ub_connection.cc:330。
+  details: >-
+    A2/A3 的建链日志锚点：正常时 `linkexp initialization success,Time:...us` → `In link ibv, waiting for qp status ready...` → `In link ibv, N of M QP get status success.` → `In link ibv, qp status has ready`；多 QP 时是 `2 of 4 QP` 这类进度。失败时看三条：`get qp status timeout`（对端没把状态推到 RTS，或 PSN / MTU / GID 不匹配）、`failed to send exchangeData`（参数交换没走完，先查 socket 层）、多 QP 的 `Connected checking failed`（两端 QP 数或顺序不一致）。grep 配方：`grep -E 'linkexp initialization|waiting for qp status|get qp status timeout' hccl.log`。
+    失败点归纳：换参数阶段卡在 CONNECTING → 查对端是否起来、端口、白名单、`HCCL_CONNECT_TIMEOUT`，典型码 EI0006；QP 推状态阶段 `qp_status` 一直是 0 → 查对端是否到 RTS、PSN / MTU / GID 是否一致，典型码 EI0009；参数不一致 → 能建但丢包 / 重传 / 性能差，表现为 CQE 错误；端口阶段 bind 失败 → 端口被占、`HCCL_IF_BASE_PORT`，典型码 EI0019 / EI0020；多 QP 同步失败 → 两端 QP 数与顺序不一致，典型码 EI0009。判断顺序是先看有没有「建到 ready / RTS」的日志，再看卡在哪个状态，最后看参数交换有没有失败。
+    A5 对照（只作关键字区分，不展开）：RoCE 仍走 QP，日志前缀是 `[HostRdmaConnection::CreateCqAndQp]`（含 `Set qp qos success by config, TC[...] SL[...]`）；UB 走 jetty 导入，日志前缀 `[DevUbConnection]`，`JETTY_IMPORT_WAITING timeout[8s], remote jetty not published` 表示对端还没把共享 jetty 发布出来（`jettyTimeOut{8}` 秒，对端建链更慢或已失败）。`UbConnStatus`、HCCP 底层 `RS_JETTY_STATE`（rs_ub.h:33）、连接层 `RmaConnStatus`（INIT / READY / SUSPENDED / CLOSE / CONN_INVALID / EXCHANGEABLE）与 URMA 的 RESET / READY / SUSPENDED / ERROR 是不同层的状态，别互相套。
