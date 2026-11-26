@@ -2,7 +2,7 @@
 
 本文是 case 文件字段定义、取值口径与入库禁令的权威处。canonical 示例是 [examples/sample-case.yaml](../../examples/sample-case.yaml)。
 
-读者是写或改 case 的人：`to-postmortem` 产出草稿、groom 升格与合并、诊断时读候选本体的人。新增一条 case、改一条 case 的字段、或要解释某个字段为什么这样算时读本文。读完你能知道每个字段给谁用、哪个口径只承载一种证据、哪些内容不允许进库。只跑诊断、不改 case 的人不必读：候选的加载顺序与验证方式见 [diagnosis-procedure.md](../../skills/diagnose/references/diagnosis-procedure.md)。
+读者是写或改 case 的人：`to-postmortem` 产出草稿、groom 升格与合并、诊断时读候选本体的人。新增一条 case、改一条 case 的字段、或要解释某个字段为什么这样算时读本文。读完你能知道每个字段给谁用、哪个口径只承载一种证据、哪些内容不允许进库。只跑诊断、不改 case 的人不必读：候选的加载顺序与验证方式见 [3-cases.md](../../skills/diagnose/references/steps/3-cases.md)。
 
 ## 1 管什么
 
@@ -17,7 +17,7 @@
 - 索引与读侧视图怎么生成：见 `CLAUDE.md` 与 [build_index.py](../../scripts/build_index.py)。
 - reference 词条的字段与生命周期：见 [references/README.md](../../references/README.md) 与 [references/_types.yaml](../../references/_types.yaml)。
 - 反馈结算与算分的算法：见 [settle_trace_feedback.py](../../scripts/settle_trace_feedback.py)、[settle_s2_feedback.py](../../scripts/settle_s2_feedback.py) 与 [score_entries.py](../../scripts/score_entries.py)（三者写哪里、谁读，见 [diagnosis-observability.md](../mechanism/diagnosis-observability.md)）。
-- 诊断阶段怎么加载与验证 case：见 [diagnosis-procedure.md](../../skills/diagnose/references/diagnosis-procedure.md)。
+- 诊断阶段怎么加载与验证 case：见 [3-cases.md](../../skills/diagnose/references/steps/3-cases.md)。
 
 ## 3 条目
 
@@ -156,4 +156,4 @@ case 文件，结算就变成每次改知识条目，观测与知识本体也就
 
 规范性引用：[examples/sample-case.yaml](../../examples/sample-case.yaml)（canonical 示例）、`scripts/verify_case_draft.py`、`scripts/settle_trace_feedback.py`、`scripts/settle_s2_feedback.py`、`scripts/verify_references.py`、[references/_types.yaml](../../references/_types.yaml)。
 
-资料性引用：[design-theory.md](design-theory.md)、[to-postmortem/SKILL.md](../../skills/to-postmortem/SKILL.md)、[diagnosis-procedure.md](../../skills/diagnose/references/diagnosis-procedure.md)。
+资料性引用：[design-theory.md](design-theory.md)、[to-postmortem/SKILL.md](../../skills/to-postmortem/SKILL.md)、[diagnosis-procedure.md](../../skills/diagnose/references/diagnosis-procedure.md)（入口；加载与验证的展开在 `steps/3-cases.md`）。

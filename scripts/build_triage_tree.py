@@ -164,7 +164,7 @@ def validate_nature(nature, path, seen_ids, public):
         errors.append(
             f"{path.name}: 性质 '{nid}' 的 category {cat!r} 非法——"
             f"合法取值只有 {' / '.join(CATEGORIES)}（other 已废弃；`uncategorized` 兜底分支已随分层取消："
-            "性质判不了时该负载类型三个性质的索引一起加载，见 00-protocol.md 与 diagnosis-procedure.md）"
+            "性质判不了时该负载类型三个性质的索引一起加载，见 00-protocol.md 与 diagnosis-procedure.md 的步骤 2）"
         )
     syms = nature.get("symptoms")
     if not isinstance(syms, list):
@@ -383,7 +383,7 @@ def coverage_problems(root: Path, natures, workload_types, public):
     #   ① 忠实性：聚合必须忠实渲染源（源才是评审面）；手改聚合的性质顺序，等于让评审过的那份
     #      与跑起来的那份不是同一个东西。集合相等 ≠ 忠实。
     #   ② 路由确有顺序效应：诊断用正则模糊匹配、多个性质弱匹配时按树的先后取用（见
-    #      skills/diagnose/references/diagnosis-procedure.md 步骤 2），顺序决定先归哪一类。
+    #      skills/diagnose/references/steps/2-route.md），顺序决定先归哪一类。
     #   症状组之间的顺序不查：同性质内哪条先命中都归到同一性质，是外观。
     got_seq = [b.get("id") for b in (doc.get("natures") or []) if isinstance(b, dict)]
     src_seq = [n["id"] for n in natures]

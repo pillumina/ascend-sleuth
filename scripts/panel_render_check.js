@@ -2581,9 +2581,40 @@ _MS._run_no_pipe = no_fallback`)
       // 计数落点从案例字段搬到条目使用记录之后，这句话的动词从「回写」变成了「记结算」。
       expect('占位串分支不做现场结算，且明确不是终态',
         /不要求记 (feedback )?结算|不要求回写 confidence/.test(resumeMd) && /不是终态/.test(resumeMd))
-      const procMd = fs.readFileSync(path.join(repo, 'skills/diagnose/references/diagnosis-procedure.md'), 'utf8')
+      const deliverMd = fs.readFileSync(path.join(repo, 'skills/diagnose/references/steps/6-deliver.md'), 'utf8')
+      // 取值一并钉住：消费端认的是字面量 `pending-investigation`（_trace_state / verify_case_draft / 面板 host），
+      // 只匹配到「→ 占位串」时，换成别的串仍会假绿。
       expect('diagnose 写明未命中时的 case 填占位串（不是 case id）',
-        /未命中但给了建议 → 占位串/.test(procMd))
+        /未命中但给了建议 → 占位串 `pending-investigation`/.test(deliverMd))
+      // 加载链本身要有门：SKILL 与入口页指向的步骤文件必须存在。没有这条时，把 steps 文件改名后
+      // 四条自检仍全绿，而 agent 按指针会读到不存在的路径。
+      const skillMd = fs.readFileSync(path.join(repo, 'skills/diagnose/SKILL.md'), 'utf8')
+      const procMd = fs.readFileSync(path.join(repo, 'skills/diagnose/references/diagnosis-procedure.md'), 'utf8')
+      const loadRefs = []
+      for (const [text, base] of [[skillMd, path.join(repo, 'skills/diagnose')],
+                                  [procMd, path.join(repo, 'skills/diagnose/references')]]) {
+        for (const m of text.matchAll(/`((?:references\/)?steps\/[^`]+\.md)`/g)) loadRefs.push([m[1], base])
+      }
+      const missingLoadRefs = loadRefs.filter(([rel, base]) => !fs.existsSync(path.join(base, rel))).map(([rel]) => rel)
+      expect('diagnose 的 SKILL / 入口页引用的步骤文件都存在',
+        loadRefs.length >= 6 && missingLoadRefs.length === 0, missingLoadRefs.join(', '))
+      // 步骤文件内部的同级引用（`../diagnosis-trace.md` 这类）同样要有门：它们指向步骤文件之外的
+      // 支撑文件，改名时同样会让 agent 读到不存在的路径。
+      const stepDir = path.join(repo, 'skills/diagnose/references/steps')
+      const stepRefs = []
+      for (const f of fs.readdirSync(stepDir).filter(n => n.endsWith('.md'))) {
+        const text = fs.readFileSync(path.join(stepDir, f), 'utf8')
+        for (const m of text.matchAll(/`(\.\.\/[^`]+\.md)`/g)) stepRefs.push(m[1])
+      }
+      const missingStepRefs = stepRefs.filter(rel => !fs.existsSync(path.join(stepDir, rel)))
+      expect('diagnose 步骤文件引用的支撑文件都存在',
+        stepRefs.length >= 5 && missingStepRefs.length === 0, missingStepRefs.join(', '))
+      // 入口页的 Markdown 链接目标（steps/ 与 emergency.md / reference-gaps.md 两类）同样进门：
+      // 这是 agent 按入口页跳转的实际路径，改名后不该静默 404。
+      const routerLinks = [...procMd.matchAll(/\]\(([^)\s]+\.md)\)/g)].map(m => m[1])
+      const missingRouterLinks = routerLinks.filter(rel => !fs.existsSync(path.join(repo, 'skills/diagnose/references', rel)))
+      expect('diagnose 入口页的链接目标都存在',
+        routerLinks.length >= 8 && missingRouterLinks.length === 0, missingRouterLinks.join(', '))
     }
     // 沉淀候选**展开即列出明细**（只给一个数字读者无从判断"为啥是 3 条"），
     // 且 **case 与先验候选分家**（2026-09 重做，起因是实测误读）。

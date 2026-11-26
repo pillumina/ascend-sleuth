@@ -9,7 +9,7 @@ description: >
 
 昇腾问题的核心诊断循环。你是辅助定位工具——**fix 是你给的建议，由人手动应用到客户环境，你不自动改生产**。
 
-> **本文是「可执行脊梁」**：只保留**始终要跑**的骨架与权威规则。步骤的**展开机制**（子步骤/边界/判定细节）见本 skill 的 `references/diagnosis-procedure.md`；**trace 细节**（词表/时间戳/证据落盘完整展开）见 `references/diagnosis-trace.md`，二者**按需加载**。skill 支撑文件一律放本 skill 的 `references/`，**不放仓库根 `references/`**（那是知识库/先验层）。
+> **本文是骨架**：只放六步与每单一律要守的规则。每步的展开在 `references/steps/`，按该步「何时读」的条件打开，不整组读——快路需要步骤 1 / 2 / 3 / 4 / 6 五份，全路再加 5。分支路径（紧急、深度排查、源码分析、数据探询）各有一个入口文件。skill 支撑文件一律放本 skill 的 `references/`，**不放仓库根 `references/`**（那是知识库/先验层）。
 
 ## 何时用
 
@@ -27,7 +27,7 @@ description: >
 |---|---|---|
 | **快路**「先给最可能的结论 + 验证命令」 | 候选加载 → 命中即给结论 | 深度排查不在命中后自动展开；步骤 6 只出对话输出 + 一条最短 trace，报告与沉淀候选都不产 |
 | **全路**「完整排查到根因」 | 未命中继续深度排查 → 位置报告 → 沉淀候选 | —— |
-| **紧急**「生产中断，先恢复」 | 按「紧急情况」一节先 stabilize | 不钻深度排查、不写 postmortem |
+| **紧急**「生产中断，先恢复」 | 按 `references/emergency.md` 先 stabilize | 不钻深度排查、不写 postmortem |
 
 **怎么写进过程**：把选择记进 trace 的顶层 `summary` 与首条 user 事件，让续接的人一眼看到这单的目标。路径不同不改变下面骨架的**前四步**（收集、路由、候选加载与验证、探询）——路由质量与证据采集三条路都要，省掉它们会让快路变成瞎猜。真正的分叉在两处：**步骤 5 深度排查**与**步骤 6 产出**。
 
@@ -37,119 +37,57 @@ description: >
 
 ## 紧急情况（生产中断）
 
-客户说“紧急 / 生产挂了 / 先恢复”时，诊断目标从“查根因”变成“**先 stabilize**”：
-
-1. **还是先查知识库**——有匹配的 case（比如已知的安全回滚）直接给，这最快。
-2. **无快速匹配时**，按已提供的信息一步步给 stabilize 建议：问最近 24-48h 改过什么；`npu-smi info`/`hccl top` 健康；看日志栈尾定位哪层炸；能否先恢复（回滚 checkpoint / 降配 / 重启 daemon）。
-3. **不钻深度排查、不写 postmortem**——事后用 `/skill:to-postmortem` 补。
+客户说「紧急 / 生产挂了 / 先恢复」时读 `references/emergency.md`：先查知识库，无匹配就给 stabilize 建议，不钻根因、不写 postmortem。
 
 ## 流程（骨架）
 
-> 每步只写「做什么 + 何时用」；**子步骤与判定细节**见 `references/diagnosis-procedure.md` 对应「步骤 N」。核心循环 = 收集 →（数据缺口则取采集面）→ 路由 →（键触发 + 背景：证据里的码/签名/名/平台组件词当场查）→ 两阶段加载+2.5 reference → 验证 → (未命中)深度排查 → 产出。
+> 核心循环 = 收集 →（数据缺口则取采集面）→ 路由 →（键触发 + 背景：证据里的码/签名/名/平台组件词当场查）→ 两阶段加载 + 2.5 reference → 验证 →（未命中）深度排查 → 产出。每步只写「做什么 / 完成判据 / 读哪个文件」；步骤细节只写在对应文件里，本文不重复。
 
-> **开单先同步知识基线**（诊断读知识库的那一版 commit 坐标）：`trace_begin.py` 建单时读 `.local/settings.json` 的 `sync` 段，fetch 远端知识库（超时 10 秒）。
->
-> 落后时按五条条件试 ff-only 合并：
->
-> - 当前分支 = 配置 `branch`；
-> - HEAD 是远端祖先；
-> - `git status --porcelain -uno` 为空；
-> - 无进行中 merge / rebase / cherry-pick；
-> - `sync.auto_merge` 开着（关掉只检查、不合并）。
->
-> worktree 与 detached HEAD 不自动合并。
->
-> 合并成功、落后未合并、首次 fetch 失败各打印一行；已是最新、失败缓存期内（10 分钟）、同步关闭或部署声明离线时不打印。
->
-> 失败不阻塞开单；一次合并对 `knowledge/` 立即生效，对 `skills/` 下次会话生效。合并带进 `dsh-plugins/` 下的面板代码时，重启 DSH 后生效。
+> **开单先同步知识基线**（诊断读知识库的那一版 commit 坐标）：`trace_begin.py` 建单时读 `.local/settings.json` 的 `sync` 段，fetch 远端知识库（超时 10 秒），落后时按 ff-only 合并；失败不阻塞开单。一次合并对 `knowledge/` 立即生效，对 `skills/` 下次会话生效；带进 `dsh-plugins/` 的面板代码要重启 DSH 后生效。
 
 > **先验 trace 相似检测**（收集症状后、路由前）：扫 `traces/*.yaml`（**全部 status**——进行中 + 已结单都留在 `traces/`），按症状里的模型/框架/配置名/category 对每个 state 文件的 `summary`/`detected_framework`/`detected_category` 做**词法 grep 匹配**。
 > - **陈述，不提问**：命中就**说一句**——"本地有 `<session_id>`，停在 <哪一步 / 结论一行>"——然后**在同一条消息里继续按本次问题往下走**。工程师回"就是这个"再切 `/skill:resume-diagnosis`。**不要写成"要续接吗？"**：那是把判断推给一个手上没有上下文的人，还把新问题卡在路由之前等答复。
 > - **有判据才提**：命中单的 `summary` 为空、或 trace 只有寥寥几步（裸 stub）时不提——念一个没有内容的 session，等于让工程师替你判断哪一单。
 > - **一轮最多提一次**，不随步骤重复。
 > - **只提同类**：匹配维度是模型/框架/配置名/category，同框架下的无关问题命中就是噪音；已 `resolved`/`escalated`/`archived` 的同类单同样只陈述（给结论一行供参考），不拦路、不泛泛问"有未完成诊断要续接吗"。
-> - **不在这里追旧单的反馈**：`feedback.outcome: pending` 是上一单的事，与本次问题无关——它挂在续接启动与面板待办上（规则见 `references/diagnosis-procedure.md` 步骤 6）。开屏先审旧单是审讯，不是诊断。
+> - **不在这里追旧单的反馈**：`feedback.outcome: pending` 是上一单的事，与本次问题无关——它挂在续接启动与面板待办上（规则见 `references/steps/6-deliver.md` 步骤 6）。开屏先审旧单是审讯，不是诊断。
 > - 状态词表见仓库根 `trace-status.yaml`。
 
-1. **收集症状 + 确认框架 + 落负载类型**（全部来自工程师提供）：本步产出一张**覆盖表**（行固定：错误原文 / 触发位置 / **负载类型（训练 / 推理）** / 引擎 / CANN / HDK / 平台 / 必现偶发 / 单机多机 / 已试过什么）——**先提取、再问缺口**：值优先从已提供的日志（栈尾、启动横幅、plog、配置）里提，**提取不到的行留空即待问项**，只问空着的那几行、一次问全；**每个值标来源**（日志 / 命令输出 / 配置 / 他的描述——凡"来自他的描述"，涉及版本与平台时要拿命令输出复核），报的时候只报确认行与待补项、按主题分组逐项可核（不复述原文）；发来的是截图时：模型能读图就直接读；不能读图先请他贴文字；都不行才用 vllm-kb 的 ocr（见 procedure 步骤 5 的「vllm-kb」一节）。**信息不全就主动问**；**主动裁剪日志**（失败 rank + 栈尾，绝不灌全量 profiler）。**负载类型决定去库里哪一半找，来源比值还重要**：材料里写着（训练任务 / 推理请求 / `vllm serve` 这类服务命令）就直接用；没写就**跟引擎版本并列问一句**（他一定知道，别让模型去猜）；他没单说但给了框架名，就直接对到库里目录（`knowledge/training/<框架>/` 还是 `knowledge/inference/<框架>/`）；他一时不答就按负载类型未知走（训练与推理都查，trace 标 `workload_type: unknown`），不阻塞；中途证据与他的说法相反时**以证据为准并回一句**让他能改向。**本步还要落现场时间线**：材料里的现象、变更、规避 / 恢复按发生顺序记进 trace 的 `incident_timeline`，平台 / 框架 / 版本 / 部署形态一行写 `incident_env`——字段、粒度与时间精度见 `references/diagnosis-trace.md` 的「现场侧时间线」一节。→ 展开见 reference 步骤 1。
-2. **分类 → `triage-tree.yaml`（Tier 1，路由树）**：**先落负载类型、再在负载类型内判性质**——`workload_types:` 给合法负载类型与每种负载类型目录面（负载类型来自步骤 1 的事实，不由症状词判），`natures:` 给三个性质分支（interrupt / precision / performance，训推共用一份词表），症状匹配只判性质、不判负载类型；triage 决策记 trace（**`workload_type` 与 `workload_type_source` 必写**，`workload_type_source` 取 evidence / user / framework / unknown；**`triage` 事件必须带 `routed`**，没命中就写 `routed: []` 而不是省略字段——省略与「路由没错」在指标上同形）；未命中 → 语义备用路径 `triage_semantic`（带 namespace）；无法分类 → postmortem 层（Tier 3）。**收尾做键触发**：证据里的错误码 / 故障签名 / 环境变量名 / 版本组合当场查先验查表族（**先于候选加载**，每次必留一条 trace，含"没有可查的键"）；**错误码在族表里没有行 → 查 `references/errors/_code-gaps.yaml`（缺行索引，`seen_in` 直接给到有修法的那张表），再报"没有"**。**同一时点查背景层**：一次 `grep` 在 `references/_summary-index.yaml`（背景类一行一条）上按平台 + 性质 + 组件词取 ≤5 行，行内 `summary` 即背景提示——**这一步与候选是否命中无关**：背景类是与具体事故无关的事实，挂在"候选命中"之后，最需要它的未命中单反而读不到（未命中路径此前可达的先验只有流程类）。无命中先换平台/工具的另一种写法再试一次，仍无才记 `miss`。→ 展开见 reference 步骤 2。
-3. **两阶段加载 case 层（Tier 2）**：阶段一读命中的**读侧视图** `knowledge/_index/<ns>__<category>.list`（**一行一条 case**，字段 `id/category/title/symptoms 首条/sig/tok/compat/tags/score`）筛候选（≤5），**排序仍由你按相关性判断**——行内 `sig`（该 case 的报错签名字面量）与 `tok`（其 token 集合）是判断的**证据**：输入里的报错原文若与某条的 `sig` 逐字命中，那条就是强候选；`tok` 交集用于次一级比较；`score` 只作破平（它 calibrate 的是现场解决率，不是本次相关性——实测按 score 单独排序会把期望 case 压到中位第 20 名）。**不要用机械计数替代你的判断**：历史回放里 agent 的相关性判断把期望 case 放进 top-3 的比例（19/19）高于任何机械排序键。需要机械序做对照时可跑 `python3 scripts/rank_candidates.py`（工具，不是规定动作）；**读入成本现算** `python3 scripts/index_read_cost.py`（百余条的格子约 1.5–2 万 token，抵得上整个常驻指令面——每一条都要看到，但每条只花一行；**category 未定时读的 ns 兜底视图更贵**（vllm-ascend 2.4 万 token，已超硬线），先按标题/标签/类别收敛再逐条看）；阶段二载全文 + `quickly_check`(primary→fallback) 验证；**阶段 2.5** 候选命中后**必做**——读候选自带的 `ref_knowledge`（按 role）；背景层已在步骤 2 收尾查过，此处不重复查。→ 展开见 reference 步骤 3。
-4. **验证 diagnosis checks**：顺序**对照已提供信息**验证；缺信息→追问；mismatch 且有 `fix_on_mismatch`→提示 fix（**先看 severity**）；无 `fix_on_mismatch`→标 `excluded_cases` 试下一个。→ 展开见 reference 步骤 4。
-5. **深度排查（未命中）**：**先取流程（方法缺口，见下节）**，并把步骤 2 收尾取到的背景先验拿来框定排查方向（**未命中单是背景层的主要受益面**）→ Tier 3 grep `postmortems/`；**源码分析**（疑似框架/算子层且 Tier 3 未覆盖）走 `scripts/src_fetch.py`（见源码分析小节）；都没有→诚实说"知识库未覆盖"，建议 `/skill:to-postmortem`。→ 展开见 reference 步骤 5。
-6. **产出**（按开屏所选路径决定做到哪）：`resolution` + 顶层 `summary` + **人读定位报告**（`traces/<session_id>.report.md`，结构与行文见 `references/report-template.md`；**全路**产出，**快路**不产；**报告是活件**——后续回报/resume/新证据到达时修订同一份并追加修订记录，不另起）+ **`sediment_candidates`**（结构化沉淀候选，与报告第 8 节同源，全路产出）+ 沉淀状态（`sedimented`） + trace；**给完 fix 立刻写 feedback**（真实 case id 或占位串 `pending-investigation`，并写 `feedback_pending_since`），**不在当场追问结果**，对话里给一条可复制的回报指令，债由续接与面板追。**产出与修订都走 content 写入口**：`summary` 与现场侧、日志过程、上游查证三段（`incident_timeline` / `failure_process` / `upstream_timeline`）用 `python3 scripts/trace_transition.py <sid> --field content --content-file <json>` 写，每次变化自动落一条 `revisions`；报告同步修订，两侧不能一边新一边旧（见 `references/diagnosis-trace.md` 的「revisions」一节）。→ 展开见 reference 步骤 6。
+1. **收集症状 + 确认框架 + 落负载类型**：从材料里提取覆盖表的十行与环境变量，提取不到的行留空；缺口一次问全、逐值标来源；同时把现场事实按发生顺序写进 `incident_timeline`、环境一行写 `incident_env`。
+   **完成判据**：覆盖表每行有值或列为待问项；现场时间线已写进 trace。
+   → **必读** `references/steps/1-collect.md`
+2. **分类 → `triage-tree.yaml`（Tier 1，路由树）**：先落负载类型、再在负载类型内判性质；`triage` 事件必写 `workload_type` / `workload_type_source` / `routed`（未命中写 `routed: []`，不省略）；本步收尾做键触发与背景层两半查询。
+   **完成判据**：triage 字段齐；键触发与背景层各留一条 `reference_lookup`（含 `skipped` 理由）。
+   → **必读** `references/steps/2-route.md`
+3. **两阶段加载 case 层（Tier 2）**：阶段一读命中 `(namespace × category)` 的读侧视图筛候选（≤5，排序由你按相关性判断，`score` 只破平）；阶段二载全文跑 `quickly_check`；阶段 2.5 候选命中后读 `ref_knowledge` 取修复依据。
+   **完成判据**：候选 ≤5 且逐条有 `quickly_check` 结论；阶段 2.5 已取依据或记 `skipped` 加理由。
+   → **必读** `references/steps/3-cases.md`
+4. **验证 diagnosis checks**：对照已提供信息顺序验证；mismatch 且有 `fix_on_mismatch` → 提示 fix（**先看 severity**）；无 `fix_on_mismatch` → 标 `excluded_cases` 试下一个；版本按软匹配，不硬排除。
+   **完成判据**：命中进入步骤 6，全部排除进入步骤 5。
+   → 读 `references/steps/4-verify.md`
+5. **深度排查（未命中）**：**先取方法流程**（默认一条），并拿步骤 2 的背景先验框定方向；Tier 3 grep `postmortems/`；疑似框架/算子层且 Tier 3 未覆盖走源码分析；都没有 → 诚实说「知识库未覆盖」并建议 `/skill:to-postmortem`。
+   **完成判据**：流程取用与 Tier 3 各留事件（含 `miss` 理由）；结论能指回证据或明确未覆盖。
+   → 读 `references/steps/5-deep-dive.md`
+6. **产出**：`status` + 顶层 `summary` + 定位报告（**全路**）+ `sediment_candidates`（**全路**）+ `feedback` 挂账与回报指令 + `severity` / `fix_emitted`；`summary` 与三段内容字段走 content 写入口，报告同步修订。
+   **完成判据**：上述字段齐；trace 收尾字段（`ended_at` / `stop_reason`）写齐。
+   → **必读** `references/steps/6-deliver.md`
 
-## 数据资产探询（「数据缺口」消费点——精度 / 性能类在候选加载后问这一句）
+## 先验消费点（五个触发点）
 
-reference 由流程里的**缺口**触发（**不是第四检索层**：不参与候选路由 / 排序，路由与筛排只看 case），**三个缺口对应五个触发点、每个触发点都有确定的时点**——不靠当场自评"我缺不缺先验"：
+先验层由流程里的**缺口**触发，不是第四检索层（不参与候选路由 / 排序）。五个触发点的时点、trace 的 `purpose` 与探询纪律见 `references/reference-gaps.md`；**每个触发点都留 `outcome: hit|miss|skipped`**（`skipped` 必写理由）——不查不记录时，「查了没有」与「根本没查」在数据上同形。
 
-| 缺口 | 触发点 | 时点 | trace |
-|---|---|---|---|
-| 数据缺口 | 缺测量数据 → 采集面 | 步骤 3（阶段二加载后、候选加载完才知道缺哪个具体值） | `purpose: collect` |
-| 判断缺口（理解方面） | 证据里有错误码 / 故障签名 / 环境变量名 / 版本组合 | **步骤 2 收尾，先于候选加载** | `purpose: signature` |
-| 判断缺口（背景方面） | 证据里有平台 / 组件 / 版本词（**与候选是否命中无关**） | **步骤 2 收尾（与键触发同一时点，先于候选加载）** | `purpose: background` |
-| 判断缺口（修复依据） | 候选命中，要给修复路径的依据 | 步骤 3 阶段 2.5 | `purpose: fix` |
-| 方法缺口 | 候选全未命中、需要"这类问题怎么查" | 步骤 5 | `purpose: procedure` |
+## 始终要避的坑（内联，不必读 reference 就知道）
 
-**每个触发点都留 `outcome: hit|miss|skipped` 三态**（`skipped` 必须写理由）——不查不记录时，"查了没有"与"根本没查"在数据上同形，消费率无法归因。时点为什么定在这里见 `references/diagnosis-procedure.md` 步骤 2「为什么提前到这里」。
-
-本节只管数据缺口：命中精度或性能类问题、候选加载完发现**缺一个具体测量值**才能往下走时，**先探询对方手上的资产，再决定给「分析」还是给「采集指导」**——别默认对方不会采，也别默认对方已有数据。一句话的成本，换掉一整段可能没人需要的接入说明（原则九：上下文与注意力都是预算）。
-
-**绑定落在数据上，不写在散文里**：category → 探询问句 → 分支 → 词条 的绑定见 `references/collect-gates.yaml`（本 skill 支撑文件；每个 id 由 `verify_references.py` 校验存在且 `active`——散文里硬编码 ref-id 会静默腐化，已有先例）。本节只给交互形态（问什么、何时问）：
-
-| category | 探询问句 | 闸门形态 |
-|---|---|---|
-| **precision** | 「你已经有 dump 数据 / 分析结果了吗？还是要我给到代码级接入步骤？」 | 探询型：按回答分支（有数据 → 比对 / 分析路径，无数据 → 接入步骤） |
-| **performance** | 「你已经有 profiling 数据了吗（采集产物）？还是要我给采集指引？」 | 探询型：按回答分支（同上） |
-| **interrupt** | —（不预先问） | 条件型：日志不足以定位（缺层 / 缺栈 / 内核级事件）**或**已定位到层但缺源码级手段（竞争 / 越界 / 多机网络）时才展开 |
-
-**探询型闸门的两半都要走完**：对方答"有数据"不等于这一步结束——闸表里"有数据"那半挂的是**读法**（看哪一份产物、按什么顺序看、哪些是定位面哪些只是现象）。只给"那你去分析吧"等于把这一步留空；那半的 `refs` 与"无数据"半同样要给。
-
-**分支动作与词条不在此重复**（改一处即生效，避免散文与数据双源漂移）：走闸表的 `branches[].action` / `refs`。每条声明了 category 的工具词条都必须被某个闸门绑定（CI 校验"有入口"），所以"这个工具我该什么时候用"的答案**只在闸表里**——不要凭记忆给命令。
-
-**探询锚点**：问句要带这条 case 具体要确认的字段或产物（例：「这条 case 要确认 X，你手上有 dump 吗？」），而不是开放式地问「你有没有数据」——后者逼工程师先猜类别再猜产物，答错了还得第二轮；加载后问的才是事实。
-
-三条纪律：
-
-- **探询只问一次、只问一句**——问完按对方回答走，不要"顺便把步骤也讲了"。
-- **给接入步骤时必须区分改谁**：改**用户业务代码**（加 `PrecisionDebugger` 等）风险低；改**框架源码**（vLLM/verl 的 runner 等）属"改被测系统"，必须标注临时性 + 给回滚方式。
-- **命令以客户环境为准 + 先排除采集副作用**：具体命令以客户环境的工具版本为准（版本差异以实际输出为准，不照搬示例）；采集行为本身可能让问题消失（工具介入的副作用），先排除再下结论——判据词条见闸表 `caveat_refs`。
-
-> 展开细节见 `references/diagnosis-procedure.md` 步骤 1。
-
-**始终要避的坑（内联，不必读 reference 就知道）**：
 - **两种缺信息，两个时机**：①路由信息（症状/框架/版本/平台/部署形态）不全 → 步骤 1 问，**按步骤 1 那张固定行覆盖表逐行核，"提取不到"就是待问项**（不靠当场自评"我是不是漏问了什么"——平台、触发位置、已试过什么这三行的漏问都发生在自评上）；②验证候选所需的精确配置值（某 `--additional-config` 字段/量化档/硬件型号）→ 本步按需问。别混、别让用户全量倒；**别在确认该字段前把 provisional 结论写成 `hit`**（先给低置信假设 + 明确要什么来验证）。
 - **版本软匹配**：compat 不符只降排序分数、不硬排除（soft match）；没填的维度跳过。
 - **category 决定 quickly_check 形态**：interrupt→grep 签名；precision→数值阈值；performance→profiler 指标；**别混**。
 - **活锁 ≠ 组件故障**：同一请求/实体以固定节奏（~1s）重复打同一条日志、且计数冻结 → 判"控制循环活锁"（调度/接纳/抢占在反复重试却无法推进），**向控制循环上游走**——别把"发日志的组件"当故障组件（load/传输后端常只是表象，真实支点在调度/接纳/抢占层）。
 - **判别优先追问**：多假设并存时，先问能二分命中的那个问题（如"PD prefill 节点是否禁用了抢占？"这类**控制/调度**维度，而非数据流细节），再补数据流/传输细节——一刀命中，避免在错误维度上堆证据。
 - **类别冲突不得二选一（但有先后）**：日志/报错签名指向的方向与**症状性质**冲突时（例：症状是"输出乱码"→ precision，日志却是 store/BM 初始化失败 → interrupt 味），**按症状的性质定 category——症状是工程师手上那个现象，日志签名只是线索**；自动单选先走症状那条线，**在同一屏里说明另一条线的存在**（它需要哪些信息才走得通）。给一句覆盖点：「若你更关心 X，说一声我就切过去」——**不要停下来问他"你觉得这是哪类问题"**：他答不了这个判断，那正是要找你的原因。日志签名一侧的证据不丢：它作为备选线写明换向条件，不因为当前没走就删掉。
+- **日志要成过程，不要只摘一行**：材料里有日志、且读出了状态转折与重复区间 → 写进 `failure_process`（`nodes` 最多 8 条、`window` 起止；日志原文留证据文件，`clock_note` 记日志与墙钟时差）。面板第二层时间线与报告附录都用它；只摘一行会让「怎么一步步坏掉的」无从回看。
 - **反馈要挂账，不靠记性**：给完 fix **不在这里反问结果**（他还没应用）；立即写 `feedback`（`feedback_pending_since` 一并写）并给一条可复制的回报指令。反馈捕获是学习环的吞吐上限，而它原先只有一个**人在新会话里想起来**的入口。
 - **连续失败 ≤2（只计 fix 未解决）**：同一个问题给过两次 fix、客户应用后都未解决 → 转人工，不试第三个。**候选被 quickly_check 排除不计入**（那是候选穷尽，不是失败）。
-- **跨机比时间先核时钟**：拿多机日志排先后（"哪个 rank 先挂""哪台先断"）之前，取各机都会记的**同一个事件**（任务启动 / HCCL 初始化 / 集群心跳）比时间差——秒级以内可直接排序，明显漂移或先后颠倒就把顺序结论**降级为不确定**并写明。时钟漂移不报错，它只是让"最早的那个"换成另一个节点。时间戳整体差整数小时多是单机时区配置，不是漂移（展开与记录见 `references/diagnosis-procedure.md` 步骤 5）。
-
-## 方法缺口（流程加载——候选全部未命中时才走这一步）
-
-**何时**：所有 Tier 2 候选都未命中、进入步骤 5 深度排查时——**此时这一步是必走的**（已有候选命中才不走；
-跳过它等于把方法面留空）。**不在候选之前加载**——候选命中时流程用不上，
-提前加载只是多花注意力预算（原则九）。
-
-**怎么做**（绑定在**本 skill 的** `references/procedure-gates.yaml` 的 `kind: procedure` 闸门，id 由 `verify_references.py` 校验）：
-
-1. 读**仓库根先验层的** `references/_procedure-index.yaml`（**选择器**，只有几十行：总条数 + `category → 分片文件 + 条数 + 成本`；注意与上面那句的
-   `references/` 不是同一个目录——skill 支撑文件在 `skills/diagnose/references/`，先验层在仓库根 `references/`）：从中找**本轮 category 那一行**，按 `shard` 打开**该分片**；选择器里若另有 `_cross` 片（不限定类别），任何 category 都要一并打开。**本 category 没有对应分片** → 打开选择器列出的**全部分片**再选，并在 trace 写明"本 category 无专用分片"——空手去深度排查与"库中没有可用流程"是两件事，不能让前者冒充后者。**不要为了省事整读全部分片**：选择器分片的意义就是本轮只付自己那一片的成本。
-2. 在分片里用 `title`/`summary` 选**一条**最贴合的流程（分片行是完整的选择器行，不截断）——**默认一条**。若该流程的前提与现场证据**明确矛盾**（如它要求的数据形态在你手上根本不成立），可换一条：同样受"连续失败 ≤2"约束，并在 trace 记冲突理由；
-3. 按该行的 `file` 打开词条，读 **`content.flow[]` 全文**（step / action / check / when_to_use）——**摘要行不算加载**：实测只读摘要与不读等效，流程的反直觉判据会被摘要截断（例：摘要写"同步比例 > 0.2 则存在慢卡"，漏掉"慢卡 = WTR 最小的卡"）；
-4. 按流程执行：用每步的 `check` 当判定标准（阈值、分流条件），**跳步要说明理由**；
-5. 某步所需数据不在手上（流程要看"逐卡计算耗时"而导出里没有）→ 如实记 `gap`，**不臆断分支结论**；
-6. 记 trace：`{action: reference_lookup, ref_id, purpose: procedure}` + `{action: procedure_follow, ref_id, steps_executed, branch_taken, gap}`（字段见 `references/diagnosis-trace.md`）。
-
-> **流程是参考，不是结论**：流程给的是"这类问题怎么查"，不是"这次就是这个"。**它与现场证据冲突时以证据为准**（记 `conflict` 字段），
-> 分支结论仍需数据支撑才进结论；
-> 且流程走通并解决了问题**不免除 case 沉淀**（方法解决一次不等于这次事故不值得成为 case）。
->
-> **流程错了也要能被发现**：跟随流程给出 fix、但工程师回报没解决时，在 `attribution` 事件里写
-> `component: reference:<ref-id>`——这样"被跟随后仍失败"的流程能进组件失败簇聚合（`component_tally.py`），
-> 否则流程层只有加载率、没有失败率，错流程会被稳定注入而无人察觉。
+- **跨机比时间先核时钟**：拿多机日志排先后（"哪个 rank 先挂""哪台先断"）之前，取各机都会记的**同一个事件**（任务启动 / HCCL 初始化 / 集群心跳）比时间差——秒级以内可直接排序，明显漂移或先后颠倒就把顺序结论**降级为不确定**并写明。时钟漂移不报错，它只是让"最早的那个"换成另一个节点。时间戳整体差整数小时多是单机时区配置，不是漂移（展开与记录见 `references/steps/5-deep-dive.md` 的「跨机时间线」一节）。
 
 ## severity 闸门（命中后先看这个）
 
@@ -161,96 +99,27 @@ reference 由流程里的**缺口**触发（**不是第四检索层**：不参�
 
 每个 `fix_on_mismatch` 都带 `rollback`——人应用失败时能回退。
 
-## 命中时的输出格式（4 段必需 + 2 个按需块）
-
-> **判读标准**：输出的段数与长度应与**问题复杂度相关**。根因明确、fix 是单个开关时，四段写完即可。
-> **一件事只说一遍**——同一信息在"结论先行"与后续分节各写一次就是冗余（盲评对照里这是最被诟病的一点）。
-> **一段只说一件事**：一段不超过 3 句，同一层级的并列信息用列表列，不串进一句里。现场工程师要在三十秒内决定动手，一堵墙他读不完。
-
-**行文**：对话输出是给人读的，按 `docs/spec/writing-norms.md` 写（可选论证层，不影响本 skill 执行）；本面的定制条款见该文件 §3 的「诊断对话输出」一行。写 trace 的字段时另见 `references/diagnosis-trace.md` 的「行文要求」。
-
-**必需四段**（顺序即优先级）：
-
-1. **结论先行**——一句话：现象 + 根因 + 改哪个开关（无内部词表）。
-2. **依据链**——每条结论 → 支撑它的证据/检查结果，**逐条标强度**：`已验证`（本轮实际执行过）/`推测`（依赖推断、未直接验证）/`数据`（历史积累，非本轮判断）。
-   命中 case 时，把「命中 case / 路由依据 / 排除链 / 匹配症状 / 版本匹配 / 历史表现」作为**本段的子清单**列出，不另起一段：
-   - **命中 case 的 id 与分数必写**：`<CASE-ID>`（索引里的 score `<score>`）——它是工程师回溯知识库、以及反馈回收的锚点，**不要省**。历史解决 / 误诊计数不住在 case 里，要看就去条目使用记录的生成物（`metrics/entry-activity/<部署>.yaml`）按 id 取；
-   - 排除链要给出检查明细；材料没给的如实标"未提供"，**不写"已验证"**；
-   - 版本匹配按软匹配规则（compat 不符只降排序分数）；历史表现标为「数据」。
-3. **修复方案**——精确命令或 diff 要点 + `rollback` + side-effect（需重启 / 需升级驱动等）+ **应用后如何验证生效**。
-   `fix_type` 决定呈现：`env-var` / `config-change` 直接给可执行命令；`code-patch` 给改动文件 + diff 要点（**不可直接执行**）；`pending-investigation` 给排查建议。
-   **前提未验证时把核验写成修复的第 0 步**（例：case 的 compat 是 `hdk <26.1` 而客户没报 HDK 版本 → 第 0 步先 `npu-smi info` 核版本，前提不成立就转 plan B），不要带着未验证的前提直接开方。
-4. **可靠度与残余风险**——**分数分档讲明**（索引里那条候选的 score）：`>0.8` 高可信直接应用、`0.5–0.8` 中可信（应用同时备 plan B）、`<0.5` 仅作提示重点靠手动排查。
-   另给：哪些是推测、**触发/不触发面**（什么条件用得上这条结论）、follow-up。
-
-**两个按需块**（不要默认展开）：
-
-- **机制原理**——源码/流程层面的因果链。**展开就讲完整**（触发前置条件 → 每步的"为什么" → 因果链完整），不得压成一句；命中且根因已由依据链说清时不展开。
-  去 AI 味 ≠ 删机制：机制与可核对性必须保留，只把内部词表/交叉引用翻译成因果白话。
-- **时间线**——按日志时间排列的可观察事实，只放可观察项、不夹判断；仅当排查跨多轮、或时间先后本身是判据时展开。
-
 ## 每步必写 trace（硬要求）
 
-每个 step 后往 `traces/<session_id>.yaml`（每个并发诊断一文件；模板见 `diagnosis_state.yaml.example`）的 `trace` 数组追加一条。**trace 是完整交互轨迹（trajectory）**——统一 `{role, ...}` 结构：
+trace 是完整交互轨迹（trajectory）＋误诊归因的唯一依据：不写 trace 就无法分 **case 错**（改库）与 **执行错**（改 skill），硬改可能弄坏本来正确的 case。字段全集、词表与行文要求见 `references/diagnosis-trace.md`；本节只放每步都要守的规则。
 
-- **建 trace 用脚本起 header，别照模板手打**：派生字段（`harness_session` / `created_at` / `kb_rev` / `session_id`）
-  由机器填，人只管内容。写完路径也一并给：
-  `python3 scripts/trace_begin.py --slug <日期>-<issue 号>-<短名> --framework <…> --platform <…> --category <…>`
-  它同时建 `traces/evidence/<slug>/`。**没有这个脚本的旧克隆**（内网没 sync）才照 `diagnosis_state.yaml.example` 手写，
-  且必须自己写 `harness_session`。`external_evidence`（on|off）仍由你按工具有没有写——脚本推不出来。
-
-- **先解析 trace 目录（一次，之后全程用它）**：`python3 scripts/shared_dir.py traces` 打印的绝对路径就是本次要读写的 `traces/`——它锚在**主检出**（同一克隆的所有 worktree 共读共写），所以从 worktree 干活也不会把记录写进一个主检出看不到、清理 worktree 就消失的地方。**本 skill 里所有 `traces/…` 的读写（含最前面的 trace 相似检测）都以这个路径为准**，别写相对 `traces/`。
-
-- **随手写三样，否则读数恒空**：每条 agent 事件带 `ts`（epoch 毫秒，`python3 -c 'import time;print(round(time.time()*1000))'`；**每一步至少第一条**），步骤 6 写顶层 `ended_at`（ISO 8601），建 session 时写顶层 `harness_session`（DSH 里是 `$DSH_SESSION_ID`）。没有 `ts` 就切不出每步窗口（每步成本那一格空）；单次耗时用 `created_at` → `ended_at`，没写 `ended_at` 就退到 `updated_at` 并在面板上标明。
-
-  单次 token 优先按 `created_at` → `ended_at` 的会话日志窗口算（与面板同一口径）；缺 `ended_at` 时窗口右边界退到 `updated_at`；切不出窗口才退回 `tokens_start`（建单时会话累计）与会话累计的差值（没写 `tokens_start` 的历史单退回累计）。所以步骤 6 必须写 `ended_at`，否则诊断收尾之后的活会混进这一单。同一段对话里做过两单时，窗口（或差值）是分开两单的依据。模型名由 `trace_begin.py` 从 `harness_session` 对应的 DSH 会话记录写进顶层 `model`；取不到就留空，不猜。
-
-  Claude Code / Codex 等没有 DSH 会话库的 agent：建单时显式传 `--harness-session`、`--model`、`--tokens-start`，收尾用 `python3 scripts/trace_usage.py --trace <trace> --tokens <本次总数>` 写顶层 `tokens`。不传就按历史单的回退规则，读数为空，不影响命中与工具计数。
-- **收尾核对顶层 `harness_session`**（脚本兜住 header，这条兜住「漏跑脚本」；漏写不会当场报错，只会一路错到面板上）：跑 `ascend_trace_status` 时，本单那一行后面带 `⚠缺会话号` 就是漏了——当场补，别等人从面板上发现。补的时候要的是 `$DSH_SESSION_ID`，不是本单的 `session_id`（后者是诊断自己起的名字）：
-  `python3 scripts/link_harness_sessions.py --trace <本单文件名> --session-id "$DSH_SESSION_ID" --apply`
-  模板 `diagnosis_state.yaml.example` 顶层已列出该字段；更早的历史漏写单用不带 `--session-id` 的跑法（它去会话日志里认名字，几十秒）。
-- **每条 agent 事件必带 `output`**（哪怕一句）：核验了谁 / 用什么判据 / 结果 pass|fail|conflict。只写 `reason` 的人读视图是空白（`reason` 只在完整轨迹里显示）。
+- **建单用脚本起 header，别照模板手打**：`python3 scripts/trace_begin.py --slug <日期>-<issue 号>-<短名> --framework <…> --platform <…> --category <…>`；派生字段由机器填，同时建 `traces/evidence/<slug>/`。**没有这个脚本的旧克隆**（内网没 sync）才照 `diagnosis_state.yaml.example` 手写，且必须自己写 `harness_session`。`external_evidence`（on|off）仍由你按工具有没有写。
+- **先解析 trace 目录（一次，之后全程用它）**：`python3 scripts/shared_dir.py traces` 打印的绝对路径就是本次要读写的 `traces/`——它锚在**主检出**，从 worktree 干活也不会写进一个主检出看不到的地方。**本 skill 里所有 `traces/…` 的读写（含最前面的相似检测）都以这个路径为准**。
+- **随手写三样，否则读数恒空**：每条 agent 事件带 `ts`（epoch 毫秒，**每一步至少第一条**），步骤 6 写顶层 `ended_at`，建 session 时写顶层 `harness_session`（DSH 里是 `$DSH_SESSION_ID`）。没有 `ts` 就切不出每步窗口与成本；单次耗时用 `created_at` → `ended_at`，缺 `ended_at` 就退到 `updated_at` 并在面板标明。
+- **非 DSH 的 agent 补三个值**：Claude Code / Codex 等没有 DSH 会话库的 agent 建单时显式传 `--harness-session`、`--model`、`--tokens-start`，收尾用 `python3 scripts/trace_usage.py --trace <trace> --tokens <本次总数>` 写顶层 `tokens`；不传就按历史单的回退规则，读数为空（不影响命中与工具计数）。模型名由 `trace_begin.py` 从 `harness_session` 对应的 DSH 会话记录写进顶层 `model`；取不到就留空，不猜。
+- **收尾核对顶层 `harness_session`**：跑 `ascend_trace_status` 时，本单那一行带 `⚠缺会话号` 就是漏了——当场补 `python3 scripts/link_harness_sessions.py --trace <本单文件名> --session-id "$DSH_SESSION_ID" --apply`。要的是 `$DSH_SESSION_ID`，不是本单的 `session_id`；更早的历史漏写单用不带 `--session-id` 的跑法（脚本去会话日志里认名字）。
+- **每条 agent 事件必带 `output`**（哪怕一句）：核验了谁 / 用什么判据 / 结果 pass|fail|conflict。只写 `reason` 的人读视图是空白。
 - **`hit` 的 `case` 只写真 case id**：未命中、上游定案、跨队案例这类说明写进 `output`，不要写成 `case: "上游案在：#19191（…）"`——面板与条目使用记录都会把它当成 case id。
-- **agent 事件**：`{role: agent, step, action: triage|load_index|quickly_check|load_full|run_check|hit|miss|tier3|feedback|reference_lookup|triage_semantic|source_analysis|attribution|resume|procedure_follow|report, output, reason, ...}`。`output` 给用户（可精简）、`reason` 记决策依据（**关键决策必写**）；`triage` 必带 `routed`（未命中写 `[]`）；`source_analysis` 必记 `tool_calls`，取源码时另记 `repo`（org/repo）、`ref`、`fetch_exit`（`src_fetch.py` 退出码整数）、`verify`（hit / miss / skipped）；`attribution` 执行错可加 `component`；`report` 记 `report_file`（人读报告产出，**全路**步骤 6 必写一条；快路不产报告、也不写这条，但证据落盘与 `reason` 照旧必写）；`reference_lookup` 记 `purpose`（collect / signature / fix / background / procedure）与 **`outcome`（hit / miss / skipped，`skipped` 必写理由）**：三态缺一，"没查"就与"查了没命中"同形；`parallel_group` 记同批并发标记（同一次并行展开的几个动作共用一个值，串行不写）；`load_full` / `load_index` 记 `considered_candidates`（候选全集：筛选时看过的候选 id，含没取全文的）。
+- **agent 事件**：`{role: agent, step, action, output, reason, ...}`，`action` 词表见 `references/diagnosis-trace.md`；`triage` 必带 `routed`；`report` 记 `report_file`（全路必写，快路不产报告也不写）；`reference_lookup` 必带 `purpose` 与 `outcome` 三态；`source_analysis` 必记 `tool_calls`，另记 `repo` / `ref` / `fetch_exit` / `verify`；`parallel_group` 记同批并发，`load_full` / `load_index` 记 `considered_candidates`。
 - **user 事件**：`{role: user, step, content, evidence}`——`content` 摘要（短）+ `evidence` 完整证据（`inline` 原文 / `files` 相对路径 / `sources` URL / `missing` 缺口）。
-- **`last_action`（每次提问后更新）**：以提问结束的一轮，顶层 `last_action` 写一句话，说明在等哪份材料、哪个决定或哪条命令输出。下一轮拿到回答后改写或清空。
-- 面板与续接按 `last_action` 判断「等什么」，不按事件顺序推断。`evidence.missing` 只记那一轮缺的材料，历史事件不改写。
+- **`last_action`（每次提问后更新）**：以提问结束的一轮，顶层 `last_action` 写一句话，说明在等哪份材料、哪个决定或哪条命令输出；下一轮拿到回答后改写或清空。`evidence.missing` 只记那一轮缺的材料，历史事件不改写。面板与续接按 `last_action` 判断「等什么」，不按事件顺序推断。
 - **证据落盘铁律（必走，无例外）**：短原文 → `inline` 存完整原文；长命令/配置/日志块/附件 → **先写 `traces/evidence/<session_id>/<名>.txt`** 完整原文、`evidence.files` 用相对路径引用、`inline` 只留一行"完整原文见 evidence.files" + 关键指纹。**禁止**只写摘要、或把原文压成指纹塞 `inline`。
 - **写前自检**：问"用户贴的原文现在在哪？"——答不出"已存在文件"的相对路径或完整 `inline` → 证据未落，先落盘再写 trace。
-- **原件引文要核（有原件时）**：工程师交来**原件**（日志文件 / 日志包 / 交接包）时，引用原文另落 `evidence.quotes: [{file, line, quote}]`，并在写报告前跑 `python3 scripts/verify_evidence.py <trace> --root <原件根>`；报不一致 / 找不到 / 行号越界的引文不能支撑结论——对应结论**降级为推测**，或回步骤 4 重新取证（核不过是"这条引文不能用"，不是"结论错"）。对话里**粘贴**的片段没有原件：不填 `quotes`、不因此降级，写一句"无原件可核"即可。字段与判定见 `references/diagnosis-trace.md`。
-- **时间戳**：建 session 写顶层 `created_at`；**每次写 trace 刷新顶层 `updated_at`**（含 resume 续接——置顶诊断面板）。
-- **停止原因（收尾写一次）**：顶层 `stop_reason` 记这一单为什么停（`resolved_confirmed` / `halted_ask_user` / `budget_exhausted` / `escalated_tier3` / `abandoned` / `unknown`）。停止点是探索策略的一部分，不记它以后就判断不了当时该不该停在这里；漏写按未记录统计。
-- **vllm-kb 开没开**：只看工具目录。主组是 `vllm_kb_code` / `vllm_kb_fix` / `vllm_kb_doc`（DSH 里由 `vllm-kb-tools` 行控制）；`vllm_kb_ocr` 有独立一行（`vllm-kb-ocr`），可以只开主组不开它。建 session 时按主组在不在写顶层 `external_evidence`（`'on'` / `'off'`，加引号），一次写定。不要用探端点判断开关——那是可达性。
-- **知识库版本**：建 session 时写顶层 `kb_rev`（`python3 scripts/kb_rev.py` 的末行 = 检出 HEAD 短 sha），**一次写定、之后不改**。它记的是"这一单跑在哪一版 `knowledge/` 上"：跨机接手时接手方要拿它比对本机版本（不一致意味着候选集与 case id 可能对不上，接手侧会看到提示），事后误诊归因也要它（"当时为什么没命中"取决于当时库里有什么）。拿不到 git 就写 `unknown`，别编值。
-- **trace 边界（只记诊断轨迹 + 误诊归因，别混自演进）**：用户中途提出的**流程改进/设计讨论**不是本诊断输入（自演进信号）——走 `traces/evidence/<session_id>/<session_id>_evnote.md`（渐进式披露，正常定位不披露，真要改 SKILL/脚本时先记信号）；`attribution` 执行错归因**仅限"确实影响本次结论"**，纯流程改进走信号记录。**别把改进讨论写成 trace 的 user/agent 事件**，也别用 `source_analysis` 记 skill 编辑。
-
-> 完整细节（`KNOWN_ACTIONS` 词表、外部事实获取落盘、agent 事件两层、零执行评估所需的三项记录、反馈记录词表、词表同步纪律）见 `references/diagnosis-trace.md`。trace 是误诊归因的唯一依据：误诊先读 trace 断 **case 错**（改库）还是**执行错**（改 skill）。不写 trace → 无法归因 → 可能改坏正确的 case。
-
-## 源码分析（深度排查的子步骤，入口在步骤 5）
-
-报错签名指向框架代码/算子名/量化描述表（如 `fault kernel_name=QuantBatchMatMulV3`、`modelslim_config.py` 相关 KeyError）且 Tier 3 未覆盖时：
-
-1. **先定"哪个仓"，再向其确认版本**（源码分析依赖对应版本，不要猜）：
-   - 已知表里有 → 直接用（`python3 scripts/src_fetch.py --list` 看全表：按层列出标准仓名 `org/repo`、别名与 host）。
-   - 已知表里没有 → **按发现顺序找，不要直接问人要地址**（命令与退出码展开见 `references/src-fetch.md`）：
-     ① **候选表**：`python3 scripts/src_fetch.py --find "<报错签名>" --ref <版本>`。脚本按签名里的接口前缀与算子名给带理由的候选（默认 3 个），并**逐个试该版本**：只有一个候选能解析就自动取回（exit 0）；多个都能解析、只命中备用方案或零候选就 exit 3。
-     ② **可枚举组织**：`--list-orgs` 看有哪些组织、哪个可枚举；`--list-org-repos cann` 现枚举该组织的仓与说明。GitCode 组织匿名可枚举，不需要账号。
-     ③ **搜仓名**：上面两步没有目标仓时，用 `gh search repos <关键词>` 或 web 搜索报错里的接口名、算子名、库名，得到 `org/repo` 形态的仓名。
-     ④ **取回并验证**：`python3 scripts/src_fetch.py <org/repo> --ref <版本> --verify "<签名>"`。
-   - 验证不过或版本定不下来才问工程师，按闸表 `source-location` 的那一句（"这个报错在你们那的 CANN 安装目录里落在哪个子目录？"，让他回候选编号）。**别猜仓**：取错仓产出的是错版本的证据，比不取更糟。CANN 各仓共用同一套 CANN 发布号，所以"tag 能解析"不构成定位证据。
-   - **两条例外**：①签名只命中公共前缀（`aclnn xxx` 没有算子名）时候选是**备用方案**，脚本仍 exit 3，补上算子名/接口名再试；②已确认是哪个仓时把它写在签名后面（`--find "<签名>" cann/ops-nn`）以它为准，别让候选盖掉你的判断。
-   - **断网现场**：加 `--offline`。它只复用本地已有版本、只给候选，不联网。
-2. **获取源码（统一走 `scripts/src_fetch.py` 确定性入口，按版本取，不是"本地有什么用什么"）**：`python3 scripts/src_fetch.py <repo> --ref <tag> --verify "<签名>"`（私有/未知 → `--url`；`--list-versions` 看本地已有版本；换仓目录用 `--catalog`）。缓存**按版本平铺**在 `src-code/<org>/<repo>/<tag>/`（缓存根在主检出、跨 worktree 共读；各版本目录互不干扰，并发诊断各读各版本），命中即复用、该版本缺失即按已知 host 拉取。
-   **验证是收尾动作**：仓名与 tag 都是弱证据（CANN 各仓共用发布号），签名出现在树里才算证据。`--verify` 未命中时写「不能证明是这个仓或版本」，不写「不是这个仓」；签名可能只在二进制里（编译产物或驱动包），这种情况要说明局限（展开见 `references/src-fetch.md`）。
-   **退出码就是契约，别只看输出里的路径**：`0` = 该版本已在本地产出**并核对通过**（带 `--verify` 时还要签名命中；stdout 末行 = 路径）；`3` = tag 解析不了（多半 tag 名不同，输出里有可用 tag 示例）**或候选定不下仓**（按上面的发现顺序继续）；`4` = 拉取失败（网络/私网）；`5` = 本地该版本目录核对不通过（确认要它才 `--force` 重拉）；`6` = 取到了树，但 `--verify` 的签名没出现在里面（不能证明是它）。**非零退出 = 不能把这棵树当证据**：不要拿本地其他版本的目录去读（那是错版本的证据），也不要拿 web 搜索结果当源码（搜上游 issue/PR 状态是步骤 5 的事，不是源码来源）。
-   **镜像或 fork 现场**（仅 vllm-ascend / vllm）：官方 tag 的源码不是现场那份代码。工具目录里有 `vllm_kb_code` 就按镜像或分支查；没有就回 `src_fetch.py`，不拿别的版本顶替。判读与降级见 procedure 步骤 5 的「vllm-kb」一节。
-   **「不落库」= 源码不随仓库提交、也不写进知识库**；分析仍要保留源码（`src-code/` 本地缓存），知识库只记 `source_ref` 代码指针。
-   **诊断中发现缺仓不在诊断里直接改**：先用 `python3 scripts/evolve_intake.py record …` 记信号。已知表与签名候选表的唯一来源是 `source-catalog.d/<层>.yaml`，补仓方法见 `references/src-fetch.md`「数据目录」。
-3. **grep 定位**：搜报错签名/算子名/函数名（如 `grep -rn "QuantBatchMatMulV3" vllm_ascend/`）→ 读相关文件片段 → 分析根因。
-4. **追问用户验证**：对照预期/复现/补环境信息，验证根因假设。
-5. **follow-up**：查知识库是否已覆盖；`gh search issues/prs` 看上游是否已修复——**「已修复」不是结论、是待验证的假设**：上游有 PR / issue 已 closed 都不等于**你的部署版本里有这个修复**（PR 可能只进主干未 backport；镜像 / fork / 定制构建不能按版本号推断）。给「升级即可」之前必须做**落地实证**：从修复 PR 提取修复特征行 → 在你部署的那份代码里确认它在（做法、反证规则与结论分档见 `references/diagnosis-procedure.md` 步骤 5 的「上游修复的落地实证」）。未修复→根因+workaround；联网不可达→诚实说明无法查证。
-6. **多层级**：根因指向更底层开源仓（torch-npu、CANN 各层）→ 同样流程分析其源码（`source_ref` 指向该仓）。CANN 已开源（gitcode 的 cann 组织，常用层与定位判据见 `references/software-facts/cann-source-location.yaml`），所以"未开源"不再是结论；**闭源的只有商业发布形态的二进制/驱动包**——那种情况下**承认局限**，给方向 + 建议联系华为。
-7. **沉淀**：根因清楚且知识库未覆盖 → `/skill:to-postmortem` 记 `source_ref: {repo, ref, file, line}`（`repo` 写 `org/repo`，与 `src_fetch.py` 同一写法，且要能在 `source-catalog.d/` 解析到）；**顺手**沉淀跨事故稳定的结构事实 → `/skill:to-reference`（software-fact / env-var-table / compat-matrix，判据："6 个月后/跨版本是否仍成立"）。
+- **原件引文要核（有原件时）**：工程师交来**原件**时，引用原文另落 `evidence.quotes: [{file, line, quote}]`，写报告前跑 `python3 scripts/verify_evidence.py <trace> --root <原件根>`；核不过的引文不能支撑结论——对应结论**降级为推测**或回步骤 4 重新取证。对话里粘贴的片段不填 `quotes`，写一句"无原件可核"。
+- **时间戳**：建 session 写顶层 `created_at`；**每次写 trace 刷新顶层 `updated_at`**（含 resume 续接）。
+- **停止原因（收尾写一次）**：顶层 `stop_reason` 记这一单为什么停（`resolved_confirmed` / `halted_ask_user` / `budget_exhausted` / `escalated_tier3` / `abandoned` / `unknown`）。漏写按未记录统计。
+- **`kb_rev`（建 session 时写定，之后不改）**：`python3 scripts/kb_rev.py` 的末行 = 检出 HEAD 短 sha；拿不到 git 就写 `unknown`。跨机接手与事后误诊归因都要它。
+- **trace 边界（只记诊断轨迹 + 误诊归因，别混自演进）**：诊断中途的流程改进 / 设计讨论走 `traces/evidence/<session_id>/<session_id>_evnote.md`；`attribution` 执行错归因**仅限"确实影响本次结论"**。别把改进讨论写成 trace 的 user/agent 事件。
 
 ## 不要做
 
