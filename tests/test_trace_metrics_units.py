@@ -10,7 +10,9 @@
 
 import json
 import sys
+import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import yaml
@@ -316,6 +318,127 @@ class RenderTest(_Computed):
                                         "metrics/timeline.yaml）---\n"))
         self.assertIn("periods:", full)
         self.assertIn("recorded_at:", full)
+
+
+class ExternalFrameworkCheckTest(unittest.TestCase):
+    """external_lookup 的能力适用面：按词条声明的 frameworks 对账本单框架。
+
+    只报"对不上"；框架缺失 / unknown / 拼写变体归一后能对上，都不报——
+    读取端是事后探测器，不是闸门，宁可沉默也不制造假阳性。
+    """
+
+    KNOWN = {"vllm-ascend", "vllm", "mindspeed-llm", "sglang", "verl"}
+
+    def _detail(self, framework, outcome="hit", capability="versioned-code"):
+        with mock.patch.object(TM, "KNOWN_FRAMEWORKS", self.KNOWN):
+            states = [{
+                "session_id": "s", "status": "resolved", "detected_framework": framework,
+                "trace": [{"role": "agent", "action": "external_lookup",
+                           "capability": capability, "outcome": outcome, "reason": "x"}],
+            }]
+            _m, detail = TM._compute_metrics(states, {})
+            return detail
+
+    def test_matching_framework_passes(self):
+        self.assertEqual(self._detail("vllm-ascend")["external_framework_bad"], [])
+
+    def test_spelling_variant_normalized(self):
+        self.assertEqual(self._detail("VLLM_ASCEND")["external_framework_bad"], [])
+
+    def test_wrong_framework_flagged(self):
+        bad = self._detail("mindspeed-llm")["external_framework_bad"]
+        self.assertEqual(len(bad), 1)
+        self.assertIn("mindspeed-llm", bad[0])
+
+    def test_unknown_framework_not_flagged(self):
+        self.assertEqual(self._detail("unknown")["external_framework_bad"], [])
+        self.assertEqual(self._detail(None)["external_framework_bad"], [])
+
+    def test_skipped_not_checked(self):
+        self.assertEqual(self._detail("mindspeed-llm", outcome="skipped")["external_framework_bad"], [])
+
+    def test_unknown_capability_not_checked(self):
+        self.assertEqual(self._detail("mindspeed-llm", capability="not-a-capability")["external_framework_bad"], [])
+
+    def test_typo_framework_silent(self):
+        # 归一后仍对不上（vllm-asend）→ 沉默，不把拼写错误报成外部能力越界
+        self.assertEqual(self._detail("vllm-asend")["external_framework_bad"], [])
+
+    def test_total_and_list_include_framework_class(self):
+        states = [{
+            "session_id": "s", "status": "resolved", "detected_framework": "mindspeed-llm",
+            "trace": [{"role": "agent", "action": "external_lookup",
+                       "capability": "versioned-code", "outcome": "hit"}],
+        }]
+        with mock.patch.object(TM, "KNOWN_FRAMEWORKS", self.KNOWN):
+            m, _detail = TM._compute_metrics(states, {})
+        self.assertEqual(m["external_record_violations_total"], 1)
+        self.assertEqual(len(m["external_record_violations"]), 1)
+
+
+
+class CapabilityFrameworkLoadTest(unittest.TestCase):
+    """读取端与校验端同一套入口规则：draft 不能改写映射，active 优先，归档可回退，坏数据不崩。"""
+
+    def _write(self, tools, name, status, capability, frameworks, applies=None):
+        body = {"id": name, "type": "tool", "status": status,
+                "content": {"tool_name": name, "invocation": "x", "capability": capability}}
+        body["applies_to"] = applies if applies is not None else {"frameworks": frameworks}
+        path = tools / f"{name}.yaml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(yaml.safe_dump(body, allow_unicode=True), encoding="utf-8")
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.tools = self.root / "references" / "tools"
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_draft_does_not_override_active(self):
+        self._write(self.tools, "a", "active", "versioned-code", ["vllm-ascend"])
+        self._write(self.tools, "b", "draft", "versioned-code", ["sglang"])
+        got = TM._load_capability_frameworks(self.root)
+        self.assertEqual(got["versioned-code"], {"vllm-ascend"})
+
+    def test_deprecated_fallback(self):
+        self._write(self.tools, "old", "deprecated", "versioned-code", ["vllm"])
+        got = TM._load_capability_frameworks(self.root)
+        self.assertEqual(got["versioned-code"], {"vllm"})
+
+    def test_archived_fallback(self):
+        self._write(self.tools / "_archive", "old", "deprecated", "versioned-code", ["vllm"])
+        got = TM._load_capability_frameworks(self.root)
+        self.assertEqual(got["versioned-code"], {"vllm"})
+
+    def test_non_dict_applies_to_does_not_crash(self):
+        self._write(self.tools, "bad", "active", "versioned-code", None, applies=["vllm"])
+        self.assertEqual(TM._load_capability_frameworks(self.root), {})
+
+    def test_underscore_file_ignored(self):
+        self._write(self.tools, "_generated-index", "active", "versioned-code", ["sglang"])
+        self.assertEqual(TM._load_capability_frameworks(self.root), {})
+
+    def test_underscore_dir_ignored(self):
+        self._write(self.tools / "_generated", "x", "active", "versioned-code", ["sglang"])
+        self.assertEqual(TM._load_capability_frameworks(self.root), {})
+
+    def test_archive_does_not_override_active(self):
+        self._write(self.tools, "a", "active", "versioned-code", ["vllm-ascend"])
+        self._write(self.tools / "_archive", "a-old", "deprecated", "versioned-code", ["sglang"])
+        got = TM._load_capability_frameworks(self.root)
+        self.assertEqual(got["versioned-code"], {"vllm-ascend"})
+
+    def test_known_frameworks_includes_declared(self):
+        self._write(self.tools, "a", "active", "versioned-code", ["foo-fw"])
+        caps = TM._load_capability_frameworks(self.root)
+        self.assertIn("foo-fw", TM._load_known_frameworks(self.root, caps))
+
+    def test_known_frameworks_reads_knowledge_dirs(self):
+        (self.root / "knowledge" / "training" / "foo-fw").mkdir(parents=True)
+        self.assertIn("foo-fw", TM._load_known_frameworks(self.root))
+
 
 
 class ExternalCapabilityRegistryTest(unittest.TestCase):

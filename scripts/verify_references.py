@@ -474,6 +474,8 @@ def is_archived_entry(path: Path) -> bool:
     它们不算"现役词条"（不进 id 集、不参与闸门绑定），但仍是枚举的属主：
     工具退役后能力名要留着，否则历史 trace 的 capability 会变成词表外取值。
     """
+    if path.name.startswith("_"):
+        return False
     parts = path.parts[:-1]
     return ("_archive" in parts
             and all(part == "_archive" or not part.startswith("_") for part in parts))
