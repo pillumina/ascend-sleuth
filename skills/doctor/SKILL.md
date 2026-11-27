@@ -70,9 +70,22 @@ python3 scripts/doctor.py --json   # 面板或脚本消费
   预期形态：只记信号不产卡），不要为了让它变绿去改成 `maintainer`。声明写坏时它报降级，修的是
   `sleuth.config.yaml` 里的 `evolution.role`，不是体检器。
 
+## 交互修复（agent 代修，仅限白名单）
+
+体检器只读；动手的是你，而且每一项都要先问用户。流程：
+
+1. 读 `doctor.py --json` 的 `checks`，取 `state` 不是 `ok` 的项。
+2. 按 `fix_auto` 分组：`true` 是安装类（可逆、无凭据、命令已给出）；`false` 是必须人做的（登录、配置、sudo、代理/CA）。没写 `fix_auto` 的按 `false` 处理。
+3. 逐项问用户「这项要我现在执行吗」，只执行 `fix` 里给的命令；**不换包源、不加 sudo、不改 shell 配置**。
+4. `fix_auto: true` 的项执行完立即重跑 doctor 复验；失败就停在这项，把命令和报错末几行交给用户，不试第二种装法。
+5. `fix_kind: login-web`（如 `gitcode auth login --web`）：在**可见终端**里启动，让用户自己在浏览器建 token 并粘贴。不要读取、记录、代填 token；用户完成后跑一次 `gitcode auth status --json`，再重跑 doctor。
+6. 一次只推进一项；阻断项清零后再处理降级项。
+
+代修不等于改判据：命令只来自 doctor 的 `fix`，复验仍以重跑 doctor 的结论为准；不要在修不通时去改体检器或跳过某项就宣布修好。
+
 ## 它不负责什么
 
 - **内容门禁**：索引新鲜度、结构校验、面板契约由各自的检查脚本判，体检器不碰内容。
 - **一次跑完所有 CI 命令**：那是 `python3 scripts/rehearse_evolve_loop.py`（逐条复跑 CI 的 `run:`）。
   体检器只在「下一步」里指出该跑哪一条，不抄那份清单。
-- **装包与改配置**：它只读。装包是人的决定，装法由它给出、人执行。
+- **装包与改配置**：体检器只读。装法由它给出；执行是 agent 在用户逐项同意下代跑（见「交互修复」），或人自己跑。
