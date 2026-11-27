@@ -175,23 +175,14 @@ class GitCodeCheckTest(unittest.TestCase):
         self.assertEqual(row["state"], doctor.OK)
         self.assertIn("GITCODE_TOKEN", row["detail"])
 
-    def test_missing_cli_with_node_gives_npm_install(self):
-        with mock.patch.object(doctor, "tool_version",
-                               side_effect=lambda n: "v22" if n == "node" else ""):
+    def test_missing_cli_gives_install_fix(self):
+        with mock.patch.object(doctor, "tool_version", return_value=""):
             row = doctor.check_gitcode()
         self.assertEqual(row["state"], doctor.DEGRADE)
         self.assertEqual(row["fix_kind"], "install-cli")
         self.assertTrue(row["fix_auto"])
         self.assertIn("atomgit-cli", row["fix"])
         self.assertNotIn("auth login", row["fix"], "安装类 fix 不能带登录命令")
-
-    def test_missing_cli_without_node_points_to_releases(self):
-        with mock.patch.object(doctor, "tool_version", return_value=""):
-            row = doctor.check_gitcode()
-        self.assertEqual(row["state"], doctor.DEGRADE)
-        self.assertEqual(row["fix_kind"], "manual")
-        self.assertFalse(row["fix_auto"])
-        self.assertIn("releases", row["fix"])
 
     def test_logged_in_is_ok(self):
         proc = mock.Mock(returncode=0, stdout=json.dumps({"source": "config"}), stderr="")

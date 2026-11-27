@@ -3,7 +3,7 @@ name: issue-ingest
 description: >
   从外部 issue 源（GitHub 等）批量导入案例知识：用户说「把这批 issue 沉淀成 case /
   导入某仓的 issue」时用。拉取、过滤、评估后走 to-postmortem 产 case 草稿进 inbox 待审。
-  需要 gh CLI 已登录。
+  GitHub 源需要 gh CLI 已登录；GitCode 源需要 gitcode/gc CLI 已登录（或环境 token）。
 ---
 
 # Issue Ingest
@@ -18,12 +18,13 @@ description: >
 
 1. **gh CLI**：`gh --version` 检查；未安装 → 提示用户安装（`curl -fsSL https://cli.github.com/ | sh` 或包管理），装完重查；
 2. **gh 登录**：`gh auth status` 检查；未登录 → 引导用户 `gh auth login`（选 GitHub.com → HTTPS → **Login with a web browser**，用户浏览器完成授权）——不要替用户输入凭据，等 auth status 通过；
-3. 其他源（GitCode 等）：确认对应 CLI（如 `gitcode-cli`）已装已登录，本 skill 流程以 GitHub 为例，其他源换 CLI 命令即可（缓存格式保持一致：number/title/comments/closed_at/labels/state_reason）。
+3. **GitCode 源**：装 GitCode CLI（`npx -y atomgit-cli@latest install`）并登录（`gitcode auth login --web`，浏览器建 token 后在终端粘贴；也可用 `GITCODE_TOKEN` / `GC_TOKEN` 环境变量，优先级高于本地登录态）。未就绪时 `fetch_issues.py --host gitcode` 会直接报错并给修法，不回落到网页。GitCode 的缓存字段与 GitHub 一致：`number`（转整数）/`title`/`comments`/`closed_at`（取 `finished_at`）/`labels`（取 name）；没有 `state_reason`，filter 按未解析处理（只影响排序，不影响硬过滤）。
 
 ## 输入方式（按需交互：给得越全，问得越少）
 
 ```
 /skill:issue-ingest --repo vllm-project/vllm-ascend --labels triaged [--since <ISO时间>] [--min-comments 3] [--limit 20] [--mode auto|confirm]
+/skill:issue-ingest --host gitcode --repo cann/ops-nn --labels bug-report
 /skill:issue-ingest vllm-ascend                        # 半明确：调查后给建议
 /skill:issue-ingest "我想导入些昇腾训练框架的 issue"    # 不明确：引导问框架，再走半明确
 ```
