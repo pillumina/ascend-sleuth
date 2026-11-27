@@ -249,5 +249,166 @@ class LocalModuleTest(unittest.TestCase):
         self.assertNotIn("sediment_state", blocked)
 
 
+def _rep(checks, caps, python="/usr/bin/python3"):
+    """人读渲染的夹具：只给渲染要用的字段，不跑真实的依赖扫描。"""
+    blocked = [c for c in checks if c["state"] == doctor.BLOCK]
+    degraded = [c for c in checks if c["state"] == doctor.DEGRADE]
+    return {"ok": not blocked, "root": "/tmp/repo", "python": python,
+            "blocked": len(blocked), "degraded": len(degraded),
+            "checks": checks, "capabilities": caps,
+            "next_actions": [c["fix"] for c in checks if c.get("fix")]}
+
+
+def _check(check_id, label, state=doctor.OK, detail="", kind="tool", **extra):
+    row = {"id": check_id, "label": label, "kind": kind, "state": state, "detail": detail}
+    row.update(extra)
+    return row
+
+
+class RenderTest(unittest.TestCase):
+    """人读五段：结论 / 能力 / 检查了什么 / 有问题 / 下一步。
+
+    为什么单测：修法曾经连安装说明一起塞进 `fix`，人工照抄要手工裁剪；版本探测把
+    `Error: unknown flag` 当版本号印在证据段。这两种都会被 agent 原样执行或原样复述。
+    """
+
+    def test_version_probe_does_not_return_error_line(self):
+        with mock.patch.object(doctor.shutil, "which", return_value="/usr/local/bin/gitcode"), \
+                mock.patch.object(doctor.subprocess, "run",
+                                  return_value=mock.Mock(returncode=2, stdout="", stderr="Error: unknown flag: --version")):
+            self.assertEqual(doctor.tool_version("gitcode"), doctor.UNKNOWN_VERSION)
+
+    def test_missing_command_still_none(self):
+        with mock.patch.object(doctor.shutil, "which", return_value=None):
+            self.assertIsNone(doctor.tool_version("nope"))
+
+    def test_fix_and_note_are_separate_lines(self):
+        checks = [_check("pkg", "某个包", doctor.DEGRADE, "未安装；1 个脚本在 try/except 里用它（a.py）",
+                         kind="package", note="缺席时退化，不会崩",
+                         fix="/usr/bin/python3 -m pip install pkg", fix_note="内网离线：--find-links <wheel 目录>")]
+        out = doctor.render(_rep(checks, []))
+        fix_lines = [ln.strip() for ln in out.splitlines() if ln.strip().startswith("修：")]
+        self.assertEqual(fix_lines, ["修：/usr/bin/python3 -m pip install pkg"])
+        self.assertIn("备注：内网离线", out)
+        self.assertIn("后果：缺席时退化，不会崩", out)
+
+    def test_degraded_check_names_the_capability_it_breaks(self):
+        checks = [_check("gitcode", "GitCode CLI", doctor.DEGRADE, "未安装", fix="npx -y atomgit-cli@latest install")]
+        caps = [{"name": "批量导入上游 issue（GitCode）", "needs": ["gitcode"], "state": "partial", "missing": []},
+                {"name": "诊断与知识沉淀", "needs": ["git"], "state": "yes", "missing": []}]
+        out = doctor.render(_rep(checks, caps))
+        self.assertIn("! 批量导入上游 issue（GitCode）", out)
+        self.assertIn("缺：GitCode CLI", out)
+        self.assertIn("影响：批量导入上游 issue（GitCode）", out)
+
+    def test_orphan_check_says_no_capability_depends_on_it(self):
+        checks = [_check("zstandard", "zstandard", doctor.DEGRADE, "未安装；1 个脚本在 try/except 里用它（a.py）",
+                         kind="package", fix="pip install zstandard")]
+        caps = [{"name": "知识库同步", "needs": ["git"], "state": "yes", "missing": []}]
+        out = doctor.render(_rep(checks, caps))
+        self.assertIn("影响：没有已列能力直接依赖它", out)
+
+    def test_ok_item_does_not_repeat_its_label(self):
+        checks = [_check("git", "git", doctor.OK, "git version 2.50.1")]
+        out = doctor.render(_rep(checks, []))
+        self.assertIn("git version 2.50.1", out)
+        self.assertNotIn("git git version", out)
+
+    def test_head_counts_checks_and_orders_blockers_first(self):
+        checks = [_check("a", "A"), _check("b", "B", doctor.DEGRADE, "未安装"),
+                  _check("c", "C", doctor.BLOCK, "未安装", fix="装 C")]
+        out = doctor.render(_rep(checks, []))
+        self.assertIn("3 项检查里 1 项正常", out)
+        self.assertIn("先修阻断项", out)
+        self.assertIn("[阻断] C", out)
+        self.assertLess(out.index("结论："), out.index("能力（"))
+        self.assertLess(out.index("能力（"), out.index("检查了什么（"))
+        self.assertLess(out.index("有问题（"), out.index("下一步（"))
+
+
+class LocalPolicyTest(unittest.TestCase):
+    """本机配置三项：已接受不修、检查项依赖、与上次比。
+
+    为什么单测：这三项都会改变「下一步」里出现什么。判错时要么把已接受的项一直劝人装，
+    要么让人先装 leaf（GitCode CLI）再装它依赖的 Node.js，或者把「上次有 3 项降级」
+    说成「结论一致」。
+    """
+
+    def test_accept_applies_to_degraded_only(self):
+        checks = [_check("p", "某包", doctor.DEGRADE), _check("q", "某包2", doctor.BLOCK)]
+        doctor.apply_local_policy(checks, {"p", "q"})
+        self.assertTrue(checks[0]["accepted"])
+        self.assertFalse(checks[1]["accepted"], "阻断项不能被「接受」，那会让结论说谎")
+
+    def test_accept_list_read_from_settings(self):
+        with tempfile.TemporaryDirectory(prefix="doctor-accept-") as tmp:
+            root = Path(tmp)
+            (root / ".local").mkdir()
+            (root / ".local" / "settings.json").write_text(
+                json.dumps({"schema": "ascend-sleuth-settings/1",
+                            "doctor": {"accept": ["zstandard", " gh "]}}), encoding="utf-8")
+            self.assertEqual(doctor.accepted_checks(root), {"zstandard", "gh"})
+
+    def test_accept_defaults_to_empty_without_settings(self):
+        with tempfile.TemporaryDirectory(prefix="doctor-accept-") as tmp:
+            self.assertEqual(doctor.accepted_checks(Path(tmp)), set())
+
+    def test_accept_survives_broken_settings(self):
+        with tempfile.TemporaryDirectory(prefix="doctor-accept-") as tmp:
+            root = Path(tmp)
+            (root / ".local").mkdir()
+            (root / ".local" / "settings.json").write_text("{not json", encoding="utf-8")
+            self.assertEqual(doctor.accepted_checks(root), set())
+
+    def test_dependency_is_ordered_first(self):
+        checks = [_check("gitcode", "GitCode CLI", doctor.DEGRADE, fix="装 GitCode CLI"),
+                  _check("node", "Node.js", doctor.DEGRADE, fix="装 Node.js"),
+                  _check("git", "git")]
+        self.assertEqual([c["id"] for c in doctor.ordered_bad(checks)], ["node", "gitcode"])
+
+    def test_blocked_items_come_before_degraded(self):
+        checks = [_check("a", "A", doctor.DEGRADE), _check("b", "B", doctor.BLOCK)]
+        self.assertEqual([c["id"] for c in doctor.ordered_bad(checks)], ["b", "a"])
+
+    def test_dependency_only_reorders_when_dependency_is_bad(self):
+        checks = [_check("gitcode", "GitCode CLI", doctor.DEGRADE), _check("node", "Node.js")]
+        self.assertEqual([c["id"] for c in doctor.ordered_bad(checks)], ["gitcode"])
+
+    def test_previous_line_first_run_and_consistent(self):
+        rep = {"previous": {"first": True}, "record_enabled": True}
+        self.assertIn("本机第一次体检", doctor._previous_line(rep))
+        rep = {"previous": {"first": False, "at": "2026-01-01T00:00:00+08:00", "changes": []},
+               "record_enabled": True}
+        self.assertIn("结论一致", doctor._previous_line(rep))
+
+    def test_previous_line_reports_changes(self):
+        rep = {"record_enabled": True,
+               "previous": {"first": False, "at": "t", "changes": [
+                   {"id": "gitcode", "label": "GitCode CLI", "was": "degraded", "now": "ok"}]}}
+        line = doctor._previous_line(rep)
+        self.assertIn("GitCode CLI 降级→正常", line)
+
+    def test_previous_line_without_record_does_not_claim_baseline(self):
+        rep = {"previous": {"first": True}, "record_enabled": False}
+        self.assertIn("--no-record", doctor._previous_line(rep))
+
+    def test_last_snapshot_roundtrip(self):
+        with tempfile.TemporaryDirectory(prefix="doctor-last-") as tmp:
+            root = Path(tmp)
+            rep = {"python": sys.executable, "checks": [_check("a", "A"), _check("b", "B", doctor.DEGRADE)]}
+            doctor.write_last(root, rep)
+            last = doctor.read_last(root)
+            self.assertEqual(last["checks"], {"a": "ok", "b": "degraded"})
+            diff = doctor.diff_last({"checks": rep["checks"]}, last)
+            self.assertEqual(diff["changes"], [])
+
+    def test_missing_snapshot_is_not_an_error(self):
+        with tempfile.TemporaryDirectory(prefix="doctor-last-") as tmp:
+            self.assertIsNone(doctor.read_last(Path(tmp)))
+            self.assertTrue(doctor.diff_last({"checks": []}, None)["first"])
+
+
+
+
 if __name__ == "__main__":
     unittest.main()
