@@ -20,6 +20,8 @@
 #   outcome ∈ pending | resolved | not_resolved | partial
 # 两条轴各管一件事，别混：status 说"这单还管不管"（`resolved` = 诊断已收尾、根因定位明确，
 # **不代表 fix 生效**）；outcome 说"给出去的那个 fix 到底行不行"（只对命中单成立）。
+# **顶层字段清单以本文件为准**：新增顶层字段先写进这里。
+# `verify_trace_status.py --all` 按它判未登记字段。
 # 注意：**`feedback_pending` 不是本 schema 的字段**——它是面板与 skill 口头沿用的旧说法。
 # 表示"fix 给出去了但结果还没回报"的正确写法是 `feedback.outcome: pending`（可选
 # `feedback_pending_since` 记给出 fix 的时间，用于算反馈债账龄）。2026-09 阶段一统一到此口径。
@@ -32,6 +34,9 @@ harness_session: "session-XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX"
                                         # ② 面板「看会话」与侧栏记号靠它把 trace 挂到那条会话上——缺了就只能
                                         # 显示「未记会话号」（写侧硬要求见 skills/diagnose/SKILL.md）。
                                         # 漏写就地补：python3 scripts/link_harness_sessions.py --trace <本文件名> --session-id "$DSH_SESSION_ID"
+model: ""                               # 建单时 trace_begin.py 从 DSH 会话记录写；取不到留空，不猜
+tokens_start: null                      # 建单时会话累计 token；窗口切不出时按差值算单次
+tokens: null                            # 本次诊断 token 总数；trace_usage.py 收尾写
 status: in_progress                    # 取值见 trace-status.yaml；终态后文件留在 traces/
 current_step: 3
 summary: "用户报告训练挂起（HCCL 相关）。环境 mindspeed-llm/A5。关键报错 HCCL timeout。已定位：待确认"  # 问题背景段（agent 整合，面板直接显示）
@@ -49,6 +54,12 @@ kb_rev: "a1b2c3d"                       # 建 session 时那份 knowledge/ 的�
                                         # 拿不到 git 就如实写 unknown，别编值
 kb_rev_dirty: false                     # 工作区有未提交的已跟踪改动时为 true（trace_begin.py 填）；
                                         # sha 只标识提交，脏工作区的规则要另记这一位。
+kb_remote: ""                          # 同步源 <remote>/<branch>；未配置留空（trace_begin.py 填）
+kb_remote_rev: "unknown"               # 本次 fetch 到的远端分支短 sha；没成功写 unknown
+kb_behind: "unknown"                   # 落后远端分支的提交数；算不出写 unknown
+kb_sync: "off"                         # ok | failed | off | skipped
+kb_sync_reason: ""                     # 同步失败或跳过的原因
+kb_merge: "none"                       # ff-only | none
 severity: ""                           # 收尾写一次：benign | service-affecting | data-loss-risk（命中单取命中 case 的
                                         # 同名字段，未命中按根因判）。面板据此提示"先停"还是"打补丁"
 fix_emitted: null                       # 收尾写一次：true / false —— 本次是否给出可执行的修复或规避方案。
@@ -62,6 +73,8 @@ stop_reason: ""                         # 会话收尾写一次：这一单为�
 detected_framework: mindspeed-llm
 detected_platform: A5-950
 detected_category: interrupt           # triage 路由到的 category
+workload_type: ""                      # training | inference | unknown（来自工程师的事实，不由症状词判）
+workload_type_source: ""               # evidence | user | framework | unknown
 resolved_at: ""                        # status=resolved 时填 ISO 日期
 report_file: ""                        # 人读定位报告文件名（与 trace 同目录、同名不同后缀）；结构见
                                        # skills/diagnose/references/report-template.md。步骤 6 产出必填。
@@ -72,6 +85,10 @@ ending:                                # 终态必填：收尾方式（取值见
   note: ""
 transitions: []                        # 只追加：每次状态转移一条（scripts/trace_transition.py 写）
                                        # 每条含 at/from/to/ending/prev_ending/by/source/note
+reports: []                            # 现场回报（--field report 写）；只记事实，不判对错
+                                       # {- at, by, source: field|vendor, result: from_report|other_way|partial|none, note}
+reviews: []                            # 报告复核结论（--field review 写）；不改状态、不改知识库
+                                       # {- at, by, verdict: report_revision|case_error|execution_error, note}
 
 # ── 面板四层时间线：现场 → 故障过程 → 上游 → 诊断步骤 ──
 # 本节五个字段给前三段（三段时间线）+ 修订记录；第四层「诊断步骤」来自 trace[]，不在本节。

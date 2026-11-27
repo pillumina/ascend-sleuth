@@ -70,7 +70,7 @@ user 事件无 `action`，不参与词表检查。**新增 action 时同步改 `
 
 ### `external_lookup` 事件（外部查证；三态）
 
-外部查证（工具由 DSH 插件提供，端点在 `~/.dsh/sleuth-kb.json`）每调一次记一条，字段 `{action, capability, outcome, reason, endpoint?}`：
+外部查证（工具由 DSH 插件提供，端点在 `~/.dsh/sleuth-kb.json`）每调一次记一条，字段 `{action, capability, outcome, output, reason, endpoint?}`：
 
 `capability` 的取值由工具词条声明（`references/tools/vllm-kb-*.yaml` 的 `content.capability`），枚举登记在 `references/_types.yaml` 的 `external_capabilities`；两处由 `verify_references.py` 校验。只记能力名，不记服务名与端点。
 
@@ -84,7 +84,9 @@ user 事件无 `action`，不参与词表检查。**新增 action 时同步改 `
   - `not-applicable`：本单框架不是 vllm-ascend / vllm，这条路不适用；
   - `not-needed`：本步用不上。
 
-  服务不可达后本单不再重试。**`external_evidence` 的取值写引号**（`'on'` / `'off'`）：裸写 `on` 会被 YAML 解析成布尔 `true`。
+服务不可达后本单不再重试。**`external_evidence` 的取值写引号**（`'on'` / `'off'`）：裸写 `on` 会被 YAML 解析成布尔 `true`。
+
+`output` 在 `hit` 时必填：记「用了哪条证据」，不是「读了整页」。`miss` / `skipped` 写 `reason` 即可；两者都空时，这次检索在回放里等于没发生。
 
 **不写服务名、不写端点地址**：`capability` 与 `outcome` 就是全部机器面。端点由配置文件决定，报告里可以写端点名称（工程师自己起的标签），trace 里不写。
 
