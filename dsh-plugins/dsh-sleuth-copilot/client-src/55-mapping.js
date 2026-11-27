@@ -364,7 +364,8 @@
         : ''
       return [
         '查 ' + row.activeCase + ' 的上游状态（只查上游，不续接诊断；来源 ' + traceSource(row) + '）。',
-        '1) 先跑 python3 scripts/doctor.py --json 确认 gh 已安装并登录' + gap
+        '1) 先跑 python3 scripts/doctor.py --json：GitHub 锚点需要 gh 已安装并登录；'
+          + 'GitCode 或其他主机的锚点不需要 gh（脚本会判「不可查证」，请人工打开 url 核对）' + gap
           + '；不可用就停并报缺口，不要猜。网络是否可用以第 2 步的「不可查证」结局为准。',
         '2) 跑 python3 scripts/verify_upstream_outcomes.py --case ' + row.activeCase
           + ' --dry-run --json 看结论' + known + verified + '。',

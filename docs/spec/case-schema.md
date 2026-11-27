@@ -111,7 +111,7 @@ case 文件，结算就变成每次改知识条目，观测与知识本体也就
 
 ### 3.8 `upstream`：[{repo, issue|pr, url}]
 
-要求：这条 case 对应的上游锚点。`repo` 写 `owner/name`；`issue` 与 `pr` 二选一（写 `pr` 表示关联的是修复 PR）；`url` 是给人点开的原址。
+要求：这条 case 对应的上游锚点。`repo` 写 `owner/name`；`issue` 与 `pr` 二选一（写 `pr` 表示关联的是修复 PR）；`url` 是给人点开的原址。`url` 指向 GitCode 时，`verify_upstream_outcomes.py` 不做自动查证（只支持 GitHub API），会报「不可查证，请人工核对」且不写回验证记录。
 
 强度：可选。
 
