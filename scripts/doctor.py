@@ -971,7 +971,12 @@ def render(rep) -> str:
     if rep["next_actions"]:
         lines += [f"  {i}. {a}" for i, a in enumerate(rep["next_actions"], 1)]
     else:
-        lines.append("  环境齐了。验内容门禁跑 python3 scripts/rehearse_evolve_loop.py（逐条复跑 CI 命令）；"
+        accepted = int(rep.get("accepted") or 0)
+        if accepted:
+            lead = f"  没有待修项（{accepted} 项已接受不修）。"
+        else:
+            lead = "  环境齐了。"
+        lines.append(lead + "验内容门禁跑 python3 scripts/rehearse_evolve_loop.py（逐条复跑 CI 命令）；"
                      "日常提交前按 .github/workflows/kb-checks.yml 的 run: 逐条跑。")
     lines += ["", f"体检用的解释器：{rep['python']}",
               "（换解释器就换一份结论；点面板报缺依赖时，先确认它用的是不是这一个）"]
