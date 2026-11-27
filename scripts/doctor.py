@@ -37,6 +37,7 @@ import ast
 import importlib.metadata
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -63,7 +64,8 @@ CAPABILITIES = [
     ("面板 · 诊断 tab", ["python", "yaml"]),
     ("面板 · 指标 tab 的体检", ["python", "yaml"]),
     ("面板安装 / 构建 / CI 检查", ["node"]),
-    ("批量导入上游 issue", ["python", "yaml", "gh"]),
+    ("批量导入上游 issue（GitHub）", ["python", "yaml", "gh"]),
+    ("批量导入上游 issue（GitCode）", ["python", "yaml", "gitcode"]),
     ("诊断 token 与工具记账", ["node"]),
     ("沉淀队列与 PR 状态", ["python", "yaml", "git", "pr-platforms"]),
     ("知识库同步", ["python", "git", "kb-sync"]),
@@ -298,8 +300,74 @@ def check_gh():
         return {"id": "gh", "label": "gh CLI", "kind": "tool", "state": OK, "detail": version,
                 "note": "批量导 issue 还要登录：gh auth status"}
     return {"id": "gh", "label": "gh CLI", "kind": "tool", "state": DEGRADE, "detail": "未安装",
-            "note": "只有批量导入 issue 与诊断时的上游修复核查用它；缺了这两处如实说明不可查证",
-            "fix": "按平台装 gh，然后 gh auth login"}
+            "note": "只有批量导入 issue 与诊断时的上游修复核查用它；缺了这两处如实说明不可查证；"
+                    "装完还要登录（gh auth login），登录必须由人在交互终端完成",
+            "fix": "按平台装 gh",
+            "fix_kind": "install-cli", "fix_auto": True}
+
+
+GITCODE_INSTALL = "npx -y atomgit-cli@latest install"
+GITCODE_LOGIN = "gitcode auth login --web"
+
+
+def check_gitcode():
+    """GitCode 通道：issue 摄取与上游核查的第二条来源（GitHub 之外）。
+
+    三态按认证来源分：环境 token（GC_TOKEN / GITCODE_TOKEN）→ 直接可用；
+    CLI 已装且 `auth status` 通过 → 可用；CLI 未装 / 未登录 → 降级，并给安装或
+    网页登录命令。登录必须由人在交互终端完成（`--web` 会打开建 token 页面，
+    仍需在终端粘贴一次），体检器不代做、不读 token。
+    """
+    env_source = ""
+    for env_name in ("GC_TOKEN", "GITCODE_TOKEN"):
+        if (os.environ.get(env_name) or "").strip():
+            env_source = env_name
+            break
+    bin_name = ""
+    version = ""
+    for candidate in ("gitcode", "gc"):
+        version = tool_version(candidate)
+        if version:
+            bin_name = candidate
+            break
+    if not bin_name:
+        note = "GitCode 侧 issue 摄取走它；缺了只能人工查网页"
+        if env_source:
+            note += f"；环境 token（{env_source}）已设置，但摄取脚本仍要 CLI 作 API 入口"
+        if not tool_version("node"):
+            # 只有 npm 一条路径被验证过；没有 Node 时不乱给 brew/apt，交人按 releases 装
+            return {"id": "gitcode", "label": "GitCode CLI", "kind": "tool", "state": DEGRADE,
+                    "detail": "未安装（且缺 Node.js）" + (f"；{env_source} 已设置" if env_source else ""),
+                    "note": note + "；npm 安装需要 Node.js，缺它时按 releases 的对应平台包装",
+                    "fix": "先装 Node.js（doctor 的 node 项），或用 "
+                           "https://gitcode.com/atomgit-cli/cli/releases 的对应平台包",
+                    "fix_kind": "manual", "fix_auto": False}
+        return {"id": "gitcode", "label": "GitCode CLI", "kind": "tool", "state": DEGRADE,
+                "detail": "未安装" + (f"（{env_source} 已设置，但缺 CLI）" if env_source else ""),
+                "note": note + "；npm 安装需要 Node.js（doctor 的 node 项）",
+                "fix": GITCODE_INSTALL,
+                "fix_kind": "install-cli", "fix_auto": True}
+    try:
+        proc = subprocess.run([bin_name, "auth", "status", "--json"], capture_output=True,
+                              text=True, encoding="utf-8", errors="replace", timeout=10)
+    except Exception as exc:  # noqa: BLE001 - 体检器把异常折成一行原因
+        return {"id": "gitcode", "label": "GitCode CLI", "kind": "tool", "state": DEGRADE,
+                "detail": f"{version}；登录状态读不出来（{type(exc).__name__}）",
+                "fix": GITCODE_LOGIN, "fix_kind": "login-web", "fix_auto": False}
+    if proc.returncode == 0:
+        source = ""
+        try:
+            doc = json.loads(proc.stdout.strip() or "{}")
+            source = str(doc.get("source") or doc.get("token_source") or "")
+        except Exception:
+            source = ""
+        return {"id": "gitcode", "label": "GitCode CLI", "kind": "tool", "state": OK,
+                "detail": version + (f"；登录态来自 {source}" if source else ""),
+                "note": "issue 摄取可用；上游自动查证仍只支持 GitHub，GitCode 的上游要用 CLI 人工核对"}
+    return {"id": "gitcode", "label": "GitCode CLI", "kind": "tool", "state": DEGRADE,
+            "detail": f"{version}；未登录",
+            "note": "`--web` 会打开建 token 页面，仍需在交互终端粘贴一次；不要贴到对话里",
+            "fix": GITCODE_LOGIN, "fix_kind": "login-web", "fix_auto": False}
 
 
 def check_traces(root: Path):
@@ -558,7 +626,7 @@ def check_capability_table(checks):
 def build_report(root: Path):
     checks = [check_python()]
     checks += check_third_party()
-    checks += [check_git(root), check_node(), check_gh(), check_pr_platforms(root),
+    checks += [check_git(root), check_node(), check_gh(), check_gitcode(), check_pr_platforms(root),
                check_kb_sync(root), check_traces(root), check_index(root), check_evolution(root)]
     checks.append(check_capability_table(checks))
     by_id = {c["id"]: c for c in checks}

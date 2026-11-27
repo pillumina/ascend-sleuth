@@ -7,11 +7,13 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -146,6 +148,74 @@ class RegistrationTest(unittest.TestCase):
         checks = [{"id": name, "state": doctor.OK} for name in ids]
         row = doctor.check_capability_table(checks)
         self.assertEqual(row["state"], doctor.OK)
+
+
+class GitCodeCheckTest(unittest.TestCase):
+    """GitCode 通道三态：环境 token > CLI 登录态；缺 CLI 给安装，未登录给网页登录。"""
+
+    def tearDown(self):
+        for name in ("GC_TOKEN", "GITCODE_TOKEN"):
+            os.environ.pop(name, None)
+
+    def test_env_token_without_cli_is_still_degraded(self):
+        # 摄取脚本仍要 CLI 作 API 入口：env token 不能把能力判成可用
+        os.environ["GITCODE_TOKEN"] = "x"
+        with mock.patch.object(doctor, "tool_version", return_value=""):
+            row = doctor.check_gitcode()
+        self.assertEqual(row["state"], doctor.DEGRADE)
+        self.assertIn("GITCODE_TOKEN", row["detail"])
+        self.assertIn("GITCODE_TOKEN", row["note"])
+
+    def test_env_token_with_logged_in_cli_is_ok(self):
+        os.environ["GITCODE_TOKEN"] = "x"
+        proc = mock.Mock(returncode=0, stdout=json.dumps({"source": "GITCODE_TOKEN"}), stderr="")
+        with mock.patch.object(doctor, "tool_version", side_effect=lambda n: "1.2.3" if n == "gitcode" else ""), \
+             mock.patch.object(doctor.subprocess, "run", return_value=proc):
+            row = doctor.check_gitcode()
+        self.assertEqual(row["state"], doctor.OK)
+        self.assertIn("GITCODE_TOKEN", row["detail"])
+
+    def test_missing_cli_with_node_gives_npm_install(self):
+        with mock.patch.object(doctor, "tool_version",
+                               side_effect=lambda n: "v22" if n == "node" else ""):
+            row = doctor.check_gitcode()
+        self.assertEqual(row["state"], doctor.DEGRADE)
+        self.assertEqual(row["fix_kind"], "install-cli")
+        self.assertTrue(row["fix_auto"])
+        self.assertIn("atomgit-cli", row["fix"])
+        self.assertNotIn("auth login", row["fix"], "安装类 fix 不能带登录命令")
+
+    def test_missing_cli_without_node_points_to_releases(self):
+        with mock.patch.object(doctor, "tool_version", return_value=""):
+            row = doctor.check_gitcode()
+        self.assertEqual(row["state"], doctor.DEGRADE)
+        self.assertEqual(row["fix_kind"], "manual")
+        self.assertFalse(row["fix_auto"])
+        self.assertIn("releases", row["fix"])
+
+    def test_logged_in_is_ok(self):
+        proc = mock.Mock(returncode=0, stdout=json.dumps({"source": "config"}), stderr="")
+        with mock.patch.object(doctor, "tool_version", side_effect=lambda n: "1.2.3" if n == "gitcode" else ""), \
+             mock.patch.object(doctor.subprocess, "run", return_value=proc):
+            row = doctor.check_gitcode()
+        self.assertEqual(row["state"], doctor.OK)
+        self.assertIn("config", row["detail"])
+
+    def test_not_logged_in_gives_web_login(self):
+        proc = mock.Mock(returncode=4, stdout="{}", stderr="not logged in")
+        with mock.patch.object(doctor, "tool_version", side_effect=lambda n: "1.2.3" if n == "gitcode" else ""), \
+             mock.patch.object(doctor.subprocess, "run", return_value=proc):
+            row = doctor.check_gitcode()
+        self.assertEqual(row["state"], doctor.DEGRADE)
+        self.assertEqual(row["fix_kind"], "login-web")
+        self.assertFalse(row["fix_auto"])
+        self.assertEqual(row["fix"], "gitcode auth login --web")
+
+    def test_capability_rows_cover_gitcode(self):
+        rows = dict(doctor.CAPABILITIES)
+        self.assertIn("gitcode", rows["批量导入上游 issue（GitCode）"])
+        self.assertIn("gh", rows["批量导入上游 issue（GitHub）"])
+
 
 
 if __name__ == "__main__":
