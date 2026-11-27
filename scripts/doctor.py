@@ -14,8 +14,9 @@ Windows 上没有 `python3`（面板探活退到 `python` / `py -3`，挑中的�
    新增一个第三方包自动被发现。写死清单会有第二份真相，且必然腐烂。
 2. **只报不修**。体检器不做 `pip install`：装法是人的决定，内网机器上通常是离线 wheel，
    联网安装在这里失败会报得比原来更难读。
-3. **可重复**：不写数据面、不缓存。同一台机器两次跑结论一致——"反复发起检测"的意义在这条。
-   运行时 Python 会生成 `scripts/__pycache__/`，那是解释器行为，不在数据面里。
+3. **可重复**：结论只由本机状态决定，不写数据面（`knowledge/`、`traces/`、`metrics/`）。
+   唯一的写入是本机 `.local/` 下两个运行时件：settings 里的「已接受不修」由人写，
+   `doctor-last.json` 记上次结论只为「与上次比」那一行。两次跑结论相同，差异行如实反映变化。
 
 ## 与相邻脚本的分工（不要在这里重实现它们）
 
@@ -29,6 +30,7 @@ Windows 上没有 `python3`（面板探活退到 `python` / `py -3`，挑中的�
   python3 scripts/doctor.py            # 人读五段：结论 / 能力 / 检查了什么 / 有问题 / 下一步
   python3 scripts/doctor.py --json     # 机器读（面板与脚本用）
   python3 scripts/doctor.py --root <检出>
+  python3 scripts/doctor.py --no-record # 不读也不写 .local/doctor-last.json
 
 退出码：0 = 无阻断；2 = 有阻断项；3 = 不在检出里；4 = 命令行参数不合法。
 """
@@ -72,6 +74,20 @@ CAPABILITIES = [
 ]
 
 BLOCK, DEGRADE, OK = "blocked", "degraded", "ok"
+
+# 检查项之间的真实前置：装 / 用 B 之前得先有 A。只登记「没有 A 就装不上或判不出」的关系，
+# 不写「建议先修哪个」——那是「下一步」按影响面排序的事。
+DEPENDS_ON = {
+    "gitcode": ["node"],        # 装 GitCode CLI 走 npx
+    "kb-sync": ["git"],         # 同步判定按本机已有的 git 远端 ref
+    "pr-platforms": ["python"], # 清单脚本用当前解释器跑
+}
+
+# 上次结论快照：只为本机「与上次比」这一行服务，不进 git（`.local/` 已忽略）。
+LAST_SCHEMA = "ascend-sleuth-doctor-last/1"
+LAST_REL = Path(".local") / "doctor-last.json"
+STATE_TEXT = {OK: "正常", DEGRADE: "降级", BLOCK: "阻断"}
+
 
 _STDLIB_NAMES = getattr(sys, "stdlib_module_names", None)
 _BUILTIN = set(sys.builtin_module_names)
@@ -369,7 +385,7 @@ def check_gitcode():
             note += f"；环境 token（{env_source}）已设置，但摄取脚本仍要 CLI 作 API 入口"
         return {"id": "gitcode", "label": "GitCode CLI", "kind": "tool", "state": DEGRADE,
                 "detail": "未安装" + (f"（{env_source} 已设置，但缺 CLI）" if env_source else ""),
-                "note": note + "；安装需要 Node.js（doctor 的 node 项）",
+                "note": note,
                 "fix": GITCODE_INSTALL,
                 "fix_kind": "install-cli", "fix_auto": True}
     try:
@@ -643,6 +659,106 @@ def check_kb_sync(root: Path):
             "fix": "python3 scripts/kb_sync.py --show" if degraded else ""}
 
 
+def accepted_checks(root: Path) -> set:
+    """`.local/settings.json` 的 `doctor.accept` → 已接受不修的检查项 id。
+
+    只对降级项生效：阻断项意味着脚本在 import 阶段就退出，把它标成已接受等于让结论说谎。
+    配置读不出或没写这一段时返回空集——配置问题不该让体检失败。
+    """
+    try:
+        from _settings import load_settings, settings_path
+        if not settings_path(root).is_file():
+            return set()
+        data, _config, _problem = load_settings(root)
+    except Exception:  # noqa: BLE001 - 读配置失败按「没接受过任何项」算
+        return set()
+    section = data.get("doctor") if isinstance(data, dict) else None
+    raw = section.get("accept") if isinstance(section, dict) else None
+    if isinstance(raw, str):
+        raw = [raw]
+    if not isinstance(raw, list):
+        return set()
+    return {str(x).strip() for x in raw if str(x).strip()}
+
+
+def _last_path(root: Path) -> Path:
+    try:
+        from _settings import repo_root
+        base = repo_root(root)
+    except Exception:  # noqa: BLE001 - 拿不到主检出就锚在当前 root
+        base = Path(root)
+    return Path(base) / LAST_REL
+
+
+def read_last(root: Path):
+    """上一次体检的结论快照；没有或读不出返回 None。"""
+    try:
+        doc = json.loads(_last_path(root).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(doc, dict) or not isinstance(doc.get("checks"), dict):
+        return None
+    return doc
+
+
+def write_last(root: Path, rep) -> None:
+    """记下本次结论。写不了（只读部署、CI）就跳过：记录失败不该让体检失败。"""
+    doc = {"schema": LAST_SCHEMA, "at": _now_iso(), "python": rep["python"],
+           "checks": {c["id"]: c["state"] for c in rep["checks"]}}
+    path = _last_path(root)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(doc, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    except OSError:
+        pass
+
+
+def _now_iso() -> str:
+    from datetime import datetime
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def diff_last(rep, last):
+    """本次结论与上次快照的差异 → 渲染用的一行素材。"""
+    if not last:
+        return {"first": True, "at": "", "changes": []}
+    now = {c["id"]: c for c in rep["checks"]}
+    prev = last.get("checks") or {}
+    labels = {c["id"]: c.get("label") or c["id"] for c in rep["checks"]}
+    changes = []
+    for cid in list(now) + [i for i in prev if i not in now]:
+        was, is_ = prev.get(cid), now.get(cid, {}).get("state")
+        if was == is_:
+            continue
+        changes.append({"id": cid, "label": labels.get(cid, cid),
+                        "was": was or "（上次未检查）", "now": is_ or "（本次未检查）"})
+    return {"first": False, "at": str(last.get("at") or ""), "changes": changes}
+
+
+def ordered_bad(checks):
+    """待修项按依赖排序：被依赖项在前（装 gitcode 要先有 node）。同层保持检查顺序。"""
+    bad = {c["id"] for c in checks if c["state"] != OK}
+    by_id = {c["id"]: c for c in checks}
+    order, seen = [], set()
+
+    def visit(cid):
+        if cid in seen:
+            return
+        seen.add(cid)
+        for dep in DEPENDS_ON.get(cid, []):
+            if dep in bad:
+                visit(dep)
+        order.append(cid)
+
+    # 阻断优先（结论说「先修阻断项」）；降级项再按影响面排——拖垮的能力多的排前面
+    degraded = sorted([x for x in checks if x["state"] == DEGRADE],
+                      key=lambda x: -len(x.get("impact") or []))
+    for c in [x for x in checks if x["state"] == BLOCK] + degraded:
+        if c["id"] in bad:
+            visit(c["id"])
+    return [by_id[i] for i in order]
+
+
 def check_capability_table(checks):
     """能力表引用的 id 必须都存在于检查项里。
 
@@ -660,34 +776,61 @@ def check_capability_table(checks):
             "fix": "修 scripts/doctor.py 的 CAPABILITIES"}
 
 
-def build_report(root: Path):
+def apply_local_policy(checks, accepted):
+    """把本机配置落到检查项上：依赖关系、已接受项。
+
+    只有降级项能被接受：阻断项意味着脚本在 import 阶段就退出，标成已接受等于让结论说谎。
+    """
+    accepted = set(accepted or ())
+    for c in checks:
+        c["depends_on"] = list(DEPENDS_ON.get(c["id"], []))
+        c["accepted"] = bool(c["state"] == DEGRADE and c["id"] in accepted)
+    return checks
+
+
+def build_report(root: Path, *, record: bool = True):
     checks = [check_python()]
     checks += check_third_party()
     checks += [check_git(root), check_node(), check_gh(), check_gitcode(), check_pr_platforms(root),
                check_kb_sync(root), check_traces(root), check_index(root), check_evolution(root)]
     checks.append(check_capability_table(checks))
+
+    apply_local_policy(checks, accepted_checks(root))
+
     by_id = {c["id"]: c for c in checks}
     caps = []
     for name, needs in CAPABILITIES:
         miss = [n for n in needs if by_id.get(n, {}).get("state") == BLOCK]
         weak = [n for n in needs if by_id.get(n, {}).get("state") == DEGRADE]
         caps.append({"name": name, "needs": needs,
-                     "state": "no" if miss else ("partial" if weak else "yes"), "missing": miss})
+                     "state": "no" if miss else ("partial" if weak else "yes"), "missing": miss,
+                     "accepted": bool(weak) and all(by_id[n].get("accepted") for n in weak)})
     # 没有任何能力引用的阻断项（新出现的第三方包、能力表自检失败）：单独列一条，否则结论会一边报
     # 「N 项阻断」一边说七条流程都能跑
     covered = {n for _, needs in CAPABILITIES for n in needs}
     orphan = [c["id"] for c in checks if c["state"] == BLOCK and c["id"] not in covered]
     if orphan:
-        caps.append({"name": "其余脚本化流程", "needs": orphan, "state": "no", "missing": orphan})
+        caps.append({"name": "其余脚本化流程", "needs": orphan, "state": "no", "missing": orphan,
+                     "accepted": False})
+    for c in checks:   # 能力反查结果挂到检查项上：「下一步」排序与「影响：」行共用一份
+        c["impact"] = _capability_impact({"capabilities": caps}, c["id"])
     blocked = [c for c in checks if c["state"] == BLOCK]
     degraded = [c for c in checks if c["state"] == DEGRADE]
+    todo = [c for c in ordered_bad(checks) if not c.get("accepted")]
     actions = []
-    for c in blocked + degraded:
+    for c in todo:
         if c.get("fix") and c["fix"] not in actions:
             actions.append(c["fix"])
-    return {"ok": not blocked, "root": str(root), "python": sys.executable,
-            "blocked": len(blocked), "degraded": len(degraded),
-            "checks": checks, "capabilities": caps, "next_actions": actions}
+    last = read_last(root) if record else None
+    rep = {"ok": not blocked, "root": str(root), "python": sys.executable,
+           "blocked": len(blocked), "degraded": len(degraded),
+           "accepted": len([c for c in degraded if c.get("accepted")]),
+           "checks": checks, "capabilities": caps, "next_actions": actions,
+           "record_enabled": record,
+           "previous": diff_last({"checks": checks}, last)}
+    if record:
+        write_last(root, rep)
+    return rep
 
 
 KIND_TEXT = {"package": "包", "tool": "工具", "data": "数据面", "policy": "部署声明"}
@@ -712,6 +855,23 @@ def _capability_impact(rep, check_id: str):
     return [c["name"] for c in rep["capabilities"] if check_id in (c.get("needs") or [])]
 
 
+def _previous_line(rep) -> str:
+    """「与上次比」一行：结论级差异，不重复证据段。"""
+    prev = rep.get("previous") or {}
+    if not rep.get("record_enabled", True):
+        return "与上次比：未读快照（--no-record），本次结论不记基线。"
+    if prev.get("first"):
+        return "与上次比：本机第一次体检，本次结论记为基线。"
+    changes = prev.get("changes") or []
+    if not changes:
+        at = prev.get("at") or "上次"
+        return f"与上次比：结论一致（{at}）。"
+    parts = [f"{c['label']} {STATE_TEXT.get(c['was'], c['was'])}→{STATE_TEXT.get(c['now'], c['now'])}"
+             for c in changes[:4]]
+    more = f" 等 {len(changes)} 项" if len(changes) > 4 else ""
+    return f"与上次比：{len(changes)} 项变化——" + "；".join(parts) + more
+
+
 def _ok_line(c) -> str:
     """正常项一行：detail 已以名字开头时不再重复（`git version 2.50.1`，不是 `git git version …`）。"""
     label, detail = c.get("label") or c["id"], c.get("detail") or ""
@@ -726,12 +886,16 @@ def render(rep) -> str:
     total = len(rep["checks"])
     blocked, degraded = rep["blocked"], rep["degraded"]
     okn = total - blocked - degraded
+    accepted = int(rep.get("accepted") or 0)
+    accepted_text = ""
+    if degraded and accepted:
+        accepted_text = f"（其中 {accepted} 项已接受不修）"
     if blocked:
-        head = (f"结论：{blocked} 项阻断、{degraded} 项降级——{total} 项检查里 {okn} 项正常，"
-                f"先修阻断项再重跑本命令。")
+        head = (f"结论：{blocked} 项阻断、{degraded} 项降级{accepted_text}——"
+                f"{total} 项检查里 {okn} 项正常，先修阻断项再重跑本命令。")
     else:
-        head = f"结论：无阻断项，{degraded} 项降级——{total} 项检查里 {okn} 项正常。"
-    lines = [head, ""]
+        head = f"结论：无阻断项，{degraded} 项降级{accepted_text}——{total} 项检查里 {okn} 项正常。"
+    lines = [head, _previous_line(rep), ""]
 
     caps = rep["capabilities"]
     yes = sum(1 for c in caps if c["state"] == "yes")
@@ -744,9 +908,20 @@ def render(rep) -> str:
         missing = [n for n in (c.get("missing") or []) if n]
         weak = [n for n in (c.get("needs") or [])
                 if n not in missing and _state_of(rep, n) == DEGRADE]
-        lack = "、".join(_check_label(rep, n) for n in missing + weak)
+        lack, self_bad = [], False
+        for n in missing + weak:
+            label = _check_label(rep, n)
+            if label == c["name"]:   # 检查项与能力同名（如「知识库同步」）：说缺自己会读成 bug
+                self_bad = True
+                continue
+            lack.append(label)
         mark = "✘" if c["state"] == "no" else "!"
-        lines.append(f"  {mark} {c['name']}" + (f"　缺：{lack}" if lack else ""))
+        tail = f"　缺：{'、'.join(lack)}" if lack else ""
+        if self_bad:
+            tail += "（该能力自身的检查项也降级）"
+        if c.get("accepted"):
+            tail += "（已接受）"
+        lines.append(f"  {mark} {c['name']}" + tail)
     ok_caps = [c["name"] for c in caps if c["state"] == "yes"]
     if ok_caps:
         lines.append("  ✔ " + "、".join(ok_caps))
@@ -766,14 +941,21 @@ def render(rep) -> str:
         else:
             lines.append(f"  {title}：" + " · ".join(_ok_line(c) for c in group))
 
-    bad = [c for c in rep["checks"] if c["state"] != OK]
+    bad_all = [c for c in rep["checks"] if c["state"] != OK]
+    bad = [c for c in ordered_bad(rep["checks"]) if not c.get("accepted")]
+    bad += [c for c in bad_all if c.get("accepted")]
     if bad:
         lines += ["", f"有问题（{len(bad)} 项）："]
         for c in bad:
             tag = "阻断" if c["state"] == BLOCK else "降级"
             kind = KIND_TEXT.get(c.get("kind") or "", "")
             lines.append(f"  [{tag}] {c['label']}" + (f"（{kind}）" if kind else "") + "：" + (c.get("detail") or ""))
-            impact = _capability_impact(rep, c["id"])
+            if c.get("accepted"):
+                lines.append("         状态：已接受不修（.local/settings.json 的 doctor.accept），不列下一步")
+            waiting = [d for d in (c.get("depends_on") or []) if _state_of(rep, d) != OK]
+            if waiting:
+                lines.append("         依赖：先修 " + "、".join(_check_label(rep, d) for d in waiting))
+            impact = c.get("impact") or _capability_impact(rep, c["id"])
             if impact:
                 lines.append("         影响：" + "、".join(impact))
             else:
@@ -810,6 +992,8 @@ def main() -> int:
                     help="仓库根目录（默认：本脚本上两级）。只改数据面基准（traces / 索引 / 检出判定）；"
                          "依赖扫描始终跟本脚本所在的 scripts/")
     ap.add_argument("--json", action="store_true", help="只吐 JSON（面板/脚本用）")
+    ap.add_argument("--no-record", action="store_true",
+                    help="不读也不写 .local/doctor-last.json（不给「与上次比」、不改基线）")
     args = ap.parse_args()
 
     root = Path(args.root).resolve() if args.root else SCRIPTS_DIR.parent
@@ -821,7 +1005,7 @@ def main() -> int:
             print(f"doctor: {msg}", file=sys.stderr)
         return 3
 
-    rep = build_report(root)
+    rep = build_report(root, record=not args.no_record)
     print(json.dumps(rep, ensure_ascii=False) if args.json else render(rep))
     return 0 if rep["ok"] else 2
 

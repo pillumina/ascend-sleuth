@@ -326,5 +326,89 @@ class RenderTest(unittest.TestCase):
         self.assertLess(out.index("有问题（"), out.index("下一步（"))
 
 
+class LocalPolicyTest(unittest.TestCase):
+    """本机配置三项：已接受不修、检查项依赖、与上次比。
+
+    为什么单测：这三项都会改变「下一步」里出现什么。判错时要么把已接受的项一直劝人装，
+    要么让人先装 leaf（GitCode CLI）再装它依赖的 Node.js，或者把「上次有 3 项降级」
+    说成「结论一致」。
+    """
+
+    def test_accept_applies_to_degraded_only(self):
+        checks = [_check("p", "某包", doctor.DEGRADE), _check("q", "某包2", doctor.BLOCK)]
+        doctor.apply_local_policy(checks, {"p", "q"})
+        self.assertTrue(checks[0]["accepted"])
+        self.assertFalse(checks[1]["accepted"], "阻断项不能被「接受」，那会让结论说谎")
+
+    def test_accept_list_read_from_settings(self):
+        with tempfile.TemporaryDirectory(prefix="doctor-accept-") as tmp:
+            root = Path(tmp)
+            (root / ".local").mkdir()
+            (root / ".local" / "settings.json").write_text(
+                json.dumps({"schema": "ascend-sleuth-settings/1",
+                            "doctor": {"accept": ["zstandard", " gh "]}}), encoding="utf-8")
+            self.assertEqual(doctor.accepted_checks(root), {"zstandard", "gh"})
+
+    def test_accept_defaults_to_empty_without_settings(self):
+        with tempfile.TemporaryDirectory(prefix="doctor-accept-") as tmp:
+            self.assertEqual(doctor.accepted_checks(Path(tmp)), set())
+
+    def test_accept_survives_broken_settings(self):
+        with tempfile.TemporaryDirectory(prefix="doctor-accept-") as tmp:
+            root = Path(tmp)
+            (root / ".local").mkdir()
+            (root / ".local" / "settings.json").write_text("{not json", encoding="utf-8")
+            self.assertEqual(doctor.accepted_checks(root), set())
+
+    def test_dependency_is_ordered_first(self):
+        checks = [_check("gitcode", "GitCode CLI", doctor.DEGRADE, fix="装 GitCode CLI"),
+                  _check("node", "Node.js", doctor.DEGRADE, fix="装 Node.js"),
+                  _check("git", "git")]
+        self.assertEqual([c["id"] for c in doctor.ordered_bad(checks)], ["node", "gitcode"])
+
+    def test_blocked_items_come_before_degraded(self):
+        checks = [_check("a", "A", doctor.DEGRADE), _check("b", "B", doctor.BLOCK)]
+        self.assertEqual([c["id"] for c in doctor.ordered_bad(checks)], ["b", "a"])
+
+    def test_dependency_only_reorders_when_dependency_is_bad(self):
+        checks = [_check("gitcode", "GitCode CLI", doctor.DEGRADE), _check("node", "Node.js")]
+        self.assertEqual([c["id"] for c in doctor.ordered_bad(checks)], ["gitcode"])
+
+    def test_previous_line_first_run_and_consistent(self):
+        rep = {"previous": {"first": True}, "record_enabled": True}
+        self.assertIn("本机第一次体检", doctor._previous_line(rep))
+        rep = {"previous": {"first": False, "at": "2026-01-01T00:00:00+08:00", "changes": []},
+               "record_enabled": True}
+        self.assertIn("结论一致", doctor._previous_line(rep))
+
+    def test_previous_line_reports_changes(self):
+        rep = {"record_enabled": True,
+               "previous": {"first": False, "at": "t", "changes": [
+                   {"id": "gitcode", "label": "GitCode CLI", "was": "degraded", "now": "ok"}]}}
+        line = doctor._previous_line(rep)
+        self.assertIn("GitCode CLI 降级→正常", line)
+
+    def test_previous_line_without_record_does_not_claim_baseline(self):
+        rep = {"previous": {"first": True}, "record_enabled": False}
+        self.assertIn("--no-record", doctor._previous_line(rep))
+
+    def test_last_snapshot_roundtrip(self):
+        with tempfile.TemporaryDirectory(prefix="doctor-last-") as tmp:
+            root = Path(tmp)
+            rep = {"python": sys.executable, "checks": [_check("a", "A"), _check("b", "B", doctor.DEGRADE)]}
+            doctor.write_last(root, rep)
+            last = doctor.read_last(root)
+            self.assertEqual(last["checks"], {"a": "ok", "b": "degraded"})
+            diff = doctor.diff_last({"checks": rep["checks"]}, last)
+            self.assertEqual(diff["changes"], [])
+
+    def test_missing_snapshot_is_not_an_error(self):
+        with tempfile.TemporaryDirectory(prefix="doctor-last-") as tmp:
+            self.assertIsNone(doctor.read_last(Path(tmp)))
+            self.assertTrue(doctor.diff_last({"checks": []}, None)["first"])
+
+
+
+
 if __name__ == "__main__":
     unittest.main()
