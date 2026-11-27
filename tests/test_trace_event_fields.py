@@ -91,8 +91,10 @@ class TopLevelFieldTest(unittest.TestCase):
     def test_example_covers_write_entry_fields(self):
         """写入口会写的顶层字段必须都在 example 里，否则正常收尾的单会被判未登记。"""
         import trace_transition as tt
+        import trace_usage as tu
         known = vt.known_top_level(ROOT)
         self.assertEqual(tt.TOUCHED - known, set())
+        self.assertEqual(set(tu.KEYS) - known, set())
 
     def test_example_covers_new_trace_header(self):
         """建单脚本写的 header 字段同样要在清单里。"""
