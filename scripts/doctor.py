@@ -26,7 +26,7 @@ Windows 上没有 `python3`（面板探活退到 `python` / `py -3`，挑中的�
 体检器**不抄 CI 的命令清单**（权威处是 `.github/workflows/kb-checks.yml`），只在「下一步」里指出该跑哪一条。
 
 用法：
-  python3 scripts/doctor.py            # 人读三段：结论 / 证据 / 下一步
+  python3 scripts/doctor.py            # 人读五段：结论 / 能力 / 检查了什么 / 有问题 / 下一步
   python3 scripts/doctor.py --json     # 机器读（面板与脚本用）
   python3 scripts/doctor.py --root <检出>
 
@@ -62,7 +62,7 @@ CAPABILITIES = [
     ("诊断与知识沉淀", ["python", "yaml", "git", "gh"]),
     ("导出 / 导入交接包", ["python", "yaml", "traces"]),
     ("面板 · 诊断 tab", ["python", "yaml"]),
-    ("面板 · 指标 tab 的体检", ["python", "yaml"]),
+    ("面板 · 指标 tab", ["python", "yaml"]),
     ("面板安装 / 构建 / CI 检查", ["node"]),
     ("批量导入上游 issue（GitHub）", ["python", "yaml", "gh"]),
     ("批量导入上游 issue（GitCode）", ["python", "yaml", "gitcode"]),
@@ -220,8 +220,15 @@ def package_version(name: str):
         return ""
 
 
+UNKNOWN_VERSION = "已装（版本未知）"
+
+
 def tool_version(cmd, args=("--version",)):
-    """外部命令 → 一行版本串；命令不存在返回 None。"""
+    """外部命令 → 一行版本串；命令不存在返回 None。
+
+    命令在、`--version` 不认（如 GitCode CLI 只认 `version` 子命令）时返回 UNKNOWN_VERSION：
+    「问不到版本」不等于「没装」，把报错首行当版本号会让证据段出现「Error: unknown flag」这种句子。
+    """
     exe = shutil.which(cmd)
     if not exe:
         return None
@@ -229,9 +236,11 @@ def tool_version(cmd, args=("--version",)):
         r = subprocess.run([exe, *args], capture_output=True, text=True, timeout=20,
                            encoding="utf-8", errors="replace")
     except (OSError, subprocess.SubprocessError):
-        return None
+        return UNKNOWN_VERSION
     line = (r.stdout or r.stderr or "").strip().splitlines()
-    return line[0].strip() if line else "（无版本输出）"
+    if r.returncode != 0 or not line:
+        return UNKNOWN_VERSION
+    return line[0].strip()
 
 
 def check_python():
@@ -242,7 +251,7 @@ def check_python():
         note += "；3.10 以下没有标准库名单，依赖判定只能按路径推断，可能多报"
     if sys.platform.startswith("win"):
         note += "；面板按 python3 → python → py -3 的顺序挑，挑中的未必是这一个——点面板报缺依赖时先对一下"
-    return {"id": "python", "label": "Python", "state": state, "detail": v, "note": note,
+    return {"id": "python", "label": "Python", "kind": "tool", "state": state, "detail": v, "note": note,
             "fix": "" if state == OK else "装 Python 3.10 或更高（CI 在 3.11 上验证）"}
 
 
@@ -262,20 +271,22 @@ def check_third_party():
                          "detail": detail, "fix": ""})
             continue
         pip_name = PIP_NAME.get(name, name)
-        fix = (f"{sys.executable} -m pip install {pip_name}"
-               f"；pip 名与 import 名不同时按发行包名装"
-               f"；内网离线：{sys.executable} -m pip install --no-index --find-links <wheel 目录> {pip_name}")
+        fix = f"{sys.executable} -m pip install {pip_name}"
+        fix_note = (f"pip 名与 import 名不同时按发行包名装；"
+                    f"内网离线：{sys.executable} -m pip install --no-index --find-links <wheel 目录> {pip_name}")
         hard = sorted(info["hard"])
         if hard:
             rows.append({"id": name, "label": label, "kind": "package", "state": BLOCK,
                          "detail": f"未安装；{len(hard)} 个脚本无条件 import 它（如 {'、'.join(hard[:3])}）",
                          "note": "缺它时那些脚本在 import 阶段就退出，不是跑到一半才失败",
-                         "fix": fix})
+                         "fix": fix, "fix_note": fix_note})
         else:
+            files = sorted(info["files"])
             rows.append({"id": name, "label": label, "kind": "package", "state": DEGRADE,
-                         "detail": f"未安装；{len(info['files'])} 个脚本在 try/except 或平台条件里用它",
+                         "detail": (f"未安装；{len(files)} 个脚本在 try/except 或平台条件里用它"
+                                    f"（{'、'.join(files[:2])}）" if files else "未安装"),
                          "note": "缺席时那些脚本自己退化，不会崩",
-                         "fix": fix})
+                         "fix": fix, "fix_note": fix_note})
     return rows
 
 
@@ -309,18 +320,19 @@ def check_git(root: Path):
 def check_node():
     version = tool_version("node")
     if version:
-        return {"id": "node", "label": "Node.js", "state": OK, "detail": version, "fix": ""}
-    return {"id": "node", "label": "Node.js", "state": DEGRADE, "detail": "未安装",
+        return {"id": "node", "label": "Node.js", "kind": "tool", "state": OK, "detail": version, "fix": ""}
+    return {"id": "node", "label": "Node.js", "kind": "tool", "state": DEGRADE, "detail": "未安装",
             "note": "诊断与知识沉淀不需要它；面板安装/构建、CI 检查、token 记账需要",
-            "fix": "装 Node.js；或者面板改走插件页粘贴路径安装（那条不需要 node）"}
+            "fix": "装 Node.js",
+            "fix_note": "面板也可改走插件页粘贴路径安装，那条不需要 node"}
 
 
 def check_gh():
     version = tool_version("gh")
     if version:
-        return {"id": "gh", "label": "gh CLI", "kind": "tool", "state": OK, "detail": version,
+        return {"id": "gh", "label": "gh", "kind": "tool", "state": OK, "detail": version,
                 "note": "批量导 issue 还要登录：gh auth status"}
-    return {"id": "gh", "label": "gh CLI", "kind": "tool", "state": DEGRADE, "detail": "未安装",
+    return {"id": "gh", "label": "gh", "kind": "tool", "state": DEGRADE, "detail": "未安装",
             "note": "只有批量导入 issue 与诊断时的上游修复核查用它；缺了这两处如实说明不可查证；"
                     "装完还要登录（gh auth login），登录必须由人在交互终端完成",
             "fix": "按平台装 gh",
@@ -454,6 +466,15 @@ def check_evolution(root: Path):
             "detail": f"{role} —— {meaning}（来源：{source}）", "fix": ""}
 
 
+def _platform_reason(reason: str) -> str:
+    """适配器给的英文式子原因 → 一行短中文。认不出的原样带出，不猜。"""
+    r = (reason or "").strip()
+    for prefix, short in (("未配置 token 环境变量：", "未配置 "), ("缺少命令：", "缺 ")):
+        if r.startswith(prefix):
+            return short + r[len(prefix):]
+    return r or "不可用"
+
+
 def check_pr_platforms(root):
     """PR 平台适配器清单：只读清单与环境变量，不联网、不装依赖。
 
@@ -462,9 +483,10 @@ def check_pr_platforms(root):
     """
     script = Path(root) / "scripts" / "pr_status.py"
     if not script.is_file():
-        return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "tool", "state": DEGRADE,
+        return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "data", "state": DEGRADE,
                 "detail": "缺少 scripts/pr_status.py",
-                "fix": "把插件更新到带沉淀队列的版本；或先跳过 PR 状态查询，用「标记已合入」手动确认"}
+                "fix": "把插件更新到带沉淀队列的版本",
+                "fix_note": "或先跳过 PR 状态查询，用「标记已合入」手动确认"}
     try:
         proc = subprocess.run(
             [sys.executable, str(script), "--root", str(root), "--list-platforms", "--json"],
@@ -472,15 +494,15 @@ def check_pr_platforms(root):
             timeout=15,
         )
     except Exception as exc:  # noqa: BLE001 - 体检器把异常折成一行原因
-        return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "tool", "state": DEGRADE,
+        return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "data", "state": DEGRADE,
                 "detail": "清单脚本跑不起来：" + str(exc), "fix": "python3 scripts/pr_status.py --list-platforms"}
     try:
         doc = json.loads(proc.stdout.strip() or "{}")
     except Exception:  # noqa: BLE001
-        return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "tool", "state": DEGRADE,
+        return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "data", "state": DEGRADE,
                 "detail": "清单脚本没有给出 JSON", "fix": "python3 scripts/pr_status.py --list-platforms"}
     if doc.get("ok") is False:
-        return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "tool", "state": DEGRADE,
+        return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "data", "state": DEGRADE,
                 "detail": str((doc.get("error") or {}).get("message") or "清单不可用"),
                 "fix": "python3 scripts/pr_status.py --list-platforms"}
     platforms = doc.get("platforms") or []
@@ -500,28 +522,30 @@ def check_pr_platforms(root):
     if target_platform:
         picked = next((p for p in platforms if str(p.get("id")) == target_platform), None)
         if picked is None:
-            return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "tool", "state": DEGRADE,
+            return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "data", "state": DEGRADE,
                     "detail": "目标平台 " + target_platform + " 没有适配器",
                     "fix": "在 scripts/platforms/ 加适配器，或换一个目标远端"}
         if not picked.get("available"):
-            return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "tool", "state": DEGRADE,
+            return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "data", "state": DEGRADE,
                     "detail": "目标平台 " + str(picked.get("name") or target_platform) + " 不可用："
                               + str(picked.get("reason") or "缺 token/命令"),
                     "fix": str(picked.get("install_hint") or "按适配器说明配 token/命令")}
-        return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "tool", "state": OK,
+        return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "data", "state": OK,
                 "detail": "目标平台 " + str(picked.get("name") or target_platform) + " 可用",
                 "note": "清单来自 scripts/platforms/；只读，不联网"}
     ok = [p for p in platforms if p.get("available")]
     bad = [p for p in platforms if not p.get("available")]
     if not ok:
         reason = "；".join(str(p.get("reason") or p.get("id")) for p in bad[:3]) or "没有平台清单"
-        return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "tool", "state": DEGRADE,
+        return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "data", "state": DEGRADE,
                 "detail": "没有可用的平台：" + reason,
-                "fix": "按适配器的 install_hint 配 token/命令；或先手动确认 PR 状态"}
+                "fix": "按适配器的 install_hint 配 token/命令",
+                "fix_note": "或先手动确认 PR 状态"}
     detail = "可用 " + "、".join(str(p.get("name") or p.get("id")) for p in ok)
     if bad:
-        detail += "；不可用 " + "、".join(str(p.get("id")) for p in bad[:3])
-    return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "tool", "state": OK, "detail": detail,
+        detail += "；不可用 " + "、".join(
+            str(p.get("id")) + f"（{_platform_reason(str(p.get('reason') or ''))}）" for p in bad[:3])
+    return {"id": "pr-platforms", "label": "PR 平台适配器", "kind": "data", "state": OK, "detail": detail,
             "note": "清单来自 scripts/platforms/；只读，不联网"}
 
 
@@ -666,30 +690,100 @@ def build_report(root: Path):
             "checks": checks, "capabilities": caps, "next_actions": actions}
 
 
+KIND_TEXT = {"package": "包", "tool": "工具", "data": "数据面", "policy": "部署声明"}
+
+
+def _state_of(rep, check_id: str) -> str:
+    for c in rep["checks"]:
+        if c["id"] == check_id:
+            return c["state"]
+    return ""
+
+
+def _check_label(rep, check_id: str) -> str:
+    for c in rep["checks"]:
+        if c["id"] == check_id:
+            return c.get("label") or check_id
+    return check_id
+
+
+def _capability_impact(rep, check_id: str):
+    """这条检查项坏掉时哪些能力跟着降级。反查 CAPABILITIES，不另写一份对照表。"""
+    return [c["name"] for c in rep["capabilities"] if check_id in (c.get("needs") or [])]
+
+
+def _ok_line(c) -> str:
+    """正常项一行：detail 已以名字开头时不再重复（`git version 2.50.1`，不是 `git git version …`）。"""
+    label, detail = c.get("label") or c["id"], c.get("detail") or ""
+    if not detail:
+        return label
+    if detail.lower().startswith(label.lower()):
+        return detail
+    return f"{label} {detail}"
+
+
 def render(rep) -> str:
-    if rep["ok"]:
-        head = f"结论：无阻断项，{rep['degraded']} 项降级。"
+    total = len(rep["checks"])
+    blocked, degraded = rep["blocked"], rep["degraded"]
+    okn = total - blocked - degraded
+    if blocked:
+        head = (f"结论：{blocked} 项阻断、{degraded} 项降级——{total} 项检查里 {okn} 项正常，"
+                f"先修阻断项再重跑本命令。")
     else:
-        head = f"结论：{rep['blocked']} 项阻断、{rep['degraded']} 项降级——先修阻断项，再重跑本命令。"
-    lines = [head]
-    for state, prefix in (("yes", "能跑"), ("partial", "降级"), ("no", "不能跑")):
-        names = [c["name"] for c in rep["capabilities"] if c["state"] == state]
-        if names:
-            lines.append(f"  {prefix}：" + "、".join(names))
+        head = f"结论：无阻断项，{degraded} 项降级——{total} 项检查里 {okn} 项正常。"
+    lines = [head, ""]
+
+    caps = rep["capabilities"]
+    yes = sum(1 for c in caps if c["state"] == "yes")
+    partial = sum(1 for c in caps if c["state"] == "partial")
+    no = sum(1 for c in caps if c["state"] == "no")
+    lines.append(f"能力（{len(caps)} 项：{yes} 可用、{partial} 降级、{no} 不可用）")
+    for c in caps:
+        if c["state"] == "yes":
+            continue
+        missing = [n for n in (c.get("missing") or []) if n]
+        weak = [n for n in (c.get("needs") or [])
+                if n not in missing and _state_of(rep, n) == DEGRADE]
+        lack = "、".join(_check_label(rep, n) for n in missing + weak)
+        mark = "✘" if c["state"] == "no" else "!"
+        lines.append(f"  {mark} {c['name']}" + (f"　缺：{lack}" if lack else ""))
+    ok_caps = [c["name"] for c in caps if c["state"] == "yes"]
+    if ok_caps:
+        lines.append("  ✔ " + "、".join(ok_caps))
+
+    lines += ["", f"检查了什么（{total} 项：{okn} 正常、{degraded} 降级、{blocked} 阻断）"]
+    ok_checks = [c for c in rep["checks"] if c["state"] == OK]
+    if not ok_checks:
+        lines.append("  正常：无")
+    groups = [("tool", "工具"), ("package", "包"), ("data", "仓库与数据"), ("policy", "部署声明")]
+    for kind, title in groups:
+        group = [c for c in ok_checks if (c.get("kind") or "tool") == kind]
+        if not group:
+            continue
+        if kind in ("data", "policy"):
+            lines.append(f"  {title}：")
+            lines += [f"    {_ok_line(c)}" for c in group]
+        else:
+            lines.append(f"  {title}：" + " · ".join(_ok_line(c) for c in group))
 
     bad = [c for c in rep["checks"] if c["state"] != OK]
     if bad:
-        lines += ["", "证据："]
+        lines += ["", f"有问题（{len(bad)} 项）："]
         for c in bad:
-            lines.append(f"  [{'阻断' if c['state'] == BLOCK else '降级'}] {c['label']} —— {c['detail']}")
+            tag = "阻断" if c["state"] == BLOCK else "降级"
+            kind = KIND_TEXT.get(c.get("kind") or "", "")
+            lines.append(f"  [{tag}] {c['label']}" + (f"（{kind}）" if kind else "") + "：" + (c.get("detail") or ""))
+            impact = _capability_impact(rep, c["id"])
+            if impact:
+                lines.append("         影响：" + "、".join(impact))
+            else:
+                lines.append("         影响：没有已列能力直接依赖它，只降级上面点名的脚本")
             if c.get("note"):
-                lines.append(f"         {c['note']}")
+                lines.append(f"         后果：{c['note']}")
             if c.get("fix"):
                 lines.append(f"         修：{c['fix']}")
-    good = [c["detail"] if c.get("kind") == "tool" else f"{c['label']} {c['detail']}"
-            for c in rep["checks"] if c["state"] == OK]
-    if good:
-        lines.append(("" if bad else "\n") + "  正常：" + "；".join(good))
+            if c.get("fix_note"):
+                lines.append(f"         备注：{c['fix_note']}")
 
     lines += ["", "下一步（按影响面排序，一次修一项，修完重跑 python3 scripts/doctor.py）："]
     if rep["next_actions"]:
