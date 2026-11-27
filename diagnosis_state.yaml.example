@@ -20,7 +20,8 @@
 #   outcome ∈ pending | resolved | not_resolved | partial
 # 两条轴各管一件事，别混：status 说"这单还管不管"（`resolved` = 诊断已收尾、根因定位明确，
 # **不代表 fix 生效**）；outcome 说"给出去的那个 fix 到底行不行"（只对命中单成立）。
-# **顶层字段清单以本文件为准**：新增顶层字段先写进这里，`verify_trace_status.py --all` 按它判未登记字段。
+# **顶层字段清单以本文件为准**：新增顶层字段先写进这里。
+# `verify_trace_status.py --all` 按它判未登记字段。
 # 注意：**`feedback_pending` 不是本 schema 的字段**——它是面板与 skill 口头沿用的旧说法。
 # 表示"fix 给出去了但结果还没回报"的正确写法是 `feedback.outcome: pending`（可选
 # `feedback_pending_since` 记给出 fix 的时间，用于算反馈债账龄）。2026-09 阶段一统一到此口径。
@@ -84,6 +85,10 @@ ending:                                # 终态必填：收尾方式（取值见
   note: ""
 transitions: []                        # 只追加：每次状态转移一条（scripts/trace_transition.py 写）
                                        # 每条含 at/from/to/ending/prev_ending/by/source/note
+reports: []                            # 现场回报（--field report 写）；只记事实，不判对错
+                                       # {- at, by, source: field|vendor, result: from_report|other_way|partial|none, note}
+reviews: []                            # 报告复核结论（--field review 写）；不改状态、不改知识库
+                                       # {- at, by, verdict: report_revision|case_error|execution_error, note}
 
 # ── 面板四层时间线：现场 → 故障过程 → 上游 → 诊断步骤 ──
 # 本节五个字段给前三段（三段时间线）+ 修订记录；第四层「诊断步骤」来自 trace[]，不在本节。

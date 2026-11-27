@@ -88,6 +88,22 @@ class TopLevelFieldTest(unittest.TestCase):
         self.assertIn("summary", known)
         self.assertNotIn("root_cause_status", known)
 
+    def test_example_covers_write_entry_fields(self):
+        """写入口会写的顶层字段必须都在 example 里，否则正常收尾的单会被判未登记。"""
+        import trace_transition as tt
+        known = vt.known_top_level(ROOT)
+        self.assertEqual(tt.TOUCHED - known, set())
+
+    def test_example_covers_new_trace_header(self):
+        """建单脚本写的 header 字段同样要在清单里。"""
+        import yaml
+        import trace_begin
+        text = trace_begin.build_header(
+            slug="2026-11-27-x", harness_session="session-abc",
+            created_at="2026-11-27T10:00:00+08:00", kb_rev="deadbee")
+        keys = set(yaml.safe_load(text))
+        self.assertEqual(keys - vt.known_top_level(ROOT) - vt.LEGACY_TOP_LEVEL, set())
+
     def test_unknown_top_level_field_is_reported(self):
         known = vt.known_top_level(ROOT)
         errs = self.check(make_doc(root_cause_status="机制已确认、根因未确认"), known)

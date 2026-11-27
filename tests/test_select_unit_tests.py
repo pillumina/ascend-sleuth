@@ -55,6 +55,23 @@ class SelectUnitTestsTest(unittest.TestCase):
         self.assertEqual(result, ["tests.test_source_catalog", "tests.test_src_fetch"])
         self.assertFalse(any("跳过" in note for note in notes))
 
+    def test_file_consumer_change_selects_consumer_test(self):
+        """顶层数据文件改动也要选中消费脚本的测试（example 是 trace 字段清单）。"""
+        self.write("scripts/verify_trace_status.py")
+        self.write("tests/test_trace_event_fields.py", "import verify_trace_status\n")
+        result, notes = self.select(["diagnosis_state.yaml.example"])
+        self.assertEqual(result, ["tests.test_trace_event_fields"])
+        self.assertFalse(any("跳过" in note for note in notes))
+
+    def test_file_consumers_point_at_existing_scripts(self):
+        """FILE_CONSUMERS 写错只会表现为少选；钉住键与消费方都落在真仓里。"""
+        modules = {alias for alias, _ in sut._script_modules(ROOT)}
+        for name, consumers in sut.FILE_CONSUMERS.items():
+            with self.subTest(name=name):
+                self.assertTrue((ROOT / name).is_file(), name)
+                for alias in consumers:
+                    self.assertIn(alias, modules, f"{name} -> {alias}")
+
     def test_shared_module_pulls_dependents_tests(self):
         self.write("scripts/_shared.py", "def helper():\n    return 1\n")
         self.write("scripts/build_foo.py", "from _shared import helper\n")

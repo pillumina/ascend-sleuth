@@ -49,13 +49,21 @@ LEGACY_TOP_LEVEL = {"side", "side_source"}
 
 
 def known_top_level(root: Path) -> set[str]:
-    """读 example 的顶层字段名。文件缺失或读不出时返回空集，跳过这项检查。"""
+    """读 example 的顶层字段名。
+
+    文件不存在时返回空集（只装 skill 的部署会缺它，跳过这项检查）；文件在但读不出或
+    顶层不是映射时抛 ValueError——坏掉的字段清单不能静默放行。
+    """
     path = root / "diagnosis_state.yaml.example"
+    if not path.is_file():
+        return set()
     try:
         doc = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except Exception:
-        return set()
-    return set(doc) if isinstance(doc, dict) else set()
+    except Exception as exc:
+        raise ValueError(str(exc)) from exc
+    if not isinstance(doc, dict):
+        raise ValueError("顶层不是映射")
+    return set(doc)
 
 
 def missing_output_events(doc: dict) -> list[int]:
@@ -275,9 +283,13 @@ def main(argv=None) -> int:
 
     imported = imported_ids(traces)
     entries = load_traces(traces)
-    known = known_top_level(root)
+    try:
+        known = known_top_level(root)
+    except ValueError as exc:
+        print(f"顶层字段清单解析失败（diagnosis_state.yaml.example）：{exc}", file=sys.stderr)
+        return 2
     if not known:
-        print("顶层字段清单读不到（diagnosis_state.yaml.example 缺失或解析失败）：跳过未登记字段检查")
+        print("顶层字段清单缺失（diagnosis_state.yaml.example）：跳过未登记字段检查")
     violations = []
     legacy_terminal = 0
     missing_output = 0

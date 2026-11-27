@@ -59,6 +59,9 @@ SHARD_RE = re.compile(r"^(\d+)/(\d+)$")
 # 数据目录 → 消费它的脚本：数据文件不是脚本，静态扫描看不出归属。不登记的话，
 # 只改数据的 PR 会选中空集（"没跑"与"跑了没命中"同形）。
 DATA_CONSUMERS = {"source-catalog.d": {"src_fetch", "source_catalog"}}
+# 顶层数据文件 → 消费它的脚本（与 DATA_CONSUMERS 同类，路径是文件而不是目录）。
+# `diagnosis_state.yaml.example` 是 trace 顶层字段清单，校验器按它判未登记字段。
+FILE_CONSUMERS = {"diagnosis_state.yaml.example": {"verify_trace_status"}}
 # 动态目录 → 消费它的脚本。这些目录里的文件不被任何模块 import：`platforms/` 由
 # pr_status 用 importlib 按路径加载，`kb-explorer/` 由 build_kb_explorer 拼装，
 # `fixtures/` 与 `lib/` 被面板脚本当资源读。空集合＝没有 Python 单元测试读它：
@@ -322,6 +325,13 @@ def select(
         for path in changed
         for prefix, stems in DATA_CONSUMERS.items()
         if path.startswith(prefix + "/")
+        for stem in stems
+    }
+    data_stems |= {
+        stem
+        for path in changed
+        for name, stems in FILE_CONSUMERS.items()
+        if path == name
         for stem in stems
     }
     entries = _script_modules(root)

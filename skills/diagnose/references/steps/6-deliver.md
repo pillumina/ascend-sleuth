@@ -1,13 +1,13 @@
 # 步骤 6：产出
 
 > **何时读**：命中候选要给结论、或深度排查出结果收尾时（必读）。
-> **完成判据**：`status` / `summary` / 报告（全路）/ `feedback` / `severity` / `fix_emitted` / `sediment_candidates` 齐；有日志材料时 `failure_process` 已写（无日志不写）；报告前源码分支已结清或写明不可得；trace 收尾字段（`ended_at` / `stop_reason`）写齐。
+> **完成判据**：`status` / `summary` / 报告（全路）/ `feedback` / `severity` / `fix_emitted` / `sediment_candidates` 齐；有日志材料时 `failure_process` 已写（无日志不写）；报告前源码分析已走完或写明拿不到的原因；trace 收尾字段（`ended_at` / `stop_reason`）写齐。
 > **本步产出**：定位报告、`feedback` 债与回报指令、`sediment_candidates`、收尾后的 trace。
 
 - `status: resolved`（**含义是"已收尾"，不是"已修好"**：根因定位明确、fix 或明确的下一步已给出）`| escalated | unknown`；fix 是否在用户环境生效不写 status，写 `feedback.outcome`（词表见 `trace-status.yaml`；命中单由给 fix 时挂的 `pending` 起，有人回报后再追加 `feedback` 事件改值）
 - 写 `traces/<session_id>.yaml`（每并发诊断一文件，含完整 trace），status 到收尾态后留在 `traces/`（gitignored）；沉淀状态写 `sedimented`
 - **写人读定位报告 `traces/<session_id>.report.md`**（**全路**产出，**快路**不产；结构与行文见 `../report-template.md`）：trace 管过程可回放，对话输出管现场能行动，报告管"结论可复述 + 证据可核对 + 沉淀可执行"。**一律按深度排查规格写**——读者要据此自行判断对错并从中学机制，不因已知根因而缩水。写完过一遍 `python3 scripts/report_lint.py <报告>`（结构自检，非 CI 门禁）。
-- **出报告前结清源码分支**：报错签名指向框架代码或算子名（触发条件见 `5-deep-dive.md` 的「源码分析」）时，先在部署版本的源码上核对，再写报告；取不到就在第 4 节写明原因。根因未锁定的报告只作过程记录（第 0 节状态标进行中），不当作结论交付。
+- **出报告前先走完源码分析**：报错签名指向框架代码或算子名时，按部署版本取源码核对。完整判据见 `5-deep-dive.md` 的「源码分析」（含 Tier 3 未覆盖）。拿不到那份源码就在第 4 节写明原因。根因还没锁定时，报告照全结构写。第 0 节状态标进行中，第 1 节写未锁定与下一步；不把未锁定的根因当结论交付。
 - **报告是活件，不是一次性交付物**：它必须跟着诊断走，否则第一次交付之后就开始说谎。同一份文件改到底（不另起 `report-v2`），每次修订更新元信息的"最后更新"、在第 10 节追加一行修订记录，旧结论被推翻时**降级标注而不是删掉**（读者要看到判断怎么变的）。触发点与各改哪节见 `../report-template.md` 第 2 节；本步骤最常见的两处是 **用户回报 fix 结果**（改 1/6/7/8 节）与 **resume 续接**（改 7/3 节）。
 - **改当前值走 content 写入口，并同步报告**：`summary` 与 `incident_env` / `incident_timeline` / `failure_process` / `upstream_timeline` 用 `python3 scripts/trace_transition.py <sid> --field content --content-file <json> --by agent --json` 写；写入口按 id 比对自动落一条 `revisions`（`before` / `after` / `reason` / `hashes`），手改 YAML 会被修订一致性检查报错。报告对应小节与第 10 节同一次改完，两侧不能一边新一边旧。
 - **顶层写 `severity` 与 `fix_emitted`（收尾时各写一次）**：`severity` 取 `benign` / `service-affecting` / `data-loss-risk`（命中单取命中 case 的 `severity`；未命中按根因判——会丢数据的一律 `data-loss-risk`）；`fix_emitted` 写 `true` / `false`，表示本次是否给出了可执行的修复或规避方案（等上游修复、只定位到根因写 `false`）。两个字段是面板列表唯一能表达"这单该不该先停""有没有可执行修复"的地方；不写，列表上这类单与 benign 的单长得一样，读的人只能点开才发现要停训练。
