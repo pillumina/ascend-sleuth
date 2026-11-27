@@ -208,6 +208,46 @@ class GitCodeCheckTest(unittest.TestCase):
         self.assertIn("gh", rows["批量导入上游 issue（GitHub）"])
 
 
+class LocalModuleTest(unittest.TestCase):
+    """本仓模块不能报成缺失的第三方包。
+
+    为什么单测：`bench_sediment_queue.py` 的 `import sediment_state` 指向插件 `lib/` 里的文件，
+    不是待装的包。判成本仓以外的东西时，体检器会给一条装不上的修法，并把一条正常流程标成阻断。
+    """
+
+    def setUp(self):
+        plugins = ROOT / "dsh-plugins"
+        if not (plugins / "dsh-sleuth-copilot" / "lib" / "sediment_state.py").is_file():
+            self.skipTest("本检出没有插件 lib（框架 fork 形态）")
+
+    def test_plugin_lib_module_is_local(self):
+        self.assertIn("sediment_state", doctor.local_module_names())
+        self.assertIsNotNone(doctor.resolve_spec("sediment_state"))
+
+    def test_plugin_lib_dirs_are_discovered(self):
+        dirs = {p.resolve() for p in doctor.local_module_dirs()}
+        for plugin in (ROOT / "dsh-plugins").iterdir():
+            lib = plugin / "lib"
+            if lib.is_dir():
+                self.assertIn(lib.resolve(), dirs)
+
+    def test_plugin_lib_module_not_reported_as_missing_package(self):
+        rows = {row["id"]: row for row in doctor.check_third_party()}
+        self.assertNotIn("sediment_state", rows)
+        self.assertNotIn("_yaml", rows, "scripts/ 里的模块同样不算待装包")
+
+    def test_absent_package_is_still_a_candidate(self):
+        # 反向保证：本仓没有同名文件、解释器也解析不到的名字，仍走「缺包」这条路
+        name = "doctor_probe_absent_pkg"
+        self.assertNotIn(name, doctor.local_module_names())
+        self.assertIsNone(doctor.resolve_spec(name))
+        self.assertFalse(doctor.is_stdlib(name, doctor.resolve_spec(name)))
+
+    def test_no_blocking_package_left_in_this_checkout(self):
+        # 本检出自带 plugins 与 PyYAML 以外的依赖不保证装；这里只断言没有「本仓模块被报阻断」
+        blocked = [row["id"] for row in doctor.check_third_party() if row["state"] == doctor.BLOCK]
+        self.assertNotIn("sediment_state", blocked)
+
 
 if __name__ == "__main__":
     unittest.main()
