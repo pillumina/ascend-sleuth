@@ -63,10 +63,19 @@ class EventFieldTest(unittest.TestCase):
         errs = self.check(make_event(outcome="ok", output="x"))
         self.assertTrue(any("不在三态词表" in e for e in errs), errs)
 
-    def test_agent_output_is_a_strict_check(self):
+    def test_agent_output_is_checked_for_managed_trace(self):
         event = {"role": "agent", "step": 2, "action": "triage", "output": ""}
-        self.assertFalse(any("没有 output" in e for e in self.check(event)))
-        self.assertTrue(any("没有 output" in e for e in self.check(event, strict=True)))
+        self.assertTrue(any("没有 output" in e for e in self.check(event)))
+
+    def test_legacy_trace_missing_output_is_only_strict(self):
+        event = {"role": "agent", "step": 2, "action": "triage", "output": ""}
+        entry = {"sessionId": "s1", "doc": make_doc(trace=[event]), "error": None}
+        entry["doc"].pop("transitions")
+        vocab = load_vocab(ROOT)
+        self.assertFalse(any("没有 output" in e
+                             for e in vt.check_trace(entry, vocab, False, False)))
+        self.assertTrue(any("没有 output" in e
+                            for e in vt.check_trace(entry, vocab, True, False)))
 
 
 class TopLevelFieldTest(unittest.TestCase):

@@ -14,7 +14,7 @@
 `in_progress` 无 `ending`；每条事件 `from`/`to` 合法、与上一条接得上、`at` 是 ISO 8601、
 `ending`/`prev_ending` 形状正确。顶层字段按 `diagnosis_state.yaml.example` 判未登记（只查
 走过收尾写入口的单）；`external_lookup` 的 `hit` 要有 `output`、`miss`/`skipped` 要有 `reason`；
-agent 事件缺 `output` 只在 `--strict` 下计违规，`--all` 只报处数。
+agent 事件缺 `output` 在走过收尾写入口的单上计违规；更早的单只在 `--strict` 下计，`--all` 报处数。
 
 退出码：0 通过；1 有违规；2 词表自洽失败或环境不可用。
 """
@@ -68,14 +68,17 @@ def missing_output_events(doc: dict) -> list[int]:
             and not str(ev.get("output") or "").strip()]
 
 
-def check_events(doc: dict, sid: str, strict: bool) -> list[str]:
-    """事件字段校验：external_lookup 的 outcome 与 output/reason；agent 事件的 output 只在 --strict 下判。"""
+def check_events(doc: dict, sid: str, output_is_violation: bool) -> list[str]:
+    """事件字段校验：external_lookup 的 outcome 与 output/reason；agent 事件的 output 按调用方给的强度判。"""
     errs: list[str] = []
     trace = doc.get("trace")
     if not isinstance(trace, list):
         return errs
-    if strict:
+    if output_is_violation:
         for i in missing_output_events(doc):
+            # external_lookup 由下面按三态给更具体的原因，不在这里重复报同一处。
+            if str(trace[i].get("action") or "") == "external_lookup":
+                continue
             errs.append(f"{sid}: trace[{i}] 是 agent 事件但没有 output")
     for i, ev in enumerate(trace):
         if not isinstance(ev, dict) or ev.get("role") != "agent":
@@ -173,7 +176,9 @@ def check_trace(entry: dict, vocab: dict, strict: bool, imported: bool,
     for msg in validate_content(doc):
         errs.append(f"{sid}: {msg}")
 
-    errs.extend(check_events(doc, sid, strict))
+    # 走过状态写入口的单（有 transitions）按新单判：缺 output 计违规；更早的单只在 --strict
+    # 下判，避免把当时还没这条要求的记录判成违规。
+    errs.extend(check_events(doc, sid, strict or bool(events)))
 
     # 现场回报：只查机械可判项（来源/结果在词表、时间是 ISO）。是否要改报告由人/agent 判断。
     sources = {x["value"] for x in vocab.get("reportSources") or []}
@@ -271,6 +276,8 @@ def main(argv=None) -> int:
     imported = imported_ids(traces)
     entries = load_traces(traces)
     known = known_top_level(root)
+    if not known:
+        print("顶层字段清单读不到（diagnosis_state.yaml.example 缺失或解析失败）：跳过未登记字段检查")
     violations = []
     legacy_terminal = 0
     missing_output = 0
@@ -281,13 +288,13 @@ def main(argv=None) -> int:
             legacy_terminal += 1
         violations.extend(check_trace(entry, vocab, args.strict, entry["sessionId"] in imported,
                                       known))
-        if not args.strict:
+        if not args.strict and not events:
             missing_output += len(missing_output_events(doc))
 
     print(f"检查 {len(entries)} 份 trace：{len(violations)} 条违规；"
           f"老终态单缺收尾方式 {legacy_terminal} 份（grandfather，不计违规）")
     if not args.strict:
-        print(f"agent 事件缺 output {missing_output} 处（老单不回填；--strict 下计违规）")
+        print(f"无 transitions 的单缺 output {missing_output} 处（不回填；--strict 下计违规）")
     for v in violations:
         print("  - " + v)
     return 1 if violations else 0
