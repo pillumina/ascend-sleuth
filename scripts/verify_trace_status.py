@@ -12,7 +12,9 @@
 
 口径：终态必有 `ending`；`handed_off` 有 `handed_to`；`duplicate` 有 `duplicate_of`；
 `in_progress` 无 `ending`；每条事件 `from`/`to` 合法、与上一条接得上、`at` 是 ISO 8601、
-`ending`/`prev_ending` 形状正确。
+`ending`/`prev_ending` 形状正确。顶层字段按 `diagnosis_state.yaml.example` 判未登记（只查
+走过收尾写入口的单）；`external_lookup` 的 `hit` 要有 `output`、`miss`/`skipped` 要有 `reason`；
+agent 事件缺 `output` 只在 `--strict` 下计违规，`--all` 只报处数。
 
 退出码：0 通过；1 有违规；2 词表自洽失败或环境不可用。
 """
@@ -25,18 +27,70 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+import yaml
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from _trace_content import validate_content  # noqa: E402
 from _cli import main_entry
 from _trace_state import check_vocab, is_terminal, load_vocab, load_traces  # noqa: E402
 from exec_log_path import resolve_traces  # noqa: E402
+from trace_metrics import KNOWN_OUTCOMES  # noqa: E402
 
 ISO = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:[+-]\d{2}:\d{2}|Z)$")
 # 面板源码里不许再出现的旧常量与旧文案：这些是「面板自己实现判据」的痕迹。
 PANEL_FILES = ["dsh-plugins/ascend-panel/panel-client.js", "dsh-plugins/ascend-panel/panel-host.js"]
 FORBIDDEN_PANEL = ["RESUMEABLE", "const STATUS_LABEL", "const statusAccent",
                    "'close-fix'", "'close-nofix'", "'close-archive'", "'close-escalate'"]
+
+# 顶层字段清单以 `diagnosis_state.yaml.example` 为准：新增字段先写那里，这里不维护第二份。
+# 旧名字（workload_type 的前身）历史 trace 不回填，读侧两种都认，所以列入白名单。
+LEGACY_TOP_LEVEL = {"side", "side_source"}
+
+
+def known_top_level(root: Path) -> set[str]:
+    """读 example 的顶层字段名。文件缺失或读不出时返回空集，跳过这项检查。"""
+    path = root / "diagnosis_state.yaml.example"
+    try:
+        doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except Exception:
+        return set()
+    return set(doc) if isinstance(doc, dict) else set()
+
+
+def missing_output_events(doc: dict) -> list[int]:
+    """agent 事件里没有 output 的下标。老单不回填，只在 --strict 下计违规。"""
+    trace = doc.get("trace")
+    if not isinstance(trace, list):
+        return []
+    return [i for i, ev in enumerate(trace)
+            if isinstance(ev, dict) and ev.get("role") == "agent"
+            and not str(ev.get("output") or "").strip()]
+
+
+def check_events(doc: dict, sid: str, strict: bool) -> list[str]:
+    """事件字段校验：external_lookup 的 outcome 与 output/reason；agent 事件的 output 只在 --strict 下判。"""
+    errs: list[str] = []
+    trace = doc.get("trace")
+    if not isinstance(trace, list):
+        return errs
+    if strict:
+        for i in missing_output_events(doc):
+            errs.append(f"{sid}: trace[{i}] 是 agent 事件但没有 output")
+    for i, ev in enumerate(trace):
+        if not isinstance(ev, dict) or ev.get("role") != "agent":
+            continue
+        if str(ev.get("action") or "") != "external_lookup":
+            continue
+        outcome = str(ev.get("outcome") or "")
+        if outcome not in KNOWN_OUTCOMES:
+            errs.append(f"{sid}: trace[{i}] external_lookup 的 outcome={outcome!r} 不在三态词表")
+            continue
+        if outcome == "hit" and not str(ev.get("output") or "").strip():
+            errs.append(f"{sid}: trace[{i}] external_lookup 的 outcome=hit 但 output 为空")
+        if outcome in ("miss", "skipped") and not str(ev.get("reason") or "").strip():
+            errs.append(f"{sid}: trace[{i}] external_lookup 的 outcome={outcome} 但 reason 为空")
+    return errs
 
 
 def check_panel_vocab(root: Path) -> list[str]:
@@ -66,7 +120,8 @@ def check_vocab_file(root: Path, panel_gate: bool = False) -> int:
     return 0
 
 
-def check_trace(entry: dict, vocab: dict, strict: bool, imported: bool) -> list[str]:
+def check_trace(entry: dict, vocab: dict, strict: bool, imported: bool,
+                known: set[str] | None = None) -> list[str]:
     errs = []
     doc = entry["doc"]
     sid = entry["sessionId"]
@@ -106,10 +161,19 @@ def check_trace(entry: dict, vocab: dict, strict: bool, imported: bool) -> list[
     if status == "resolved" and events and not str(doc.get("resolved_at") or "").strip():
         errs.append(f"{sid}: resolved 且有转移事件，但 resolved_at 为空")
 
+    # 顶层字段封闭：只查走过状态写入口的单（有 transitions）。更早的单不回溯，避免把
+    # 当时合法的旧字段判成违规。
+    if events and known:
+        for key in sorted(set(doc) - known - LEGACY_TOP_LEVEL):
+            errs.append(f"{sid}: 顶层字段 {key!r} 未登记（清单在 diagnosis_state.yaml.example；"
+                        "删掉它，或先登记再用）")
+
     # 四层时间线 + 修订记录（contract 第 1、2 节）。旧 trace 没有这些字段时这里返回空，
     # 不报错也不要求回填；字段内口径统一由 `_trace_content` 提供，和写入口共用一份。
     for msg in validate_content(doc):
         errs.append(f"{sid}: {msg}")
+
+    errs.extend(check_events(doc, sid, strict))
 
     # 现场回报：只查机械可判项（来源/结果在词表、时间是 ISO）。是否要改报告由人/agent 判断。
     sources = {x["value"] for x in vocab.get("reportSources") or []}
@@ -206,17 +270,24 @@ def main(argv=None) -> int:
 
     imported = imported_ids(traces)
     entries = load_traces(traces)
+    known = known_top_level(root)
     violations = []
     legacy_terminal = 0
+    missing_output = 0
     for entry in entries:
         doc = entry["doc"] or {}
         events = [e for e in (doc.get("transitions") or []) if isinstance(e, dict)]
         if not events and is_terminal(vocab, str(doc.get("status") or "")):
             legacy_terminal += 1
-        violations.extend(check_trace(entry, vocab, args.strict, entry["sessionId"] in imported))
+        violations.extend(check_trace(entry, vocab, args.strict, entry["sessionId"] in imported,
+                                      known))
+        if not args.strict:
+            missing_output += len(missing_output_events(doc))
 
     print(f"检查 {len(entries)} 份 trace：{len(violations)} 条违规；"
           f"老终态单缺收尾方式 {legacy_terminal} 份（grandfather，不计违规）")
+    if not args.strict:
+        print(f"agent 事件缺 output {missing_output} 处（老单不回填；--strict 下计违规）")
     for v in violations:
         print("  - " + v)
     return 1 if violations else 0
