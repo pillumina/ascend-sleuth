@@ -99,13 +99,34 @@ def is_stdlib(name: str, spec) -> bool:
     return origin.startswith(_STDLIB_DIRS)
 
 
+def local_module_dirs():
+    """本仓写着自己模块的两个地方：`scripts/` 与插件的 `dsh-plugins/*/lib/`。
+
+    脚本的 `import` 有两类都指向本仓文件，都不该按待装包处理：`scripts/` 里的同级模块，
+    以及插件 `lib/` 里的模块（`bench_sediment_queue.py` 先把 `lib` 插进 `sys.path`，
+    再 `import sediment_state`）。只认 `scripts/` 时后者会被判成缺包，并给出一条
+    `pip install sediment_state`——那条命令装不到东西，PyPI 上没有这个包。
+    """
+    dirs = [SCRIPTS_DIR]
+    plugins = SCRIPTS_DIR.parent / "dsh-plugins"
+    if plugins.is_dir():
+        dirs += [p / "lib" for p in sorted(plugins.iterdir()) if (p / "lib").is_dir()]
+    return tuple(dirs)
+
+
+def local_module_names():
+    """`local_module_dirs()` 里的模块名（`.py` 文件的 stem）。"""
+    return {p.stem for d in local_module_dirs() for p in d.glob("*.py")}
+
+
 def resolve_spec(name: str):
     """该模块在当前解释器里解析得到吗。用 find_spec 而不是 import：不执行模块、无副作用。
 
-    `scripts/` 加进 sys.path，本仓自己的模块（`_yaml`、`kb_rev` 等）才不会误报成缺失。
+    `local_module_dirs()` 加进 sys.path，本仓自己的模块（`_yaml`、`kb_rev`、插件 `lib`
+    里的 `sediment_state` 等）才不会误报成缺失的第三方包。
     """
     saved = list(sys.path)
-    sys.path.insert(0, str(SCRIPTS_DIR))
+    sys.path[:0] = [str(d) for d in local_module_dirs()]
     try:
         return importlib.util.find_spec(name)
     except (ImportError, ValueError, AttributeError):
@@ -161,9 +182,9 @@ def module_importers():
     """扫本仓脚本的 import → {模块名: {"files": [...], "hard": {文件名}}}。
 
     hard = 无条件 import 它的文件；files 里其余的是在 try/except 或平台条件里用的（缺席时脚本自己退化）。
-    只收非标准库、非本仓模块。
+    只收非标准库、非本仓模块（本仓模块的目录见 `local_module_dirs()`）。
     """
-    local = {p.stem for p in SCRIPTS_DIR.glob("*.py")}
+    local = local_module_names()
     out = {}
     for p in sorted(SCRIPTS_DIR.glob("**/*.py")):
         if "__pycache__" in p.parts or p.name == "doctor.py":
