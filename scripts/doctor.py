@@ -334,17 +334,9 @@ def check_gitcode():
         note = "GitCode 侧 issue 摄取走它；缺了只能人工查网页"
         if env_source:
             note += f"；环境 token（{env_source}）已设置，但摄取脚本仍要 CLI 作 API 入口"
-        if not tool_version("node"):
-            # 只有 npm 一条路径被验证过；没有 Node 时不乱给 brew/apt，交人按 releases 装
-            return {"id": "gitcode", "label": "GitCode CLI", "kind": "tool", "state": DEGRADE,
-                    "detail": "未安装（且缺 Node.js）" + (f"；{env_source} 已设置" if env_source else ""),
-                    "note": note + "；npm 安装需要 Node.js，缺它时按 releases 的对应平台包装",
-                    "fix": "先装 Node.js（doctor 的 node 项），或用 "
-                           "https://gitcode.com/atomgit-cli/cli/releases 的对应平台包",
-                    "fix_kind": "manual", "fix_auto": False}
         return {"id": "gitcode", "label": "GitCode CLI", "kind": "tool", "state": DEGRADE,
                 "detail": "未安装" + (f"（{env_source} 已设置，但缺 CLI）" if env_source else ""),
-                "note": note + "；npm 安装需要 Node.js（doctor 的 node 项）",
+                "note": note + "；安装需要 Node.js（doctor 的 node 项）",
                 "fix": GITCODE_INSTALL,
                 "fix_kind": "install-cli", "fix_auto": True}
     try:

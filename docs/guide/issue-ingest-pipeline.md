@@ -4,7 +4,7 @@
 
 ## 1 做完得到什么
 
-把上游 GitHub issue（如 vllm-ascend 的 closed bug）筛选、评估、沉淀为 case。自动化止步于产 draft，升格分场景（原则五：自动化产出建议，人做决定）。draft 默认进 inbox 批量审；owner 预授权的自动化源（本管道即配置的持续管道）产出的草稿 verification 链完整，可直接调 groom 升格，不等周批。知识生效点（draft → active）默认由人，自动化源的直接升格是 owner 预授权的例外。
+把上游 issue（GitHub 的 vllm-ascend、GitCode 的 cann 各仓等 closed issue）筛选、评估、沉淀为 case。自动化止步于产 draft，升格分场景（原则五：自动化产出建议，人做决定）。draft 默认进 inbox 批量审；owner 预授权的自动化源（本管道即配置的持续管道）产出的草稿 verification 链完整，可直接调 groom 升格，不等周批。知识生效点（draft → active）默认由人，自动化源的直接升格是 owner 预授权的例外。
 
 管道流程是已落地部分；定时任务自动化是蓝图，见「定时任务设计（未落地，方案）」。
 
@@ -26,7 +26,7 @@ config 固化：首次确认过的源配置写入 `ingest-state.json` 的 `sourc
 
 ## 3 步骤
 
-1. 拉取。跑 `scripts/fetch_issues.py`（GitHub 专用，精简字段），缓存 JSON（`number`/`title`/`comments`/`closed_at`/`labels`/`state_reason`，不含 body）。
+1. 拉取。跑 `scripts/fetch_issues.py`：GitHub 源走 `gh api`，GitCode 源走 `gitcode api`（`--host gitcode`）；输出同一份精简缓存（`number`/`title`/`comments`/`closed_at`/`labels`/`state_reason`，不含 body）。GitCode 没有 `state_reason`，该字段为空，filter 只把它用于排序。
 
 ```bash
 # 拉取 triaged 池（增量：--since 用上次游标）
