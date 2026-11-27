@@ -102,7 +102,7 @@ trace 记 `{action: tier3, keyword: <kw>, files_read: [...]}`——Tier 3 挽救
    - 已知表里没有 → **按发现顺序找，不要直接问人要地址**（命令与退出码展开见 `../src-fetch.md`）：
      ① **候选表**：`python3 scripts/src_fetch.py --find "<报错签名>" --ref <版本>`。脚本按签名里的接口前缀与算子名给带理由的候选（默认 3 个），并**逐个试该版本**：只有一个候选能解析就自动取回（exit 0）；多个都能解析、只命中备用方案或零候选就 exit 3。
      ② **可枚举组织**：`--list-orgs` 看有哪些组织、哪个可枚举；`--list-org-repos cann` 现枚举该组织的仓与说明。GitCode 组织匿名可枚举，不需要账号。
-     ③ **搜仓名**：上面两步没有目标仓时，用 `gh search repos <关键词>` 或 web 搜索报错里的接口名、算子名、库名，得到 `org/repo` 形态的仓名。
+     ③ **搜仓名**：上面两步没有目标仓时，按 host 选检索：GitHub 用 `gh search repos <关键词>`，GitCode 用 `gitcode search repos <关键词>`；都没有再用 web 搜索报错里的接口名、算子名、库名，得到 `org/repo` 形态的仓名。
      ④ **取回并验证**：`python3 scripts/src_fetch.py <org/repo> --ref <版本> --verify "<签名>"`。
    - 验证不过或版本定不下来才问工程师，按闸表 `source-location` 的那一句（"这个报错在你们那的 CANN 安装目录里落在哪个子目录？"，让他回候选编号）。**别猜仓**：取错仓产出的是错版本的证据，比不取更糟。CANN 各仓共用同一套 CANN 发布号，所以"tag 能解析"不构成定位证据。
    - **两条例外**：①签名只命中公共前缀（`aclnn xxx` 没有算子名）时候选是**备用方案**，脚本仍 exit 3，补上算子名/接口名再试；②已确认是哪个仓时把它写在签名后面（`--find "<签名>" cann/ops-nn`）以它为准，别让候选盖掉你的判断。
@@ -115,6 +115,6 @@ trace 记 `{action: tier3, keyword: <kw>, files_read: [...]}`——Tier 3 挽救
    **诊断中发现缺仓不在诊断里直接改**：先用 `python3 scripts/evolve_intake.py record …` 记信号。已知表与签名候选表的唯一来源是 `source-catalog.d/<层>.yaml`，补仓方法见 `../src-fetch.md`「数据目录」。
 3. **grep 定位**：搜报错签名/算子名/函数名（如 `grep -rn "QuantBatchMatMulV3" vllm_ascend/`）→ 读相关文件片段 → 分析根因。
 4. **追问用户验证**：对照预期/复现/补环境信息，验证根因假设。
-5. **follow-up**：查知识库是否已覆盖；`gh search issues/prs` 看上游是否已修复——按本文「上游修复的落地实证」走。
+5. **follow-up**：查知识库是否已覆盖；再看上游是否已修复——**先按仓的 host 选通道**：GitHub 仓用 `gh search issues/prs`；GitCode 仓（CANN 各仓、torch-npu、MindSpeed）用 GitCode CLI 的 `gitcode search issues` / `gitcode issue view <编号> -R <owner/repo>`（未装或未登录时按 doctor 的 `gitcode` 项处理）。**CLI 不可用时可以用 web 搜索兜底，但只当线索**：把来源 URL 记进 trace（`source_analysis` 或证据的 `sources`），结论标「线索、未验证」，不得据此下「上游已修 / 未修」的结论；连搜索都查不到才记 `skipped` / `not-applicable`。拿到修复线索后按本文「上游修复的落地实证」走。
 6. **多层级**：根因指向更底层开源仓（torch-npu、CANN 各层）→ 同样流程分析其源码（`source_ref` 指向该仓）。CANN 已开源（gitcode 的 cann 组织，常用层与定位判据见 `references/software-facts/cann-source-location.yaml`），所以"未开源"不再是结论；**闭源的只有商业发布形态的二进制/驱动包**——那种情况下**承认局限**，给方向 + 建议联系华为。
 7. **沉淀**：根因清楚且知识库未覆盖 → `/skill:to-postmortem` 记 `source_ref: {repo, ref, file, line}`（`repo` 写 `org/repo`，与 `src_fetch.py` 同一写法，且要能在 `source-catalog.d/` 解析到）；**顺手**沉淀跨事故稳定的结构事实 → `/skill:to-reference`（software-fact / env-var-table / compat-matrix，判据："6 个月后/跨版本是否仍成立"）。

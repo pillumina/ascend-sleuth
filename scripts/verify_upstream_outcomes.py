@@ -56,6 +56,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 import yaml
 
@@ -145,7 +146,41 @@ def normalize_anchor(anchor):
         return repo, kind, None, url, f"锚点号不是整数：{number!r}"
     if number <= 0:
         return repo, kind, None, url, f"锚点号不是正整数：{number}"
+    host = _anchor_host(url)
+    if host != "github":
+        # 不把非 GitHub 锚点拿去打 GitHub API：那会得到「取不到」，与「上游没修」同形。
+        shown = host if host != "unknown" else "无法识别"
+        return repo, kind, number, url, (
+            f"锚点主机是 {shown}（{url}）——自动查证只支持 GitHub，请人工打开 url 核对"
+            "（GitCode 通道接好后可补自动查证）")
     return repo, kind, number, url, None
+
+
+def _anchor_host(url):
+    """锚点 url 的 host：按域名或子域精确匹配（不用 endswith，防 notgitcode.com 误判）。
+
+    没有 url 的历史锚点仍按 GitHub 走；有 url 但主机不认识时返回 `unknown`，
+    由调用方报「无法识别」而不是默认 GitHub。
+    """
+    if not isinstance(url, str) or not url.strip():
+        return "github"
+    raw = url.strip()
+    if "://" in raw:
+        try:
+            host = (urlparse(raw).hostname or "").lower()
+        except Exception:
+            host = ""
+    elif "@" in raw and ":" in raw:      # scp 形式：git@gitcode.com:org/repo.git
+        host = raw.split("@", 1)[1].split(":", 1)[0].lower()
+    else:
+        host = ""
+    if not host:
+        return "unknown"
+    if host == "gitcode.com" or host.endswith(".gitcode.com"):
+        return "gitcode"
+    if host == "github.com" or host.endswith(".github.com"):
+        return "github"
+    return "unknown"
 
 
 def _probe_pull(repo, number, api):
@@ -193,7 +228,8 @@ def probe_anchor(anchor, api=None):
     repo, kind, number, url, problem = normalize_anchor(anchor)
     res = {"repo": repo, "kind": kind, "number": number, "url": url, "reachable": False,
            "state": None, "state_reason": None, "is_pr": False, "merged": None,
-           "closing_pr": None, "outcome": UNVERIFIABLE, "reason": problem}
+           "closing_pr": None, "outcome": UNVERIFIABLE, "reason": problem,
+           "host_unsupported": bool(problem and "自动查证只支持 GitHub" in problem)}
     if problem:
         return res
     try:
@@ -643,6 +679,7 @@ def run(root, apply=False, case_ids=None, as_json=False, api=None, week=None) ->
 
     contradictions = [r["case"] for r in results if r["outcome"] == CONTRADICTION]
     no_anchor = [r["case"] for r in results if r["outcome"] == NO_ANCHOR]
+    host_unsupported = sum(1 for r in results if r.get("host_unsupported"))
     summary = {
         "verified": sum(1 for r in results if r["field"] in ("consistent", "self_consistent")),
         "consistent": sum(1 for r in results if r["field"] == "consistent"),
@@ -650,6 +687,7 @@ def run(root, apply=False, case_ids=None, as_json=False, api=None, week=None) ->
         "contradiction": len(contradictions),
         "not_verified": sum(1 for r in results if r["outcome"] == NOT_VERIFIED),
         "unverifiable": sum(1 for r in results if r["outcome"] == UNVERIFIABLE),
+        "host_unsupported": host_unsupported,
         "no_anchor": len(no_anchor),
         "planned": len(planned),
         "planned_repair": len(will_repair),
@@ -709,7 +747,7 @@ def run(root, apply=False, case_ids=None, as_json=False, api=None, week=None) ->
         rest = [r for r in results if r["outcome"] != NO_ANCHOR and id(r) not in printed]
         for outcome, label in ((VERIFIED, "结局未变，不重复累加"),
                                (NOT_VERIFIED, "锚点没给出确认，未写任何字段"),
-                               (UNVERIFIABLE, "取不到上游状态，未写任何字段")):
+                               (UNVERIFIABLE, "取不到上游状态或该主机不支持自动查证，未写任何字段")):
             group = [r["case"] for r in rest if r["outcome"] == outcome]
             if not group:
                 continue
@@ -730,6 +768,9 @@ def run(root, apply=False, case_ids=None, as_json=False, api=None, week=None) ->
               f"{summary['self_consistent']}；矛盾 {summary['contradiction']}；"
               f"未验证 {summary['not_verified']}；不可查证 {summary['unverifiable']}）；"
               f"不可对照 {summary['no_anchor']} 条")
+        if summary.get("host_unsupported"):
+            print(f"  其中 {summary['host_unsupported']} 条锚点不是 GitHub 主机（未打 GitHub API，"
+                  "请人工打开 url 核对；GitCode 自动查证尚未接入）")
         if contradictions:
             print(f"需人处理（{len(contradictions)} 条）：{'、'.join(contradictions[:10])}"
                   f"{'（另有 %d 条）' % (len(contradictions) - 10) if len(contradictions) > 10 else ''}")

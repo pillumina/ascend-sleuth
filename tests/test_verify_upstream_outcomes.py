@@ -111,6 +111,59 @@ class VerifyUpstreamOutcomesTest(unittest.TestCase):
         self.assertEqual(path.read_bytes(), before)
         self.assertFalse(self.state.exists(), "没有可写的内容就不该生成游标")
 
+    def test_gitcode_anchor_is_unverifiable_and_never_queries_github(self):
+        extra = (
+            "    upstream:\n"
+            "      - repo: cann/ops-nn\n"
+            "        issue: 10351\n"
+            '        url: "https://gitcode.com/cann/ops-nn/issues/10351"\n'
+        )
+        path = write_case(self.root, "CANN-1", extra=extra)
+        before = path.read_bytes()
+        gh = FakeGh()
+        rc, out, err = self.run_script(apply=True, api=gh)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(gh.calls, [], "GitCode 锚点不该拿去打 GitHub API")
+        self.assertIn("不可查证", out)
+        _repo, _kind, _n, _url, problem = vuo.normalize_anchor({
+            "repo": "cann/ops-nn", "issue": 10351,
+            "url": "https://gitcode.com/cann/ops-nn/issues/10351"})
+        self.assertIn("gitcode", problem)
+        self.assertIn("GitHub", problem)
+        self.assertEqual(path.read_bytes(), before, "不可查证不写回验证记录")
+
+    def test_anchor_host_boundaries(self):
+        cases = {
+            "https://gitcode.com/a/b/issues/1": "gitcode",
+            "https://GitCode.com:443/a/b": "gitcode",
+            "git@gitcode.com:a/b.git": "gitcode",
+            "https://github.com/a/b": "github",
+            "https://notgitcode.com/a/b": "unknown",
+            "https://gitee.com/a/b": "unknown",
+            "": "github",
+            None: "github",
+        }
+        for url, want in cases.items():
+            self.assertEqual(vuo._anchor_host(url), want, url)
+
+    def test_unknown_host_is_unverifiable_and_never_queries_github(self):
+        extra = (
+            "    upstream:\n"
+            "      - repo: someone/repo\n"
+            "        issue: 7\n"
+            '        url: "https://gitee.com/someone/repo/issues/7"\n'
+        )
+        path = write_case(self.root, "GITEE-1", extra=extra)
+        gh = FakeGh()
+        rc, out, err = self.run_script(apply=True, api=gh)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(gh.calls, [])
+        self.assertIn("不可查证", out)
+        _repo, _kind, _n, _url, problem = vuo.normalize_anchor({
+            "repo": "someone/repo", "issue": 7,
+            "url": "https://gitee.com/someone/repo/issues/7"})
+        self.assertIn("无法识别", problem)
+
     # ---------------------------------------------------------------- 上游确认
 
     def test_closed_completed_settles_consistent(self):
