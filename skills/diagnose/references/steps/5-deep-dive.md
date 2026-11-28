@@ -46,6 +46,17 @@
 - **边界**：**不能因此再取第二条**（预算不变）。这一条与定位类流程互斥：本轮已经取过定位类，就不重复取。
 
 
+### 整包现场数据（内置分析器）
+
+工程师已经交来整包数据（Prof 目录 / `dump_info` / 日志包 / ftrace 采集包 / 多份环境快照）时，先看仓库内置分析器能不能把整包转成可核的证据，再按本步流程往下走。入口、按数据形态的选择表、结果读法与失败退化都在 `../analyzer-dispatch.md`。
+
+- **先看开关**：`python3 scripts/analyzers/cli.py status`。默认关闭；本轮需要且已安装但关闭时，把 `status` 给出的 `enable` 命令告诉工程师，同时继续用现有证据排查。工程师明确要求时再代为执行。
+- **只在需要时看**：数据形态对不上就不调；`enabled` 为假时整节跳过，诊断行为与没有它时一致。
+- **失败不重试**：非零退出读 `result.json` 的 `reason` 与 `data_needed`；因缺输入失败只问缺的那一项，同一输入不重跑。工具失败不能写成「没发现异常」。
+- **结果只取事实**：`findings` 是带证据的事实，`kind: candidate` 标未验证，`observations` / `suppressed` 不是根因。证据不足时按 `../collector-dispatch.md` 推荐现场采集器（只推荐，不执行）。
+
+trace 复用 `run_check`，记 `check: analyzer_run`、`analyzer`、`analyzer_version`、`verdict`、`evidence`、`reason`（字段见 `../analyzer-dispatch.md` 的「trace 记什么」）。
+
 **若 Script 工具已接入**（见 `../script-integration.md`），按 category 用：interrupt→日志/core dump、precision→`mem-analyze`、performance→`ascend-profile-analyze`/`bench-run`。**当前骨架阶段多半还没接**——别假装能调，诚实告诉工程师。
 
 **上游修复的落地实证（给「已修复 / 升级即可」结论前必做）**

@@ -1,0 +1,52 @@
+id: bmc-dump-analyzer
+type: tool
+title: 'iBMC 一键收集包（dump_info）解析：判定权重顺序、当前告警与 SEL 历史必须分开、缺文件不等于健康'
+summary: 'iBMC 一键收集日志（dump_info 目录 / 机器目录 / 收集压缩包）的解析与读法：按当前告警→电源→NPU/ECC→光模块→温度风扇→RAID→BMC 自身→指示灯→版本→网络逐级看，当前告警与 SEL 历史分开表述，工具优先级不等于诊断严重度。'
+
+sources:
+  - type: engineer-input
+    engineer: "hu669293657（上游 skills 仓库作者，匿名工程师）"
+    document: "skills 仓库 ibmc_analyzer/SKILL.md 与 references/judgement.md，固定提交 39c604188f99d683be93f994193ecfea24d7efc6"
+    url: "https://github.com/hu669293657/skills/tree/39c604188f99d683be93f994193ecfea24d7efc6/ibmc_analyzer"
+    input_session: "session-b307be67-960e-48dd-a1ef-ee10a2d91d24"
+    confirmed_at: 2026-11-22
+    verification: auto-extracted
+
+applies_to:
+  platforms: [cross]
+  categories: [interrupt, performance]
+
+related_references: [sleuth-analyzers, bmc-alert-patterns, bmc-sensor-thresholds, npu-smi-950-device-ops]
+
+status: active
+last_verified: 2026-11-22
+
+content:
+  tool_name: "iBMC 一键收集日志解析器（上游 parse_bmc_collect.py 解析、generate_bmc_report.py 出 HTML，经 scripts/analyzers/cli.py run ibmc_analyzer 调用）"
+  invocation: >-
+    `python3 scripts/analyzers/cli.py run ibmc_analyzer --inputs "<dump_info 目录 | 机器目录 | 收集包.zip>" --session-id <sid>`。
+    输入是**已经采回来的**收集包：解析器离线解包与解析，不连客户 BMC，也不发起采集。
+  commands:
+    one_pack: "单机或整包：`--inputs <含 dump_info 的根目录>`；脚本自行定位 dump_info，按内容判断，不按压缩包名"
+    multi_machine: "多机：把多台机器的目录一起传入（多路径换行分隔）；每台机器各出一个 `<机器目录名>[_<SN>][_N]_bmc.json`，另出一个 `all_machines_bmc.json` 汇总"
+    output_files: "输出目录里是每机 JSON + 汇总 JSON + HTML 报告；解析失败时先看是否缺 `dump_info/` 与是否解包越界被拒"
+  output_meaning:
+    - "每机 JSON 按领域分块：identity / versions / bios / current_event（当前活动告警）/ sel（历史事件）/ psu / npu / optical / sensor / raid / logs。字段缺失表示本次没有取得该项读数。查原始材料以区分未采集和未解析"
+    - "判定权重从高到低（P0/P1/P2/P3 是工具优先级，P0 最高）：当前活动告警 → 电源（PSU 在位与 Vin/Vout）→ NPU 数量与 ECC 单双 bit → 光模块在位与 SNR → 温度与风扇转速 → RAID 控制器与磁盘 → BMC 自身（操作/安全日志是否满、证书）→ 指示灯 → 版本 → 网络配置"
+    - "**当前告警与 SEL 必须分开**：SEL 是历史流水，当前告警才是此刻状态；`lost` 与 `restored` 成对出现属已恢复的历史事件，不影响当前结论"
+    - "`missing` 列的是本次没采到的文件；摘要要先写覆盖范围与缺失项，再写结论——缺文件时只能说「这项没数据」，不能说「这项正常」"
+    - "`suppressed` 是被移出发现的判定，每条带 `reason`。当前有两类：`npu_info` 缺失、读取失败、采集报错、格式无法识别或只有表头时的 NPU 在位判定；以及解析成功但上游按固定 8 卡判出的数量结论被适配层按机型预期重算（机型未登记时只报数量、不做丢卡判定）。它不在 `findings` 里，读到它等于「这条判定未被采纳，别当异常用」，原始数值仍在上游 JSON 产物里可追溯"
+    - "`observations` 放低优先级项（工具判 P2/P3、状态非 ok 的传感器，以及上游判定未复核的说明）：P2/P3 与传感器项带原始值、单位、等级与证据位置，上游判定说明带原因与证据位置；**它不进 `findings`，所以不能当结论**，但也不该忽略——温度、风扇、逻辑盘这类项只在这里出现，要不要追由诊断 agent 判"
+    - "传感器读数旁的阈值没有核对过机型规范（见 `bmc-sensor-thresholds`，仍在待审）：观察项只给「读到 99°C、状态 major」，不给「超过上限」这种判定"
+    - "`reconciled` 记录适配层补读过证据的地方（当前只有 ECC）：上游读带 BOM 的 `npu_ecc_info.json` 会静默失败；适配层复读后读到非零计数会在 `findings` 里标「适配层复读」并记进 `reconciled`，计数全 0 进 `observations`，读不出来写进 `missing`"
+    - "工具给出的 P0/P1 分级是**工具优先级**，不是诊断的 `data-loss-risk` / `service-affecting`；严重度由诊断 agent 按 severity 规则另判"
+  pitfalls:
+    - "**SEL 里的历史掉电不等于当前故障**：要结合 restored 与当前告警；反复出现同一事件说明长期问题，短时间集中出现更像单一根因"
+    - "**版本偏旧不是硬件故障**：版本只作提醒项，不能据此判 P0；推荐版本要按机型对，不要跨机型套"
+    - "**OS 自动重启不等于 BMC 硬件问题**：先看 kdump / OOM 与 crashkernel 配置，把系统层与带外层分开"
+    - "**集合通信不达标不等于 BMC 故障**：先确认业务侧日志级别等软件因素，再回带外证据"
+    - "伙伴机型出现多个 SN 时，以 BMC 页面显示的 SN 为准，不要按文件名推"
+    - "真实文件格式不一致：`cpu_info` / `mem_info` 是逗号分隔，`psu_info.txt` / `sensor_info.txt` / `fan_info.txt` 是管道分隔，`fruinfo.txt` 在 `AppDump/FruData/` 下；按字段位置硬切会读错"
+    - "健康分数与告警颜色来自上游规则，不是厂商规范；引用时写明是工具判定，别写成硬件事实"
+    - "**缺文件会被判成异常，不只是判成正常**：合成包里没有 `npu_info` 时，工具报「NPU 数量 0 < 标准 8，疑似丢卡」；这是缺数据不是丢卡。看到与「没这个文件」相关的异常，先回 `missing` 核对"
+    - "同一事件可能产生多条告警。按原始时间、部件和读数核对关联。只有核实有关联的告警才归并报告，缺在位证据时保留未知"

@@ -1,0 +1,9 @@
+Name|Board|Power|WorkMode|SingleEcc|DoubleEcc|Diversification|FW|SW
+NPU1|Board|150W|Normal|0|0|NA|1.0|1.0
+NPU2|Board|150W|Normal|0|0|NA|1.0|1.0
+NPU3|Board|150W|Normal|0|0|NA|1.0|1.0
+NPU4|Board|150W|Normal|0|0|NA|1.0|1.0
+NPU5|Board|150W|Normal|0|0|NA|1.0|1.0
+NPU6|Board|150W|Normal|0|0|NA|1.0|1.0
+NPU7|Board|150W|Normal|0|0|NA|1.0|1.0
+NPU8|Board|150W|Normal|0|0|NA|1.0|1.0

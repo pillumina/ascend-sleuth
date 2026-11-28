@@ -1,0 +1,2 @@
+Alarm ID | Level | Description
+0x0001 | Critical | Power Supply input lost (PSU1)

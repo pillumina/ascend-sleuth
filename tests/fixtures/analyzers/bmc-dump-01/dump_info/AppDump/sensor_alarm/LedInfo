@@ -1,0 +1,7 @@
+LED Name : SysHealLED
+LED State : ON
+LED Color : GREEN
+
+LED Name : FanLED
+LED State : OFF
+LED Color : GREEN

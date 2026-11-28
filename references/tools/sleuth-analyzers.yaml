@@ -1,0 +1,52 @@
+id: sleuth-analyzers
+type: tool
+title: '内置分析器 CLI（scripts/analyzers/cli.py）：整包性能 / BMC / 日志 / 环境快照数据的离线取证入口——先 status，再按数据形态选一个'
+summary: '内置分析器默认关闭。status 列出可用工具和启用命令。enable 保存本机设置，run 读取本地数据并输出 result.json。'
+
+sources:
+  - type: engineer-input
+    engineer: "ascend-sleuth 维护者（本次迁入的适配层作者）"
+    document: "scripts/analyzers/cli.py、scripts/analyzers/registry.py、scripts/analyzers/_lib.py、scripts/analyzers/README.md、skills/diagnose/references/analyzer-dispatch.md"
+    input_session: "session-b307be67-960e-48dd-a1ef-ee10a2d91d24"
+    confirmed_at: 2026-11-27
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [interrupt, precision, performance]
+
+related_references: [bmc-dump-analyzer, bmc-alert-patterns, bmc-sensor-thresholds, performance-baseline-comparison-reading, sleuth-collectors]
+
+status: active
+last_verified: 2026-11-27
+
+content:
+  tool_name: "内置分析器 CLI（scripts/analyzers/cli.py，7 个适配器：ibmc_analyzer / issue-analyzer / ascend-dump-analyzer / cluster-analysis / cluster-compare / prof-compare / cpu-host-performance）"
+  invocation: >-
+    先用 `python3 scripts/analyzers/cli.py status` 查看开关与安装状态。分析器默认关闭，工程师可按提示运行 `enable` 开启。
+    再 `python3 scripts/analyzers/cli.py run <名字> --inputs "<绝对路径>" --session-id <sid> --purpose "<一句话>"`。
+    `enable` 和 `disable` 保存本机设置。设置环境变量 `SLEUTH_ANALYZERS` 时，以该变量为准。
+  commands:
+    status: "`python3 scripts/analyzers/cli.py status` 查看状态。加 `--json` 取 enabled、source、enable_command 和各分析器的 installed 状态。"
+    list: "`python3 scripts/analyzers/cli.py list --json` 取分析器名、支持的输入形态与用途"
+    run: "`python3 scripts/analyzers/cli.py run <名字> --inputs <路径>`；多路径用换行分隔或传 JSON 数组；两组数据比对按 A（基准）、B（对比）顺序传"
+    single_adapter: "`python3 scripts/analyzers/<名字>/run.py --help`——与 CLI 共用开关、预算与结果格式，调试时用"
+    prof_compare: "两份单卡 Prof 按 A 基准、B 对比传入。混合对比时 A 为 GPU trace，B 为 NPU。差值为对比侧减基准侧。"
+    env_snapshot: "一份环境快照核对采集环境的版本配套。兼容性 JSON 的 snapshot_evidence 保留采集状态及目标进程已加载库。至少两份可比对配置漂移。"
+  output_meaning:
+    - "终端打印四样：状态、≤500 字摘要、≤5 条关键发现、结果路径；末行 `RESULT_JSON=<路径>` 给机器读"
+    - "`result.json` 字段：schema_version / analyzer / analyzer_version / status / summary / findings / missing / artifacts / data_needed / duration_ms / inputs；iBMC 另带 raw_exit_code / suppressed / observations / reconciled"
+    - "`status` 取 ok / partial / blocked / failed，描述工具执行。`partial` 的 `missing` 列出未分析的材料。判断只覆盖已分析的范围"
+    - "`findings` 里标 `kind: candidate` 的是候选解释，进报告必须标未验证；`kind: fact` 的也只在本次数据范围内成立"
+    - "`observations` 是低优先级观察（工具优先级 P2/P3，P0 最高、P3 最低；传感器非 ok 读数、组件版本行，以及上游判定未复核的说明）：P2/P3 与传感器项带原始值、等级与证据位置，上游判定说明带原因与证据位置；不是结论，也不该丢"
+    - "`artifacts` 列出可查看的报告和中间结果路径"
+    - "`data_needed` 在缺输入、坏输入、上游失败与超时时非空（超时是裁剪建议）；子进程起不来、分析器崩溃或实现缺失时为空，这时不要向用户要材料。开关没开时不会创建 `result.json`"
+  pitfalls:
+    - "已有匹配的本地数据且分析器关闭时，提示工程师可运行 enable，同时继续用现有证据排查。"
+    - "**工具成功不等于诊断解决**：跑出报告只说明数据读完了，根因、fix、severity 仍由诊断 agent 判"
+    - "**不整份读 result.json**：先看摘要与 findings，要复核时按 findings 里的证据位置回原文"
+    - "环境快照的配套核对使用采集环境版本。已加载库路径需结合目标进程证据判读。缺组件版本与采集失败见 missing。"
+    - "**单卡 Prof 对比**：只做 Host 算子与 Device kernel 热点，不生成上游的 msprof xlsx 综合报告；集群多卡用 `cluster-compare`"
+    - "**不执行采集与改机脚本**：`cpu_trace_collect.sh`、`cpu_binder_simple.py`、`taskset` 与采集器只作人工参考；现场采集按 `sleuth-collectors` 推荐，不在自动调用图里"
+    - "**失败不重试同一输入**：`analyzer-failed` / `timeout` 记下来就退，不换参数原地重跑"
+    - "`cluster-analysis` 多卡模式沿用上游行为，会在 prof 根目录写 `cluster_analysis_output/`；要求输入只读时先把 prof 目录复制到工作区"

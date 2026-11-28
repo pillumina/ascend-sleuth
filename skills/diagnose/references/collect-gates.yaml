@@ -223,6 +223,55 @@ gates:
     caveat_refs:
       - msprobe-tool-side-effect-fault-patterns   # 工具介入改变时序——先排除工具副作用再下结论
 
+  # 取证能力缺口（整包数据）：手上有 prof 目录 / dump_info / 日志包 / ftrace 采集包 / 多份环境快照，
+  # 把它们读成事实要跑几百行分析代码。闸门只决定「交给哪个分析器」；工具只产事实与候选解释，
+  # fix / severity 仍归诊断 agent。分析器默认关闭，匹配本地材料时可提示工程师启用。
+  - id: analyzer-tooling
+    categories: [interrupt, precision, performance]
+    kind: conditional
+    trigger: >-
+      步骤 5 深度排查，而工程师已经交来整包数据（prof 目录 / `dump_info` / 日志包 / ftrace 采集包 / 多份环境快照），
+      或步骤 3 的候选验证缺一个整包里就有的具体指标
+    question: null
+    branches:
+      - when: gap
+        action: >-
+          先 `python3 scripts/analyzers/cli.py status`，输出 `enabled` 才按 `analyzer-dispatch.md` 的数据形态选择表选**一个**分析器，
+          用本机绝对路径调 `run`。已安装但关闭时给出 status 提示的 enable 命令，由工程师决定是否开启。
+          关闭、缺依赖或超时时继续用现有证据排查。
+          读 `result.json` 的 `findings` 与 `data_needed`，不整份贴进上下文；标 `candidate` 的解释只作
+          未验证假设，出现的传感器区间也按候选对待（阈值词条仍在待审），fix 与 severity 仍由诊断 agent 出。
+          工具跑成功不等于诊断解决；失败不计入「候选被排除」
+        refs:
+          - sleuth-analyzers
+          - bmc-dump-analyzer
+    caveat_refs:
+      - sleuth-analyzers   # 工具成功≠诊断解决；缺文件只能写「这项没数据」
+
+  # 现场采集能力缺口：证据不在手上、现有日志/采集包补不齐，需要工程师把脚本发给客户在目标机执行。
+  # 与 analyzer-tooling 的分工：这个闸门只决定「推荐哪个采集器、怎么交付」；
+  # 结果回来后的读法仍走 sleuth-analyzers。Agent 只推荐，不执行、不上传。
+  - id: collector-tooling
+    categories: [interrupt, precision, performance]
+    kind: conditional
+    trigger: >-
+      步骤 5 或候选验证缺少现场证据，而工程师手上的日志/采集包无法补齐——环境版本与进程环境、
+      Host/CPU 调度证据、网卡 IRQ 与队列、CPU 频率策略、iBMC 带外硬件状态、plog/device/dmesg
+      日志中的任一项需要到目标机现场采集
+    question: null
+    branches:
+      - when: gap
+        action: >-
+          先 `python3 scripts/collectors/cli.py list --json` 看有没有对口的采集器，再用 `show <名字> --json`
+          取脚本路径、用途、适用环境、执行命令、权限、运行影响和客户需要返回的文件。只把脚本与说明交给
+          工程师转客户，不自己执行、不上传、不改客户环境；需要 root 或短时开启 ftrace 的脚本要写明授权
+          与影响。数据回来后按 `consumer` 调对应 Analyzer；已有证据够用时不要重复采集，没有对应采集器
+          时如实说明缺什么，不临时编写采集脚本
+        refs:
+          - sleuth-collectors
+    caveat_refs:
+      - sleuth-collectors   # 采集成功≠诊断成立；只推荐不执行，结果仍由 Analyzer 提取事实
+
   - id: source-location
     categories: [interrupt, precision, performance]
     kind: conditional

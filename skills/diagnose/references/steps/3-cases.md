@@ -47,6 +47,8 @@
 
 三条纪律（只问一次 / 区分改谁 / 命令以客户环境为准 + 先排除采集副作用）见 `../reference-gaps.md` 的「三条纪律」。**采集面被消费时记 trace**：`{action: reference_lookup, ref_id, purpose: collect, outcome: hit|miss}`——采集面此前无 purpose 可记，等于零观测。精度 / 性能单无论如何留一条：给了采集指引记 `hit`，探询后对方已有数据（不需要采集面）记 `miss`。interrupt 单不记（本触发点不在该路径上）。
 
+缺的是一整包现场证据（环境快照 / ftrace / 网卡 IRQ / CPU 频率 / iBMC / 日志）时，按 `../collector-dispatch.md` 选采集器并按其推荐格式交付；只推荐、不执行采集。已有材料够用时不重复采集。
+
 trace 记：
 ```yaml
 - {step: 3, action: reference_lookup, ref_id: msprobe-data-dump, purpose: collect, outcome: hit}

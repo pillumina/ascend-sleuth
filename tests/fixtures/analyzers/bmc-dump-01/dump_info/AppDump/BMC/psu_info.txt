@@ -1,0 +1,5 @@
+Slot | Presence | Manufacturer | Type | SN | Version | RatedPower | InputMode | PartNum | Device | Vin | Vout
+1 | Present | ACBEL | PAC2000S12 | SN0001 | V1.0 | 2000W | AC | PN0001 | PSU1 | 0 | 12.0
+2 | Present | ACBEL | PAC2000S12 | SN0002 | V1.0 | 2000W | AC | PN0001 | PSU2 | 220 | 12.0
+3 | Absent | -- | -- | -- | -- | -- | -- | -- | PSU3 | -- | --
+4 | Absent | -- | -- | -- | -- | -- | -- | -- | PSU4 | -- | --

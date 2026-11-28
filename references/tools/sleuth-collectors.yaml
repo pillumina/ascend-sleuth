@@ -1,0 +1,49 @@
+id: sleuth-collectors
+type: tool
+title: '客户现场采集器（scripts/collectors）：证据不足时推荐哪个脚本、怎么交付、结果交给哪个分析器'
+summary: '客户现场数据采集器的选择与交付：环境快照、ftrace、网卡 IRQ、CPU 频率、iBMC、日志；只推荐不执行，说明权限与影响，产物交回后按 consumer 分析或直接读。'
+
+sources:
+  - type: engineer-input
+    engineer: "ascend-sleuth 维护者（采集器适配层作者）"
+    document: "scripts/collectors/cli.py、scripts/collectors/registry.py、scripts/collectors/README.md、skills/diagnose/references/collector-dispatch.md"
+    url: "https://github.com/hu669293657/skills/tree/bf82e886ddda0a9955c2d5422f50b0b4caeb80b6"
+    input_session: "session-b307be67-960e-48dd-a1ef-ee10a2d91d24"
+    confirmed_at: 2026-11-27
+    verification: cross-checked-source
+
+applies_to:
+  platforms: [cross]
+  categories: [interrupt, precision, performance]
+
+related_references: [sleuth-analyzers, bmc-dump-analyzer, host-kernel-log-collection, msprof-collect-parse]
+
+status: active
+last_verified: 2026-11-27
+
+content:
+  tool_name: "客户现场采集器清单与打包入口（scripts/collectors/cli.py，6 个采集器：env-snapshot / cpu-trace / network-evidence / cpu-power-audit / ibmc-dump / ascend-logs）"
+  invocation: >-
+    先 `python3 scripts/collectors/cli.py list --json` 看可用采集器与返回物；
+    再用 `show <名字> --json` 取脚本路径、用途、适用环境、执行命令、权限、运行影响与返回文件；
+    需要发包时用 `bundle <名字> --out-dir <新目录>` 复制脚本、依赖和 README。
+    本命令只读清单、只复制文件：不执行采集、不访问网络、不改客户环境。
+  commands:
+    list: "`python3 scripts/collectors/cli.py list --json` 取 name / title / kind / purpose / outputs / consumer"
+    show: "`python3 scripts/collectors/cli.py show <name> --json` 取完整交付说明；`installed=false` 表示仓库内文件缺失，不要推荐"
+    bundle: "`python3 scripts/collectors/cli.py bundle <name> --out-dir <新目录>`；目录必须不存在或为空，生成 README.md 与 collector.json（含 SHA-256）"
+    consumer_analyzer: "采集结果回来后按 `consumer` 调对应 Analyzer：`python3 scripts/analyzers/cli.py run <consumer> --inputs <绝对路径>`"
+  output_meaning:
+    - "`name` / `title` / `purpose`：推荐时说明「采什么、为什么这条证据能推进当前诊断」"
+    - "`environments` / `privilege` / `impact` / `duration`：说明在哪跑、要不要 root、对业务有什么影响、预计多久"
+    - "`command`：`show` 里的「建议命令」把占位符换成现场 PID/路径；`<...>` 是必须替换的占位符"
+    - "`outputs`：客户需要返回的文件；`consumer` 是拿到结果后的分析器"
+    - "`sensitive`：分享前要复核的敏感信息；脚本的脱敏不是分享许可"
+    - "`bundle` 产物：README.md（给客户看的执行说明）、collector.json（文件哈希与上游提交）、脚本与依赖"
+  pitfalls:
+    - "**只推荐，不执行**：诊断 agent 不在客户机器上运行采集脚本，也不代客户上传数据；执行与回传由工程师和客户完成"
+    - "**先看已有证据**：已有日志/采集包能回答的问题不要重复采集；先按 `sleuth-analyzers` 分析已有数据"
+    - "**影响面要写明**：`cpu-trace` 需要 root 且会短时开启 ftrace，必须写明现场授权与窗口；`network-evidence`、`cpu-power-audit`、`env-snapshot` 默认只读"
+    - "**不上传、不联网**：`env-snapshot` 应保留 `--no-probes`；任何采集器都不访问公网、不自动回传"
+    - "**没有对应采集器时如实说缺什么**：不要临时手写采集脚本，也不要用其他时间窗的数据顶替"
+    - "**采集成功不等于诊断成立**：结果仍交给 Analyzer 提取事实，根因、fix、severity 由诊断 agent 判"

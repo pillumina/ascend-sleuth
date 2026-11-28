@@ -1,0 +1,53 @@
+<style>
+.rank-timing { color: #e2e8f0; font: 13px/1.5 system-ui, sans-serif; }
+.rank-timing [hidden] { display: none !important; }
+.rank-timing fieldset { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; border: 0; margin: 8px 0; padding: 0; min-width: 0; }
+.rank-timing legend { padding: 0; font-weight: 600; color: #cbd5e1; }
+.rank-timing label { display: inline-flex; align-items: center; gap: 5px; }
+.rank-timing input[type=checkbox] { accent-color: var(--ctl-accent, #22d3ee); }
+.rank-timing select, .rank-timing input[type=text], .rank-timing button {
+  background: var(--ctl-bg, #0f172a); color: var(--ctl-text, #e2e8f0);
+  border: 1px solid var(--ctl-line, #475569); border-radius: 8px; padding: 5px 9px;
+  font: inherit; font-size: 13px; transition: border-color .15s ease, box-shadow .15s ease;
+}
+.rank-timing select:hover, .rank-timing input[type=text]:hover, .rank-timing button:hover { border-color: var(--ctl-line-strong, #64748b); }
+.rank-timing select:focus-visible, .rank-timing input[type=text]:focus-visible, .rank-timing button:focus-visible {
+  border-color: var(--ctl-accent-line, rgba(34,211,238,.55));
+  box-shadow: 0 0 0 3px var(--ctl-accent-soft, rgba(34,211,238,.12));
+}
+.rank-timing button, .rank-timing summary { cursor: pointer; }
+.rank-timing :focus-visible { outline: none; }
+.rank-timing a:focus-visible, .rank-timing summary:focus-visible { outline: 2px solid var(--ctl-accent, #22d3ee); outline-offset: 2px; }
+.rank-timing [data-rts=steps] { margin: 8px 0; }
+.rank-timing [data-rts=steps] summary { width: max-content; padding: 3px 0; }
+.rank-timing [data-rts=step-list] { max-height: 8rem; overflow: auto; }
+.rank-timing [data-rts=step-list] label { margin: 4px 14px 4px 0; }
+.rank-timing .rt-swatch { width: 1.1rem; border-top: 2px solid; display: inline-block; }
+.rank-timing .rt-plot { position: relative; margin-top: 10px; background: #0f172a; border: 1px solid #334155; border-radius: 6px; }
+.rank-timing canvas { display: block; width: 100%; height: 360px; box-sizing: border-box; }
+.rank-timing [data-rts=cursor] { position: absolute; width: 1px; border-left: 1px dashed #94a3b8; pointer-events: none; }
+.rank-timing [data-rts=tip] { position: absolute; width: min(14rem, 90%); box-sizing: border-box; pointer-events: none; padding: 9px 12px; background: #0f172a; border: 1px solid #64748b; border-radius: 5px; box-shadow: 0 4px 14px #020617a0; z-index: 1; }
+.rank-timing [data-rts=tip] dl { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; margin: 5px 0 0; }
+.rank-timing [data-rts=tip] dd { text-align: right; margin: 0; font-variant-numeric: tabular-nums; }
+.rank-timing [data-rts=status], .rank-timing [data-rts=lookup-status] { color: #cbd5e1; margin: 5px 0; }
+</style>
+<div class="rank-timing">
+  <details data-rts="steps"><summary>选择 Step</summary><div data-rts="step-list"></div></details>
+  <fieldset data-rts="metrics"><legend>耗时指标</legend></fieldset>
+  <fieldset aria-label="卡顺序和查看范围">
+    <label>排序 <select data-rts="sort"><option value="rank">卡号</option></select></label>
+    <label>方向 <select data-rts="direction"><option value="1">从低到高</option><option value="-1">从高到低</option></select></label>
+    <label>显示范围 <select data-rts="zoom"><option value="0">全部卡</option><option value="1000">1,000 卡</option><option value="100">100 卡</option><option value="20">20 卡</option></select></label>
+    <label data-rts="pan-label" hidden>移动范围 <input data-rts="pan" type="range" min="0" max="0" value="0"></label>
+  </fieldset>
+  <form data-rts="lookup"><label>卡号 <input data-rts="rank" type="text" size="9" required></label>
+    <button type="submit">定位</button> <span data-rts="lookup-status" role="status"></span></form>
+  <p data-rts="status" role="status"></p>
+  <div class="rt-plot">
+    <canvas tabindex="0" aria-label="Rank 耗时走势图，使用左右方向键查看相邻卡"></canvas>
+    <div data-rts="cursor" hidden></div>
+    <div data-rts="tip" hidden><strong></strong><dl></dl></div>
+  </div>
+  <script type="application/json" data-rank-timing>{{RANK_TIMING_DATA}}</script>
+  <script>{{RANK_TIMING_JS}}</script>
+</div>

@@ -1,0 +1,173 @@
+/* NPU 性能分析报告样式：顶部固定导航 + 自适应正文 + Slate Outline 控件 */
+:root {
+  --nav-h: 52px;
+  --bg: #0f172a;
+  --card: #1e293b;
+  --line: #334155;
+  --line-soft: #1f2b3e;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #38bdf8;
+  /* 控件：Slate Outline（深蓝描边 + 青色聚焦环），与 cluster-compare Rank 面板一致 */
+  --ctl-bg: #0f172a;
+  --ctl-line: #475569;
+  --ctl-line-strong: #64748b;
+  --ctl-line-soft: rgba(148, 163, 184, .28);
+  --ctl-soft: rgba(148, 163, 184, .09);
+  --ctl-accent: #22d3ee;
+  --ctl-accent-soft: rgba(34, 211, 238, .12);
+  --ctl-accent-line: rgba(34, 211, 238, .55);
+  /* 数据概览 KPI 卡片最小宽度：由最长标签「未掩盖通信占比」≈98px + p-5 内边距 40px 决定，
+     理论下限 ≈138px。取 145px 使 6 卡一行的门槛（6×145+5×16=950px 容器）覆盖到 1024px 视口。 */
+  --kpi-min-w: 145px;
+}
+
+body { font-family: 'Inter', 'Microsoft YaHei', sans-serif; background: var(--bg); color: #f8fafc; margin: 0; overflow-wrap: anywhere; }
+
+/* ---------- 顶部固定导航 ---------- */
+.report-nav {
+  position: sticky; top: 0; z-index: 200;
+  display: flex; align-items: center; gap: 14px;
+  height: var(--nav-h); padding: 0 clamp(12px, 2vw, 28px);
+  background: rgba(17, 24, 39, .97); border-bottom: 1px solid var(--line-soft);
+  backdrop-filter: blur(6px);
+}
+.nav-brand { display: flex; align-items: center; gap: 8px; flex: 0 0 auto;
+  font-size: 1.02rem; font-weight: 700; color: #e2e8f0; white-space: nowrap; }
+.side-mode { display: inline-block; font-size: 11px; padding: 1px 10px; border-radius: 12px;
+  background: #064e3b; color: #6ee7b7; }
+.nav-links { display: flex; gap: 2px; min-width: 0; flex: 1 1 auto; overflow-x: auto; scrollbar-width: thin; }
+.nav-links::-webkit-scrollbar { height: 4px; }
+.nav-links::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+.nav-links a { color: #94a3b8; text-decoration: none; font-size: .86rem; white-space: nowrap;
+  padding: 6px 11px; border-radius: 6px; border-bottom: 2px solid transparent; }
+.nav-links a:hover { color: #38bdf8; background: #1a2436; text-decoration: none; }
+.nav-links a.active { color: #38bdf8; background: #16233a; border-bottom-color: #38bdf8; }
+.nav-ctl {
+  flex: 0 0 auto; min-height: 28px; padding: 3px 12px; font-size: .8rem; font-weight: 600;
+  color: #e2e8f0; background: var(--ctl-bg); border: 1px solid var(--ctl-line);
+  border-radius: 6px; cursor: pointer; transition: border-color .12s, box-shadow .12s, background .12s;
+}
+.nav-ctl:hover { border-color: var(--ctl-line-strong); background: #16233a; color: #38bdf8; }
+.nav-ctl:focus-visible { outline: none; border-color: var(--ctl-accent); box-shadow: 0 0 0 3px var(--ctl-accent-line); }
+.progress { position: absolute; left: 0; bottom: 0; height: 2px; width: 0;
+  background: linear-gradient(90deg, #38bdf8, #34d399); transition: width .12s ease-out; pointer-events: none; }
+
+/* ---------- 正文：宽度自适应，不再限制 1180px ---------- */
+.main { box-sizing: border-box; width: 100%; max-width: 1840px; margin: 0 auto; padding: 24px clamp(16px, 2.4vw, 40px) 48px; }
+.page-head h1 { margin: 0; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: .75rem;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, .1); }
+.rank-timing-card { padding: 16px 18px; }
+
+/* ---------- 数据概览 KPI 卡片行 ----------
+   默认一行平铺并等分整行；仅当容器放不下「最小宽度 × N + 间距」时才换行，
+   换行后每一行各自平分本行宽度。列数由卡片最小宽度决定，不依赖视口断点。 */
+.kpi-row { display: flex; flex-wrap: wrap; gap: 16px; margin: 8px 0; }
+.kpi-row > .card { flex: 1 1 var(--kpi-min-w); min-width: 0; }
+h1 { font-size: 1.7rem; font-weight: 800; margin: 0;
+  background: linear-gradient(90deg, #60a5fa, #34d399); -webkit-background-clip: text;
+  background-clip: text; color: transparent; }
+h2 { font-size: 1.3rem; font-weight: 700; margin: 2rem 0 1rem; color: #e2e8f0;
+  border-left: 4px solid #38bdf8; padding-left: .75rem; scroll-margin-top: calc(var(--nav-h) + 12px); }
+h3 { font-size: 1rem; font-weight: 600; margin: .25rem 0 .75rem; color: #cbd5e1; }
+h4.sub-t { font-size: .92rem; font-weight: 600; margin: .2rem 0 .5rem; color: #93c5fd; }
+a { color: #38bdf8; text-decoration: none; } a:hover { text-decoration: underline; }
+code { background: #0f172a; padding: 1px 6px; border-radius: 4px; font-size: .85em; color: #7dd3fc; }
+
+/* ---------- 表格：仅在图表不适用时使用，宽表带吸附表头/首列 ---------- */
+.tw { overflow: auto; margin-top: .5rem; max-height: 62vh; border: 1px solid var(--line);
+  border-radius: .6rem; }
+table.tbl { width: 100%; border-collapse: collapse; font-size: .85rem; }
+table.tbl th { background: #334155; color: #cbd5e1; padding: 8px 10px; text-align: left; white-space: nowrap; }
+table.tbl td { padding: 7px 10px; border-bottom: 1px solid #334155; color: #e2e8f0; }
+table.tbl tr:hover { background: #334155; }
+.tw > table.tbl thead th { position: sticky; top: 0; z-index: 2; }
+.tw > table.tbl tbody tr:hover { background: rgba(56, 189, 248, .08); }
+.tw > table.tbl th:first-child, .tw > table.tbl td:first-child {
+  position: sticky; left: 0; z-index: 1; background: #26334a; min-width: 6.5rem; max-width: 26rem; }
+.tw > table.tbl thead th:first-child { z-index: 3; background: #334155; }
+.badge { padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: 500;
+  display: inline-block; margin: 1px; }
+.badge-ok { background: #064e3b; color: #6ee7b7; }
+.badge-warn { background: #78350f; color: #fcd34d; }
+.badge-critical { background: #7f1d1d; color: #fca5a5; }
+
+details.sec { margin: 1.4rem 0; border-radius: .75rem; scroll-margin-top: calc(var(--nav-h) + 12px); }
+details.sec > summary { cursor: pointer; list-style: none; display: flex;
+  align-items: center; user-select: none; padding: .65rem .9rem; }
+details.sec > summary::-webkit-details-marker { display: none; }
+details.sec > summary h2 { margin: 0; flex: 1; }
+details.sec > summary::before { content: '▾'; color: #38bdf8; font-size: .85rem; margin-right: .55rem; }
+details.sec:not([open]) > summary::before { content: '▸'; color: #64748b; }
+details.sec > summary:hover h2 { color: #7dd3fc; }
+details.sec[open] { border: 1px solid var(--line-soft); background: rgba(15, 23, 42, .45); }
+details.sec[open] > summary { border-bottom: 1px dashed var(--line-soft); margin-bottom: .9rem; }
+.header-meta { font-size: 12px; color: #64748b; margin: 10px 0 0; word-break: break-all; }
+
+/* ---------- 图表 ---------- */
+.chart { width: 100%; min-height: 120px; }
+.chart-note { color: #94a3b8; font-size: 12px; margin: 6px 0 0; line-height: 1.6; }
+.chart-warn { color: #fcd34d; font-size: 12px; margin: 0 0 6px; }
+
+/* ---------- 图表工具条（Slate Outline 控件） ---------- */
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px;
+  margin: 6px 0 10px; padding: 8px 10px; border: 1px solid var(--ctl-line-soft); border-radius: 10px;
+  background: linear-gradient(180deg, rgba(148, 163, 184, .07), rgba(148, 163, 184, .02));
+  font-size: 12.5px; color: var(--muted); }
+.ctl-label { color: var(--muted); font-weight: 650; white-space: nowrap; }
+.ctl { min-height: 28px; padding: 3px 8px; font-size: 12px; color: var(--text);
+  background: var(--ctl-bg); border: 1px solid var(--ctl-line); border-radius: 6px;
+  transition: border-color .12s, box-shadow .12s, background .12s; }
+select.ctl { padding-right: 22px; appearance: none; cursor: pointer; }
+.ctl:hover { border-color: var(--ctl-line-strong); background: var(--card); }
+.ctl:focus-visible { outline: none; border-color: var(--ctl-accent); box-shadow: 0 0 0 3px var(--ctl-accent-line); }
+.chk { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 2px 7px;
+  border: 1px solid var(--ctl-line-soft); border-radius: 999px; background: var(--ctl-soft);
+  cursor: pointer; user-select: none; white-space: nowrap; color: #cbd5e1; font-size: 12px; }
+.chk:hover { border-color: var(--ctl-line-strong); }
+.chk input { accent-color: var(--ctl-accent); margin: 0; cursor: pointer; }
+.chk .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+
+/* ---------- 卡片式列表（替代表格的文本类内容） ---------- */
+.tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; margin: 8px 0; }
+.tile { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; font-size: 12.5px;
+  background: linear-gradient(180deg, #1e293b, #172033); }
+.tile-head { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 14px; font-weight: 700; color: #e2e8f0; margin-bottom: 6px; }
+.tile-row { color: var(--muted); display: flex; gap: 6px; line-height: 1.6; }
+.tile-row > span:first-child { flex: 0 0 auto; }
+.tile-row code { font-size: 11.5px; color: #cbd5e1; background: #0f172a; }
+.tile a { font-size: 12.5px; word-break: break-all; }
+
+.finding { border: 1px solid var(--line); border-left: 3px solid #38bdf8; border-radius: 0 10px 10px 0;
+  background: #172033; padding: 10px 14px; margin: 10px 0; }
+.finding-high { border-left-color: #ef4444; }
+.finding-mid { border-left-color: #fb923c; }
+.finding-title { font-weight: 700; color: #e2e8f0; margin-bottom: 4px; }
+.finding-row { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 3px 10px;
+  font-size: 13.5px; color: #cbd5e1; margin: 3px 0; }
+.finding-row > span:first-child { color: var(--muted); }
+
+.concl { display: flex; gap: 10px; align-items: flex-start; border: 1px solid var(--line);
+  border-radius: 10px; background: #172033; padding: 9px 12px; margin: 8px 0; font-size: 14px; color: #e2e8f0; }
+.concl > .badge { margin-top: 3px; flex: 0 0 auto; }
+
+/* ---------- prof-compare 子报告内嵌 ---------- */
+.sub-frame { display: block; width: 100%; height: min(72vh, 900px); border: 1px solid var(--line);
+  border-radius: 10px; background: var(--bg); margin: 8px 0; }
+
+@media (max-width: 900px) {
+  .report-nav { gap: 10px; padding: 0 12px; }
+  .nav-brand-text { display: none; }
+  .main { padding: 16px; }
+  .finding-row { grid-template-columns: 78px minmax(0, 1fr); }
+  .tw > table.tbl th:first-child, .tw > table.tbl td:first-child { min-width: 5rem; }
+}
+
+@media print {
+  .report-nav { display: none; }
+  body { background: #fff; color: #111; }
+  details.sec { break-inside: avoid-page; }
+  .tw { overflow: visible; max-height: none; }
+}
