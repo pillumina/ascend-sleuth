@@ -1,0 +1,44 @@
+id: bmc-sensor-thresholds
+type: platform-fact
+title: BMC 传感器读数的判定依据（机型、版本和可核来源）
+summary: BMC 传感器读数只有对照适用机型和版本的可核依据，才能判断是否越限。缺少依据时记录实际读数、设备报告的状态和证据来源。
+
+sources:
+  - type: engineer-input
+    engineer: "hu669293657（上游 skills 仓库作者，匿名工程师）"
+    document: "skills 仓库 ibmc_analyzer/references/judgement.md 表 2「各维度正常标准」与 generate_bmc_report.py 的电源判定条件，固定提交 39c604188f99d683be93f994193ecfea24d7efc6"
+    url: "https://github.com/hu669293657/skills/tree/39c604188f99d683be93f994193ecfea24d7efc6/ibmc_analyzer"
+    input_session: "session-b307be67-960e-48dd-a1ef-ee10a2d91d24"
+    confirmed_at: 2026-11-22
+    verification: auto-extracted
+
+applies_to:
+  platforms: [cross]
+  categories: [interrupt, performance]
+
+related_references: [bmc-alert-patterns]
+
+status: pending-review
+last_verified: 2026-11-22
+
+content:
+  claim: >-
+    数值区间要作为确定性规则，必须同时满足三条：①能指出适用机型；②能指出适用的固件或版本范围；③依据可核查（厂商规范、
+    版本对应的发布说明或实测报告）。缺任一项时，记录传感器读数、设备报告的告警等级与状态，以及可回查的证据位置。
+  evidence: >-
+    上游提供的电压、光功率、温度和风扇转速是工程经验示例，缺少对应机型的厂商规范出处。
+    电源输入电压的判定上限在上游不同位置也有出入。这些数字仅供追溯。
+  candidate_numbers_do_not_use_as_rule:
+    psu_vin: "180~264V"
+    psu_vout: "11.5~12.6V"
+    optical_snr_db: ">=19"
+    optical_rx_mw: ">=0.63"
+    optical_tx_mw: ">=0.2"
+    inlet_temp_c: "<42"
+    hbm_temp_c: "<95"
+    ai_tj_temp_c: "<105"
+    fan_rpm: ">=7000"
+  how_to_use: >-
+    写明传感器、数值、单位、设备状态及证据来源，例如「HBM 温度 99 °C，设备标记 major」。
+    若要判断越限，先确认机型和固件版本，再核对对应规范。
+  applies_to_platforms: [cross]

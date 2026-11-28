@@ -1,0 +1,2 @@
+Alarm ID | Level | Description
+0x0002 | Major | HBM Temp upper threshold exceeded

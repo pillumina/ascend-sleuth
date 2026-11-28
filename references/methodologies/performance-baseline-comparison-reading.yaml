@@ -1,0 +1,56 @@
+id: performance-baseline-comparison-reading
+type: methodology
+title: 性能基准对照的读法（可比性、绝对差值和变化率）
+summary: 比较性能时先核对基准、对比对象和统计范围，再核对单位、原值和差值。大倍数先看绝对量，缺失读数保持未知。根据已核实的范围判断能否归因。
+
+sources:
+  - type: engineer-input
+    engineer: 昇腾性能对比流程的上游维护者
+    document: 上游性能对比分析说明中的总体指标、分项变化和极端比率判读
+    url: https://github.com/hu669293657/skills/blob/6519f6f73ba68c6eaf51d9374644e4b60c84be0c/prof-compare/references/analysis_methodology.md
+    input_session: 实验分支性能对比词条整理
+    confirmed_at: 2026-11-24
+    verification: auto-extracted
+
+applies_to:
+  platforms: [cross]
+  categories: [performance]
+
+related_references: [performance-delimiting-and-comparison]
+
+status: active
+last_verified: 2026-11-24
+
+content:
+  flow:
+    - step: 1
+      name: 核对两侧是否可比
+      action: >-
+        标记哪次是基准、哪次是对比，并列出计划比较的变更。核对负载、测量窗口、纳入的对象及指标定义。
+        只比较范围一致的读数。范围不清时，先补足影响判断的那一项。
+      check: 两侧是否使用同一指标定义和统计范围，是否把额外变化误归给目标变更
+      when_to_use: 已有两次训练或推理的性能读数
+
+    - step: 2
+      name: 核对单位和变化方向
+      action: >-
+        单位统一后并列给出基准值和对比值。绝对差值等于对比值减基准值。
+        基准值非零时，相对变化率是绝对差值除以基准值，倍数是对比值除以基准值。改善或劣化按指标的目标方向判断。
+      check: 两侧原值、单位和统计范围能回查，变化率与倍数含义清楚
+      when_to_use: 准备报告端到端耗时、吞吐或分项的变化
+
+    - step: 3
+      name: 用绝对量核对大倍数
+      action: >-
+        基准为零时，变化率和倍数均不可计算，只报告原值和绝对差值。基准接近测量分辨率时，优先看绝对差值。
+        先看整体耗时或吞吐，再找绝对变化大的计算、通信或等待项。复核局部变化是否与整体变化发生在同一范围。
+      check: 是否说明大倍数的基准量级，局部变化是否能解释整体表现
+      when_to_use: 变化倍数很大，或整体变化与分项变化不一致
+
+    - step: 4
+      name: 保留缺项和归因边界
+      action: >-
+        缺失读数标为未知。列清已经比较的范围、缺失的指标和下一项要补的观测。
+        需要确认根因时，用同条件复测或独立证据核对候选解释。
+      check: 缺项是否被当成零，结论是否超出两侧有效观测的范围
+      when_to_use: 两侧覆盖不完整，或差异可能来自多个变化

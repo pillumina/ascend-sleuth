@@ -1,0 +1,186 @@
+<style>
+.rank-panel { padding: clamp(14px, 2vw, 24px); margin: 20px 0; min-width: 0; scroll-margin-top: calc(var(--nav-h, 52px) + 12px); }
+.rank-panel h3 { margin: 0 0 5px; font-size: 19px; font-weight: 650; }
+.rank-note, .rank-status { margin: 0 0 12px; color: #b0bed1; font-size: 13px; line-height: 1.5; }
+.rank-status { margin: 8px 0 0; }
+/* ===== 控件风格：Slate Outline ===== */
+.rank-panel {
+  --ctl-ff: 'Inter', 'Microsoft YaHei', system-ui, sans-serif;
+  --ctl-fs: 12.5px; --ctl-lbl: 11.5px;
+  --ctl-fg: #cbd5e1; --ctl-fg-strong: #f1f5f9; --ctl-fg-muted: #94a3b8;
+  --ctl-bg: #223049; --ctl-bg-hover: #2b3a55;
+  --ctl-bd: #3f4c63; --ctl-bd-hover: #5b6a85; --ctl-r: 5px;
+  --ctl-accent: #22d3ee; --ctl-accent-fg: #06222a;
+  --ctl-glow: 0 0 0 1px rgba(34, 211, 238, .35);
+  --ctl-focus: 0 0 0 3px rgba(34, 211, 238, .22);
+  --ctl-caret: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2394a3b8' stroke-width='1.6'/%3E%3C/svg%3E");
+}
+.rank-toolbar, .rank-navigation, .rank-metrics, .rank-steps { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.rank-toolbar { margin: 12px 0; }
+.rank-toolbar, .rank-navigation, .rank-filters { font-size: var(--ctl-fs); font-family: var(--ctl-ff); }
+.rank-toolbar label, .rank-navigation label { display: flex; align-items: center; gap: 7px; color: var(--ctl-fg-muted); font-size: var(--ctl-lbl); }
+.rank-panel select, .rank-panel button, .rank-panel input:not([type=checkbox]):not([type=range]) {
+  font: inherit; font-size: var(--ctl-fs); color: var(--ctl-fg); background-color: var(--ctl-bg);
+  border: 1px solid var(--ctl-bd); border-radius: var(--ctl-r); padding: 5px 9px;
+  transition: background-color .15s, border-color .15s, box-shadow .15s, color .15s, filter .15s;
+}
+.rank-panel select {
+  appearance: none; -webkit-appearance: none; color: var(--ctl-fg-strong); padding: 5px 26px 5px 9px;
+  background-image: var(--ctl-caret); background-repeat: no-repeat; background-position: right 8px center; background-size: 9px;
+}
+.rank-panel select option { background: #1e293b; color: #f8fafc; }
+.rank-panel button { font-weight: 600; color: var(--ctl-fg-strong); padding: 5px 13px; }
+.rank-panel button[type=submit] {
+  background-color: var(--ctl-accent); border-color: var(--ctl-accent); color: var(--ctl-accent-fg); box-shadow: var(--ctl-glow);
+}
+.rank-panel select:hover, .rank-panel button:hover, .rank-panel input:not([type=checkbox]):not([type=range]):hover {
+  background-color: var(--ctl-bg-hover); border-color: var(--ctl-bd-hover);
+}
+.rank-panel button[type=submit]:hover { background-color: #67e8f9; border-color: #67e8f9; filter: none; }
+.rank-panel button:active { transform: translateY(1px) scale(.99); }
+.rank-panel :is(button, summary, select, input[type=checkbox], input[type=range]) { cursor: pointer; }
+.rank-panel :is(select, button, input):disabled { opacity: .45; cursor: default; transform: none; filter: none; }
+.rank-panel :focus-visible { outline: none; box-shadow: var(--ctl-focus); }
+.rank-panel canvas:focus-visible { box-shadow: none; outline: 2px solid rgba(34, 211, 238, .6); outline-offset: -2px; }
+.rank-filters {
+  display: grid; gap: 10px; padding: 12px 14px;
+  background: rgba(30, 41, 59, .55); border: 1px solid #334155; border-radius: 12px;
+}
+.rank-filters label {
+  display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px; color: var(--ctl-fg);
+  font-size: var(--ctl-fs); background: var(--ctl-bg); border: 1px solid var(--ctl-bd); border-radius: var(--ctl-r);
+  cursor: pointer; transition: background .15s, border-color .15s, color .15s, box-shadow .15s;
+}
+.rank-filters label:hover { background: var(--ctl-bg-hover); border-color: var(--ctl-bd-hover); }
+.rank-filters input[type=checkbox] {
+  appearance: none; -webkit-appearance: none; display: grid; place-content: center; margin: 0;
+  width: 14px; height: 14px; flex: 0 0 14px; background: transparent;
+  border: 1.5px solid var(--ctl-bd-hover); border-radius: 3px; cursor: pointer;
+  transition: background .15s, border-color .15s, box-shadow .15s;
+}
+.rank-filters input[type=checkbox]::after {
+  content: ''; width: 8px; height: 4.5px; margin-top: -2px;
+  border-left: 2px solid #fff; border-bottom: 2px solid #fff;
+  transform: rotate(-45deg) scale(0); transition: transform .12s;
+}
+.rank-filters input[type=checkbox]:checked { background: var(--ctl-accent); border-color: var(--ctl-accent); box-shadow: var(--ctl-glow); }
+.rank-filters input[type=checkbox]:checked::after { transform: rotate(-45deg) scale(1); }
+.rank-filters input[type=checkbox]:checked:focus-visible { box-shadow: var(--ctl-focus), var(--ctl-glow); }
+.rank-filters label:has(input:checked) { color: var(--ctl-fg-strong); background: rgba(34, 211, 238, .1); border-color: var(--ctl-accent); }
+.rank-filter-row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: baseline; }
+.rank-filter-row > strong { color: var(--ctl-fg-muted); font-size: var(--ctl-lbl); font-weight: 600; letter-spacing: .02em; }
+.rank-step-controls { min-width: 0; flex: 1 1 220px; }
+.rank-step-controls summary {
+  width: fit-content; list-style: none; display: inline-flex; align-items: center; gap: 7px; padding: 5px 12px;
+  color: var(--ctl-fg); font-size: var(--ctl-fs); font-weight: 600; background: #1c2740;
+  border: 1px solid var(--ctl-bd); border-radius: 999px; transition: background .15s, border-color .15s;
+}
+.rank-step-controls summary::-webkit-details-marker { display: none; }
+.rank-step-controls summary::before { content: '▸'; color: var(--ctl-accent); font-size: 11px; }
+.rank-step-controls[open] summary::before { content: '▾'; }
+.rank-step-controls summary:hover { background: var(--ctl-bg-hover); border-color: var(--ctl-bd-hover); }
+.rank-steps {
+  gap: 6px; max-height: 132px; margin-top: 8px; overflow: auto; padding: 8px;
+  background: rgba(15, 23, 42, .45); border: 1px solid #2b3a55; border-radius: 8px;
+}
+.rank-steps label { white-space: nowrap; }
+.rank-steps::-webkit-scrollbar, .rank-legend::-webkit-scrollbar { width: 8px; height: 8px; }
+.rank-steps::-webkit-scrollbar-track, .rank-legend::-webkit-scrollbar-track { background: transparent; }
+.rank-steps::-webkit-scrollbar-thumb, .rank-legend::-webkit-scrollbar-thumb { background: #3f4c63; border-radius: 999px; }
+.rank-legend { display: flex; flex-wrap: wrap; gap: 5px 14px; max-height: 64px; overflow: auto; margin: 8px 0; color: #cbd5e1; font-size: 12px; }
+.rank-legend span { white-space: nowrap; }
+.rank-legend i { display: inline-block; width: 16px; border-top: 2px solid; margin-right: 5px; vertical-align: middle; }
+.rank-plot { position: relative; margin: 8px 0; background: #0f172a; border: 1px solid #334155; border-radius: 8px; }
+.rank-plot canvas { width: 100%; height: clamp(300px, 34vh, 430px); display: block; cursor: crosshair; }
+.rank-cursor { position: absolute; width: 1px; background: #94a3b8; pointer-events: none; }
+.rank-marker { position: absolute; width: 8px; height: 8px; border: 1px solid #0f172a; border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; }
+.rank-tooltip {
+  position: absolute; z-index: 3; pointer-events: none; max-width: calc(100% - 12px); overflow-wrap: anywhere;
+  padding: 9px 11px; color: #f8fafc; background: #111c2e; border: 1px solid #64748b; border-radius: 7px;
+  box-shadow: 0 7px 18px #0008; font-size: 12px; line-height: 1.35; font-variant-numeric: tabular-nums;
+}
+.rank-tooltip table { border-collapse: collapse; margin-top: 5px; }
+.rank-tooltip :is(td, th) { padding: 2px 6px; text-align: right; background: transparent; border-bottom: 1px solid #334155; }
+.rank-tooltip th:first-child { text-align: left; }
+.rank-tooltip tr[data-active] > * { background: #243651; }
+.rank-navigation input[type=range] {
+  flex: 1 1 110px; min-width: 85px; height: 20px; padding: 0; border: 0;
+  appearance: none; -webkit-appearance: none; background: transparent;
+}
+.rank-navigation input[type=range]::-webkit-slider-runnable-track { height: 5px; border-radius: 999px; background: #334155; }
+.rank-navigation input[type=range]::-webkit-slider-thumb {
+  appearance: none; -webkit-appearance: none; width: 15px; height: 15px; margin-top: -5px; border-radius: 50%;
+  background: var(--ctl-accent); border: 2px solid #0f172a; box-shadow: var(--ctl-glow);
+}
+.rank-navigation input[type=range]::-moz-range-track { height: 5px; border-radius: 999px; background: #334155; }
+.rank-navigation input[type=range]::-moz-range-thumb {
+  width: 13px; height: 13px; border-radius: 50%; background: var(--ctl-accent);
+  border: 2px solid #0f172a; box-shadow: var(--ctl-glow);
+}
+.rank-navigation input[type=range]:focus-visible { box-shadow: none; }
+.rank-navigation input[type=range]:focus-visible::-webkit-slider-thumb { box-shadow: var(--ctl-focus); }
+.rank-navigation form { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.rank-navigation input[data-role=find] { width: 108px; }
+.rank-navigation input[data-role=find]::placeholder { color: #7f8ca0; }
+.rank-panel [hidden] { display: none !important; }
+@media (max-width: 480px) {
+  .rank-tooltip { font-size: 11px; padding: 6px; }
+  .rank-tooltip :is(td, th) { padding: 2px 3px; }
+}
+</style>
+
+<section id="rank-timing" class="card rank-panel">
+  <h3>Rank 级两集群耗时走势</h3>
+  <p class="rank-note">同色代表同一组选定 Step 和指标。实线为基准集群 A，虚线为对比集群 B。总耗时取 Stage，纯计算取计算时间减去通算重合。</p>
+  <p class="rank-note" data-role="pairing-note" hidden></p>
+</section>
+<section id="rank-difference" class="card rank-panel">
+  <h3>Rank 级耗时差异走势</h3>
+  <p class="rank-note">在所选 Step 组内按同一 Rank 比较。差值为 B − A，变化率为 (B − A) ÷ A。单侧缺测时留空，A 为零时变化率留空。</p>
+  <p class="rank-note" data-role="pairing-note" hidden></p>
+</section>
+<template id="rank-chart-controls">
+  <p class="rank-note" data-role="source-note" hidden></p>
+  <div class="rank-filters">
+    <div class="rank-filter-row">
+      <strong>Step</strong>
+      <details class="rank-step-controls"><summary data-role="step-count"></summary>
+        <div class="rank-steps" data-role="steps"></div>
+      </details>
+    </div>
+    <div class="rank-filter-row"><strong>指标</strong><div class="rank-metrics" data-role="metrics"></div></div>
+  </div>
+  <div class="rank-toolbar">
+    <label data-role="mode-label" hidden>纵轴 <select data-role="mode">
+      <option value="delta">差值（ms）</option><option value="rate">变化率（%）</option>
+    </select></label>
+    <label>横轴排序 <select data-role="sort"><option value="rank">Rank 编号</option></select></label>
+    <label>方向 <select data-role="direction"><option value="1">升序</option><option value="-1">降序</option></select></label>
+    <label>排序 Step <select data-role="sort-step"></select></label>
+    <label>取值 <select data-role="sort-source">
+      <option value="a">集群 A</option><option value="b">集群 B</option><option value="difference">差异</option>
+    </select></label>
+  </div>
+  <div class="rank-legend" data-role="legend"></div>
+  <div class="rank-plot" data-role="plot">
+    <canvas data-role="canvas" tabindex="0" aria-label="Rank 走势，左右方向键查看相邻 Rank"></canvas>
+    <div class="rank-cursor" data-role="cursor" hidden></div>
+    <div class="rank-marker" data-role="marker" hidden></div>
+    <div class="rank-tooltip" data-role="tooltip" hidden></div>
+  </div>
+  <div class="rank-navigation">
+    <button type="button" data-role="zoom-in">放大</button>
+    <button type="button" data-role="zoom-out">缩小</button>
+    <button type="button" data-role="zoom-reset">全览</button>
+    <input data-role="pan" type="range" min="0" step="1" aria-label="平移 Rank 可见范围">
+    <form data-role="search">
+      <input data-role="find" aria-label="Rank 编号" placeholder="Rank 编号" required>
+      <button type="submit">定位</button>
+    </form>
+  </div>
+  <p class="rank-status" data-role="status" aria-live="polite"></p>
+</template>
+<script id="rank-chart-data" type="application/json">{{RANK_CHART_DATA}}</script>
+<script>
+{{RANK_CHART_JS}}
+</script>

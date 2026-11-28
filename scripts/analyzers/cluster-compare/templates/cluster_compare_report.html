@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>集群对比分析报告 - 异常集群劣化根因分析</title>
+<script defer src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ===== 布局基线：容器自适应宽度，内容不再被固定 max-width 截断 ===== */
+:root {
+  --shell-max: 1920px;
+  --shell-pad: clamp(12px, 2vw, 28px);
+  --card-bg: #1e293b;
+  --card-bg-2: #172033;
+  --line: #334155;
+  --nav-h: 52px;
+}
+* { box-sizing: border-box; }
+body { font-family: 'Inter', 'Microsoft YaHei', system-ui, sans-serif; background-color: #0f172a; color: #f8fafc; margin: 0; overflow-x: clip; }
+.report-shell { width: 100%; max-width: var(--shell-max); margin: 0 auto; padding: 0 var(--shell-pad) 40px; }
+/* 允许网格/弹性子项收缩，是内容溢出容器的根因修复 */
+.report-shell :is(.grid, .flex) > * { min-width: 0; }
+.report-shell :is(section, div)[id] { scroll-margin-top: calc(var(--nav-h) + 12px); }
+.card { background-color: var(--card-bg); border: 1px solid var(--line); border-radius: 0.75rem; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1); overflow-wrap: anywhere; }
+.text-gradient { background-clip: text; -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #0f172a; }
+::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+/* ===== 顶部导航 ===== */
+.report-nav { position: sticky; top: 0; z-index: 40; width: 100%; margin: 0 0 20px; padding: 0 var(--shell-pad);
+  background: rgba(15,23,42,.86); backdrop-filter: blur(8px); border-bottom: 1px solid var(--line); }
+.report-nav-inner { position: relative; max-width: var(--shell-max); margin: 0 auto; height: var(--nav-h); display: flex; align-items: center; gap: 6px 18px; }
+.report-nav-brand { font-size: 13px; font-weight: 650; color: #f8fafc; white-space: nowrap; }
+.report-nav-links { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.report-nav-links::-webkit-scrollbar { display: none; }
+.report-nav-links a { padding: 5px 10px; border-radius: 6px; font-size: 12.5px; color: #94a3b8; text-decoration: none; white-space: nowrap; }
+.report-nav-links a:hover { color: #f1f5f9; background: #1e293b; }
+.report-nav-links a[aria-current="true"] { color: #fca5a5; background: rgba(248,113,113,.12); }
+.report-nav-progress { position: absolute; left: 0; bottom: -1px; height: 2px; width: 0; background: linear-gradient(90deg,#f87171,#fb923c); }
+
+/* ===== 表格自适应：优先换行而非横向滚动 ===== */
+.table-wrap { width: 100%; overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+table th { background: #334155; color: #cbd5e1; }
+table td { border-bottom: 1px solid #334155; }
+table tr:hover { background: #334155; }
+table :is(th, td) { overflow-wrap: anywhere; }
+.adv-table { font-variant-numeric: tabular-nums; }
+.adv-table :is(th, td):not(.col-text) { white-space: nowrap; }
+.meta-line { font-size: 11.5px; color: #64748b; line-height: 1.6; overflow-wrap: anywhere; }
+.meta-line b { color: #94a3b8; font-weight: 600; }
+
+/* ===== 通信算子差异（柱状图） ===== */
+.comm-diff-note { margin: 4px 0 12px; color: #b0bed1; font-size: 13px; }
+.comm-diff-group { border-top: 1px solid #334155; }
+.comm-diff-group summary { cursor: pointer; padding: 10px 3px; font-weight: 600; }
+.comm-diff-group summary span { color: #94a3b8; font-size: 12px; font-weight: normal; }
+.comm-chart { width: 100%; min-height: 200px; margin: 2px 0 10px; }
+.comm-chart-empty { display: flex; align-items: center; justify-content: center; color: #64748b; font-size: 13px; }
+
+/* ===== 进阶分析 A/B 对照：宽屏并排，窄屏堆叠 ===== */
+.adv-ab-grid { display: block; }
+.adv-ab-item + .adv-ab-item { margin-top: 20px; padding-top: 20px; border-top: 1px solid #334155; }
+@media (min-width: 1500px) {
+  .adv-ab-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px; align-items: start; }
+  .adv-ab-item + .adv-ab-item { margin-top: 0; padding-top: 0; border-top: 0; }
+  .adv-ab-full { grid-column: 1 / -1; }
+}
+
+/* ===== 打印 ===== */
+@media print {
+  body { background: #fff; color: #111; }
+  .report-nav { display: none; }
+  .report-shell { max-width: none; padding: 0; }
+  .card { break-inside: avoid; box-shadow: none; }
+}
+</style>
+</head>
+<body class="min-h-screen">
+<nav class="report-nav">
+  <div class="report-nav-inner">
+    <span class="report-nav-brand">集群对比分析</span>
+    <div class="report-nav-links">
+      <a href="#sec-overview">概览</a>
+      <a href="#sec-timing">耗时与带宽</a>
+      <a href="#sec-load">负载分布</a>
+      <a href="#sec-attribution">劣化归因</a>
+      <a href="#rank-timing">Rank 走势</a>
+      <a href="#sec-conclusion">结论与建议</a>
+      <a href="#sec-advanced">进阶分析</a>
+    </div>
+  </div>
+  <div class="report-nav-progress" id="nav-progress"></div>
+</nav>
+<div class="report-shell space-y-6">
+
+<!-- [1] Header -->
+<header id="sec-overview" class="flex flex-col md:flex-row justify-between items-start md:items-center pb-6 border-b border-slate-700">
+  <div>
+    <h1 class="text-3xl md:text-4xl font-bold bg-gradient-to-r from-red-400 to-orange-400 text-gradient">集群劣化根因分析报告</h1>
+    <p class="text-slate-400 mt-2 text-sm md:text-base">对比分析：基准集群 (A) vs 对比集群 (B) 的性能瓶颈诊断</p>
+  </div>
+  <div class="mt-4 md:mt-0 flex items-center space-x-2 bg-slate-800 {{STAGE_DELTA_COLOR}} px-4 py-2 rounded-full border border-current">
+    <span class="inline-flex rounded-full h-3 w-3 bg-current" aria-hidden="true"></span>
+    <span class="font-semibold text-sm">整体状态：{{STATUS_TEXT}}</span>
+  </div>
+</header>
+<div class="meta-line -mt-4 mb-2"><b>A</b> {{PATH_A}} &nbsp;·&nbsp; <b>B</b> {{PATH_B}} &nbsp;·&nbsp; <b>生成时间</b> {{GENERATE_TIME}}</div>
+
+<!-- [2] KPI Cards -->
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+  <div class="card p-5 relative overflow-hidden">
+    <div class="text-slate-400 text-sm font-medium mb-1">Stage 总耗时增幅</div>
+    <div class="text-3xl font-bold {{STAGE_DELTA_COLOR}}">{{STAGE_DELTA_SIGN}}{{STAGE_DELTA_PERCENT}}%</div>
+    <div class="text-xs text-slate-500 mt-2">{{STAGE_A_MS}} → {{STAGE_B_MS}} ms</div>
+    <div class="absolute -right-4 -bottom-4 opacity-10 text-6xl">⏱️</div>
+  </div>
+  <div class="card p-5 relative overflow-hidden">
+    <div class="text-slate-400 text-sm font-medium mb-1">通信变化贡献度</div>
+    <div class="text-3xl font-bold {{COMM_CONTRIB_COLOR}}">{{COMM_CONTRIB}}</div>
+    <div class="text-xs text-slate-500 mt-2">ΔComm = {{DELTA_COMM_SIGN}}{{DELTA_COMM_MS}} ms</div>
+    <div class="text-xs mt-1 leading-snug {{COMM_CONTRIB_COLOR}}">{{COMM_CONTRIB_NOTE}}</div>
+    <div class="absolute -right-4 -bottom-4 opacity-10 text-6xl">📡</div>
+  </div>
+  <div class="card p-5 relative overflow-hidden">
+    <div class="text-slate-400 text-sm font-medium mb-1">计算变化贡献度</div>
+    <div class="text-3xl font-bold {{COMPUTE_CONTRIB_COLOR}}">{{COMPUTE_CONTRIB}}</div>
+    <div class="text-xs text-slate-500 mt-2">ΔCompute = {{DELTA_COMPUTE_SIGN}}{{DELTA_COMPUTE_MS}} ms</div>
+    <div class="text-xs mt-1 leading-snug {{COMPUTE_CONTRIB_COLOR}}">{{COMPUTE_CONTRIB_NOTE}}</div>
+    <div class="absolute -right-4 -bottom-4 opacity-10 text-6xl">⚙️</div>
+  </div>
+  <div class="card p-5 relative overflow-hidden">
+    <div class="text-slate-400 text-sm font-medium mb-1">带宽变化（均值口径）</div>
+    <div class="text-3xl font-bold {{BW_DELTA_COLOR}}">{{BW_DELTA_SIGN}}{{BW_DELTA_PERCENT}}%</div>
+    <div class="text-xs text-slate-500 mt-2">{{BW_A}} → {{BW_B}} GB/s</div>
+    <div class="text-xs mt-1 {{BW_VERDICT_COLOR}} font-semibold leading-snug">{{BW_VERDICT_TEXT}}</div>
+    <div class="absolute -right-4 -bottom-4 opacity-10 text-6xl">📉</div>
+  </div>
+</div>
+
+<!-- [3] Cluster Info + Diagnosis -->
+<div class="card p-6 flex flex-col md:flex-row gap-8 items-center bg-slate-800/50">
+  <div class="flex-1 flex flex-col md:flex-row w-full gap-4">
+    <div class="flex-1 bg-slate-800 p-4 rounded-lg border border-slate-700">
+      <h3 class="text-emerald-400 font-semibold mb-3 flex items-center"><span class="w-2 h-2 rounded-full bg-emerald-400 mr-2"></span>基准集群 A</h3>
+      <div class="grid grid-cols-2 gap-2 text-sm">
+        <span class="text-slate-400">Rank 数:</span> <span class="font-mono text-white">{{RANK_A}}</span>
+        <span class="text-slate-400">Step 数:</span> <span class="font-mono text-white">{{STEP_A}}</span>
+      </div>
+    </div>
+    <div class="flex-1 bg-slate-800 p-4 rounded-lg border border-slate-700">
+      <h3 class="text-red-400 font-semibold mb-3 flex items-center"><span class="w-2 h-2 rounded-full bg-red-400 mr-2"></span>对比集群 B</h3>
+      <div class="grid grid-cols-2 gap-2 text-sm">
+        <span class="text-slate-400">Rank 数:</span> <span class="font-mono text-white">{{RANK_B}}</span>
+        <span class="text-slate-400">Step 数:</span> <span class="font-mono text-white">{{STEP_B}}</span>
+      </div>
+    </div>
+  </div>
+  <div class="w-full md:w-1/3 text-sm text-slate-300 border-l-0 md:border-l border-slate-600 pl-0 md:pl-6">
+    <p class="font-semibold text-white mb-2">诊断摘要：</p>
+    {{DIAGNOSIS_TEXT}}
+  </div>
+</div>
+
+<!-- [4] Step 耗时对比 + 带宽对比 -->
+<div id="sec-timing" class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+  <div class="card p-6">
+    <h3 class="text-lg font-semibold text-slate-200 mb-4">Step 核心耗时对比 (ms)</h3>
+    <div id="chart-step-compare" class="w-full h-80"></div>
+  </div>
+  <div class="card p-6">
+    <h3 class="text-lg font-semibold text-slate-200 mb-4">通信带宽对比 (GB/s)</h3>
+    <div id="chart-bw-compare" class="w-full h-80"></div>
+    <div id="bw-placeholder" style="display:none;text-align:center;padding:40px;color:#64748b;">无带宽数据</div>
+    <div class="mt-3 text-xs p-3 rounded-lg bg-slate-800/70 border border-slate-700">
+      <span class="{{BW_VERDICT_COLOR}} font-semibold">带宽判定：{{BW_VERDICT_TEXT}}</span>
+      <span class="text-slate-500 ml-1">（有效吞吐 {{BW_EFF_A}} → {{BW_EFF_B}} GB/s，{{BW_EFF_DELTA}}%）</span>
+    </div>
+    <div class="mt-2">{{BW_TYPE_VERDICTS_HTML}}</div>
+  </div>
+</div>
+
+<!-- [5] 负载分布双饼图 + 关键定位点 -->
+<div id="sec-load" class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+  <div class="card p-6 lg:col-span-2">
+    <h3 class="text-lg font-semibold text-slate-200 mb-4">负载类型转换：{{LOAD_TYPE_TEXT}}</h3>
+    <p class="text-sm text-slate-400 mb-2">{{LOAD_SHARE_NOTE}}</p>
+    <p class="text-sm text-slate-400">基准集群 A：{{LOAD_SHARE_A}}<br>对比集群 B：{{LOAD_SHARE_B}}</p>
+    <div id="chart-distribution" class="w-full h-72"></div>
+  </div>
+  <div class="card p-6 bg-gradient-to-br from-slate-800 to-slate-900 flex flex-col justify-center">
+    <h3 class="text-xl font-bold text-red-400 mb-4 border-b border-red-900/50 pb-2">关键定位点</h3>
+    <ul class="space-y-4 text-sm text-slate-300">
+      {{KEY_POINTS_HTML}}
+    </ul>
+  </div>
+</div>
+
+<!-- [6] 劣化归因瀑布图 + 通信算子差异 -->
+<div id="sec-attribution" class="space-y-6">
+  <div class="card p-6">
+    <h3 class="text-lg font-semibold text-slate-200 mb-4">劣化归因分解 (ms)</h3>
+    <div id="chart-waterfall" class="w-full h-80"></div>
+  </div>
+  <div class="card p-6">
+    <h3 class="text-lg font-semibold text-slate-200 mb-2">各通信类型的算子耗时差异 Top 10</h3>
+    {{COMM_DIFF_GROUPS}}
+  </div>
+</div>
+
+<!-- [7] Rank 交互走势 -->
+{{RANK_CHARTS}}
+
+<!-- [8] 劣化根因 + 行动建议 -->
+<div id="sec-conclusion" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+  <div class="card p-6 border-t-4 border-t-red-500">
+    <h3 class="text-lg font-bold text-white mb-4">劣化根因总结</h3>
+    <div class="space-y-3">{{DEGRADATION_ITEMS}}</div>
+  </div>
+  <div class="card p-6 border-t-4 border-t-emerald-500">
+    <h3 class="text-lg font-bold text-white mb-4">行动建议与排查方向</h3>
+    <ul class="space-y-4">{{ACTION_ITEMS}}</ul>
+  </div>
+</div>
+
+<!-- [9] 进阶分析（msprof-analyze -m 专项，未启用时显示引导卡） -->
+<div id="sec-advanced" class="pb-10">{{ADVANCED_ANALYSIS_HTML}}</div>
+
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', initOverviewCharts);
+document.addEventListener('DOMContentLoaded', initCommDiffCharts);
+
+// 通信算子耗时差异：按通信类型分组的双向柱状图（B − A），折叠面板展开时才初始化
+function initCommDiffCharts() {
+  var holder = document.getElementById('comm-diff-data');
+  if (!holder) return;
+  var groups;
+  try { groups = JSON.parse(holder.textContent); } catch (e) { return; }
+  var charts = [];
+  var unit = (groups[0] && groups[0].unit) || 'ms';
+
+  function render(group) {
+    var u = group.unit || unit;
+    var digits = u === 'μs' ? 3 : 2;
+    var fmt = function (v) {
+      var formatted = Number(v).toFixed(digits);
+      return Number(formatted) === 0 ? (0).toFixed(digits) : formatted;
+    };
+    var el = document.getElementById(group.id);
+    if (!el || el.getAttribute('data-rendered')) return;
+    el.setAttribute('data-rendered', '1');
+    if (typeof echarts === 'undefined') {
+      el.classList.add('comm-chart-empty');
+      el.textContent = 'ECharts 未加载，此图暂不可用。';
+      return;
+    }
+    var rows = group.rows.slice().reverse(); // 差值最大的排在顶部
+    el.style.height = Math.max(220, rows.length * 34 + 70) + 'px';
+    var chart = echarts.init(el);
+    chart.setOption({
+      grid: { left: 8, right: 70, top: 30, bottom: 6, containLabel: true },
+      tooltip: {
+        trigger: 'axis', axisPointer: { type: 'shadow' },
+        formatter: function (ps) {
+          var r = rows[ps[0].dataIndex];
+          return '<b>' + echarts.format.encodeHTML(r.name) + '</b><br/>A：' + fmt(r.a) + ' ' + u +
+                 '<br/>B：' + fmt(r.b) + ' ' + u + '<br/>差值：' + (r.delta > 0 ? '+' : '') + fmt(r.delta) + ' ' + u;
+        }
+      },
+      xAxis: {
+        type: 'value', name: 'Δ (B − A) / ' + u, nameLocation: 'end',
+        nameTextStyle: { color: '#94a3b8', fontSize: 11, padding: [0, 0, 0, 40] },
+        axisLabel: { color: '#94a3b8', fontSize: 11, formatter: fmt },
+        splitLine: { lineStyle: { color: '#334155', type: 'dashed' } }
+      },
+      yAxis: {
+        type: 'category', data: rows.map(function (r) { return r.name; }),
+        axisLabel: { color: '#cbd5e1', fontSize: 11, width: 200, overflow: 'truncate' },
+        axisLine: { lineStyle: { color: '#334155' } }, axisTick: { show: false }
+      },
+      series: [{
+        type: 'bar', barWidth: '58%',
+        data: rows.map(function (r) {
+          var slower = r.delta >= 0;
+          return {
+            value: r.delta,
+            itemStyle: { color: slower ? '#f87171' : '#34d399', borderRadius: slower ? [0, 4, 4, 0] : [4, 0, 0, 4] },
+            label: { show: true, position: slower ? 'right' : 'left', color: '#e2e8f0', fontSize: 11,
+                     formatter: function (p) { return (p.value > 0 ? '+' : '') + fmt(p.value) + ' ' + u; } }
+          };
+        }),
+        markLine: { silent: true, symbol: 'none', data: [{ xAxis: 0 }],
+                    lineStyle: { color: '#94a3b8', width: 1 }, label: { show: false } }
+      }]
+    });
+    charts.push(chart);
+  }
+
+  groups.forEach(function (group) {
+    var details = document.querySelector('[data-chart="' + group.id + '"]');
+    if (!details) return;
+    if (details.open) render(group);
+    details.addEventListener('toggle', function () { if (details.open) render(group); });
+  });
+  window.addEventListener('resize', function () { charts.forEach(function (c) { c.resize(); }); });
+}
+
+function initOverviewCharts() {
+if (typeof echarts === 'undefined') {
+  for (const id of ['chart-step-compare', 'chart-bw-compare', 'chart-distribution', 'chart-waterfall']) {
+    document.getElementById(id).textContent = 'ECharts 未加载，此图暂不可用。';
+  }
+  return;
+}
+const colorA = '#34d399';
+const colorB = '#f87171';
+const colorText = '#94a3b8';
+const colorGrid = '#334155';
+
+// Step 对比
+var chartStep = echarts.init(document.getElementById('chart-step-compare'));
+chartStep.setOption({
+  tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+  legend: { data: ['集群A Stage','集群B Stage'], textStyle: { color: colorText }, bottom: 0 },
+  grid: { left: '3%', right: '4%', bottom: '10%', top: '5%', containLabel: true },
+  xAxis: { type: 'category', data: {{STEP_LABELS}}, axisLabel: { color: colorText }, axisLine: { lineStyle: { color: colorGrid } } },
+  yAxis: { type: 'value', name: 'ms', nameTextStyle: { color: colorText }, axisLabel: { color: colorText }, splitLine: { lineStyle: { color: colorGrid, type: 'dashed' } } },
+  series: [
+    { name: '集群A Stage', type: 'bar', data: {{A_STAGE_BAR}}, itemStyle: { color: colorA, borderRadius: [4,4,0,0] } },
+    { name: '集群B Stage', type: 'bar', data: {{B_STAGE_BAR}}, itemStyle: { color: colorB, borderRadius: [4,4,0,0] } }
+  ]
+});
+
+// 带宽对比
+var chartBw = echarts.init(document.getElementById('chart-bw-compare'));
+var bwHasData = {{BW_HAS_DATA}};
+if (bwHasData) {
+  chartBw.setOption({
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    legend: { data: ['集群A 带宽','集群B 带宽'], textStyle: { color: colorText }, bottom: 0 },
+    grid: { left: '3%', right: '4%', bottom: '10%', top: '5%', containLabel: true },
+    xAxis: { type: 'category', data: {{BW_LABELS}}, axisLabel: { color: colorText, fontWeight: 'bold' }, axisLine: { lineStyle: { color: colorGrid } } },
+    yAxis: { type: 'value', name: 'GB/s', nameTextStyle: { color: colorText }, axisLabel: { color: colorText }, splitLine: { lineStyle: { color: colorGrid, type: 'dashed' } } },
+    series: [
+      { name: '集群A 带宽', type: 'bar', barWidth: '25%', data: {{A_BW_BAR}}, itemStyle: { color: '#60a5fa', borderRadius: [4,4,0,0] }, label: { show: true, position: 'top', color: '#fff', formatter: '{c}' } },
+      { name: '集群B 带宽', type: 'bar', barWidth: '25%', data: {{B_BW_BAR}}, itemStyle: { color: '#f87171', borderRadius: [4,4,0,0] }, label: { show: true, position: 'top', color: '#fff', formatter: '{c}' } }
+    ]
+  });
+} else {
+  document.getElementById('bw-placeholder').style.display = 'block';
+  document.getElementById('chart-bw-compare').style.display = 'none';
+}
+
+// 负载分布双饼图
+var chartDist = echarts.init(document.getElementById('chart-distribution'));
+chartDist.setOption({
+  tooltip: { trigger: 'item', formatter: '{a} <br/>{b}: {c}%' },
+  legend: { bottom: 0, textStyle: { color: colorText }, data: ['计算时间','未重叠通信时间','空闲时间'] },
+  color: ['#8b5cf6', '#f59e0b', '#64748b'],
+  series: [
+    { name: '基准集群A占比', type: 'pie', radius: ['40%','70%'], center: ['25%','45%'], itemStyle: { borderRadius: 5, borderColor: '#1e293b', borderWidth: 2 }, label: { show: true, formatter: '{b}\n{d}%', color: '#cbd5e1', fontSize: 11 }, data: [{value:{{A_PIE_COMPUTE_PCT}}, name:'计算时间'},{value:{{A_PIE_COMM_PCT}}, name:'未重叠通信时间'},{value:{{A_PIE_FREE_PCT}}, name:'空闲时间'}] },
+    { name: '对比集群B占比', type: 'pie', radius: ['40%','70%'], center: ['75%','45%'], itemStyle: { borderRadius: 5, borderColor: '#1e293b', borderWidth: 2 }, label: { show: true, formatter: '{b}\n{d}%', color: '#cbd5e1', fontSize: 11 }, data: [{value:{{B_PIE_COMPUTE_PCT}}, name:'计算时间'},{value:{{B_PIE_COMM_PCT}}, name:'未重叠通信时间'},{value:{{B_PIE_FREE_PCT}}, name:'空闲时间'}] }
+  ],
+  graphic: [
+    { type: 'text', left: '22%', top: '42%', textAlign: 'center', style: { text: '基准A', fill: '#34d399', font: 'bold 14px Inter' } },
+    { type: 'text', left: '72%', top: '42%', textAlign: 'center', style: { text: '对比B', fill: '#f87171', font: 'bold 14px Inter' } }
+  ]
+});
+
+// 瀑布图
+var chartWf = echarts.init(document.getElementById('chart-waterfall'));
+var wfData = {{WATERFALL_DATA}};
+chartWf.setOption({
+  tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }, formatter: function(p){ var d = wfData[p[0].dataIndex]; return d.name + ': ' + (d.value > 0 ? '+' : '') + d.value.toFixed(1) + ' ms' + (d.contrib ? '<br/>贡献度: ' + d.contrib + '%' : ''); } },
+  grid: { left: '3%', right: '4%', bottom: '3%', top: '5%', containLabel: true },
+  xAxis: { type: 'category', data: wfData.map(function(d){return d.name;}), axisLabel: { color: colorText }, axisLine: { lineStyle: { color: colorGrid } } },
+  yAxis: { type: 'value', name: 'ms', nameTextStyle: { color: colorText }, axisLabel: { color: colorText }, splitLine: { lineStyle: { color: colorGrid, type: 'dashed' } } },
+  series: [{ type: 'bar', barWidth: '45%', data: wfData.map(function(d){ return { value: d.value, itemStyle: { color: d.value > 0 ? '#f87171' : '#34d399', borderRadius: [4,4,0,0] } }; }) }]
+});
+
+// 图表随容器宽度自适应重绘（窗口缩放、字体加载、布局换列均触发）
+var _charts = [chartStep, chartBw, chartDist, chartWf];
+function _resizeAll() { _charts.forEach(function(c){ if (c) c.resize(); }); }
+if (typeof ResizeObserver !== 'undefined') {
+  var _ro = new ResizeObserver(_resizeAll);
+  // 同时观察图表容器与其父卡片: Tailwind CDN 样式晚到时容器宽度会变，需重绘
+  _charts.forEach(function(c){ var el = c && c.getDom(); if (el) { _ro.observe(el); if (el.parentElement) _ro.observe(el.parentElement); } });
+}
+window.addEventListener('resize', _resizeAll);
+window.addEventListener('load', _resizeAll);
+}
+
+// 顶部导航：滚动进度条 + 当前区块高亮
+document.addEventListener('DOMContentLoaded', function () {
+  var bar = document.getElementById('nav-progress');
+  var links = Array.prototype.slice.call(document.querySelectorAll('.report-nav-links a'));
+  var targets = links.map(function (a) { return document.querySelector(a.getAttribute('href')); });
+  function onScroll() {
+    if (bar) {
+      var max = document.documentElement.scrollHeight - window.innerHeight;
+      bar.style.width = (max > 0 ? Math.min(100, window.scrollY / max * 100) : 0) + '%';
+    }
+    var pos = window.scrollY + 90, active = -1;
+    targets.forEach(function (t, i) { if (t && t.offsetTop <= pos) active = i; });
+    links.forEach(function (a, i) { a.setAttribute('aria-current', i === active ? 'true' : 'false'); });
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "note": "A/B 对照用的合成 BMC 包清单。gt_needles 是「证据里应当出现的字面量」，不是诊断结论；诊断是否正确要人判。",
+  "cases": [
+    {
+      "id": "case-01-psu-lost-missing-npu",
+      "path": "tests/fixtures/analyzers/bmc-dump-01/dump_info",
+      "expected_analyzer": "ibmc_analyzer",
+      "gt": "PSU1 输入丢失；npu_info 缺失，NPU 在位情况未知",
+      "gt_needles": ["Power Supply input lost", "PSU1 Vin=0"],
+      "must_not_appear": ["疑似丢卡"],
+      "raw_evidence_files": ["AppDump/sensor_alarm/current_event.txt", "AppDump/BMC/psu_info.txt"]
+    },
+    {
+      "id": "case-02-npu-ecc-multibit",
+      "path": "tests/fixtures/analyzers/bmc-dump-02-ecc/dump_info",
+      "expected_analyzer": "ibmc_analyzer",
+      "gt": "NPU1 多 bit ECC=3（硬件故障级）",
+      "gt_needles": ["NPU ECC 多bit", "MultiBitEcc=3"],
+      "must_not_appear": [],
+      "raw_evidence_files": ["AppDump/CpuMem/npu_info", "AppDump/CpuMem/npu_ecc_info.json"]
+    },
+    {
+      "id": "case-03-healthy",
+      "path": "tests/fixtures/analyzers/bmc-dump-03-healthy/dump_info",
+      "expected_analyzer": "ibmc_analyzer",
+      "gt": "无硬件异常（只有逻辑盘未配置这类关注项）",
+      "gt_needles": ["未发现 P0/P1"],
+      "must_not_appear": ["疑似丢卡", "ECC 多bit", "Vin=0"],
+      "raw_evidence_files": ["AppDump/sensor_alarm/current_event.txt", "AppDump/CpuMem/npu_info"]
+    },
+    {
+      "id": "case-04-hbm-temp-high",
+      "path": "tests/fixtures/analyzers/bmc-dump-04-temp/dump_info",
+      "expected_analyzer": "ibmc_analyzer",
+      "gt": "HBM 温度 99°C 超过 95°C 上限（手册按 Major 处理）",
+      "gt_needles": ["传感器异常"],
+      "must_not_appear": ["疑似丢卡"],
+      "raw_evidence_files": ["AppDump/sensor_alarm/sensor_info.txt", "AppDump/sensor_alarm/current_event.txt"]
+    }
+  ]
+}

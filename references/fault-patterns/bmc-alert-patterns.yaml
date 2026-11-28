@@ -1,0 +1,81 @@
+id: bmc-alert-patterns
+type: fault-pattern
+title: 'iBMC 告警与 SEL 事件的常见故障模式对照（供电 / ECC / 温度 / 日志满 / 证书 / 光模块 / RAID / 端口抖动）'
+summary: BMC 当前告警、历史事件与设备读数常见的组合。每条列出可核对的现象、待验证原因和现场检查。
+
+sources:
+  - type: engineer-input
+    engineer: "hu669293657（上游 skills 仓库作者，匿名工程师）"
+    document: "skills 仓库 ibmc_analyzer/references/judgement.md 的「常见故障模式」「SEL 事件速查」「判读禁忌」三节，固定提交 39c604188f99d683be93f994193ecfea24d7efc6"
+    url: "https://github.com/hu669293657/skills/tree/39c604188f99d683be93f994193ecfea24d7efc6/ibmc_analyzer"
+    input_session: "session-b307be67-960e-48dd-a1ef-ee10a2d91d24"
+    confirmed_at: 2026-11-22
+    verification: auto-extracted
+
+applies_to:
+  platforms: [cross]
+  categories: [interrupt, performance]
+
+related_references: [bmc-sensor-thresholds]
+
+status: pending-review
+last_verified: 2026-11-22
+
+content:
+  patterns:
+    - pattern: 电源输入丢失（PSU Vin 为 0）
+      symptoms:
+        - "当前告警里有 Power Supply input lost，PSU 的 Vin 读数为 0"
+        - "SEL 里同时间段出现 input lost，随后可能有 restored"
+      cause: "经验假设（未核）：电源线未接、输入丢失或供电回路断开（候选；也可能是采集时电源被拔）"
+      fix: "先查电源线与供电回路；有 restored 且当前告警已清时按已恢复的历史事件处理，不重复报障"
+    - pattern: NPU ECC 多 bit 错误
+      symptoms:
+        - "设备报告某张 NPU 的多 bit ECC 错误计数大于 0"
+      cause: "经验假设（未核）：NPU 硬件异常（候选）"
+      fix: "按硬件问题升级处理。用设备状态和受影响的业务记录核对故障范围及恢复情况"
+    - pattern: 装 OS 后 NPU 丢卡
+      symptoms:
+        - "装完系统后 NPU 数量少于预期，BMC 侧看到链路异常"
+      cause: "经验假设（未核）：A3 机型的 L1 交换板螺钉未拧紧（作者经验，机型相关，未核规范）"
+      fix: "拧紧 L1 交换板螺钉后复测；换机型时不套用这条"
+    - pattern: 温度持续越限
+      symptoms:
+        - "进风温度或 HBM 温度持续高于适用机型的正常区间，历史事件反复出现 Above upper threshold"
+      cause: "经验假设（未核）：散热、风道或负载问题（候选）"
+      fix: "查风扇转速、风道与业务负载；短时间集中出现的越限更像一次环境事件，不按长期故障处理"
+    - pattern: 操作日志或安全日志写满
+      symptoms:
+        - "SEL 里反复出现 Operation Log Full / Security Log Full / SEL almost full"
+      cause: "经验假设（未核）：日志满且长期未导出清理"
+      fix: "导出并清理日志；反复出现说明没人处理，按长期问题跟踪"
+    - pattern: 证书过期
+      symptoms:
+        - "SEL 里有 Cert OverDue"
+      cause: "经验假设（未核）：BMC 证书到期"
+      fix: "更换证书；只在确认证书链与访问方式后操作，不在诊断里代做"
+    - pattern: 光模块或光链路劣化
+      symptoms:
+        - "光模块 SNR、RX、TX 低于设备正常区间，或有 TxLos / RxLos"
+      cause: "经验假设（未核）：光模块或光纤链路劣化（候选）"
+      fix: "换模块或清洁光纤后复测；先确认两端都在位，再判断是哪一端"
+    - pattern: RAID 无逻辑盘
+      symptoms:
+        - "RAID 控制器信息里控制器与物理盘正常，但逻辑盘列表为空"
+      cause: "经验假设（未核）：未配置或配置被清（候选）"
+      fix: "先与使用方确认是否预期；生产机逻辑盘缺失才按风险项处理，不直接判硬件故障"
+    - pattern: NPU 端口频繁 down/up
+      symptoms:
+        - "设备记录显示同一端口短时间反复掉线和恢复"
+      cause: "经验假设（未核）：链路抖动（线缆、交换板或对端）"
+      fix: "查线缆与交换板；同时用业务侧集合通信日志确认是否影响训练"
+    - pattern: 安全弱项告警
+      symptoms:
+        - "当前告警只有 SNMP v2 或 RMCP 弱加密套件这类安全类 Minor"
+      cause: "经验假设（未核）：BMC 安全配置偏旧"
+      fix: "按提示项处理，建议升级到安全配置；这类告警不改变「机器当前可用」的结论"
+    - pattern: 未知来源重启
+      symptoms:
+        - "SEL 里 System Restart [Unknown] / [IPMB] 或 watchdog 复位，且没有对应掉电记录"
+      cause: "经验假设（未核）：原因待查（未知重启）；可能与 OS 层崩溃有关"
+      fix: "先看 OS 侧 kdump / OOM 与业务日志，把系统层与带外层分开；按出现频率判断是否长期问题"

@@ -1,0 +1,47 @@
+schema_version: 1
+upstream:
+  repository: https://github.com/hu669293657/skills
+  commit: bf82e886ddda0a9955c2d5422f50b0b4caeb80b6
+  author: hu669293657
+  license: none-declared
+  license_evidence: 仓库根与子目录没有 LICENSE/COPYING/NOTICE；源文件无 SPDX 头
+  authorization: 作者口头授权迁入与再分发，迁入方确认；尚无书面许可记录
+  redistribution_status: 已获口头再分发授权；尚无书面许可记录
+collectors:
+- name: env-snapshot
+  upstream_path: ascend-dump-analyzer/references/msprechecker_dump.py
+  local_path: scripts/collectors/ascend-dump/msprechecker_dump.py
+  upstream_entry: msprechecker_dump.py
+  patches: none
+- name: cpu-trace
+  upstream_path: cpu-host-performance/scripts/cpu_trace_collect.sh
+  local_path: scripts/analyzers/cpu-host-performance/scripts/cpu_trace_collect.sh
+  upstream_entry: cpu_trace_collect.sh
+  patches: none
+  note: 与 Analyzer 侧共用同一份上游原文，collectors 不复制第二份；bundle 时复制
+- name: network-evidence
+  upstream_paths:
+  - cpu-host-performance/scripts/collect_network_evidence.py
+  - cpu-host-performance/hostbind/network.py
+  - cpu-host-performance/hostbind/__init__.py
+  local_paths:
+  - scripts/collectors/cpu-host/scripts/collect_network_evidence.py
+  - scripts/collectors/cpu-host/hostbind/network.py
+  - scripts/collectors/cpu-host/hostbind/__init__.py
+  upstream_entry: scripts/collect_network_evidence.py
+  patches: none
+- name: cpu-power-audit
+  upstream_path: cpu-host-performance/scripts/cpu_power_audit.py
+  local_path: scripts/collectors/cpu-host/scripts/cpu_power_audit.py
+  upstream_entry: scripts/cpu_power_audit.py
+  patches: none
+- name: ibmc-dump
+  upstream_path: ibmc_analyzer/README.md
+  local_path: scripts/collectors/instructions/ibmc-dump.md
+  upstream_entry: null
+  patches: 重新撰写为面向客户的操作说明，只保留一键收集的入口与返回物
+- name: ascend-logs
+  upstream_path: issue-analyzer/references/log-structure.md
+  local_path: scripts/collectors/instructions/ascend-logs.md
+  upstream_entry: null
+  patches: 重新撰写为面向客户的操作说明，保留上游的现场采集命令并去掉分析侧内容

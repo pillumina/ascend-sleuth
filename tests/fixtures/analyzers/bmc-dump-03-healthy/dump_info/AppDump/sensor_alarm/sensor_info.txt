@@ -1,0 +1,4 @@
+sensor id | sensor name | value | unit | status | lnr | lc | lnc | unc | uc | unr
+0x0101 | Inlet Temp | 38 | C | ok | -- | -- | -- | 42 | 46 | 50
+0x0102 | HBM Temp | 92 | C | ok | -- | -- | -- | 95 | 100 | 105
+0x0103 | FAN1 Front Speed | 8100 | RPM | ok | 7000 | 6000 | 5000 | -- | -- | --

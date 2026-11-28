@@ -1,0 +1,103 @@
+schema_version: 1
+upstream:
+  repository: https://github.com/hu669293657/skills
+  commit: bf82e886ddda0a9955c2d5422f50b0b4caeb80b6
+  author: hu669293657
+  license: none-declared
+  license_evidence: 仓库根与子目录没有 LICENSE/COPYING/NOTICE；源文件无 SPDX 头
+  authorization: 作者口头授权迁入与再分发，迁入方确认；尚无书面许可记录
+  redistribution_status: 已获口头再分发授权；尚无书面许可记录
+analyzers:
+- name: ibmc_analyzer
+  upstream_path: ibmc_analyzer
+  local_path: scripts/analyzers/ibmc_analyzer
+  entry: scripts/run_bmc_report.py
+  adapter: scripts/analyzers/ibmc_analyzer/run.py
+- name: issue-analyzer
+  upstream_path: issue-analyzer
+  local_path: scripts/analyzers/issue-analyzer
+  entry: scripts/log_analyzer.py
+  adapter: scripts/analyzers/issue-analyzer/run.py
+- name: ascend-dump-analyzer
+  upstream_path: ascend-dump-analyzer
+  local_path: scripts/analyzers/ascend-dump-analyzer
+  entry: references/check_compatibility.py
+  adapter: scripts/analyzers/ascend-dump-analyzer/run.py
+  retained_files:
+  - references/compare_dumps.py
+  - references/check_compatibility.py
+  - references/compatibility_matrix.json
+  - references/compatibility_catalog.py
+  - references/ascend-compatibility.json
+  not_retained: 单份/比对 HTML 模板、渲染器与字段说明；适配器输出结构化 JSON，不填充模板
+- name: cluster-analysis
+  upstream_path: cluster-analysis
+  local_path: scripts/analyzers/cluster-analysis
+  entry: scripts/run_workflow.py
+  adapter: scripts/analyzers/cluster-analysis/run.py
+- name: cluster-compare
+  upstream_path: cluster-compare
+  local_path: scripts/analyzers/cluster-compare
+  entry: scripts/generate_cluster_report.py
+  adapter: scripts/analyzers/cluster-compare/run.py
+- name: prof-compare
+  upstream_path: prof-compare
+  local_path: scripts/analyzers/prof-compare
+  entry: scripts/host_kernel.py
+  adapter: scripts/analyzers/prof-compare/run.py
+  retained_files:
+  - scripts/cross_trace.py
+  - scripts/npu_source.py
+  - scripts/kernel_execution.py
+  - scripts/host_kernel.py
+  - scripts/profile_identity.py
+  - scripts/kernel_attribution.py
+  not_retained: msprof-analyze 自动安装入口、xlsx 解析与 HTML 渲染链。
+- name: cpu-host-performance
+  upstream_path: cpu-host-performance
+  local_path: scripts/analyzers/cpu-host-performance
+  entry: analyzer/analyze_cpu_trace.py
+  adapter: scripts/analyzers/cpu-host-performance/run.py
+  not_retained: 客户定制生成链（hostbind/customer.py、hostbind/custom.py、hostbind/network.py）与对应参考说明；正式分析链保留 binding_plan / planner / placement / delivery 与模板。采集器另存一份 hostbind/network.py 供 network-evidence 发包。
+patches:
+- file: scripts/analyzers/ascend-dump-analyzer/references/compare_dumps.py
+  change: JSON 读取采用 utf-8-sig
+  reason: 支持带 BOM 的快照
+- file: scripts/analyzers/cluster-analysis/scripts/run_workflow.py
+  change: 跳过内嵌的单卡 Prof 子报告
+  reason: 保留集群双卡差异 JSON 和主报告，单卡对比由独立入口调用
+- file: scripts/analyzers/ibmc_analyzer/scripts/run_bmc_report.py
+  change: 保留 zip 路径与符号链接校验；tar 改为逐成员校验路径、链接与特殊文件后解包；每个压缩包使用独立解包目录
+  reason: 限制解包输出范围，避免复用输出目录时旧解包文件混入，并兼容不支持 filter 参数的旧解释器
+- file: scripts/analyzers/ibmc_analyzer/scripts/parse_bmc_collect.py
+  change: 每台机器 JSON 文件名加入序列号，仍冲突时追加序号
+  reason: 同名目录或同名压缩包的不同机器不能互相覆盖
+- file: scripts/analyzers/cpu-host-performance/references/ascend_install_paths.md
+  change: 按上游固定提交整理安装路径说明，补现场采集需要的目录与版本文件
+  reason: 原本地链接指向未交付文件
+- file: scripts/analyzers/cpu-host-performance/references/binding_workflow.md
+  change: 客户生成指南与定制容量预算改为固定上游提交链接
+  reason: 对应生成器不在本仓交付范围
+- file: scripts/analyzers/cpu-host-performance/references/collection_contract.md
+  change: 定制绑定说明改为固定上游提交链接
+  reason: 对应生成器不在本仓交付范围
+- file: scripts/analyzers/cpu-host-performance/references/npu_numa_binding.md
+  change: 客户模板与定制容量预算改为固定上游提交链接
+  reason: 对应生成器不在本仓交付范围
+- file: scripts/analyzers/cpu-host-performance/analyzer/analyze_cpu_trace.py
+  change: stdout 和 stderr 采用 UTF-8
+  reason: 兼容 Windows 控制台
+- file: scripts/analyzers/cluster-analysis/scripts/lib/analysis_scope.py
+  change: 用切片替换 str.removeprefix
+  reason: 保持 Python 3.8 可运行
+- file: scripts/analyzers/cluster-analysis/scripts/lib/insight_data.py
+  change: 用切片替换 str.removeprefix
+  reason: 保持 Python 3.8 可运行
+- file: scripts/analyzers/cluster-analysis/scripts/lib/xlsx.py
+  upstream_path: cluster-analysis/scripts/prof_compare/xlsx.py
+  change: 将上游标准库工作簿模块移入 lib，并更新 compare_fallback 导入
+  reason: 保留双卡差异工作簿，复用独立单卡对比入口
+collectors:
+  manifest: scripts/collectors/PROVENANCE.yaml
+  note: 采集脚本与人工采集说明的来源、固定提交与改动记在采集器目录的 PROVENANCE.yaml
+implementation_root: scripts/analyzers
